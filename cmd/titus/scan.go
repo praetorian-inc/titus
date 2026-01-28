@@ -16,6 +16,8 @@ import (
 
 var (
 	scanRulesPath     string
+	scanRulesInclude  string
+	scanRulesExclude  string
 	scanOutputPath    string
 	scanOutputFormat  string
 	scanGit           bool
@@ -33,6 +35,8 @@ var scanCmd = &cobra.Command{
 
 func init() {
 	scanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory")
+	scanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
+	scanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.db", "Output database path")
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
@@ -49,7 +53,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load rules
-	rules, err := loadRules(scanRulesPath)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
@@ -158,8 +162,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 // HELPERS
 // =============================================================================
 
-func loadRules(path string) ([]*types.Rule, error) {
+func loadRules(path, include, exclude string) ([]*types.Rule, error) {
 	loader := rule.NewLoader()
+
+	var rules []*types.Rule
+	var err error
 
 	if path != "" {
 		// Custom rules from file
@@ -167,11 +174,28 @@ func loadRules(path string) ([]*types.Rule, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []*types.Rule{r}, nil
+		rules = []*types.Rule{r}
+	} else {
+		// Builtin rules
+		rules, err = loader.LoadBuiltinRules()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// Builtin rules
-	return loader.LoadBuiltinRules()
+	// Apply filtering if patterns specified
+	if include != "" || exclude != "" {
+		config := rule.FilterConfig{
+			Include: rule.ParsePatterns(include),
+			Exclude: rule.ParsePatterns(exclude),
+		}
+		rules, err = rule.Filter(rules, config)
+		if err != nil {
+			return nil, fmt.Errorf("filtering rules: %w", err)
+		}
+	}
+
+	return rules, nil
 }
 
 func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
