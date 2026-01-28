@@ -37,7 +37,7 @@ type Store interface {
 	// FindingExists checks if a finding with this structural ID exists.
 	FindingExists(structuralID string) (bool, error)
 
-// BlobExists checks if a blob has already been scanned.
+	// BlobExists checks if a blob has already been scanned.
 	BlobExists(id types.BlobID) (bool, error)
 
 	// GetProvenance retrieves provenance for a blob.

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
@@ -101,6 +103,28 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating enumerator: %w", err)
 	}
 
+	// Track scanning stats
+	startTime := time.Now()
+	totalBytes := int64(0)
+	blobCount := 0
+
+	// Aggregate matches by rule for table output
+	type ruleStats struct {
+		ruleName     string
+		findingCount int
+		matchCount   int
+	}
+	ruleStatsMap := make(map[string]*ruleStats)
+
+	// Initialize rule stats with all loaded rules
+	for _, r := range rules {
+		ruleStatsMap[r.ID] = &ruleStats{
+			ruleName:     r.Name,
+			findingCount: 0,
+			matchCount:   0,
+		}
+	}
+
 	// Scan
 	ctx := context.Background()
 	matchCount := 0
@@ -108,6 +132,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 	skippedCount := 0
 
 	err = enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		// Track bytes and blob count
+		totalBytes += int64(len(content))
+		blobCount++
+
 		// Check for incremental scanning
 		if scanIncremental {
 			exists, err := s.BlobExists(blobID)
@@ -144,6 +172,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("storing match: %w", err)
 			}
 
+			// Update rule stats
+			if stats, ok := ruleStatsMap[match.RuleID]; ok {
+				stats.matchCount++
+			}
+
 			// Create finding (deduplicated by finding ID)
 			// Note: Finding ID is computed from rule structural ID + groups
 			// For now, we'll use a simpler approach based on structural ID
@@ -154,6 +187,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 			if !exists {
 				findingCount++
+
+				// Update rule stats for findings
+				if stats, ok := ruleStatsMap[match.RuleID]; ok {
+					stats.findingCount++
+				}
+
 				finding := &types.Finding{
 					ID:     match.StructuralID, // Use structural ID as finding ID for now
 					RuleID: match.RuleID,
@@ -172,21 +211,72 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
-// Output results (to stderr when using json/sarif format to keep stdout pure JSON)
+	// Calculate scan duration and speed
+	duration := time.Since(startTime)
+	durationSeconds := duration.Seconds()
+	if durationSeconds == 0 {
+		durationSeconds = 0.001 // Avoid division by zero
+	}
+	bytesPerSecond := float64(totalBytes) / durationSeconds
+	mibPerSecond := bytesPerSecond / (1024 * 1024)
+	totalMiB := float64(totalBytes) / (1024 * 1024)
+
+	// Output results (to stderr when using json/sarif format to keep stdout pure JSON)
+	outWriter := cmd.OutOrStdout()
 	if scanOutputFormat == "json" || scanOutputFormat == "sarif" {
-		if scanIncremental {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
-		} else {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		outWriter = cmd.ErrOrStderr()
+	}
+
+	// Print NoseyParker-style output for human format
+	if scanOutputFormat == "human" {
+		// Print scan summary
+		sourceType := "plain files"
+		if scanGit {
+			sourceType = "Git repo"
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s\n", scanOutputPath)
+		fmt.Fprintf(outWriter, "Found %.2f MiB from %d blobs from 1 %s\n", totalMiB, blobCount, sourceType)
+		fmt.Fprintf(outWriter, "Scanned %.2f MiB from %d blobs in %.0f second (%.2f MiB/s); %d/%d new matches\n\n",
+			totalMiB, blobCount, durationSeconds, mibPerSecond, matchCount, matchCount)
+
+		// Print table header
+		fmt.Fprintf(outWriter, " %-60s %15s %15s\n", "Rule", "Total Findings", "Total Matches")
+		fmt.Fprintf(outWriter, "%s\n", "──────────────────────────────────────────────────────────────────────────────────────────────")
+
+		// Sort rules by match count (descending)
+		type ruleSortEntry struct {
+			ruleID   string
+			ruleName string
+			stats    *ruleStats
+		}
+		var sortedRules []ruleSortEntry
+		for ruleID, stats := range ruleStatsMap {
+			if stats.matchCount > 0 {
+				sortedRules = append(sortedRules, ruleSortEntry{
+					ruleID:   ruleID,
+					ruleName: stats.ruleName,
+					stats:    stats,
+				})
+			}
+		}
+		sort.Slice(sortedRules, func(i, j int) bool {
+			return sortedRules[i].stats.matchCount > sortedRules[j].stats.matchCount
+		})
+
+		// Print table rows
+		for _, entry := range sortedRules {
+			fmt.Fprintf(outWriter, " %-60s %15d %15d\n",
+				entry.ruleName, entry.stats.findingCount, entry.stats.matchCount)
+		}
+
+		fmt.Fprintf(outWriter, "\nRun the `report` command next to show finding details.\n")
 	} else {
+		// For JSON/SARIF, print simple summary
 		if scanIncremental {
-			fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
+			fmt.Fprintf(outWriter, "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
 		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+			fmt.Fprintf(outWriter, "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
+		fmt.Fprintf(outWriter, "Results stored in: %s\n", scanOutputPath)
 	}
 
 	// Get results for output
@@ -208,12 +298,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return outputSARIF(cmd, s, rules, matches)
 	}
 
-	// Human format outputs findings (deduplicated)
-	findings, err := s.GetFindings()
-	if err != nil {
-		return fmt.Errorf("retrieving findings: %w", err)
-	}
-	return outputFindings(cmd, findings)
+	// Human format - already displayed table above
+	return nil
 }
 
 // =============================================================================
