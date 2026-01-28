@@ -3,13 +3,13 @@ package rule
 import "embed"
 
 // builtinRulesFS embeds the built-in rules directory.
-// Rules will be added later during porting from NoseyParker.
+// Contains 189 detection rules ported from NoseyParker.
 //
-//go:embed rules/*.yaml
+//go:embed rules/*.yml
 var builtinRulesFS embed.FS
 
 // builtinRulesetsFS embeds the built-in rulesets directory.
-// Rulesets will be added later during porting from NoseyParker.
+// Contains rulesets ported from NoseyParker.
 //
-//go:embed rulesets/*.yaml
+//go:embed rulesets/*.yml
 var builtinRulesetsFS embed.FS

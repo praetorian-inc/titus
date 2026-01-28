@@ -30,11 +30,12 @@ func NewHyperscan(rules []*types.Rule) (*HyperscanMatcher, error) {
 
 	for i, rule := range rules {
 		// Create pattern with flags:
-		// - SomLeftMost: Report start-of-match (SOM) offset in callback
 		// - DotAll: . matches newlines
 		// - MultiLine: ^/$ match line boundaries
-		// Note: SingleMatch is incompatible with SomLeftMost, so we use deduplication instead
-		p := hyperscan.NewPattern(rule.Pattern, hyperscan.SomLeftMost|hyperscan.DotAll|hyperscan.MultiLine)
+		// Note: SomLeftMost (start-of-match tracking) is disabled to avoid memory issues
+		// with complex patterns, following NoseyParker's approach. We use Go regexp in
+		// stage 2 to find actual match boundaries.
+		p := hyperscan.NewPattern(rule.Pattern, hyperscan.DotAll|hyperscan.MultiLine)
 		p.Id = i // Pattern ID = index into rules array
 		patterns[i] = p
 	}
@@ -77,7 +78,8 @@ type rawMatch struct {
 // MatchWithBlobID scans content with a known BlobID.
 func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]*types.Match, error) {
 	// Collect raw matches from Hyperscan
-	// Key: "ruleIdx:start" -> longest end offset seen
+	// Note: Without SomLeftMost, Hyperscan reports from=0 (inaccurate start offset)
+	// Key: "ruleIdx:end" -> smallest start offset seen (longest match)
 	bestMatches := make(map[string]rawMatch)
 
 	// Define callback for Hyperscan matches
@@ -89,10 +91,11 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 		start := int(from)
 		end := int(to)
 
-		// For each (rule, start) pair, keep the longest match (greatest end offset)
-		key := fmt.Sprintf("%d:%d", id, start)
+		// For each (rule, end) pair, keep the longest match (smallest start offset)
+		// This deduplication strategy works even when start=0 (SomLeftMost disabled)
+		key := fmt.Sprintf("%d:%d", id, end)
 		if existing, ok := bestMatches[key]; ok {
-			if end > existing.end {
+			if start < existing.start {
 				bestMatches[key] = rawMatch{ruleIdx: int(id), start: start, end: end}
 			}
 		} else {
@@ -113,11 +116,12 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 
 	for _, raw := range bestMatches {
 		rule := m.rules[raw.ruleIdx]
-		start := raw.start
-		end := raw.end
+		hyperscanStart := raw.start
+		hyperscanEnd := raw.end
 
 		// Stage 2: Extract capture groups using Go regexp
-		captures, err := m.extractCapturesWithCache(content, rule.Pattern, start, end)
+		// This also finds the actual start offset when start=0 (SomLeftMost disabled)
+		actualStart, actualEnd, captures, err := m.extractCapturesAndBounds(content, rule.Pattern, hyperscanStart, hyperscanEnd)
 		if err != nil {
 			// If capture extraction fails, skip this match
 			continue
@@ -139,21 +143,21 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 			}
 		}
 
-		// Build Match object
+		// Build Match object using actual bounds from Go regexp
 		match := &types.Match{
 			BlobID:   blobID,
 			RuleID:   rule.ID,
 			RuleName: rule.Name,
 			Location: types.Location{
 				Offset: types.OffsetSpan{
-					Start: int64(start),
-					End:   int64(end),
+					Start: int64(actualStart),
+					End:   int64(actualEnd),
 				},
 				Source: types.SourceSpan{},
 			},
 			Groups: groups,
 			Snippet: types.Snippet{
-				Matching: content[start:end],
+				Matching: content[actualStart:actualEnd],
 			},
 		}
 
@@ -187,21 +191,59 @@ func (m *HyperscanMatcher) Close() error {
 	return nil
 }
 
-// extractCapturesWithCache uses cached regexp for capture extraction.
-func (m *HyperscanMatcher) extractCapturesWithCache(content []byte, pattern string, start, end int) (map[string][]byte, error) {
+// extractCapturesAndBounds extracts capture groups and finds actual match boundaries.
+// When start=0 (SomLeftMost disabled), it uses Go regexp to find the match near the end offset.
+// Returns actualStart, actualEnd, captures map, and error.
+func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern string, start, end int) (int, int, map[string][]byte, error) {
+	// Get or compile regexp
 	re := m.getCachedRegexp(pattern)
 	if re == nil {
-		// Cache miss - compile and cache
 		compiled, err := regexp.Compile(pattern)
 		if err != nil {
-			return nil, err
+			return 0, 0, nil, err
 		}
 		m.regexCache[pattern] = compiled
 		re = compiled
 	}
 
-	// Use the existing ExtractCaptures function (already handles compilation internally, but we optimize with cache)
-	return ExtractCaptures(content, pattern, start, end)
+	var actualStart, actualEnd int
+	var rawCaptures [][]byte
+
+	// If start is 0, use Go regexp to find actual match near end
+	if start == 0 {
+		var err error
+		actualStart, actualEnd, rawCaptures, err = findMatchNearEnd(content, re, end)
+		if err != nil {
+			return 0, 0, nil, err
+		}
+	} else {
+		// Use the provided start/end bounds
+		actualStart = start
+		actualEnd = end
+
+		// Extract capture groups from the region
+		region := content[start:end]
+		rawCaptures = re.FindSubmatch(region)
+		if rawCaptures == nil {
+			return 0, 0, nil, fmt.Errorf("pattern did not match at specified location")
+		}
+	}
+
+	// Build map of named capture groups
+	captures := make(map[string][]byte)
+	names := re.SubexpNames()
+
+	// Skip index 0 (full match), iterate over named groups
+	for i, name := range names {
+		if i == 0 || name == "" {
+			continue
+		}
+		if i < len(rawCaptures) {
+			captures[name] = rawCaptures[i]
+		}
+	}
+
+	return actualStart, actualEnd, captures, nil
 }
 
 // getCachedRegexp retrieves compiled regexp from cache.

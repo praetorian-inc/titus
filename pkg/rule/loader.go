@@ -91,7 +91,7 @@ func (l *Loader) LoadBuiltinRules() ([]*types.Rule, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || filepath.Ext(path) != ".yaml" {
+		if d.IsDir() || filepath.Ext(path) != ".yml" {
 			return nil
 		}
 
@@ -128,7 +128,7 @@ func (l *Loader) LoadBuiltinRulesets() ([]*types.Ruleset, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || filepath.Ext(path) != ".yaml" {
+		if d.IsDir() || filepath.Ext(path) != ".yml" {
 			return nil
 		}
 
