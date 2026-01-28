@@ -384,3 +384,300 @@ func TestGitEnumerator_DuplicateBlobs(t *testing.T) {
 		}
 	}
 }
+
+func TestGitEnumerator_WalkAllHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	// Commit 1: Create file1.txt
+	file1 := filepath.Join(tmpDir, "file1.txt")
+	if err := os.WriteFile(file1, []byte("content1"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Commit 1")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Commit 2: Create file2.txt (file1 still exists)
+	file2 := filepath.Join(tmpDir, "file2.txt")
+	if err := os.WriteFile(file2, []byte("content2"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Commit 2")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Commit 3: Modify file1.txt, delete file2.txt
+	if err := os.WriteFile(file1, []byte("content1-modified"), 0644); err != nil {
+		t.Fatalf("failed to modify file: %v", err)
+	}
+	if err := os.Remove(file2); err != nil {
+		t.Fatalf("failed to remove file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Commit 3")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Enumerate with WalkAll=true
+	config := Config{
+		Root: tmpDir,
+	}
+	enumerator := NewGitEnumerator(config)
+	enumerator.WalkAll = true
+
+	var foundBlobs []string
+	blobContents := make(map[string]string)
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		foundBlobs = append(foundBlobs, blobID.Hex())
+		blobContents[blobID.Hex()] = string(content)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	// Should find 3 unique blobs:
+	// - "content1" (original file1)
+	// - "content2" (file2, deleted in commit 3 but existed in commit 2)
+	// - "content1-modified" (modified file1)
+	if len(foundBlobs) != 3 {
+		t.Errorf("expected 3 unique blobs, got %d: %v", len(foundBlobs), foundBlobs)
+	}
+
+	// Verify content diversity
+	contentSet := make(map[string]bool)
+	for _, content := range blobContents {
+		contentSet[content] = true
+	}
+	expectedContents := []string{"content1", "content2", "content1-modified"}
+	for _, expected := range expectedContents {
+		if !contentSet[expected] {
+			t.Errorf("missing expected content: %q", expected)
+		}
+	}
+}
+
+func TestGitEnumerator_WalkAll_Deduplication(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	// Commit 1: Create file with content "same"
+	file1 := filepath.Join(tmpDir, "file1.txt")
+	if err := os.WriteFile(file1, []byte("same"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Commit 1")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Commit 2: Create another file with SAME content "same"
+	file2 := filepath.Join(tmpDir, "file2.txt")
+	if err := os.WriteFile(file2, []byte("same"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Commit 2")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Enumerate with WalkAll=true
+	config := Config{
+		Root: tmpDir,
+	}
+	enumerator := NewGitEnumerator(config)
+	enumerator.WalkAll = true
+
+	var callCount int
+	blobIDs := make(map[types.BlobID]int)
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		callCount++
+		blobIDs[blobID]++
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	// Same content = same blob ID, should only be yielded once
+	if callCount != 1 {
+		t.Errorf("expected callback called 1 time (deduplication), got %d", callCount)
+	}
+
+	for id, count := range blobIDs {
+		if count > 1 {
+			t.Errorf("blob ID %s appeared %d times, expected 1", id.Hex(), count)
+		}
+	}
+}
+
+func TestGitEnumerator_WalkAll_MultipleBranches(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	// Main branch: Create main.txt
+	mainFile := filepath.Join(tmpDir, "main.txt")
+	if err := os.WriteFile(mainFile, []byte("main content"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Main commit")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Create feature branch
+	cmd = exec.Command("git", "checkout", "-b", "feature")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create branch: %v", err)
+	}
+
+	// Feature branch: Create feature.txt
+	featureFile := filepath.Join(tmpDir, "feature.txt")
+	if err := os.WriteFile(featureFile, []byte("feature content"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Feature commit")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Switch back to main (so HEAD is main, not feature)
+	cmd = exec.Command("git", "checkout", "master")
+	cmd.Dir = tmpDir
+	// Try main if master fails (git config dependent)
+	if err := cmd.Run(); err != nil {
+		cmd = exec.Command("git", "checkout", "main")
+		cmd.Dir = tmpDir
+		cmd.Run() // Ignore error - one should work
+	}
+
+	// Enumerate with WalkAll=true (should see both branches)
+	config := Config{
+		Root: tmpDir,
+	}
+	enumerator := NewGitEnumerator(config)
+	enumerator.WalkAll = true
+
+	contentSet := make(map[string]bool)
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		contentSet[string(content)] = true
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	// Should find content from both branches
+	if !contentSet["main content"] {
+		t.Error("missing main branch content")
+	}
+	if !contentSet["feature content"] {
+		t.Error("missing feature branch content")
+	}
+}

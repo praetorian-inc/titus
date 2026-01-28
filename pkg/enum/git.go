@@ -16,6 +16,8 @@ type GitEnumerator struct {
 	config Config
 	// CommitRef optionally specifies a specific commit to enumerate (defaults to HEAD)
 	CommitRef string
+	// WalkAll when true walks all commits from all refs instead of single commit
+	WalkAll bool
 }
 
 // NewGitEnumerator creates a new git enumerator.
@@ -28,6 +30,14 @@ func NewGitEnumerator(config Config) *GitEnumerator {
 
 // Enumerate walks git history and yields unique blobs.
 func (e *GitEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	if e.WalkAll {
+		return e.enumerateAllHistory(ctx, callback)
+	}
+	return e.enumerateSingleCommit(ctx, callback)
+}
+
+// enumerateSingleCommit walks the tree at a single commit (CommitRef).
+func (e *GitEnumerator) enumerateSingleCommit(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	// Open repository
 	repo, err := git.PlainOpen(e.config.Root)
 	if err != nil {
@@ -113,6 +123,105 @@ func (e *GitEnumerator) Enumerate(ctx context.Context, callback func(content []b
 
 	if err != nil {
 		return fmt.Errorf("failed to walk tree: %w", err)
+	}
+
+	return nil
+}
+
+// enumerateAllHistory walks all commits from all refs.
+func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	// Open repository
+	repo, err := git.PlainOpen(e.config.Root)
+	if err != nil {
+		return fmt.Errorf("failed to open git repository: %w", err)
+	}
+
+	// Get commit iterator for all refs
+	commitIter, err := repo.Log(&git.LogOptions{
+		All: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get commit log: %w", err)
+	}
+
+	// Track seen blobs globally (across all commits)
+	seenBlobs := make(map[plumbing.Hash]bool)
+
+	// Iterate all commits
+	err = commitIter.ForEach(func(commit *object.Commit) error {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Get commit tree
+		tree, err := commit.Tree()
+		if err != nil {
+			return fmt.Errorf("failed to get tree for commit %s: %w", commit.Hash, err)
+		}
+
+		// Walk files in this commit's tree
+		return tree.Files().ForEach(func(f *object.File) error {
+			// Check context cancellation
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			// Global deduplication: skip if already processed
+			if seenBlobs[f.Hash] {
+				return nil
+			}
+			seenBlobs[f.Hash] = true
+
+			// Apply size limit
+			if e.config.MaxFileSize > 0 && f.Size > e.config.MaxFileSize {
+				return nil
+			}
+
+			// Get file content
+			content, err := f.Contents()
+			if err != nil {
+				return fmt.Errorf("failed to get contents of %s: %w", f.Name, err)
+			}
+
+			// Skip binary files
+			if isBinary([]byte(content)) {
+				return nil
+			}
+
+			// Compute blob ID
+			blobID := types.ComputeBlobID([]byte(content))
+
+			// Create git provenance with this commit's metadata
+			// (first commit where we encountered this blob)
+			commitMeta := &types.CommitMetadata{
+				CommitID:           commit.Hash.String(),
+				AuthorName:         commit.Author.Name,
+				AuthorEmail:        commit.Author.Email,
+				AuthorTimestamp:    commit.Author.When,
+				CommitterName:      commit.Committer.Name,
+				CommitterEmail:     commit.Committer.Email,
+				CommitterTimestamp: commit.Committer.When,
+				Message:            commit.Message,
+			}
+
+			prov := types.GitProvenance{
+				RepoPath: e.config.Root,
+				Commit:   commitMeta,
+				BlobPath: f.Name,
+			}
+
+			// Yield to callback
+			return callback([]byte(content), blobID, prov)
+		})
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to walk commits: %w", err)
 	}
 
 	return nil
