@@ -1,11 +1,10 @@
 package matcher
 
-import "bytes"
-
 // ExtractContext extracts N lines before and after a match.
 // Returns before, after byte slices.
 // Handles file boundaries gracefully (returns empty if at start/end).
-// Does not include the matching line itself in before/after context.
+// Context starts immediately before the start offset and ends immediately after the end offset.
+// The matched content itself (between start and end) is not duplicated in the context.
 func ExtractContext(content []byte, start, end int, lines int) (before, after []byte) {
 	// No context requested or negative lines
 	if lines <= 0 {
@@ -104,63 +103,4 @@ func extractAfter(content []byte, end, lines int) []byte {
 	// Reached end of file before finding N lines
 	// Return from start position to end of file
 	return content[start:]
-}
-
-// Alternative implementation using bytes.LastIndexByte for potentially better performance
-// with large context windows. Keeping the simpler loop-based approach above for readability.
-
-// extractBeforeOptimized finds N lines before start using bytes.LastIndexByte.
-func extractBeforeOptimized(content []byte, start, lines int) []byte {
-	if start == 0 {
-		return nil
-	}
-
-	searchEnd := start - 1
-	linesFound := 0
-
-	for linesFound < lines && searchEnd >= 0 {
-		idx := bytes.LastIndexByte(content[:searchEnd+1], '\n')
-		if idx == -1 {
-			// No more newlines found, return from start of file
-			return content[0:start]
-		}
-		linesFound++
-		if linesFound == lines {
-			return content[idx+1 : start]
-		}
-		searchEnd = idx - 1
-	}
-
-	// Reached start of file
-	return content[0:start]
-}
-
-// extractAfterOptimized finds N lines after end using bytes.IndexByte.
-func extractAfterOptimized(content []byte, end, lines int) []byte {
-	if end >= len(content) {
-		return nil
-	}
-
-	searchStart := end
-	linesFound := 0
-
-	for linesFound < lines && searchStart < len(content) {
-		idx := bytes.IndexByte(content[searchStart:], '\n')
-		if idx == -1 {
-			// No more newlines found, return to end of file
-			return content[end:]
-		}
-		linesFound++
-		actualIdx := searchStart + idx
-		if linesFound == lines {
-			return content[end : actualIdx+1]
-		}
-		searchStart = actualIdx + 1
-	}
-
-	// Reached end of file
-	if end < len(content) {
-		return content[end:]
-	}
-	return nil
 }

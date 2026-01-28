@@ -206,6 +206,30 @@ line3`,
 			wantBefore: "",
 			wantAfter:  "",
 		},
+		{
+			name: "zero-length match (start == end)",
+			content: `line1
+line2
+line3
+line4
+line5`,
+			start:      12, // Point between line2 and line3
+			end:        12, // Same position
+			lines:      2,
+			wantBefore: "line1\nline2\n",
+			wantAfter:  "line3\nline4\n",
+		},
+		{
+			name: "invalid range (start > end)",
+			content: `line1
+line2
+line3`,
+			start:      10,
+			end:        5,
+			lines:      2,
+			wantBefore: "",
+			wantAfter:  "",
+		},
 	}
 
 	for _, tt := range tests {
