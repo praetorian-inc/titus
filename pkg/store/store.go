@@ -25,6 +25,9 @@ type Store interface {
 	// GetMatches retrieves matches for a blob.
 	GetMatches(blobID types.BlobID) ([]*types.Match, error)
 
+	// GetAllMatches retrieves all matches (for JSON export).
+	GetAllMatches() ([]*types.Match, error)
+
 	// GetFindings retrieves all findings (for reporting).
 	GetFindings() ([]*types.Finding, error)
 

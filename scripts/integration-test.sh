@@ -183,6 +183,50 @@ fi
 pass "Combined include/exclude filters work - found $total_combined findings"
 rm -f "$COMBINED_FILE" "$COMBINED_DB"
 
+# Test 11: Context lines extraction
+echo "=== Test 11: Context Lines Extraction ==="
+
+# Test with default context (3 lines)
+CONTEXT_FILE="/tmp/titus-context-results.json"
+CONTEXT_DB="/tmp/titus-context.db"
+rm -f "$CONTEXT_DB"
+$TITUS scan "$TESTDATA_DIR" --context-lines=3 --output="$CONTEXT_DB" --format=json > "$CONTEXT_FILE" 2>/dev/null
+
+# Verify output has findings
+total_context=$(jq 'length' "$CONTEXT_FILE" 2>/dev/null || echo "0")
+if [ "$total_context" -lt 1 ]; then
+    fail "Expected at least 1 finding with --context-lines=3, got $total_context"
+fi
+
+# Verify at least one finding has non-empty Before or After context
+# Note: Some matches might be at file boundaries with no before/after, so we just check for presence
+findings_with_context=$(jq '[.[] | select(.Snippet.Before != "" or .Snippet.After != "")] | length' "$CONTEXT_FILE" 2>/dev/null || echo "0")
+if [ "$findings_with_context" -lt 1 ]; then
+    fail "Expected at least 1 finding with non-empty context, got $findings_with_context"
+fi
+pass "Context extraction with --context-lines=3 works - $findings_with_context findings have context"
+
+# Test with no context (0 lines)
+NO_CONTEXT_FILE="/tmp/titus-no-context-results.json"
+NO_CONTEXT_DB="/tmp/titus-no-context.db"
+rm -f "$NO_CONTEXT_DB"
+$TITUS scan "$TESTDATA_DIR" --context-lines=0 --output="$NO_CONTEXT_DB" --format=json > "$NO_CONTEXT_FILE" 2>/dev/null
+
+# Verify output has findings
+total_no_context=$(jq 'length' "$NO_CONTEXT_FILE" 2>/dev/null || echo "0")
+if [ "$total_no_context" -lt 1 ]; then
+    fail "Expected at least 1 finding with --context-lines=0, got $total_no_context"
+fi
+
+# Verify all findings have empty or null Before and After fields
+findings_with_no_context=$(jq '[.[] | select((.Snippet.Before == "" or .Snippet.Before == null) and (.Snippet.After == "" or .Snippet.After == null))] | length' "$NO_CONTEXT_FILE" 2>/dev/null || echo "0")
+if [ "$findings_with_no_context" -ne "$total_no_context" ]; then
+    fail "Expected all findings to have empty context with --context-lines=0, but only $findings_with_no_context out of $total_no_context have empty context"
+fi
+pass "Context extraction with --context-lines=0 works - all $total_no_context findings have empty context"
+
+rm -f "$CONTEXT_FILE" "$CONTEXT_DB" "$NO_CONTEXT_FILE" "$NO_CONTEXT_DB"
+
 # Cleanup
 rm -f "$RESULTS_FILE"
 
