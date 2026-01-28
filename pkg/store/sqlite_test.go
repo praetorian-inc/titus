@@ -213,6 +213,29 @@ func TestSQLite_AddProvenance_Git(t *testing.T) {
 	assert.Equal(t, "abc123", commitHash)
 }
 
+func TestSQLite_BlobExists(t *testing.T) {
+	// Arrange
+	store, err := NewSQLite(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	blobID := types.ComputeBlobID([]byte("test content"))
+
+	// Act & Assert - blob should not exist initially
+	exists, err := store.BlobExists(blobID)
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	// Add the blob
+	err = store.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	// Act & Assert - blob should exist now
+	exists, err = store.BlobExists(blobID)
+	require.NoError(t, err)
+	assert.True(t, exists)
+}
+
 func TestSQLite_Close(t *testing.T) {
 	// Arrange
 	store, err := NewSQLite(":memory:")

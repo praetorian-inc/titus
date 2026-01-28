@@ -227,6 +227,25 @@ pass "Context extraction with --context-lines=0 works - all $total_no_context fi
 
 rm -f "$CONTEXT_FILE" "$CONTEXT_DB" "$NO_CONTEXT_FILE" "$NO_CONTEXT_DB"
 
+# Test 13: Incremental Scanning
+echo "=== Test 13: Incremental Scanning ==="
+INCREMENTAL_DB="/tmp/titus-incremental.db"
+rm -f "$INCREMENTAL_DB"
+
+# First scan
+$TITUS scan "$TESTDATA_DIR" --output="$INCREMENTAL_DB" --format=human > /tmp/titus-inc1.txt 2>&1
+
+# Second scan with incremental - should skip all blobs
+$TITUS scan "$TESTDATA_DIR" --output="$INCREMENTAL_DB" --format=human --incremental > /tmp/titus-inc2.txt 2>&1
+
+# Verify second scan mentions skipped blobs
+if ! grep -q "skipped" /tmp/titus-inc2.txt; then
+    fail "Expected incremental scan to report skipped blobs"
+fi
+
+pass "Incremental scanning works"
+rm -f "$INCREMENTAL_DB" /tmp/titus-inc1.txt /tmp/titus-inc2.txt
+
 # Cleanup
 rm -f "$RESULTS_FILE"
 

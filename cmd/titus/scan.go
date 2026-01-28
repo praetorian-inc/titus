@@ -24,6 +24,7 @@ var (
 	scanMaxFileSize   int64
 	scanIncludeHidden bool
 	scanContextLines  int
+	scanIncremental   bool
 )
 
 var scanCmd = &cobra.Command{
@@ -44,6 +45,7 @@ func init() {
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
 	scanCmd.Flags().BoolVar(&scanIncludeHidden, "include-hidden", false, "Include hidden files and directories")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
+	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -89,8 +91,21 @@ func runScan(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	matchCount := 0
 	findingCount := 0
+	skippedCount := 0
 
 	err = enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		// Check for incremental scanning
+		if scanIncremental {
+			exists, err := s.BlobExists(blobID)
+			if err != nil {
+				return fmt.Errorf("checking blob: %w", err)
+			}
+			if exists {
+				skippedCount++
+				return nil
+			}
+		}
+
 		// Store blob
 		if err := s.AddBlob(blobID, int64(len(content))); err != nil {
 			return fmt.Errorf("storing blob: %w", err)
@@ -145,10 +160,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Output results (to stderr when using json format to keep stdout pure JSON)
 	if scanOutputFormat == "json" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		if scanIncremental {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
+		} else {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		}
 		fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s\n", scanOutputPath)
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		if scanIncremental {
+			fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
 	}
 
