@@ -1,0 +1,109 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CGO_ENABLED: 1
+
+jobs:
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhs-dev jq
+
+    - name: Build Titus
+      run: make build
+
+    - name: Run integration tests
+      run: make integration-test
+
+    - name: Upload test results on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-test-results
+        path: /tmp/titus-integration-*.json
+        if-no-files-found: ignore
+
+  static-binary:
+    name: Static Binary Container Test
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install static build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhs-dev libsqlite3-dev musl-dev musl-tools
+
+    - name: Build static binary
+      run: |
+        # Build with static linking
+        CGO_ENABLED=1 CC=musl-gcc go build \
+          -ldflags '-linkmode external -extldflags "-static"' \
+          -tags 'osusergo netgo sqlite_omit_load_extension' \
+          -o titus-static ./cmd/titus
+
+        # Verify it's static
+        file titus-static
+        ldd titus-static 2>&1 || true
+
+    - name: Verify static linking
+      run: |
+        # ldd should say "not a dynamic executable" for truly static binaries
+        if ldd ./titus-static 2>&1 | grep -q "not a dynamic executable"; then
+          echo "✓ Binary is statically linked"
+        elif ldd ./titus-static 2>&1 | grep -q "statically linked"; then
+          echo "✓ Binary is statically linked"
+        else
+          echo "Warning: Binary may have dynamic dependencies"
+          ldd ./titus-static 2>&1 || true
+        fi
+
+    - name: Test in Alpine container
+      run: |
+        # Pull Alpine image
+        docker pull alpine:3.19
+
+        # Test --help works
+        docker run --rm \
+          -v $(pwd)/titus-static:/titus:ro \
+          alpine:3.19 /titus --help
+
+        # Test actual scan
+        docker run --rm \
+          -v $(pwd)/titus-static:/titus:ro \
+          -v $(pwd)/testdata:/testdata:ro \
+          alpine:3.19 /titus scan /testdata/secrets --format=json
+
+    - name: Upload static binary on success
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-static-linux-amd64
+        path: titus-static
