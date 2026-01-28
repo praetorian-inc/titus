@@ -24,6 +24,7 @@ func init() {
 
 	// Add subcommands
 	rootCmd.AddCommand(scanCmd)
+	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(rulesCmd)
 	rootCmd.AddCommand(versionCmd)
 }
