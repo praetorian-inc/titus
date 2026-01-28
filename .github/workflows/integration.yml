@@ -27,7 +27,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libhs-dev jq
+        sudo apt-get install -y libhyperscan-dev jq
 
     - name: Build Titus
       run: make build
@@ -60,7 +60,7 @@ jobs:
     - name: Install static build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libhs-dev libsqlite3-dev musl-dev musl-tools
+        sudo apt-get install -y libhyperscan-dev libsqlite3-dev musl-dev musl-tools
 
     - name: Build static binary
       run: |
