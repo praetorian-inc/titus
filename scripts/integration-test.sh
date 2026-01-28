@@ -227,6 +227,63 @@ pass "Context extraction with --context-lines=0 works - all $total_no_context fi
 
 rm -f "$CONTEXT_FILE" "$CONTEXT_DB" "$NO_CONTEXT_FILE" "$NO_CONTEXT_DB"
 
+# Test 12: Report Command
+echo "=== Test 12: Report Command ==="
+REPORT_DB="/tmp/titus-report.db"
+rm -f "$REPORT_DB"
+
+# Run scan to create datastore
+$TITUS scan "$TESTDATA_DIR" --output="$REPORT_DB" --format=json > /dev/null 2>&1
+
+# Verify database was created
+if [ ! -f "$REPORT_DB" ]; then
+    fail "Scan did not create database at $REPORT_DB"
+fi
+
+# Run report command with human format
+REPORT_OUTPUT="/tmp/titus-report-human.txt"
+$TITUS report --datastore="$REPORT_DB" --format=human > "$REPORT_OUTPUT" 2>&1
+
+# Verify report contains expected sections
+if ! grep -q "=== Titus Report ===" "$REPORT_OUTPUT"; then
+    fail "Report missing header"
+fi
+
+if ! grep -q "Total findings:" "$REPORT_OUTPUT"; then
+    fail "Report missing findings count"
+fi
+
+if ! grep -q "By Rule:" "$REPORT_OUTPUT"; then
+    fail "Report missing by-rule breakdown"
+fi
+
+# Verify report shows findings count > 0 (we scanned test data)
+total_findings=$(grep "Total findings:" "$REPORT_OUTPUT" | grep -oE '[0-9]+')
+if [ "$total_findings" -lt 1 ]; then
+    fail "Expected at least 1 finding in report, got $total_findings"
+fi
+
+pass "Report command works - found $total_findings findings"
+
+# Test report with JSON format
+REPORT_JSON="/tmp/titus-report.json"
+$TITUS report --datastore="$REPORT_DB" --format=json > "$REPORT_JSON" 2>&1
+
+# Verify JSON output is valid
+if ! jq empty "$REPORT_JSON" 2>/dev/null; then
+    fail "Report JSON output is not valid"
+fi
+
+# Verify JSON contains findings
+json_findings=$(jq 'length' "$REPORT_JSON" 2>/dev/null || echo "0")
+if [ "$json_findings" -lt 1 ]; then
+    fail "Expected at least 1 finding in JSON report, got $json_findings"
+fi
+
+pass "Report JSON format works - found $json_findings findings"
+
+rm -f "$REPORT_DB" "$REPORT_OUTPUT" "$REPORT_JSON"
+
 # Test 13: Incremental Scanning
 echo "=== Test 13: Incremental Scanning ==="
 INCREMENTAL_DB="/tmp/titus-incremental.db"
