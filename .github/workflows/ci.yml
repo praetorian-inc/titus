@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CGO_ENABLED: 1
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install Hyperscan
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhs-dev
+
+    - name: Build
+      run: make build
+
+    - name: Run tests
+      run: make test
+
+    - name: Run vet
+      run: make vet
+
+    - name: Verify binary exists
+      run: |
+        test -x ./titus || (echo "Binary not created" && exit 1)
+        ./titus version || ./titus --help
