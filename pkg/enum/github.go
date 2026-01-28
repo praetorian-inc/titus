@@ -13,7 +13,7 @@ import (
 
 // GitHubConfig configures GitHub API enumeration.
 type GitHubConfig struct {
-	Token string // GitHub API token (required)
+	Token string // GitHub API token (optional, required for private repos)
 	Owner string // Repository owner (for single repo)
 	Repo  string // Repository name (for single repo)
 	Org   string // Organization name (list all org repos)
@@ -29,15 +29,18 @@ type GitHubEnumerator struct {
 
 // NewGitHubEnumerator creates a new GitHub API enumerator.
 func NewGitHubEnumerator(cfg GitHubConfig) (*GitHubEnumerator, error) {
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("GitHub token is required")
-	}
+	var client *github.Client
 
-	// Create authenticated GitHub client
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: cfg.Token})
-	tc := oauth2.NewClient(ctx, ts)
-	client := github.NewClient(tc)
+	if cfg.Token == "" {
+		// Create unauthenticated client for public repositories
+		client = github.NewClient(nil)
+	} else {
+		// Create authenticated GitHub client
+		ctx := context.Background()
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: cfg.Token})
+		tc := oauth2.NewClient(ctx, ts)
+		client = github.NewClient(tc)
+	}
 
 	return &GitHubEnumerator{
 		client: client,

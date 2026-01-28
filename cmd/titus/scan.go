@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
@@ -22,6 +23,7 @@ var (
 	scanOutputPath    string
 	scanOutputFormat  string
 	scanGit           bool
+	scanNoGit         bool
 	scanMaxFileSize   int64
 	scanIncludeHidden bool
 	scanContextLines  int
@@ -43,6 +45,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.db", "Output database path")
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
+	scanCmd.Flags().BoolVar(&scanNoGit, "no-git", false, "Disable git scanning even if target is a git repository")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
 	scanCmd.Flags().BoolVar(&scanIncludeHidden, "include-hidden", false, "Include hidden files and directories")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
@@ -55,6 +58,16 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Validate target exists
 	if _, err := os.Stat(target); err != nil {
 		return fmt.Errorf("target does not exist: %s", target)
+	}
+
+	// Auto-detect git repository if --git and --no-git flags are not set
+	if !scanGit && !scanNoGit {
+		gitDir := filepath.Join(target, ".git")
+		if info, err := os.Stat(gitDir); err == nil && info.IsDir() {
+			// .git directory exists - this is a git repository
+			scanGit = true
+			fmt.Fprintf(cmd.OutOrStdout(), "Detected git repository, scanning git history...\n")
+		}
 	}
 
 	// Load rules

@@ -62,7 +62,14 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
 	if token == "" {
-		return fmt.Errorf("GitHub API token required: use --token flag or GITHUB_TOKEN environment variable")
+		// Show warning for scanning without token
+		if githubOrg != "" || githubUser != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "Note: No GitHub token provided. Scanning public repositories only (rate limit: 60 requests/hour).\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "For private repos or higher rate limits, use --token or set GITHUB_TOKEN.\n")
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "Note: No GitHub token provided. Scanning public repositories only (rate limit: 60 requests/hour).\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "For private repos or higher rate limits (5000 requests/hour), use --token or set GITHUB_TOKEN.\n")
+		}
 	}
 
 	// Parse owner/repo if provided
