@@ -180,7 +180,7 @@ func TestLoadBuiltinRules_WithRules(t *testing.T) {
 `
 
 	mockFS := fstest.MapFS{
-		"rules/test.yaml": &fstest.MapFile{Data: []byte(ruleYAML)},
+		"rules/test.yml": &fstest.MapFile{Data: []byte(ruleYAML)},
 	}
 
 	loader := NewLoaderWithFS(mockFS)
@@ -225,7 +225,7 @@ func TestLoadBuiltinRulesets_WithRulesets(t *testing.T) {
 `
 
 	mockFS := fstest.MapFS{
-		"rulesets/test.yaml": &fstest.MapFile{Data: []byte(rulesetYAML)},
+		"rulesets/test.yml": &fstest.MapFile{Data: []byte(rulesetYAML)},
 	}
 
 	loader := NewLoaderWithFS(mockFS)
