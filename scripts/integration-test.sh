@@ -40,7 +40,7 @@ echo ""
 
 # Test 1: Filesystem scan produces JSON output
 echo "=== Test 1: Filesystem Scan ==="
-$TITUS scan "$TESTDATA_DIR" --format=json > "$RESULTS_FILE" 2>&1
+$TITUS scan "$TESTDATA_DIR" --format=json > "$RESULTS_FILE" 2>/dev/null
 
 if [ ! -s "$RESULTS_FILE" ]; then
     fail "No output produced from scan"
