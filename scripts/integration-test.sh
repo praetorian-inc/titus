@@ -85,6 +85,104 @@ if ! $TITUS scan "$TESTDATA_DIR" --format=human > /dev/null 2>&1; then
 fi
 pass "Human-readable format works"
 
+# Test 7: Rules include filter
+echo "=== Test 7: Rules Include Filter ==="
+INCLUDE_FILE="/tmp/titus-include-results.json"
+INCLUDE_DB="/tmp/titus-include.db"
+rm -f "$INCLUDE_DB"
+$TITUS scan "$TESTDATA_DIR" --rules-include "np.aws.*" --output="$INCLUDE_DB" --format=json > "$INCLUDE_FILE" 2>/dev/null
+
+# Verify only AWS findings are returned
+aws_include_count=$(jq '[.[] | select(.RuleID | startswith("np.aws"))] | length' "$INCLUDE_FILE" 2>/dev/null || echo "0")
+total_include=$(jq 'length' "$INCLUDE_FILE" 2>/dev/null || echo "0")
+
+if [ "$aws_include_count" -lt 1 ]; then
+    fail "Expected at least 1 AWS finding with --rules-include, got $aws_include_count"
+fi
+
+if [ "$aws_include_count" -ne "$total_include" ]; then
+    fail "Expected only AWS findings with --rules-include, but got $aws_include_count AWS out of $total_include total"
+fi
+
+# Verify no GitHub findings
+github_include_count=$(jq '[.[] | select(.RuleID | startswith("np.github"))] | length' "$INCLUDE_FILE" 2>/dev/null || echo "0")
+if [ "$github_include_count" -ne 0 ]; then
+    fail "Expected no GitHub findings with --rules-include 'np.aws.*', but got $github_include_count"
+fi
+
+pass "Rules include filter works - found only $aws_include_count AWS findings"
+rm -f "$INCLUDE_FILE" "$INCLUDE_DB"
+
+# Test 8: Rules exclude filter
+echo "=== Test 8: Rules Exclude Filter ==="
+EXCLUDE_FILE="/tmp/titus-exclude-results.json"
+EXCLUDE_DB="/tmp/titus-exclude.db"
+rm -f "$EXCLUDE_DB"
+$TITUS scan "$TESTDATA_DIR" --rules-exclude "np.aws.*" --output="$EXCLUDE_DB" --format=json > "$EXCLUDE_FILE" 2>/dev/null
+
+# Verify AWS findings are excluded
+aws_exclude_count=$(jq '[.[] | select(.RuleID | startswith("np.aws"))] | length' "$EXCLUDE_FILE" 2>/dev/null || echo "0")
+if [ "$aws_exclude_count" -ne 0 ]; then
+    fail "Expected no AWS findings with --rules-exclude, but got $aws_exclude_count"
+fi
+
+# Verify GitHub findings are still present
+github_exclude_count=$(jq '[.[] | select(.RuleID | startswith("np.github"))] | length' "$EXCLUDE_FILE" 2>/dev/null || echo "0")
+if [ "$github_exclude_count" -lt 1 ]; then
+    fail "Expected at least 1 GitHub finding with --rules-exclude 'np.aws.*', got $github_exclude_count"
+fi
+
+pass "Rules exclude filter works - excluded AWS, found $github_exclude_count GitHub findings"
+rm -f "$EXCLUDE_FILE" "$EXCLUDE_DB"
+
+# Test 9: Rules list include filter
+echo "=== Test 9: Rules List Include Filter ==="
+RULES_LIST_FILE="/tmp/titus-rules-list.json"
+$TITUS rules list --include "np.aws.*" --format=json > "$RULES_LIST_FILE" 2>/dev/null
+
+# Verify output only contains AWS rules
+total_rules=$(jq 'length' "$RULES_LIST_FILE" 2>/dev/null || echo "0")
+if [ "$total_rules" -lt 1 ]; then
+    fail "Expected at least 1 rule with --include 'np.aws.*', got $total_rules"
+fi
+
+# Check that all rules match the pattern
+non_aws_rules=$(jq '[.[] | select(.ID | startswith("np.aws") | not)] | length' "$RULES_LIST_FILE" 2>/dev/null || echo "0")
+if [ "$non_aws_rules" -ne 0 ]; then
+    fail "Expected only AWS rules with --include 'np.aws.*', but got $non_aws_rules non-AWS rules"
+fi
+
+pass "Rules list include filter works - found $total_rules AWS rules"
+rm -f "$RULES_LIST_FILE"
+
+# Test 10: Combined include and exclude filters
+echo "=== Test 10: Combined Include/Exclude Filters ==="
+COMBINED_FILE="/tmp/titus-combined-results.json"
+COMBINED_DB="/tmp/titus-combined.db"
+rm -f "$COMBINED_DB"
+$TITUS scan "$TESTDATA_DIR" --rules-include "np\\..*" --rules-exclude ".*token.*" --output="$COMBINED_DB" --format=json > "$COMBINED_FILE" 2>/dev/null
+
+# Verify results match the combined criteria
+total_combined=$(jq 'length' "$COMBINED_FILE" 2>/dev/null || echo "0")
+if [ "$total_combined" -lt 1 ]; then
+    fail "Expected at least 1 finding with combined filters, got $total_combined"
+fi
+
+# Check that no findings contain "token" in the RuleID
+token_findings=$(jq '[.[] | select(.RuleID | contains("token"))] | length' "$COMBINED_FILE" 2>/dev/null || echo "0")
+if [ "$token_findings" -ne 0 ]; then
+    fail "Expected no token findings with --rules-exclude '.*token.*', but got $token_findings"
+fi
+
+# Verify all findings start with "np."
+all_np=$(jq '[.[] | select(.RuleID | startswith("np."))] | length' "$COMBINED_FILE" 2>/dev/null || echo "0")
+if [ "$all_np" -ne "$total_combined" ]; then
+    fail "Expected all findings to start with 'np.' with --rules-include 'np\\..*', but got $all_np out of $total_combined"
+fi
+
+pass "Combined include/exclude filters work - found $total_combined findings"
+rm -f "$COMBINED_FILE" "$COMBINED_DB"
+
 # Cleanup
 rm -f "$RESULTS_FILE"
 
