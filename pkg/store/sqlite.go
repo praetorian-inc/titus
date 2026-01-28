@@ -283,6 +283,16 @@ func (s *SQLiteStore) FindingExists(structuralID string) (bool, error) {
 	return count > 0, nil
 }
 
+// BlobExists checks if a blob has already been scanned.
+func (s *SQLiteStore) BlobExists(id types.BlobID) (bool, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM blobs WHERE id = ?", id.Hex()).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("checking blob existence: %w", err)
+	}
+	return count > 0, nil
+}
+
 // Close closes the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
