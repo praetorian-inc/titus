@@ -2,11 +2,15 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/spf13/cobra"
 )
 
-const version = "0.1.0"
+var (
+	version = "dev"
+	commit  = "unknown"
+)
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
@@ -16,6 +20,10 @@ var versionCmd = &cobra.Command{
 }
 
 func runVersion(cmd *cobra.Command, args []string) error {
-	fmt.Fprintf(cmd.OutOrStdout(), "Titus v%s (Go port of NoseyParker)\n", version)
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "Titus v%s (Go port of NoseyParker)\n", version)
+	fmt.Fprintf(out, "Commit: %s\n", commit)
+	fmt.Fprintf(out, "Go version: %s\n", runtime.Version())
+	fmt.Fprintf(out, "OS/Arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	return nil
 }

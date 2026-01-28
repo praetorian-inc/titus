@@ -23,6 +23,9 @@ func TestRunVersion(t *testing.T) {
 
 	// Verify output contains version info
 	output := buf.String()
-	assert.Contains(t, output, "Titus")
-	assert.Contains(t, output, "0.1.0")
+	assert.Contains(t, output, "Titus v")
+	assert.Contains(t, output, "Go port of NoseyParker")
+	assert.Contains(t, output, "Commit:")
+	assert.Contains(t, output, "Go version:")
+	assert.Contains(t, output, "OS/Arch:")
 }

@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CGO_ENABLED: 1
+
+jobs:
+  # Build Linux binaries (static for container compatibility)
+  build-linux:
+    name: Build Linux (${{ matrix.arch }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            goarch: amd64
+            cc: musl-gcc
+          - arch: arm64
+            goarch: arm64
+            cc: aarch64-linux-gnu-gcc
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install dependencies (amd64)
+      if: matrix.arch == 'amd64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhyperscan-dev libsqlite3-dev musl-dev musl-tools
+
+    - name: Install dependencies (arm64)
+      if: matrix.arch == 'arm64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+        # For arm64, we need to cross-compile hyperscan or use pure-go alternative
+        # For now, build without static linking for arm64
+        sudo apt-get install -y libhyperscan-dev libsqlite3-dev
+
+    - name: Build static binary (amd64)
+      if: matrix.arch == 'amd64'
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        COMMIT=${GITHUB_SHA::8}
+        CGO_ENABLED=1 CC=${{ matrix.cc }} GOARCH=${{ matrix.goarch }} go build \
+          -ldflags "-linkmode external -extldflags '-static' -X main.version=${VERSION} -X main.commit=${COMMIT}" \
+          -tags 'osusergo netgo sqlite_omit_load_extension' \
+          -o titus-linux-${{ matrix.arch }} ./cmd/titus
+
+    - name: Build binary (arm64)
+      if: matrix.arch == 'arm64'
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        COMMIT=${GITHUB_SHA::8}
+        # arm64 cross-compile (non-static due to hyperscan complexity)
+        CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} go build \
+          -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT}" \
+          -o titus-linux-${{ matrix.arch }} ./cmd/titus
+
+    - name: Verify binary
+      run: |
+        file titus-linux-${{ matrix.arch }}
+        if [ "${{ matrix.arch }}" = "amd64" ]; then
+          ldd titus-linux-${{ matrix.arch }} 2>&1 || true
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-linux-${{ matrix.arch }}
+        path: titus-linux-${{ matrix.arch }}
+
+  # Build macOS binaries
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: macos-13
+            goarch: amd64
+          - arch: arm64
+            runner: macos-14
+            goarch: arm64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install Hyperscan
+      run: |
+        brew install hyperscan pkg-config
+
+    - name: Build binary
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        COMMIT=${GITHUB_SHA::8}
+        export PKG_CONFIG_PATH="$(brew --prefix hyperscan)/lib/pkgconfig:$PKG_CONFIG_PATH"
+        CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} go build \
+          -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT}" \
+          -o titus-darwin-${{ matrix.arch }} ./cmd/titus
+
+    - name: Verify binary
+      run: |
+        file titus-darwin-${{ matrix.arch }}
+        ./titus-darwin-${{ matrix.arch }} version || ./titus-darwin-${{ matrix.arch }} --help
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-darwin-${{ matrix.arch }}
+        path: titus-darwin-${{ matrix.arch }}
+
+  # Create release with all artifacts
+  release:
+    name: Create Release
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release
+
+        # Move and rename binaries
+        mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
+        mv artifacts/titus-linux-arm64/titus-linux-arm64 release/
+        mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
+        mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
+
+        # Make executable
+        chmod +x release/*
+
+        # Create checksums
+        cd release
+        sha256sum titus-* > checksums.txt
+        cat checksums.txt
+
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        cat << 'EOF' > release_notes.md
+        ## Titus ${{ github.ref_name }}
+
+        Go port of NoseyParker secrets scanner.
+
+        ### Installation
+
+        Download the appropriate binary for your platform:
+
+        | Platform | Binary |
+        |----------|--------|
+        | Linux (x86_64) | `titus-linux-amd64` (static, works in containers) |
+        | Linux (ARM64) | `titus-linux-arm64` |
+        | macOS (Intel) | `titus-darwin-amd64` |
+        | macOS (Apple Silicon) | `titus-darwin-arm64` |
+
+        ```bash
+        # Example: Linux x86_64
+        curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/titus-linux-amd64
+        chmod +x titus-linux-amd64
+        ./titus-linux-amd64 --help
+        ```
+
+        ### Docker Usage
+
+        The Linux amd64 binary is statically linked and works in minimal containers:
+
+        ```bash
+        docker run --rm -v $(pwd):/scan alpine:3.19 \
+          /bin/sh -c "wget -q https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/titus-linux-amd64 -O /titus && chmod +x /titus && /titus scan /scan"
+        ```
+
+        ### Verify Checksums
+
+        ```bash
+        sha256sum -c checksums.txt
+        ```
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body_path: release_notes.md
+        files: |
+          release/titus-linux-amd64
+          release/titus-linux-arm64
+          release/titus-darwin-amd64
+          release/titus-darwin-arm64
+          release/checksums.txt
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
