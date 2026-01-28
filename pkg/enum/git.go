@@ -16,6 +16,8 @@ type GitEnumerator struct {
 	config Config
 	// CommitRef optionally specifies a specific commit to enumerate (defaults to HEAD)
 	CommitRef string
+	// WalkAll when true walks all commits from all refs instead of single commit
+	WalkAll bool
 }
 
 // NewGitEnumerator creates a new git enumerator.
