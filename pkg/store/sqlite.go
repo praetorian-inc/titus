@@ -112,7 +112,7 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO provenance (blob_id, type, path, repo_path, commit_hash)
+		INSERT OR IGNORE INTO provenance (blob_id, type, path, repo_path, commit_hash)
 		VALUES (?, ?, ?, ?, ?)
 	`,
 		blobID.Hex(),
@@ -126,6 +126,63 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	}
 
 	return nil
+}
+
+// GetAllProvenance retrieves all provenance records for a blob.
+func (s *SQLiteStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance, error) {
+	rows, err := s.db.Query(`
+		SELECT type, path, repo_path, commit_hash
+		FROM provenance
+		WHERE blob_id = ?
+	`, blobID.Hex())
+	if err != nil {
+		return nil, fmt.Errorf("querying provenance: %w", err)
+	}
+	defer rows.Close()
+
+	var provenances []types.Provenance
+	for rows.Next() {
+		var provType string
+		var path, repoPath, commitHash *string
+
+		err := rows.Scan(&provType, &path, &repoPath, &commitHash)
+		if err != nil {
+			return nil, fmt.Errorf("scanning provenance: %w", err)
+		}
+
+		// Reconstruct the appropriate provenance type
+		switch provType {
+		case "file":
+			if path != nil {
+				provenances = append(provenances, types.FileProvenance{
+					FilePath: *path,
+				})
+			}
+		case "git":
+			gitProv := types.GitProvenance{}
+			if repoPath != nil {
+				gitProv.RepoPath = *repoPath
+			}
+			if path != nil {
+				gitProv.BlobPath = *path
+			}
+			if commitHash != nil {
+				gitProv.Commit = &types.CommitMetadata{
+					CommitID: *commitHash,
+				}
+			}
+			provenances = append(provenances, gitProv)
+		case "extended":
+			// Extended provenance doesn't have structured fields
+			provenances = append(provenances, types.ExtendedProvenance{})
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating provenance: %w", err)
+	}
+
+	return provenances, nil
 }
 
 // GetMatches retrieves matches for a blob.

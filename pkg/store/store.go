@@ -22,6 +22,9 @@ type Store interface {
 	// AddProvenance associates provenance with a blob.
 	AddProvenance(blobID types.BlobID, prov types.Provenance) error
 
+	// GetAllProvenance retrieves all provenance records for a blob.
+	GetAllProvenance(blobID types.BlobID) ([]types.Provenance, error)
+
 	// GetMatches retrieves matches for a blob.
 	GetMatches(blobID types.BlobID) ([]*types.Match, error)
 

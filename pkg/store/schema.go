@@ -125,8 +125,17 @@ func createProvenanceTable(db *sql.DB) error {
 			type TEXT NOT NULL,
 			path TEXT,
 			repo_path TEXT,
-			commit_hash TEXT
+			commit_hash TEXT,
+			UNIQUE(blob_id, type, path, repo_path, commit_hash)
 		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create index for efficient provenance lookup by blob_id
+	_, err = db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_provenance_blob_id ON provenance(blob_id)
 	`)
 	return err
 }

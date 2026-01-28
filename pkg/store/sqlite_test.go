@@ -228,3 +228,127 @@ func TestSQLite_Close(t *testing.T) {
 	err = store.db.Ping()
 	assert.Error(t, err)
 }
+
+func TestSQLite_AddProvenance_Multiple(t *testing.T) {
+	// Arrange
+	store, err := NewSQLite(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = store.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	// Act - add multiple provenance records to the same blob
+	prov1 := types.FileProvenance{FilePath: "/path/to/file1.txt"}
+	err = store.AddProvenance(blobID, prov1)
+	require.NoError(t, err)
+
+	prov2 := types.GitProvenance{
+		RepoPath: "/path/to/repo",
+		BlobPath: "src/main.go",
+		Commit:   &types.CommitMetadata{CommitID: "abc123"},
+	}
+	err = store.AddProvenance(blobID, prov2)
+	require.NoError(t, err)
+
+	prov3 := types.FileProvenance{FilePath: "/path/to/file2.txt"}
+	err = store.AddProvenance(blobID, prov3)
+	require.NoError(t, err)
+
+	// Assert - verify all three provenance records exist
+	var count int
+	err = store.db.QueryRow("SELECT COUNT(*) FROM provenance WHERE blob_id = ?", blobID.Hex()).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count, "should have 3 provenance records for the same blob")
+
+	// Verify we can retrieve all provenance
+	allProv, err := store.GetAllProvenance(blobID)
+	require.NoError(t, err)
+	assert.Len(t, allProv, 3, "GetAllProvenance should return all 3 records")
+}
+
+func TestSQLite_AddProvenance_Deduplication(t *testing.T) {
+	// Arrange
+	store, err := NewSQLite(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = store.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	prov := types.GitProvenance{
+		RepoPath: "/path/to/repo",
+		BlobPath: "src/main.go",
+		Commit:   &types.CommitMetadata{CommitID: "abc123"},
+	}
+
+	// Act - add the same provenance twice
+	err = store.AddProvenance(blobID, prov)
+	require.NoError(t, err)
+
+	err = store.AddProvenance(blobID, prov)
+	require.NoError(t, err, "duplicate insert should be ignored, not error")
+
+	// Assert - verify only one record exists (deduplication worked)
+	var count int
+	err = store.db.QueryRow("SELECT COUNT(*) FROM provenance WHERE blob_id = ?", blobID.Hex()).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "duplicate provenance should be deduplicated")
+}
+
+func TestSQLite_GetAllProvenance(t *testing.T) {
+	// Arrange
+	store, err := NewSQLite(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = store.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	// Add multiple provenance types
+	prov1 := types.FileProvenance{FilePath: "/path/to/file.txt"}
+	err = store.AddProvenance(blobID, prov1)
+	require.NoError(t, err)
+
+	prov2 := types.GitProvenance{
+		RepoPath: "/path/to/repo",
+		BlobPath: "src/main.go",
+		Commit:   &types.CommitMetadata{CommitID: "abc123"},
+	}
+	err = store.AddProvenance(blobID, prov2)
+	require.NoError(t, err)
+
+	// Act
+	allProv, err := store.GetAllProvenance(blobID)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, allProv, 2, "should return both provenance records")
+
+	// Verify types are correct
+	hasFile := false
+	hasGit := false
+	for _, p := range allProv {
+		switch prov := p.(type) {
+		case types.FileProvenance:
+			hasFile = true
+			assert.Equal(t, "/path/to/file.txt", prov.FilePath)
+		case types.GitProvenance:
+			hasGit = true
+			assert.Equal(t, "/path/to/repo", prov.RepoPath)
+			assert.Equal(t, "src/main.go", prov.BlobPath)
+			assert.Equal(t, "abc123", prov.Commit.CommitID)
+		}
+	}
+	assert.True(t, hasFile, "should have file provenance")
+	assert.True(t, hasGit, "should have git provenance")
+
+	// Test with non-existent blob
+	nonExistentBlob := types.ComputeBlobID([]byte("nonexistent"))
+	emptyProv, err := store.GetAllProvenance(nonExistentBlob)
+	require.NoError(t, err)
+	assert.Empty(t, emptyProv, "should return empty slice for non-existent blob")
+}
