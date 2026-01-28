@@ -26,6 +26,7 @@ func init() {
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(rulesCmd)
+	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(versionCmd)
 rootCmd.AddCommand(mergeCmd)
 	rootCmd.AddCommand(gitlabCmd)
