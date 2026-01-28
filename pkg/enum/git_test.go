@@ -497,3 +497,89 @@ func TestGitEnumerator_WalkAllHistory(t *testing.T) {
 		}
 	}
 }
+
+func TestGitEnumerator_WalkAll_Deduplication(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	// Commit 1: Create file with content "same"
+	file1 := filepath.Join(tmpDir, "file1.txt")
+	if err := os.WriteFile(file1, []byte("same"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Commit 1")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Commit 2: Create another file with SAME content "same"
+	file2 := filepath.Join(tmpDir, "file2.txt")
+	if err := os.WriteFile(file2, []byte("same"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Commit 2")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Enumerate with WalkAll=true
+	config := Config{
+		Root: tmpDir,
+	}
+	enumerator := NewGitEnumerator(config)
+	enumerator.WalkAll = true
+
+	var callCount int
+	blobIDs := make(map[types.BlobID]int)
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		callCount++
+		blobIDs[blobID]++
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	// Same content = same blob ID, should only be yielded once
+	if callCount != 1 {
+		t.Errorf("expected callback called 1 time (deduplication), got %d", callCount)
+	}
+
+	for id, count := range blobIDs {
+		if count > 1 {
+			t.Errorf("blob ID %s appeared %d times, expected 1", id.Hex(), count)
+		}
+	}
+}
