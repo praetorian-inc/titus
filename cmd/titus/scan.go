@@ -136,9 +136,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
-	// Output results
-	fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
+	// Output results (to stderr when using json format to keep stdout pure JSON)
+	if scanOutputFormat == "json" {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s\n", scanOutputPath)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
+	}
 
 	// Get and output findings
 	findings, err := s.GetFindings()
