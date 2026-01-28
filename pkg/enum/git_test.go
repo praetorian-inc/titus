@@ -583,3 +583,101 @@ func TestGitEnumerator_WalkAll_Deduplication(t *testing.T) {
 		}
 	}
 }
+
+func TestGitEnumerator_WalkAll_MultipleBranches(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+
+	// Configure git user
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to config git: %v", err)
+	}
+
+	// Main branch: Create main.txt
+	mainFile := filepath.Join(tmpDir, "main.txt")
+	if err := os.WriteFile(mainFile, []byte("main content"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Main commit")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Create feature branch
+	cmd = exec.Command("git", "checkout", "-b", "feature")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create branch: %v", err)
+	}
+
+	// Feature branch: Create feature.txt
+	featureFile := filepath.Join(tmpDir, "feature.txt")
+	if err := os.WriteFile(featureFile, []byte("feature content"), 0644); err != nil {
+		t.Fatalf("failed to create file: %v", err)
+	}
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git add: %v", err)
+	}
+	cmd = exec.Command("git", "commit", "-m", "Feature commit")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to git commit: %v", err)
+	}
+
+	// Switch back to main (so HEAD is main, not feature)
+	cmd = exec.Command("git", "checkout", "master")
+	cmd.Dir = tmpDir
+	// Try main if master fails (git config dependent)
+	if err := cmd.Run(); err != nil {
+		cmd = exec.Command("git", "checkout", "main")
+		cmd.Dir = tmpDir
+		cmd.Run() // Ignore error - one should work
+	}
+
+	// Enumerate with WalkAll=true (should see both branches)
+	config := Config{
+		Root: tmpDir,
+	}
+	enumerator := NewGitEnumerator(config)
+	enumerator.WalkAll = true
+
+	contentSet := make(map[string]bool)
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		contentSet[string(content)] = true
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	// Should find content from both branches
+	if !contentSet["main content"] {
+		t.Error("missing main branch content")
+	}
+	if !contentSet["feature content"] {
+		t.Error("missing feature branch content")
+	}
+}
