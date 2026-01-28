@@ -350,6 +350,54 @@ func (s *SQLiteStore) BlobExists(id types.BlobID) (bool, error) {
 	return count > 0, nil
 }
 
+// GetProvenance retrieves provenance for a blob.
+func (s *SQLiteStore) GetProvenance(blobID types.BlobID) (types.Provenance, error) {
+	var provType string
+	var path, repoPath, commitHash *string
+
+	err := s.db.QueryRow(`
+		SELECT type, path, repo_path, commit_hash
+		FROM provenance
+		WHERE blob_id = ?
+		LIMIT 1
+	`, blobID.Hex()).Scan(&provType, &path, &repoPath, &commitHash)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("no provenance found for blob: %s", blobID.Hex())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying provenance: %w", err)
+	}
+
+	switch provType {
+	case "file":
+		if path == nil {
+			return nil, fmt.Errorf("file provenance missing path")
+		}
+		return types.FileProvenance{FilePath: *path}, nil
+	case "git":
+		if path == nil {
+			return nil, fmt.Errorf("git provenance missing path")
+		}
+		prov := types.GitProvenance{
+			BlobPath: *path,
+		}
+		if repoPath != nil {
+			prov.RepoPath = *repoPath
+		}
+		if commitHash != nil {
+			prov.Commit = &types.CommitMetadata{
+				CommitID: *commitHash,
+			}
+		}
+		return prov, nil
+	case "extended":
+		return types.ExtendedProvenance{Payload: make(map[string]interface{})}, nil
+	default:
+		return nil, fmt.Errorf("unknown provenance type: %s", provType)
+	}
+}
+
 // Close closes the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()

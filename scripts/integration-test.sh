@@ -303,6 +303,59 @@ fi
 pass "Incremental scanning works"
 rm -f "$INCREMENTAL_DB" /tmp/titus-inc1.txt /tmp/titus-inc2.txt
 
+# Test 14: SARIF format
+echo "=== Test 14: SARIF Format ==="
+SARIF_FILE="/tmp/titus-sarif-results.json"
+SARIF_DB="/tmp/titus-sarif.db"
+rm -f "$SARIF_DB"
+$TITUS scan "$TESTDATA_DIR" --output="$SARIF_DB" --format=sarif > "$SARIF_FILE" 2>/dev/null
+
+# Verify SARIF structure
+if ! jq -e '.["$schema"]' "$SARIF_FILE" > /dev/null 2>&1; then
+    fail "SARIF output missing \$schema field"
+fi
+
+# Verify version
+if ! jq -e '.version == "2.1.0"' "$SARIF_FILE" > /dev/null 2>&1; then
+    fail "SARIF version is not 2.1.0"
+fi
+
+# Verify tool name
+if ! jq -e '.runs[0].tool.driver.name == "titus"' "$SARIF_FILE" > /dev/null 2>&1; then
+    fail "SARIF tool name is not titus"
+fi
+
+# Verify tool version
+if ! jq -e '.runs[0].tool.driver.version == "0.1.0"' "$SARIF_FILE" > /dev/null 2>&1; then
+    fail "SARIF tool version is not 0.1.0"
+fi
+
+# Verify results exist
+results_count=$(jq '.runs[0].results | length' "$SARIF_FILE" 2>/dev/null || echo "0")
+if [ "$results_count" -lt 1 ]; then
+    fail "SARIF has no results"
+fi
+
+# Verify rules exist
+rules_count=$(jq '.runs[0].tool.driver.rules | length' "$SARIF_FILE" 2>/dev/null || echo "0")
+if [ "$rules_count" -lt 1 ]; then
+    fail "SARIF has no rules"
+fi
+
+# Verify a result has required fields
+if ! jq -e '.runs[0].results[0].ruleId' "$SARIF_FILE" > /dev/null 2>&1; then
+    fail "SARIF result missing ruleId field"
+fi
+if ! jq -e '.runs[0].results[0].level' "$SARIF_FILE" > /dev/null 2>&1; then
+    fail "SARIF result missing level field"
+fi
+if ! jq -e '.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri' "$SARIF_FILE" > /dev/null 2>&1; then
+    fail "SARIF result missing location URI"
+fi
+
+pass "SARIF format output is valid - $results_count results, $rules_count rules"
+rm -f "$SARIF_FILE" "$SARIF_DB"
+
 # Cleanup
 rm -f "$RESULTS_FILE"
 

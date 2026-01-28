@@ -9,6 +9,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
+	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
@@ -158,8 +159,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
-	// Output results (to stderr when using json format to keep stdout pure JSON)
-	if scanOutputFormat == "json" {
+// Output results (to stderr when using json/sarif format to keep stdout pure JSON)
+	if scanOutputFormat == "json" || scanOutputFormat == "sarif" {
 		if scanIncremental {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
 		} else {
@@ -183,6 +184,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("retrieving matches: %w", err)
 		}
 		return outputMatches(cmd, matches)
+	}
+
+	if scanOutputFormat == "sarif" {
+		// SARIF format outputs matches with rules
+		matches, err := s.GetAllMatches()
+		if err != nil {
+			return fmt.Errorf("retrieving matches: %w", err)
+		}
+		return outputSARIF(cmd, s, rules, matches)
 	}
 
 	// Human format outputs findings (deduplicated)
@@ -271,10 +281,54 @@ func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {
 			fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s\n", i+1, f.RuleID)
 		}
 		return nil
-	case "sarif":
-		// SARIF format would be implemented here
-		return fmt.Errorf("SARIF output not yet implemented")
 	default:
 		return fmt.Errorf("unknown output format: %s", scanOutputFormat)
 	}
+}
+
+// outputSARIF outputs matches in SARIF 2.1.0 format
+func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches []*types.Match) error {
+	// Create SARIF report
+	report := sarif.NewReport()
+
+	// Add all rules
+	for _, rule := range rules {
+		report.AddRule(rule)
+	}
+
+	// Cache provenance by blob ID to avoid repeated queries
+	provenanceCache := make(map[types.BlobID]string)
+
+	// Get provenance for each match and add results
+	for _, match := range matches {
+		// Check cache first
+		filePath, ok := provenanceCache[match.BlobID]
+		if !ok {
+			// Query provenance
+			prov, err := s.GetProvenance(match.BlobID)
+			if err != nil {
+				// If no provenance found, use blob ID as fallback
+				filePath = match.BlobID.Hex()
+			} else {
+				filePath = prov.Path()
+			}
+			provenanceCache[match.BlobID] = filePath
+		}
+
+		report.AddResult(match, filePath)
+	}
+
+	// Serialize to JSON
+	jsonBytes, err := report.ToJSON()
+	if err != nil {
+		return fmt.Errorf("serializing SARIF: %w", err)
+	}
+
+	// Write to stdout
+	_, err = cmd.OutOrStdout().Write(jsonBytes)
+	if err != nil {
+		return fmt.Errorf("writing SARIF output: %w", err)
+	}
+
+	return nil
 }
