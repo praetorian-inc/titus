@@ -96,7 +96,9 @@ func createMatchesTable(db *sql.DB) error {
 			structural_id TEXT NOT NULL UNIQUE,
 			offset_start INTEGER NOT NULL,
 			offset_end INTEGER NOT NULL,
+			snippet_before BLOB,
 			snippet_matching BLOB,
+			snippet_after BLOB,
 			groups_json TEXT
 		)
 	`)

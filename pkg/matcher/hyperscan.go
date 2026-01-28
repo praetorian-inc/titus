@@ -13,14 +13,15 @@ import (
 //  1. Hyperscan finds pattern offsets (fast, no capture groups)
 //  2. Go regexp extracts capture groups for each match
 type HyperscanMatcher struct {
-	db         hyperscan.BlockDatabase // Compiled patterns
-	scratch    *hyperscan.Scratch      // Per-scan scratch space
-	rules      []*types.Rule           // Rule metadata indexed by pattern ID
-	regexCache map[string]*regexp.Regexp // Cache for capture group extraction
+	db           hyperscan.BlockDatabase       // Compiled patterns
+	scratch      *hyperscan.Scratch            // Per-scan scratch space
+	rules        []*types.Rule                 // Rule metadata indexed by pattern ID
+	regexCache   map[string]*regexp.Regexp     // Cache for capture group extraction
+	contextLines int                           // Lines of context to extract before/after matches
 }
 
 // NewHyperscan creates a Hyperscan-based matcher.
-func NewHyperscan(rules []*types.Rule) (*HyperscanMatcher, error) {
+func NewHyperscan(rules []*types.Rule, contextLines int) (*HyperscanMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
 	}
@@ -54,10 +55,11 @@ func NewHyperscan(rules []*types.Rule) (*HyperscanMatcher, error) {
 	}
 
 	return &HyperscanMatcher{
-		db:         db,
-		scratch:    scratch,
-		rules:      rules,
-		regexCache: make(map[string]*regexp.Regexp),
+		db:           db,
+		scratch:      scratch,
+		rules:        rules,
+		regexCache:   make(map[string]*regexp.Regexp),
+		contextLines: contextLines,
 	}, nil
 }
 
@@ -143,6 +145,12 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 			}
 		}
 
+		// Extract context lines before and after the match
+		var before, after []byte
+		if m.contextLines > 0 {
+			before, after = ExtractContext(content, actualStart, actualEnd, m.contextLines)
+		}
+
 		// Build Match object using actual bounds from Go regexp
 		match := &types.Match{
 			BlobID:   blobID,
@@ -157,7 +165,9 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 			},
 			Groups: groups,
 			Snippet: types.Snippet{
+				Before:   before,
 				Matching: content[actualStart:actualEnd],
+				After:    after,
 			},
 		}
 

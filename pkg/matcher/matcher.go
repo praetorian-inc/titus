@@ -22,10 +22,13 @@ type Config struct {
 
 	// MaxMatchesPerBlob limits matches returned per blob (0 = unlimited)
 	MaxMatchesPerBlob int
+
+	// ContextLines is the number of lines of context to extract before/after matches (0 = none)
+	ContextLines int
 }
 
 // New creates a new Matcher with the given config.
 // Currently returns a Hyperscan-based implementation.
 func New(cfg Config) (Matcher, error) {
-	return NewHyperscan(cfg.Rules)
+	return NewHyperscan(cfg.Rules, cfg.ContextLines)
 }

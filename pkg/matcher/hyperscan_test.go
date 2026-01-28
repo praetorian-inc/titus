@@ -28,7 +28,7 @@ func TestNewHyperscan_NoRules(t *testing.T) {
 		t.Skip("Hyperscan not available")
 	}
 
-	m, err := NewHyperscan(nil)
+	m, err := NewHyperscan(nil, 0)
 	require.Error(t, err)
 	assert.Nil(t, m)
 	assert.Contains(t, err.Error(), "no rules")
@@ -47,7 +47,7 @@ func TestNewHyperscan_SingleRule(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 	require.NotNil(t, m)
 	defer m.Close()
@@ -70,7 +70,7 @@ func TestNewHyperscan_InvalidPattern(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.Error(t, err)
 	assert.Nil(t, m)
 	assert.Contains(t, err.Error(), "compile")
@@ -90,7 +90,7 @@ func TestHyperscanMatcher_Match_NoMatches(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -115,7 +115,7 @@ func TestHyperscanMatcher_Match_SingleMatch(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -148,7 +148,7 @@ func TestHyperscanMatcher_Match_WithCaptureGroups(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -185,7 +185,7 @@ func TestHyperscanMatcher_Match_MultipleRules(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -218,7 +218,7 @@ func TestHyperscanMatcher_MatchWithBlobID(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -246,7 +246,7 @@ func TestHyperscanMatcher_Deduplication(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -279,7 +279,7 @@ func TestHyperscanMatcher_Close(t *testing.T) {
 		},
 	}
 
-	m, err := NewHyperscan(rules)
+	m, err := NewHyperscan(rules, 0)
 	require.NoError(t, err)
 
 	err = m.Close()

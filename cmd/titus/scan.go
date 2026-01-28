@@ -23,6 +23,7 @@ var (
 	scanGit           bool
 	scanMaxFileSize   int64
 	scanIncludeHidden bool
+	scanContextLines  int
 )
 
 var scanCmd = &cobra.Command{
@@ -42,6 +43,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
 	scanCmd.Flags().BoolVar(&scanIncludeHidden, "include-hidden", false, "Include hidden files and directories")
+	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -60,7 +62,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Create matcher
 	m, err := matcher.New(matcher.Config{
-		Rules: rules,
+		Rules:        rules,
+		ContextLines: scanContextLines,
 	})
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
@@ -149,12 +152,21 @@ func runScan(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
 	}
 
-	// Get and output findings
+	// Get results for output
+	if scanOutputFormat == "json" {
+		// JSON format outputs matches with full snippet data
+		matches, err := s.GetAllMatches()
+		if err != nil {
+			return fmt.Errorf("retrieving matches: %w", err)
+		}
+		return outputMatches(cmd, matches)
+	}
+
+	// Human format outputs findings (deduplicated)
 	findings, err := s.GetFindings()
 	if err != nil {
 		return fmt.Errorf("retrieving findings: %w", err)
 	}
-
 	return outputFindings(cmd, findings)
 }
 
@@ -211,6 +223,12 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	}
 
 	return enum.NewFilesystemEnumerator(config), nil
+}
+
+func outputMatches(cmd *cobra.Command, matches []*types.Match) error {
+	encoder := json.NewEncoder(cmd.OutOrStdout())
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(matches)
 }
 
 func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {

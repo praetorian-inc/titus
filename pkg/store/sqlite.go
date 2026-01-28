@@ -49,15 +49,17 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_matching, groups_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		m.BlobID.Hex(),
 		m.RuleID,
 		m.StructuralID,
 		m.Location.Offset.Start,
 		m.Location.Offset.End,
+		m.Snippet.Before,
 		m.Snippet.Matching,
+		m.Snippet.After,
 		string(groupsJSON),
 	)
 	if err != nil {
@@ -129,7 +131,7 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 // GetMatches retrieves matches for a blob.
 func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 	rows, err := s.db.Query(`
-		SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_matching, groups_json
+		SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json
 		FROM matches
 		WHERE blob_id = ?
 	`, blobID.Hex())
@@ -150,7 +152,63 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 			&m.StructuralID,
 			&m.Location.Offset.Start,
 			&m.Location.Offset.End,
+			&m.Snippet.Before,
 			&m.Snippet.Matching,
+			&m.Snippet.After,
+			&groupsJSON,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scanning match: %w", err)
+		}
+
+		// Parse blob ID
+		blobID, err := types.ParseBlobID(blobIDHex)
+		if err != nil {
+			return nil, fmt.Errorf("parsing blob ID: %w", err)
+		}
+		m.BlobID = blobID
+
+		// Unmarshal groups
+		if err := json.Unmarshal([]byte(groupsJSON), &m.Groups); err != nil {
+			return nil, fmt.Errorf("unmarshaling groups: %w", err)
+		}
+
+		matches = append(matches, &m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating matches: %w", err)
+	}
+
+	return matches, nil
+}
+
+// GetAllMatches retrieves all matches (for JSON export).
+func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
+	rows, err := s.db.Query(`
+		SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json
+		FROM matches
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("querying matches: %w", err)
+	}
+	defer rows.Close()
+
+	var matches []*types.Match
+	for rows.Next() {
+		var m types.Match
+		var blobIDHex string
+		var groupsJSON string
+
+		err := rows.Scan(
+			&blobIDHex,
+			&m.RuleID,
+			&m.StructuralID,
+			&m.Location.Offset.Start,
+			&m.Location.Offset.End,
+			&m.Snippet.Before,
+			&m.Snippet.Matching,
+			&m.Snippet.After,
 			&groupsJSON,
 		)
 		if err != nil {
