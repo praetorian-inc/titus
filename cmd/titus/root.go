@@ -26,6 +26,7 @@ func init() {
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(rulesCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(mergeCmd)
 }
 
 // Execute runs the root command.
