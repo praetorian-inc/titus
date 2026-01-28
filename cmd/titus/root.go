@@ -27,7 +27,8 @@ func init() {
 	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(rulesCmd)
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(mergeCmd)
+rootCmd.AddCommand(mergeCmd)
+	rootCmd.AddCommand(gitlabCmd)
 }
 
 // Execute runs the root command.
