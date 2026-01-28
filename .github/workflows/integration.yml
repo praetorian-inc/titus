@@ -93,13 +93,13 @@ jobs:
 
         # Test --help works
         docker run --rm \
-          -v $(pwd)/titus-static:/titus:ro \
+          -v "$(pwd)/titus-static:/titus:ro" \
           alpine:3.19 /titus --help
 
         # Test actual scan
         docker run --rm \
-          -v $(pwd)/titus-static:/titus:ro \
-          -v $(pwd)/testdata:/testdata:ro \
+          -v "$(pwd)/titus-static:/titus:ro" \
+          -v "$(pwd)/testdata:/testdata:ro" \
           alpine:3.19 /titus scan /testdata/secrets --format=json
 
     - name: Upload static binary on success

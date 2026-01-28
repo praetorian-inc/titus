@@ -11,9 +11,10 @@ build:
 	CGO_ENABLED=1 go build -o titus ./cmd/titus
 
 # Build statically linked binary (for container deployment)
+# Requires musl-gcc: apt-get install musl-dev musl-tools
 build-static:
-	CGO_ENABLED=1 go build \
-		-ldflags '-extldflags "-static"' \
+	CGO_ENABLED=1 CC=musl-gcc go build \
+		-ldflags '-linkmode external -extldflags "-static"' \
 		-tags 'osusergo netgo sqlite_omit_load_extension' \
 		-o titus-static ./cmd/titus
 
