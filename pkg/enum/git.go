@@ -30,6 +30,14 @@ func NewGitEnumerator(config Config) *GitEnumerator {
 
 // Enumerate walks git history and yields unique blobs.
 func (e *GitEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	if e.WalkAll {
+		return e.enumerateAllHistory(ctx, callback)
+	}
+	return e.enumerateSingleCommit(ctx, callback)
+}
+
+// enumerateSingleCommit walks the tree at a single commit (CommitRef).
+func (e *GitEnumerator) enumerateSingleCommit(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	// Open repository
 	repo, err := git.PlainOpen(e.config.Root)
 	if err != nil {
@@ -118,4 +126,10 @@ func (e *GitEnumerator) Enumerate(ctx context.Context, callback func(content []b
 	}
 
 	return nil
+}
+
+// enumerateAllHistory walks all commits from all refs.
+// Placeholder - will be implemented in next task.
+func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	return fmt.Errorf("enumerateAllHistory not implemented")
 }
