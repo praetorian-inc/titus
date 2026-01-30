@@ -5,6 +5,10 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+    paths:
+      - '.github/workflows/release-new.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -22,6 +26,7 @@ jobs:
   # Build Linux binaries with static hyperscan
   build-linux:
     name: Build Linux ${{ matrix.arch }}
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -85,6 +90,7 @@ jobs:
   # Build macOS binaries
   build-macos:
     name: Build macOS ${{ matrix.arch }}
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -140,6 +146,7 @@ jobs:
   # Build Windows binary using vcpkg
   build-windows:
     name: Build Windows amd64
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-2022
 
     steps:
@@ -181,6 +188,7 @@ jobs:
   # Build Burp extension JAR
   build-burp:
     name: Build Burp Extension
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
 
     steps:
@@ -211,6 +219,7 @@ jobs:
   # Build browser extension zip
   build-extension:
     name: Build Browser Extension
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
 
     steps:
@@ -243,6 +252,7 @@ jobs:
   # Create GitHub release with all artifacts
   release:
     name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: [build-linux, build-macos, build-windows, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
