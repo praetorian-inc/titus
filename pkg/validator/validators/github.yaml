@@ -1,0 +1,14 @@
+# pkg/validator/validators/github.yaml
+validators:
+  - name: github-token
+    rule_ids:
+      - np.github.1
+      - np.github.2
+    http:
+      method: GET
+      url: https://api.github.com/user
+      auth:
+        type: bearer
+        secret_group: 0
+      success_codes: [200]
+      failure_codes: [401, 403]
