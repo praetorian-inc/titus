@@ -8,9 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  CGO_ENABLED: 1
-
 jobs:
   # Build fully static/portable Go binaries for each platform
   build-binaries:
@@ -25,25 +22,21 @@ jobs:
             arch: amd64
             runner: ubuntu-22.04
             artifact: titus-linux-amd64
-            static: true
           # Linux arm64 - fully static with musl
           - os: linux
             arch: arm64
             runner: ubuntu-22.04-arm
             artifact: titus-linux-arm64
-            static: true
-          # macOS arm64 (Apple Silicon) - static hyperscan linkage
+          # macOS arm64 (Apple Silicon) - uses vectorscan (ARM64 fork of hyperscan)
           - os: darwin
             arch: arm64
             runner: macos-14
             artifact: titus-darwin-arm64
-            static: false
-          # macOS amd64 (Intel) - static hyperscan linkage
+          # macOS amd64 (Intel) - uses hyperscan
           - os: darwin
             arch: amd64
             runner: macos-13
             artifact: titus-darwin-amd64
-            static: false
 
     steps:
     - name: Checkout code
@@ -78,21 +71,32 @@ jobs:
         # Verify static lib exists
         ls -la /usr/local/lib/libhs*.a
 
-    # macOS: Install hyperscan via homebrew (includes static libs)
-    - name: Install dependencies (macOS)
-      if: matrix.os == 'darwin'
+    # macOS arm64: Use vectorscan (ARM64 fork of hyperscan)
+    - name: Install dependencies (macOS arm64)
+      if: matrix.os == 'darwin' && matrix.arch == 'arm64'
+      run: |
+        brew install vectorscan pkg-config
+
+        # vectorscan is API-compatible with hyperscan
+        BREW_PREFIX=$(brew --prefix vectorscan)
+        echo "HS_PREFIX=${BREW_PREFIX}" >> $GITHUB_ENV
+        ls -la ${BREW_PREFIX}/lib/
+
+    # macOS amd64: Use hyperscan
+    - name: Install dependencies (macOS amd64)
+      if: matrix.os == 'darwin' && matrix.arch == 'amd64'
       run: |
         brew install hyperscan pkg-config
 
-        # Find the static library path
         BREW_PREFIX=$(brew --prefix hyperscan)
-        echo "HYPERSCAN_PREFIX=${BREW_PREFIX}" >> $GITHUB_ENV
+        echo "HS_PREFIX=${BREW_PREFIX}" >> $GITHUB_ENV
         ls -la ${BREW_PREFIX}/lib/
 
     # Build Linux - fully static binary
     - name: Build binary (Linux static)
       if: matrix.os == 'linux'
       env:
+        CGO_ENABLED: "1"
         CC: musl-gcc
         CXX: musl-gcc
         CGO_CFLAGS: "-I/usr/local/include"
@@ -109,30 +113,30 @@ jobs:
         file dist/${{ matrix.artifact }}
         ldd dist/${{ matrix.artifact }} 2>&1 || echo "Binary is static (no dynamic dependencies)"
 
-    # Build macOS - static hyperscan linkage
+    # Build macOS - static hyperscan/vectorscan linkage
     - name: Build binary (macOS)
       if: matrix.os == 'darwin'
+      env:
+        CGO_ENABLED: "1"
       run: |
-        BREW_PREFIX=$(brew --prefix hyperscan)
-
-        # Use static hyperscan library
-        export CGO_CFLAGS="-I${BREW_PREFIX}/include"
-        export CGO_LDFLAGS="-L${BREW_PREFIX}/lib ${BREW_PREFIX}/lib/libhs.a -lc++"
+        # Use static library (works for both hyperscan and vectorscan)
+        export CGO_CFLAGS="-I${HS_PREFIX}/include/hs"
+        export CGO_LDFLAGS="-L${HS_PREFIX}/lib ${HS_PREFIX}/lib/libhs.a -lc++"
 
         mkdir -p dist
         GOWORK=off go build -o dist/${{ matrix.artifact }} ./cmd/titus
         chmod +x dist/${{ matrix.artifact }}
 
-        # Verify hyperscan is not a dynamic dependency
+        # Verify hyperscan/vectorscan is not a dynamic dependency
         echo "Checking dynamic dependencies:"
         otool -L dist/${{ matrix.artifact }}
 
         # Should NOT show libhs.dylib
         if otool -L dist/${{ matrix.artifact }} | grep -q "libhs"; then
-          echo "WARNING: hyperscan is dynamically linked!"
+          echo "WARNING: hyperscan/vectorscan is dynamically linked!"
           exit 1
         fi
-        echo "✓ hyperscan is statically linked"
+        echo "✓ hyperscan/vectorscan is statically linked"
 
     - name: Verify binary runs
       run: |
@@ -191,6 +195,8 @@ jobs:
         cache: true
 
     - name: Build WASM
+      env:
+        CGO_ENABLED: "0"
       run: |
         GOWORK=off GOOS=js GOARCH=wasm go build -o extension/lib/titus.wasm ./wasm
 
