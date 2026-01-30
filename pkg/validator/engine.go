@@ -67,3 +67,65 @@ func extractSecret(match *types.Match) []byte {
 	}
 	return match.Snippet.Matching
 }
+
+// ValidateAsync submits a match for async validation.
+// Returns immediately with a channel that will receive the result.
+func (e *Engine) ValidateAsync(ctx context.Context, match *types.Match) <-chan *types.ValidationResult {
+	result := make(chan *types.ValidationResult, 1)
+
+	// Extract secret value
+	secret := extractSecret(match)
+	if len(secret) == 0 {
+		result <- types.NewValidationResult(types.StatusUndetermined, 0, "no secret value found")
+		close(result)
+		return result
+	}
+
+	// Check cache first (fast path - no goroutine needed)
+	if cached := e.cache.Get(secret); cached != nil {
+		result <- cached
+		close(result)
+		return result
+	}
+
+	// Submit for async validation
+	go func() {
+		defer close(result)
+
+		// Acquire semaphore (bounded concurrency)
+		select {
+		case e.sem <- struct{}{}:
+			defer func() { <-e.sem }()
+		case <-ctx.Done():
+			result <- types.NewValidationResult(types.StatusUndetermined, 0, "context cancelled")
+			return
+		}
+
+		// Re-check cache (another goroutine may have validated)
+		if cached := e.cache.Get(secret); cached != nil {
+			result <- cached
+			return
+		}
+
+		// Perform validation
+		r, _ := e.validateSync(ctx, match, secret)
+		result <- r
+	}()
+
+	return result
+}
+
+// validateSync performs the actual validation.
+func (e *Engine) validateSync(ctx context.Context, match *types.Match, secret []byte) (*types.ValidationResult, error) {
+	for _, v := range e.validators {
+		if v.CanValidate(match.RuleID) {
+			result, err := v.Validate(ctx, match)
+			if err != nil {
+				return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("validation error: %v", err)), nil
+			}
+			e.cache.Set(secret, result)
+			return result, nil
+		}
+	}
+	return types.NewValidationResult(types.StatusUndetermined, 0, "no validator available"), nil
+}
