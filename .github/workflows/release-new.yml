@@ -21,18 +21,10 @@ env:
   VERSION: ${{ inputs.version || github.ref_name }}
 
 jobs:
-  # Build Linux binaries with static hyperscan
-  build-linux:
-    name: Build Linux ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-22.04-arm
+  # Build Linux amd64 with Intel hyperscan
+  build-linux-amd64:
+    name: Build Linux amd64
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout code
@@ -69,20 +61,73 @@ jobs:
         CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
       run: |
         mkdir -p dist
-        GOWORK=off go build -o dist/titus-linux-${{ matrix.arch }} ./cmd/titus
-        chmod +x dist/titus-linux-${{ matrix.arch }}
-        file dist/titus-linux-${{ matrix.arch }}
-        ldd dist/titus-linux-${{ matrix.arch }}
+        GOWORK=off go build -o dist/titus-linux-amd64 ./cmd/titus
+        chmod +x dist/titus-linux-amd64
+        file dist/titus-linux-amd64
+        ldd dist/titus-linux-amd64
 
     - name: Verify binary runs
-      run: |
-        dist/titus-linux-${{ matrix.arch }} version
+      run: dist/titus-linux-amd64 version
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: titus-linux-${{ matrix.arch }}
-        path: dist/titus-linux-${{ matrix.arch }}
+        name: titus-linux-amd64
+        path: dist/titus-linux-amd64
+
+  # Build Linux arm64 with vectorscan (ARM port of hyperscan)
+  build-linux-arm64:
+    name: Build Linux arm64
+    runs-on: ubuntu-22.04-arm
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ragel pkg-config libboost-dev
+
+    - name: Build vectorscan static library
+      run: |
+        git clone --depth 1 --branch vectorscan/5.4.11 https://github.com/VectorCamp/vectorscan.git /tmp/vectorscan
+        cd /tmp/vectorscan
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+        make -j$(nproc)
+        sudo make install
+        ls -la /usr/local/lib/libhs*.a
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+        CGO_CFLAGS: "-I/usr/local/include"
+        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
+      run: |
+        mkdir -p dist
+        GOWORK=off go build -o dist/titus-linux-arm64 ./cmd/titus
+        chmod +x dist/titus-linux-arm64
+        file dist/titus-linux-arm64
+        ldd dist/titus-linux-arm64
+
+    - name: Verify binary runs
+      run: dist/titus-linux-arm64 version
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-linux-arm64
+        path: dist/titus-linux-arm64
 
   # Build macOS binaries
   build-macos:
@@ -96,7 +141,7 @@ jobs:
             runner: macos-14
             hs_package: vectorscan
           - arch: amd64
-            runner: macos-15
+            runner: macos-13-large
             hs_package: hyperscan
 
     steps:
@@ -245,7 +290,7 @@ jobs:
   # Create GitHub release with all artifacts (skipped on main branch push)
   release:
     name: Create Release
-    needs: [build-linux, build-macos, build-windows, build-burp, build-extension]
+    needs: [build-linux-amd64, build-linux-arm64, build-macos, build-windows, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
     steps:
