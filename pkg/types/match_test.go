@@ -113,3 +113,18 @@ func TestMatch_NilGroups(t *testing.T) {
 
 	assert.Nil(t, match.Groups)
 }
+
+func TestMatch_ValidationResult(t *testing.T) {
+	match := &Match{
+		RuleID:   "np.aws.6",
+		RuleName: "AWS API Credentials",
+	}
+	
+	// Initially nil
+	assert.Nil(t, match.ValidationResult)
+	
+	// Can be set
+	match.ValidationResult = NewValidationResult(StatusValid, 1.0, "valid")
+	assert.NotNil(t, match.ValidationResult)
+	assert.Equal(t, StatusValid, match.ValidationResult.Status)
+}

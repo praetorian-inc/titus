@@ -8,13 +8,14 @@ import (
 
 // Match is a single detection result.
 type Match struct {
-	BlobID       BlobID
-	StructuralID string // SHA-1(rule_structural_id + '\0' + blob_id + '\0' + start + '\0' + end)
-	RuleID       string // e.g., "np.aws.1"
-	RuleName     string // e.g., "AWS API Key"
-	Location     Location
-	Groups       [][]byte // regex capture groups
-	Snippet      Snippet
+	BlobID           BlobID
+	StructuralID     string // SHA-1(rule_structural_id + '\0' + blob_id + '\0' + start + '\0' + end)
+	RuleID           string // e.g., "np.aws.1"
+	RuleName         string // e.g., "AWS API Key"
+	Location         Location
+	Groups           [][]byte // regex capture groups
+	Snippet          Snippet
+	ValidationResult *ValidationResult `json:"validation_result,omitempty"`
 }
 
 // ComputeStructuralID computes content-based unique ID.
