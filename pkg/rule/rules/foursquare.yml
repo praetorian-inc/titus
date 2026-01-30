@@ -1,0 +1,62 @@
+rules:
+  - name: Foursquare Client ID
+    id: kingfisher.foursquare.1
+    visible: false
+    confidence: low
+    min_entropy: 0.0
+    pattern: |
+      (?xi)
+      (?:
+        \bclient_id\b\s*[:=]\s*["']?
+        |
+        \bclient_id=
+      )
+      (
+        [0-9A-Z]{48}
+      )
+      \b
+    examples:
+      - client_id=0F12A345BB67C8D901EFG23H45IJKL67MNO89PQ12RST34UV
+      - 'client_id: "0F12A345BB67C8D901EFG23H45IJKL67MNO89PQ12RST34UV"'
+
+  - name: Foursquare Client Secret
+    id: kingfisher.foursquare.2
+    pattern: |
+      (?xi)
+      \b
+      foursquare
+      (?:.|[\n\r]){0,32}?
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
+      (?:.|[\n\r]){0,16}?
+      \b
+      (
+        [0-9A-Z]{48}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 2
+    min_entropy: 3.5
+    confidence: medium
+    examples:
+      - 'foursquare_secret=0F12A345BB67C8D901EFG23H45IJKL67MNO89PQ12RST34UV'
+      - 'foursquare client_secret: "0F12A345BB67C8D901EFG23H45IJKL67MNO89PQ12RST34UV"'
+    references:
+      - https://docs.foursquare.com/developer/reference/v2-authentication
+      - https://docs.foursquare.com/developer/reference/upcoming-changes
+    depends_on_rule:
+      - rule_id: kingfisher.foursquare.1
+        variable: FOURSQUARE_CLIENT_ID
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: "https://api.foursquare.com/v2/venues/search?ll=34.0522,-118.2437&query=coffee&client_id={{ FOURSQUARE_CLIENT_ID }}&client_secret={{ TOKEN }}&v=20211019&limit=1"
+          headers:
+            Accept: application/json
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]
+            - type: WordMatch
+              words: ['"response"', '"venues"']

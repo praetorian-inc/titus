@@ -1,0 +1,40 @@
+rules:
+  - name: Paystack API Key
+    id: kingfisher.paystack.1
+    pattern: |
+      (?xi)
+      \b
+      (
+        sk_
+        [a-z]{1,}
+        _
+        [A-Z0-9]{40}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 2
+    min_entropy: 3.3
+    confidence: medium
+    examples:
+      - sk_test_abcdef1234567890abcdef1234567890abcdef12
+      - sk_live_gwjaoi1234567890abcdef1234567890abcdef12
+    references:
+      - https://paystack.com/docs/api/authentication/
+      - https://paystack.com/docs/api/transfer-control/
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          # Different endpoint than /customer: Check Balance
+          url: https://api.paystack.co/balance
+          headers:
+            Authorization: "Bearer {{ TOKEN }}"
+            Accept: application/json
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]
+            - type: JsonValid
+            - type: WordMatch
+              words: ['"message":"Balances retrieved"', '"data"']

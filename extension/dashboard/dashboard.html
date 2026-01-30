@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Titus Secret Vault - Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🔐 Titus Secret Vault</h1>
+                <div class="header-stats">
+                    <span id="total-count">0 findings</span>
+                    <span class="separator">•</span>
+                    <span id="site-count">0 sites</span>
+                    <span class="separator">•</span>
+                    <span id="rule-count">0 rule types</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" id="export-btn">📤 Export JSON</button>
+                <button class="btn btn-danger" id="clear-btn">🗑️ Clear All</button>
+            </div>
+        </header>
+
+        <!-- Queue Status Section -->
+        <div id="queue-status" class="queue-status hidden">
+            <div class="queue-header">
+                <span class="queue-icon">⏳</span>
+                <span class="queue-title">Scan Queue</span>
+                <span id="queue-count" class="queue-count">0</span>
+            </div>
+            <div id="queue-details" class="queue-details">
+                <!-- Dynamic queue items -->
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label for="rule-filter">Rule Type:</label>
+                <select id="rule-filter" class="filter-select">
+                    <option value="">All Rules</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="search-filter">Search:</label>
+                <input type="text" id="search-filter" class="filter-input" placeholder="Search URL or secret...">
+            </div>
+            <button id="clear-filters" class="btn btn-small">Clear Filters</button>
+        </div>
+
+        <!-- Findings Table -->
+        <div class="table-container">
+            <table class="findings-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-sort="rule">Rule <span class="sort-indicator"></span></th>
+                        <th class="sortable" data-sort="secret">Secret <span class="sort-indicator"></span></th>
+                        <th class="sortable" data-sort="source">Source <span class="sort-indicator"></span></th>
+                        <th class="sortable" data-sort="url">URL <span class="sort-indicator"></span></th>
+                        <th class="sortable active desc" data-sort="timestamp">Time <span class="sort-indicator">▼</span></th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="findings-tbody">
+                    <tr class="empty-state-row">
+                        <td colspan="6">
+                            <div class="empty-state">No secrets found yet</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Row Detail Template (hidden, cloned for each expanded row) -->
+        <template id="detail-row-template">
+            <tr class="detail-row">
+                <td colspan="6">
+                    <div class="detail-content">
+                        <div class="detail-section">
+                            <h4>Full Secret:</h4>
+                            <pre class="detail-secret"></pre>
+                            <button class="btn btn-small copy-detail-btn">📋 Copy Secret</button>
+                        </div>
+                        <div class="detail-section">
+                            <h4>Context:</h4>
+                            <div class="detail-meta">
+                                <p><strong>Rule:</strong> <span class="detail-rule"></span></p>
+                                <p><strong>Source:</strong> <span class="detail-source"></span></p>
+                                <p><strong>URL:</strong> <span class="detail-url"></span></p>
+                                <p><strong>Timestamp:</strong> <span class="detail-timestamp"></span></p>
+                                <p class="detail-location" style="display: none;"><strong>Location:</strong> <span class="detail-location-text"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </template>
+    </div>
+
+    <script src="dashboard.js" type="module"></script>
+</body>
+</html>

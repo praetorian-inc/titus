@@ -1,0 +1,394 @@
+/* Titus Achievement Toast - Xbox Styles */
+/* Supports Xbox One (Modern) and Xbox 360 (Classic) themes */
+
+/* ============================================
+   XBOX ONE MODERN STYLE (Default)
+   ============================================ */
+
+.titus-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 400px;
+    max-width: calc(100vw - 40px);
+    background: rgba(30, 30, 30, 0.95);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: white;
+    border-radius: 4px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    z-index: 2147483647;
+    overflow: hidden;
+    animation: titus-xbox-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, bottom 0.3s ease;
+    border-left: 4px solid #107C10;
+}
+
+.titus-toast:hover {
+    transform: translateX(-4px);
+    box-shadow: 0 6px 32px rgba(0, 0, 0, 0.7);
+}
+
+.titus-toast-content {
+    display: flex;
+    align-items: flex-start;
+    padding: 16px;
+    gap: 14px;
+}
+
+.titus-toast-icon-container {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #107C10 0%, #0d5c0d 100%);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(16, 124, 16, 0.4);
+}
+
+.titus-toast-icon {
+    font-size: 24px;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.titus-toast-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.titus-toast-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.titus-toast-title {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #107C10;
+}
+
+.titus-toast-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.2s ease;
+    margin-left: 8px;
+}
+
+.titus-toast-close:hover {
+    color: white;
+}
+
+.titus-toast-rule {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #fff;
+}
+
+.titus-toast-secret {
+    font-size: 11px;
+    font-family: 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 8px 10px;
+    border-radius: 3px;
+    word-break: break-all;
+    max-height: 60px;
+    overflow-y: auto;
+    line-height: 1.4;
+    color: #10b981;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.titus-toast-source {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.titus-toast-source::before {
+    content: '📍';
+    font-size: 10px;
+}
+
+.titus-toast-gamerscore {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 8px;
+}
+
+.titus-toast-gamerscore::before {
+    content: 'G';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background: #107C10;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.titus-toast-more {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 6px;
+    font-style: italic;
+}
+
+.titus-toast-exit {
+    animation: titus-xbox-slide-out 0.3s ease-in forwards;
+}
+
+@keyframes titus-xbox-slide-in {
+    from {
+        transform: translateX(420px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes titus-xbox-slide-out {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(420px);
+        opacity: 0;
+    }
+}
+
+/* Achievement sound effect indicator */
+.titus-toast::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(16, 124, 16, 0.3) 0%, transparent 50%);
+    animation: titus-shine 0.6s ease-out;
+    pointer-events: none;
+}
+
+@keyframes titus-shine {
+    from {
+        opacity: 1;
+        transform: translateX(-100%);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+/* Scrollbar styling */
+.titus-toast-secret::-webkit-scrollbar {
+    width: 4px;
+}
+
+.titus-toast-secret::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+}
+
+.titus-toast-secret::-webkit-scrollbar-thumb {
+    background: rgba(16, 124, 16, 0.6);
+    border-radius: 2px;
+}
+
+.titus-toast-secret::-webkit-scrollbar-thumb:hover {
+    background: rgba(16, 124, 16, 0.8);
+}
+
+/* ============================================
+   XBOX 360 CLASSIC STYLE
+   ============================================ */
+
+.titus-toast.titus-classic {
+    bottom: auto;
+    top: 20px;
+    background: #2d2d2d;
+    backdrop-filter: none;
+    border-radius: 0;
+    border-left: none;
+    border: 2px solid #4a4a4a;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+    animation: titus-classic-pop-in 0.3s ease-out;
+}
+
+.titus-toast.titus-classic::after {
+    display: none;
+}
+
+.titus-toast.titus-classic:hover {
+    transform: scale(1.01);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.9);
+}
+
+.titus-toast.titus-classic .titus-toast-content {
+    padding: 0;
+    gap: 0;
+    flex-direction: column;
+}
+
+.titus-toast.titus-classic .titus-toast-banner {
+    display: flex;
+    align-items: center;
+    background: linear-gradient(180deg, #4a4a4a 0%, #3a3a3a 100%);
+    padding: 8px 12px;
+    border-bottom: 2px solid #5a5a5a;
+}
+
+.titus-toast.titus-classic .titus-toast-banner-icon {
+    width: 32px;
+    height: 32px;
+    background: radial-gradient(circle, #555 0%, #333 100%);
+    border: 2px solid #666;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 10px;
+}
+
+.titus-toast.titus-classic .titus-toast-banner-icon::after {
+    content: '🏆';
+    font-size: 14px;
+}
+
+.titus-toast.titus-classic .titus-toast-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.titus-toast.titus-classic .titus-toast-body {
+    padding: 12px;
+    background: linear-gradient(180deg, #2d2d2d 0%, #252525 100%);
+}
+
+.titus-toast.titus-classic .titus-toast-rule {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 8px;
+}
+
+.titus-toast.titus-classic .titus-toast-secret {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 0;
+    color: #7fff00;
+    font-size: 11px;
+}
+
+.titus-toast.titus-classic .titus-toast-gamerscore {
+    background: linear-gradient(180deg, #3a3a3a 0%, #2d2d2d 100%);
+    padding: 8px 12px;
+    margin: 8px -12px -12px -12px;
+    border-top: 1px solid #444;
+    justify-content: center;
+}
+
+.titus-toast.titus-classic .titus-toast-gamerscore::before {
+    background: linear-gradient(180deg, #666 0%, #444 100%);
+    border: 1px solid #777;
+}
+
+.titus-toast.titus-classic .titus-toast-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.titus-toast.titus-classic .titus-toast-source {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+}
+
+.titus-toast.titus-classic .titus-toast-exit {
+    animation: titus-classic-pop-out 0.2s ease-in forwards;
+}
+
+@keyframes titus-classic-pop-in {
+    0% {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes titus-classic-pop-out {
+    from {
+        transform: scale(1);
+        opacity: 1;
+    }
+    to {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+}
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+@media (max-width: 480px) {
+    .titus-toast {
+        width: calc(100vw - 20px);
+        right: 10px;
+        bottom: 10px;
+    }
+
+    .titus-toast.titus-classic {
+        top: 10px;
+    }
+
+    .titus-toast-content {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .titus-toast-icon-container {
+        width: 40px;
+        height: 40px;
+    }
+
+    .titus-toast-icon {
+        font-size: 20px;
+    }
+}

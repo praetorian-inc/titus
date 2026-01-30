@@ -1,0 +1,41 @@
+rules:
+  - name: Honeycomb API Key
+    id: kingfisher.honeycomb.1
+    pattern: |
+      (?xi)
+      \b
+      honeycomb
+      (?:.|[\n\r]){0,16}?
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (
+        [0-9a-f]{32}|
+        [0-9a-zA-Z]{22}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 2
+    min_entropy: 3.5
+    confidence: medium
+    examples:
+      - honeycomb_secret_key=8f14e45fceea167a5a36dedd4bea2543
+      - honeycomb_token=z0d1f2bcaloumn3456789P
+    references:
+      - https://api-docs.honeycomb.io/api/auth
+      - https://docs.honeycomb.io/api/
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: https://api.honeycomb.io/1/auth
+          headers:
+            X-Honeycomb-Team: "{{ TOKEN }}"
+            Accept: application/json
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]
+            - type: WordMatch
+              words: ['"id"', '"type"', '"team"', '"environment"']

@@ -1,6 +1,19 @@
 # Build outputs
 bin/
+dist/
 *.exe
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Burp build resources (copied during build)
+burp/src/main/resources/titus
+burp/src/main/resources/titus.wasm
+
+# Extension build artifacts
+extension/lib/titus.wasm
 
 # Test outputs
 coverage.out
@@ -12,3 +25,8 @@ coverage.out
 
 # OS
 .DS_Store
+
+# Claude output
+.feature-development/
+.capability-development/
+.claude/

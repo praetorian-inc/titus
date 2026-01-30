@@ -1,0 +1,40 @@
+rules:
+  - name: ImageKit Private API Key
+    id: kingfisher.imagekit.1
+    pattern: |
+      (?xi)
+      \b
+      imagekit
+      (?:.|[\n\r]){0,64}?
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN|PRIVATE_KEY)
+      (?:.|[\n\r]){0,64}?
+      \b
+      (
+        private_[A-Z0-9_-]{8,128}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 2
+    min_entropy: 3.2
+    confidence: medium
+    examples:
+      - IMAGEKIT_PRIVATE_KEY=private_rGAPQJbhBx
+      - imagekit token private_AbCdEf0123456789GhIjKlMn
+    references:
+      - https://imagekit.io/docs/api-keys
+      - https://imagekit.io/docs/api-reference/account-management-api/url-endpoints/list-url-endpoints
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: "https://api.imagekit.io/v1/accounts/url-endpoints"
+          headers:
+            Authorization: "Basic {{ TOKEN | append: ':' | b64enc }}"
+            Accept: application/json
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]
+            - type: WordMatch
+              words: ['"urlEndpoint"']

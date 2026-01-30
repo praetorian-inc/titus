@@ -1,0 +1,117 @@
+rules:
+  # Helper: extract the Datadog site domain from common config/env/URLs.
+  # We capture the "site parameter" (domain), then validation uses https://api.<site>.
+  - name: Datadog Site Domain
+    id: kingfisher.datadog.1
+    visible: false
+    confidence: medium
+    min_entropy: 2.0
+    pattern: |
+      (?xi)
+      (?:
+        # env/config patterns
+        \b(?:DD_SITE|DATADOG_SITE|DATADOG_HOST)\b\s*[:=]\s*["']?
+        (?:https?://)?
+        (?:api\.|app\.)?
+        |
+        # raw URLs in code/docs
+        \bhttps?://(?:api\.|app\.)?
+      )?
+      (
+        datadoghq\.com
+        | us3\.datadoghq\.com
+        | us5\.datadoghq\.com
+        | datadoghq\.eu
+        | ap1\.datadoghq\.com
+        | ap2\.datadoghq\.com
+        | ddog-gov\.com
+      )
+      \b
+    examples:
+      - DD_SITE=datadoghq.eu
+      - DATADOG_HOST=https://api.us3.datadoghq.com
+      - https://app.datadoghq.com
+      - https://api.ddog-gov.com
+
+  - name: Datadog API Key
+    id: kingfisher.datadog.2
+    pattern: |
+      (?xi)
+      \b(?:datadog|dd)
+      (?:.|[\n\r]){0,64}?
+      (?:api[_-]?key|dd[_-]?api[_-]?key|secret|private|access|token)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (
+        [A-Z0-9]{32}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 3
+    min_entropy: 3.3
+    confidence: medium
+    examples:
+      - DD_API_KEY=0024a29224affe29d173c0bf99e5a89d
+    references:
+      - https://docs.datadoghq.com/account_management/api-app-keys/
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: https://api.datadoghq.com/api/v1/validate
+          headers:
+            Accept: application/json
+            DD-API-KEY: "{{ TOKEN }}"
+          response_matcher:
+            - report_response: true
+            - status:
+                - 200
+              type: StatusMatch
+            - type: WordMatch
+              words:
+                - '"Forbidden"'
+              negative: true
+
+  - name: Datadog Application Key
+    id: kingfisher.datadog.3
+    pattern: |
+      (?xi)
+      \b(?:datadog|dd)
+      (?:.|[\n\r]){0,64}?
+      (?:app(?:lication)?[_-]?key|dd[_-]?application[_-]?key|secret|private|access|token)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (
+        [A-Za-z0-9-]{40}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 3
+    min_entropy: 3.5
+    confidence: medium
+    examples:
+      - DD_APPLICATION_KEY=abcDEF0123456789abcDEF0123456789abcDEF01
+    references:
+      - https://docs.datadoghq.com/account_management/api-app-keys/
+      - https://docs.datadoghq.com/getting_started/site/
+    depends_on_rule:
+      - rule_id: kingfisher.datadog.2
+        variable: DD_API_KEY
+      - rule_id: kingfisher.datadog.1
+        variable: DD_SITE_DOMAIN
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          # Datadog recommends /api/v2/validate_keys to verify app keys with the key pair
+          url: "https://api.{{ DD_SITE_DOMAIN }}/api/v2/validate_keys"
+          headers:
+            Accept: application/json
+            DD-API-KEY: "{{ DD_API_KEY }}"
+            DD-APPLICATION-KEY: "{{ TOKEN }}"
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]

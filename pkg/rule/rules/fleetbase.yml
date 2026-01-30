@@ -1,0 +1,36 @@
+rules:
+  - name: Fleetbase API Key
+    id: kingfisher.fleetbase.1
+    pattern: |
+      (?xi)
+      \b
+      (
+        flb_(?:live|test)_[0-9a-zA-Z]{20,64}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 2
+    min_entropy: 3.5
+    confidence: medium
+    examples:
+      - flb_live_1234567890abcdefGHIJ
+      - flb_test_1234567890abcdefGHIJ
+      - 'Authorization: Bearer flb_live_1234567890abcdefGHIJ'
+    categories:
+      - api
+      - secret
+    references:
+      - https://docs.fleetbase.io/developers/api/
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: "https://api.fleetbase.io/v1"
+          headers:
+            Authorization: "Bearer {{ TOKEN }}"
+            Accept: "application/json"
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]
