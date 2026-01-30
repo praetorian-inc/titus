@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -50,9 +51,22 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 		return fmt.Errorf("marshaling groups: %w", err)
 	}
 
+	// Prepare validation fields (nullable)
+	var validationStatus, validationMessage, validationTimestamp *string
+	var validationConfidence *float64
+
+	if m.ValidationResult != nil {
+		status := string(m.ValidationResult.Status)
+		validationStatus = &status
+		validationConfidence = &m.ValidationResult.Confidence
+		validationMessage = &m.ValidationResult.Message
+		timestamp := m.ValidationResult.ValidatedAt.Format("2006-01-02T15:04:05.000Z07:00")
+		validationTimestamp = &timestamp
+	}
+
 	_, err = s.db.Exec(`
-		INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		m.BlobID.Hex(),
 		m.RuleID,
@@ -63,6 +77,10 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 		m.Snippet.Matching,
 		m.Snippet.After,
 		string(groupsJSON),
+		validationStatus,
+		validationConfidence,
+		validationMessage,
+		validationTimestamp,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting match: %w", err)
@@ -190,7 +208,7 @@ func (s *SQLiteStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance,
 // GetMatches retrieves matches for a blob.
 func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 	rows, err := s.db.Query(`
-		SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json
+		SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp
 		FROM matches
 		WHERE blob_id = ?
 	`, blobID.Hex())
@@ -204,6 +222,8 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 		var m types.Match
 		var blobIDHex string
 		var groupsJSON string
+		var validationStatus, validationMessage, validationTimestamp *string
+		var validationConfidence *float64
 
 		err := rows.Scan(
 			&blobIDHex,
@@ -215,6 +235,10 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 			&m.Snippet.Matching,
 			&m.Snippet.After,
 			&groupsJSON,
+			&validationStatus,
+			&validationConfidence,
+			&validationMessage,
+			&validationTimestamp,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning match: %w", err)
@@ -230,6 +254,21 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 		// Unmarshal groups
 		if err := json.Unmarshal([]byte(groupsJSON), &m.Groups); err != nil {
 			return nil, fmt.Errorf("unmarshaling groups: %w", err)
+		}
+
+		// Reconstruct validation result if present
+		if validationStatus != nil {
+			validatedAt, err := time.Parse("2006-01-02T15:04:05.000Z07:00", *validationTimestamp)
+			if err != nil {
+				return nil, fmt.Errorf("parsing validation timestamp: %w", err)
+			}
+
+			m.ValidationResult = &types.ValidationResult{
+				Status:      types.ValidationStatus(*validationStatus),
+				Confidence:  *validationConfidence,
+				Message:     *validationMessage,
+				ValidatedAt: validatedAt,
+			}
 		}
 
 		matches = append(matches, &m)
@@ -245,7 +284,7 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 // GetAllMatches retrieves all matches (for JSON export).
 func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
 	rows, err := s.db.Query(`
-		SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json
+		SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp
 		FROM matches
 	`)
 	if err != nil {
@@ -258,6 +297,8 @@ func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
 		var m types.Match
 		var blobIDHex string
 		var groupsJSON string
+		var validationStatus, validationMessage, validationTimestamp *string
+		var validationConfidence *float64
 
 		err := rows.Scan(
 			&blobIDHex,
@@ -269,6 +310,10 @@ func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
 			&m.Snippet.Matching,
 			&m.Snippet.After,
 			&groupsJSON,
+			&validationStatus,
+			&validationConfidence,
+			&validationMessage,
+			&validationTimestamp,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning match: %w", err)
@@ -284,6 +329,21 @@ func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
 		// Unmarshal groups
 		if err := json.Unmarshal([]byte(groupsJSON), &m.Groups); err != nil {
 			return nil, fmt.Errorf("unmarshaling groups: %w", err)
+		}
+
+		// Reconstruct validation result if present
+		if validationStatus != nil {
+			validatedAt, err := time.Parse("2006-01-02T15:04:05.000Z07:00", *validationTimestamp)
+			if err != nil {
+				return nil, fmt.Errorf("parsing validation timestamp: %w", err)
+			}
+
+			m.ValidationResult = &types.ValidationResult{
+				Status:      types.ValidationStatus(*validationStatus),
+				Confidence:  *validationConfidence,
+				Message:     *validationMessage,
+				ValidatedAt: validatedAt,
+			}
 		}
 
 		matches = append(matches, &m)
