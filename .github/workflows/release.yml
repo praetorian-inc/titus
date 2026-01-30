@@ -1,0 +1,306 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CGO_ENABLED: 1
+
+jobs:
+  # Build fully static/portable Go binaries for each platform
+  build-binaries:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux amd64 - fully static with musl
+          - os: linux
+            arch: amd64
+            runner: ubuntu-22.04
+            artifact: titus-linux-amd64
+            static: true
+          # Linux arm64 - fully static with musl
+          - os: linux
+            arch: arm64
+            runner: ubuntu-22.04-arm
+            artifact: titus-linux-arm64
+            static: true
+          # macOS arm64 (Apple Silicon) - static hyperscan linkage
+          - os: darwin
+            arch: arm64
+            runner: macos-14
+            artifact: titus-darwin-arm64
+            static: false
+          # macOS amd64 (Intel) - static hyperscan linkage
+          - os: darwin
+            arch: amd64
+            runner: macos-13
+            artifact: titus-darwin-amd64
+            static: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    # Linux: Install musl and build hyperscan statically
+    - name: Install dependencies (Linux)
+      if: matrix.os == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y musl-dev musl-tools cmake ragel pkg-config libboost-dev
+
+        # Build hyperscan from source with static libs
+        git clone --depth 1 --branch v5.4.2 https://github.com/intel/hyperscan.git /tmp/hyperscan
+        cd /tmp/hyperscan
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_C_COMPILER=musl-gcc \
+          -DCMAKE_CXX_COMPILER=musl-gcc \
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+        make -j$(nproc)
+        sudo make install
+
+        # Verify static lib exists
+        ls -la /usr/local/lib/libhs*.a
+
+    # macOS: Install hyperscan via homebrew (includes static libs)
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'darwin'
+      run: |
+        brew install hyperscan pkg-config
+
+        # Find the static library path
+        BREW_PREFIX=$(brew --prefix hyperscan)
+        echo "HYPERSCAN_PREFIX=${BREW_PREFIX}" >> $GITHUB_ENV
+        ls -la ${BREW_PREFIX}/lib/
+
+    # Build Linux - fully static binary
+    - name: Build binary (Linux static)
+      if: matrix.os == 'linux'
+      env:
+        CC: musl-gcc
+        CXX: musl-gcc
+        CGO_CFLAGS: "-I/usr/local/include"
+        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lm -lstdc++ -static"
+      run: |
+        mkdir -p dist
+        GOWORK=off go build \
+          -ldflags '-linkmode external -extldflags "-static"' \
+          -tags 'osusergo netgo sqlite_omit_load_extension' \
+          -o dist/${{ matrix.artifact }} ./cmd/titus
+        chmod +x dist/${{ matrix.artifact }}
+
+        # Verify it's static
+        file dist/${{ matrix.artifact }}
+        ldd dist/${{ matrix.artifact }} 2>&1 || echo "Binary is static (no dynamic dependencies)"
+
+    # Build macOS - static hyperscan linkage
+    - name: Build binary (macOS)
+      if: matrix.os == 'darwin'
+      run: |
+        BREW_PREFIX=$(brew --prefix hyperscan)
+
+        # Use static hyperscan library
+        export CGO_CFLAGS="-I${BREW_PREFIX}/include"
+        export CGO_LDFLAGS="-L${BREW_PREFIX}/lib ${BREW_PREFIX}/lib/libhs.a -lc++"
+
+        mkdir -p dist
+        GOWORK=off go build -o dist/${{ matrix.artifact }} ./cmd/titus
+        chmod +x dist/${{ matrix.artifact }}
+
+        # Verify hyperscan is not a dynamic dependency
+        echo "Checking dynamic dependencies:"
+        otool -L dist/${{ matrix.artifact }}
+
+        # Should NOT show libhs.dylib
+        if otool -L dist/${{ matrix.artifact }} | grep -q "libhs"; then
+          echo "WARNING: hyperscan is dynamically linked!"
+          exit 1
+        fi
+        echo "✓ hyperscan is statically linked"
+
+    - name: Verify binary runs
+      run: |
+        dist/${{ matrix.artifact }} version || dist/${{ matrix.artifact }} --help
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: dist/${{ matrix.artifact }}
+
+  # Build Burp extension JAR
+  build-burp:
+    name: Build Burp Extension
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Build JAR
+      working-directory: burp
+      run: ./gradlew shadowJar
+
+    - name: Rename JAR with version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        mkdir -p dist
+        cp burp/build/libs/titus-burp-*-all.jar dist/titus-burp-${VERSION}.jar
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-burp-extension
+        path: dist/titus-burp-*.jar
+
+  # Build browser extension zip
+  build-extension:
+    name: Build Browser Extension
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Build WASM
+      run: |
+        GOWORK=off GOOS=js GOARCH=wasm go build -o extension/lib/titus.wasm ./wasm
+
+    - name: Create extension zip
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        cd extension
+        zip -r ../titus-browser-extension-${VERSION}.zip . -x "*.DS_Store" -x "*/.git/*" -x "test/*" -x ".feature-development/*"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-browser-extension
+        path: titus-browser-extension-*.zip
+
+  # Create GitHub release with all artifacts
+  release:
+    name: Create Release
+    needs: [build-binaries, build-burp, build-extension]
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release
+        VERSION=${GITHUB_REF#refs/tags/}
+
+        # Move binaries
+        mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
+        mv artifacts/titus-linux-arm64/titus-linux-arm64 release/ || true
+        mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
+        mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
+
+        # Move JAR and extension
+        mv artifacts/titus-burp-extension/*.jar release/
+        mv artifacts/titus-browser-extension/*.zip release/
+
+        # Create checksums
+        cd release
+        sha256sum * > checksums-${VERSION}.txt
+
+        ls -la
+
+    - name: Generate release notes
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        cat << EOF > release_notes.md
+## Titus Secret Scanner ${VERSION}
+
+### Downloads
+
+All binaries are **portable** - no external dependencies required. Just download and run.
+
+| Platform | Architecture | File |
+|----------|-------------|------|
+| Linux | x64 | \`titus-linux-amd64\` |
+| Linux | arm64 | \`titus-linux-arm64\` |
+| macOS | Apple Silicon | \`titus-darwin-arm64\` |
+| macOS | Intel | \`titus-darwin-amd64\` |
+
+### Extensions
+
+| Extension | File | Notes |
+|-----------|------|-------|
+| Burp Suite | \`titus-burp-${VERSION}.jar\` | Load in Extensions → Add |
+| Chrome/Firefox | \`titus-browser-extension-${VERSION}.zip\` | Load as unpacked extension |
+
+### Installation
+
+**CLI Binary:**
+\`\`\`bash
+# Linux x64
+curl -L -o titus https://github.com/praetorian-inc/titus/releases/download/${VERSION}/titus-linux-amd64
+chmod +x titus
+sudo mv titus /usr/local/bin/
+
+# macOS Apple Silicon
+curl -L -o titus https://github.com/praetorian-inc/titus/releases/download/${VERSION}/titus-darwin-arm64
+chmod +x titus
+sudo mv titus /usr/local/bin/
+\`\`\`
+
+**Burp Extension:**
+1. Download the titus binary for your platform and place it at \`~/.titus/titus\`
+2. Load the JAR in Burp Suite (Extensions → Add)
+
+**Browser Extension:**
+1. Extract the zip
+2. Chrome: Go to \`chrome://extensions/\`, enable Developer mode, click "Load unpacked"
+3. Firefox: Go to \`about:debugging\`, click "Load Temporary Add-on"
+
+### Checksums
+
+See \`checksums-${VERSION}.txt\` for SHA256 checksums of all files.
+EOF
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        body_path: release_notes.md
+        files: release/*
+        draft: false
+        prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
