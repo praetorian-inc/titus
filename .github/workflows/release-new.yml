@@ -274,63 +274,49 @@ jobs:
 
         # Create checksums
         cd release
-        sha256sum * > checksums-${VERSION}.txt
+        sha256sum * > checksums.txt
 
         ls -la
 
     - name: Generate release notes
       run: |
-        cat << EOF > release_notes.md
-## Titus Secret Scanner ${VERSION}
+        cat > release_notes.md << 'NOTES_EOF'
+        ## Titus Secret Scanner
 
-### Downloads
+        ### Downloads
 
-| Platform | Architecture | File |
-|----------|-------------|------|
-| Linux | x64 | \`titus-linux-amd64\` |
-| Linux | arm64 | \`titus-linux-arm64\` |
-| macOS | Apple Silicon | \`titus-darwin-arm64\` |
-| macOS | Intel | \`titus-darwin-amd64\` |
-| Windows | x64 | \`titus-windows-amd64.exe\` |
+        | Platform | Architecture | File |
+        |----------|-------------|------|
+        | Linux | x64 | `titus-linux-amd64` |
+        | Linux | arm64 | `titus-linux-arm64` |
+        | macOS | Apple Silicon | `titus-darwin-arm64` |
+        | macOS | Intel | `titus-darwin-amd64` |
+        | Windows | x64 | `titus-windows-amd64.exe` |
 
-### Extensions
+        ### Extensions
 
-| Extension | File | Notes |
-|-----------|------|-------|
-| Burp Suite | \`titus-burp-${VERSION}.jar\` | Load in Extensions → Add |
-| Chrome/Firefox | \`titus-browser-extension-${VERSION}.zip\` | Load as unpacked extension |
+        | Extension | File | Notes |
+        |-----------|------|-------|
+        | Burp Suite | `titus-burp.jar` | Load in Extensions → Add |
+        | Chrome/Firefox | `titus-browser-extension.zip` | Load as unpacked extension |
 
-### Installation
+        ### Installation
 
-**CLI Binary:**
-\`\`\`bash
-# Linux x64
-curl -L -o titus https://github.com/praetorian-inc/titus/releases/download/${VERSION}/titus-linux-amd64
-chmod +x titus
-sudo mv titus /usr/local/bin/
+        Download the appropriate binary for your platform from the assets below.
 
-# macOS Apple Silicon
-curl -L -o titus https://github.com/praetorian-inc/titus/releases/download/${VERSION}/titus-darwin-arm64
-chmod +x titus
-sudo mv titus /usr/local/bin/
+        **Linux/macOS:**
+        ```bash
+        chmod +x titus-*
+        sudo mv titus-* /usr/local/bin/titus
+        ```
 
-# Windows (PowerShell)
-Invoke-WebRequest -Uri https://github.com/praetorian-inc/titus/releases/download/${VERSION}/titus-windows-amd64.exe -OutFile titus.exe
-\`\`\`
+        **Windows:** Run the .exe directly or add to PATH.
 
-**Burp Extension:**
-1. Download the titus binary for your platform and place it at \`~/.titus/titus\`
-2. Load the JAR in Burp Suite (Extensions → Add)
+        ### Checksums
 
-**Browser Extension:**
-1. Extract the zip
-2. Chrome: Go to \`chrome://extensions/\`, enable Developer mode, click "Load unpacked"
-3. Firefox: Go to \`about:debugging\`, click "Load Temporary Add-on"
-
-### Checksums
-
-See \`checksums-${VERSION}.txt\` for SHA256 checksums of all files.
-EOF
+        See `checksums.txt` for SHA256 checksums of all files.
+        NOTES_EOF
+        sed 's/^        //' release_notes.md > release_notes_clean.md && mv release_notes_clean.md release_notes.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
