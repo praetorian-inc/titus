@@ -368,7 +368,7 @@ func initValidationEngine() *validator.Engine {
 }
 
 // validateMatches validates matches using the validation engine.
-func validateMatches(ctx context.Context, engine *validator.Engine, matches []types.Match) {
+func validateMatches(ctx context.Context, engine *validator.Engine, matches []*types.Match) {
 	if engine == nil || len(matches) == 0 {
 		return
 	}
@@ -376,7 +376,7 @@ func validateMatches(ctx context.Context, engine *validator.Engine, matches []ty
 	// Submit all matches for async validation
 	results := make([]<-chan *types.ValidationResult, len(matches))
 	for i := range matches {
-		results[i] = engine.ValidateAsync(ctx, &matches[i])
+		results[i] = engine.ValidateAsync(ctx, matches[i])
 	}
 
 	// Wait for all validations and attach results
