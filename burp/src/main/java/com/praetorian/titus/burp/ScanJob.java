@@ -10,7 +10,8 @@ public record ScanJob(
     HttpRequest request,
     HttpResponse response,
     Source source,
-    long queuedAt
+    long queuedAt,
+    boolean scanRequest
 ) {
     /**
      * Source of the scan job.
@@ -21,10 +22,17 @@ public record ScanJob(
     }
 
     /**
-     * Create a scan job with current timestamp.
+     * Create a scan job with current timestamp (response only).
      */
     public ScanJob(HttpRequest request, HttpResponse response, Source source) {
-        this(request, response, source, System.currentTimeMillis());
+        this(request, response, source, System.currentTimeMillis(), false);
+    }
+
+    /**
+     * Create a scan job with current timestamp and request scanning option.
+     */
+    public ScanJob(HttpRequest request, HttpResponse response, Source source, boolean scanRequest) {
+        this(request, response, source, System.currentTimeMillis(), scanRequest);
     }
 
     /**

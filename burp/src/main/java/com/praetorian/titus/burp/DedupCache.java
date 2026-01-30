@@ -2,8 +2,14 @@ package com.praetorian.titus.burp;
 
 import burp.api.montoya.MontoyaApi;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.TypeAdapter;
 import com.google.gson.reflect.TypeToken;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.JsonWriter;
 
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,15 +27,70 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DedupCache {
 
     private static final String SETTINGS_KEY = "titus.dedup_cache";
-    private static final Gson GSON = new Gson();
+    private static final Gson GSON = new GsonBuilder()
+        .registerTypeAdapter(Instant.class, new InstantTypeAdapter())
+        .create();
     private static final int MAX_CACHE_SIZE = 50000; // Prevent unbounded memory growth
+
+    /**
+     * TypeAdapter for java.time.Instant serialization.
+     */
+    private static class InstantTypeAdapter extends TypeAdapter<Instant> {
+        @Override
+        public void write(JsonWriter out, Instant value) throws IOException {
+            if (value == null) {
+                out.nullValue();
+            } else {
+                out.value(value.toString());
+            }
+        }
+
+        @Override
+        public Instant read(JsonReader in) throws IOException {
+            if (in.peek() == JsonToken.NULL) {
+                in.nextNull();
+                return null;
+            }
+            return Instant.parse(in.nextString());
+        }
+    }
 
     private final MontoyaApi api;
     private final Map<String, FindingRecord> cache = new ConcurrentHashMap<>();
+    // Track processed URL+contentHash for bulk scan deduplication
+    private final Set<String> processedUrls = ConcurrentHashMap.newKeySet();
 
     public DedupCache(MontoyaApi api) {
         this.api = api;
         loadFromSettings();
+    }
+
+    /**
+     * Check if a URL with specific content hash has been processed (for bulk scan).
+     *
+     * @param url         The URL
+     * @param contentHash Hash of the response content
+     * @return true if already processed
+     */
+    public boolean hasProcessedUrl(String url, String contentHash) {
+        return processedUrls.contains(url + ":" + contentHash);
+    }
+
+    /**
+     * Mark a URL with specific content hash as processed (for bulk scan).
+     *
+     * @param url         The URL
+     * @param contentHash Hash of the response content
+     */
+    public void markUrlProcessed(String url, String contentHash) {
+        processedUrls.add(url + ":" + contentHash);
+    }
+
+    /**
+     * Clear the processed URLs set (e.g., when clearing cache).
+     */
+    public void clearProcessedUrls() {
+        processedUrls.clear();
     }
 
     /**

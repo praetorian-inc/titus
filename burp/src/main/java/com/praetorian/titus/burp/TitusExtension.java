@@ -28,6 +28,7 @@ public class TitusExtension implements BurpExtension {
     private FastPathFilter fastPathFilter;
     private SeverityConfig severityConfig;
     private SettingsTab settingsTab;
+    private BulkScanHandler bulkScanHandler;
 
     @Override
     public void initialize(MontoyaApi api) {
@@ -61,6 +62,9 @@ public class TitusExtension implements BurpExtension {
             this.settingsTab = new SettingsTab(api, severityConfig, scanQueue, dedupCache);
             api.userInterface().registerSuiteTab("Titus", settingsTab);
 
+            // Initialize bulk scan handler
+            this.bulkScanHandler = new BulkScanHandler(api, scanQueue, fastPathFilter, dedupCache, settingsTab);
+
             api.logging().logToOutput("Titus Secret Scanner initialized successfully");
             api.logging().logToOutput("  - Titus version: " + processManager.getScanner().getVersion());
             api.logging().logToOutput("  - Passive scanning: ENABLED");
@@ -73,6 +77,10 @@ public class TitusExtension implements BurpExtension {
 
         // Register unload handler
         api.extension().registerUnloadingHandler(() -> {
+            // Save messages before unload
+            if (settingsTab != null) {
+                settingsTab.saveMessages();
+            }
             if (scanQueue != null) scanQueue.close();
             if (processManager != null) processManager.close();
         });
@@ -139,10 +147,12 @@ public class TitusExtension implements BurpExtension {
 
             // Queue for scanning
             try {
+                boolean scanRequest = settingsTab.isRequestScanEnabled();
                 scanQueue.enqueue(new ScanJob(
                     response.initiatingRequest(),
                     response,
-                    ScanJob.Source.PASSIVE
+                    ScanJob.Source.PASSIVE,
+                    scanRequest
                 ));
             } catch (Exception e) {
                 api.logging().logToError("Failed to queue response for scanning: " + e.getMessage());
@@ -163,20 +173,26 @@ public class TitusExtension implements BurpExtension {
 
             // Get selected request/response pairs
             List<HttpRequestResponse> selectedItems = event.selectedRequestResponses();
-            if (selectedItems.isEmpty()) {
-                return menuItems;
+
+            if (!selectedItems.isEmpty()) {
+                // Scan selected items
+                JMenuItem scanItem = new JMenuItem("Scan with Titus (" + selectedItems.size() + " items)");
+                scanItem.addActionListener(e -> scanSelectedItems(selectedItems));
+                menuItems.add(scanItem);
             }
 
-            // Create menu item
-            JMenuItem scanItem = new JMenuItem("Scan with Titus (" + selectedItems.size() + " items)");
-            scanItem.addActionListener(e -> scanSelectedItems(selectedItems));
-            menuItems.add(scanItem);
+            // Always show bulk scan option
+            JMenuItem bulkScanItem = new JMenuItem("Scan All In-Scope Responses");
+            bulkScanItem.addActionListener(e -> bulkScanHandler.scanAllInScope());
+            menuItems.add(bulkScanItem);
 
             return menuItems;
         }
 
         private void scanSelectedItems(List<HttpRequestResponse> items) {
             int queued = 0;
+            boolean scanRequest = settingsTab != null && settingsTab.isRequestScanEnabled();
+
             for (HttpRequestResponse item : items) {
                 if (item.response() == null) {
                     continue;
@@ -190,7 +206,8 @@ public class TitusExtension implements BurpExtension {
                     scanQueue.enqueue(new ScanJob(
                         item.request(),
                         item.response(),
-                        ScanJob.Source.ACTIVE
+                        ScanJob.Source.ACTIVE,
+                        scanRequest
                     ));
                     queued++;
                 } catch (Exception e) {

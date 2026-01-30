@@ -36,6 +36,27 @@ public class ScanQueue implements AutoCloseable {
     private final AtomicLong totalMatches = new AtomicLong(0);
     private final AtomicLong totalDropped = new AtomicLong(0);
 
+    // Listener for UI updates
+    private volatile ScanQueueListener listener;
+
+    /**
+     * Listener interface for scan queue events.
+     */
+    public interface ScanQueueListener {
+        /**
+         * Called when a job is enqueued.
+         * This is called on the enqueueing thread - use SwingUtilities.invokeLater for UI updates.
+         */
+        void onJobEnqueued(ScanJob job);
+    }
+
+    /**
+     * Set the listener for scan queue events.
+     */
+    public void setListener(ScanQueueListener listener) {
+        this.listener = listener;
+    }
+
     public ScanQueue(MontoyaApi api, DedupCache dedupCache, IssueReporter issueReporter,
                      ProcessManager processManager, int workerCount) {
         this.api = api;
@@ -70,6 +91,12 @@ public class ScanQueue implements AutoCloseable {
         if (!added) {
             totalDropped.incrementAndGet();
             logger.info("Queue full, dropped: " + job.url());
+        } else {
+            // Notify listener on successful enqueue
+            ScanQueueListener l = listener;
+            if (l != null) {
+                l.onJobEnqueued(job);
+            }
         }
         return added;
     }
@@ -221,6 +248,30 @@ public class ScanQueue implements AutoCloseable {
 
         private String buildScanContent(ScanJob job) {
             StringBuilder sb = new StringBuilder();
+
+            // Add request content if scanRequest is enabled
+            if (job.scanRequest()) {
+                sb.append("=== REQUEST ===\n");
+
+                // Request line
+                sb.append(job.request().method()).append(" ");
+                sb.append(job.request().path()).append(" ");
+                sb.append(job.request().httpVersion()).append("\n");
+
+                // Request headers (may contain API keys, tokens, etc.)
+                for (HttpHeader header : job.request().headers()) {
+                    sb.append(header.name()).append(": ").append(header.value()).append("\n");
+                }
+
+                sb.append("\n");
+
+                // Request body
+                if (job.request().body() != null && job.request().body().length() > 0) {
+                    sb.append(job.request().body().toString());
+                }
+
+                sb.append("\n\n=== RESPONSE ===\n");
+            }
 
             // Add response headers
             for (HttpHeader header : job.response().headers()) {
