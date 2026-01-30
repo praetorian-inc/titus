@@ -141,7 +141,7 @@ jobs:
             runner: macos-14
             hs_package: vectorscan
           - arch: amd64
-            runner: macos-13-large
+            runner: macos-12
             hs_package: hyperscan
 
     steps:
@@ -207,6 +207,7 @@ jobs:
     - name: Build binary
       run: |
         $env:CGO_ENABLED = "1"
+        $env:PKG_CONFIG_PATH = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib/pkgconfig"
         $env:CGO_CFLAGS = "-I$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/include"
         $env:CGO_LDFLAGS = "-L$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib -lhs -lstdc++"
         $env:GOWORK = "off"
