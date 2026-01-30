@@ -3,6 +3,7 @@ module github.com/praetorian-inc/titus
 go 1.25.3
 
 require (
+	github.com/dlclark/regexp2 v1.11.5
 	github.com/flier/gohs v1.2.3
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/google/go-github/v57 v57.0.0

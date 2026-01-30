@@ -1,0 +1,39 @@
+rules:
+  - name: Yandex API Key
+    id: kingfisher.yandex.1
+    pattern: |
+      (?xi)
+      \b
+      yandex
+      (?:.|[\n\r]){0,32}?
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (
+        [A-Z0-9.]{83}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 2
+    min_entropy: 3.3
+    confidence: medium
+    examples:
+      - "yandex_api_key= 'pdct.1.1.20218925T124723Z.07193b9c567c0c90.ebba3042fcf1acfc4d682db12c01a5289f9769c0'"
+      - "yandex_secret=1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTU"
+    references:
+      - https://yandex.com/dev/dictionary
+      - https://pkg.go.dev/github.com/unitrans/unitrans/src/translator/backend_particular
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: "https://dictionary.yandex.net/api/v1/dicservice.json/lookup?key={{ TOKEN }}&lang=en-ru&text=time&ui=en"
+          headers:
+            Accept: application/json
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]
+            - type: WordMatch
+              words: ['"def"']

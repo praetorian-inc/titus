@@ -1,5 +1,6 @@
 # Build outputs
 bin/
+dist/
 *.exe
 
 # Test outputs
@@ -12,3 +13,8 @@ coverage.out
 
 # OS
 .DS_Store
+
+# Claude output
+.feature-development/
+.capability-development/
+.claude/

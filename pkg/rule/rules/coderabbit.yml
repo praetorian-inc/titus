@@ -1,0 +1,39 @@
+rules:
+  - name: CodeRabbit API Key
+    id: kingfisher.coderabbit.1
+    pattern: |
+      (?xi)
+      \b
+      (
+        cr-[a-f0-9]{58}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 4
+    min_entropy: 3.5
+    confidence: medium
+    examples:
+      - "cr-33420bb12fddf6cde6fba5414df88b07f75b2258e30c956b95f2ddbb2d"
+    references:
+      - https://coderabbit.ai/
+      - https://api.coderabbit.ai/docs
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: "https://api.coderabbit.ai/v1/seats/"
+          headers:
+            accept: "application/json"
+            x-coderabbitai-api-key: "{{TOKEN}}"
+          response_matcher:
+            - report_response: true
+            - type: WordMatch
+              words:
+                - '"success"'
+                - '"errors"'
+              match_all_words: false
+            - type: WordMatch
+              negative: true
+              words:
+                - '"Invalid or inactive API key"'

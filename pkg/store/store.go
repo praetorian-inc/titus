@@ -1,8 +1,6 @@
 package store
 
 import (
-	"fmt"
-
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -52,14 +50,4 @@ type Config struct {
 	// Path is the database file path.
 	// Use ":memory:" for in-memory database (useful for testing).
 	Path string
-}
-
-// New creates a new Store.
-// Currently only supports SQLite backend.
-func New(cfg Config) (Store, error) {
-	if cfg.Path == "" {
-		return nil, fmt.Errorf("path is required")
-	}
-
-	return NewSQLite(cfg.Path)
 }

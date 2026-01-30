@@ -1,0 +1,353 @@
+/* Titus Secret Vault - Popup Styles (Xbox Theme) */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #e0e0e0;
+    background: #1e1e1e;
+    width: 320px;
+    min-height: 280px;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
+}
+
+/* Header - Xbox Style */
+.header {
+    padding: 20px;
+    background: linear-gradient(180deg, #2d2d2d 0%, #1e1e1e 100%);
+    border-bottom: 1px solid #3d3d3d;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.header-icon {
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, #107C10 0%, #0d5c0d 100%);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 2px 8px rgba(16, 124, 16, 0.4);
+}
+
+.header-text h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 2px;
+}
+
+.header-text .subtitle {
+    font-size: 11px;
+    color: #107C10;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Stats Section */
+.stats-section {
+    display: flex;
+    padding: 16px 20px;
+    gap: 16px;
+    background: #252525;
+    border-bottom: 1px solid #3d3d3d;
+}
+
+.stat-box {
+    flex: 1;
+    text-align: center;
+    padding: 12px;
+    background: #1e1e1e;
+    border-radius: 6px;
+    border: 1px solid #3d3d3d;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #107C10;
+    display: block;
+}
+
+.stat-label {
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+}
+
+/* Queue Status Section */
+.queue-status {
+    background: #252525;
+    border-bottom: 1px solid #3d3d3d;
+    overflow: hidden;
+}
+
+.queue-status.hidden {
+    display: none;
+}
+
+.queue-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    background: rgba(255, 193, 7, 0.1);
+    border-bottom: 1px solid #3d3d3d;
+}
+
+.queue-icon {
+    font-size: 18px;
+    margin-right: 10px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.queue-title {
+    font-weight: 600;
+    color: #ffc107;
+    font-size: 13px;
+    flex: 1;
+}
+
+.queue-count {
+    background: #ffc107;
+    color: #1e1e1e;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    min-width: 28px;
+    text-align: center;
+}
+
+.queue-details {
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 20px;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 12px;
+}
+
+.queue-item:last-child {
+    border-bottom: none;
+}
+
+.queue-item-icon {
+    width: 24px;
+    font-size: 14px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.queue-item-url {
+    flex: 1;
+    color: #ccc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin: 0 10px;
+}
+
+.queue-item-status {
+    color: #107C10;
+    font-weight: 500;
+    font-size: 11px;
+}
+
+.queue-item-meta {
+    color: #666;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.queue-active {
+    background: rgba(16, 124, 16, 0.1);
+}
+
+.queue-active .queue-item-icon {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.queue-pending {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.queue-pending .queue-item-icon {
+    color: #666;
+    font-size: 11px;
+}
+
+.queue-loading,
+.queue-empty {
+    color: #888;
+    font-style: italic;
+    justify-content: center;
+}
+
+/* Progress bar */
+.queue-progress-bar {
+    height: 3px;
+    background: #3d3d3d;
+    margin: 0 20px 10px;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.queue-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #107C10, #1db954);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+/* Actions Section */
+.actions-section {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.btn {
+    width: 100%;
+    padding: 14px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.btn-primary {
+    background: linear-gradient(180deg, #107C10 0%, #0d5c0d 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(16, 124, 16, 0.3);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(180deg, #1a9c1a 0%, #107C10 100%);
+    box-shadow: 0 4px 12px rgba(16, 124, 16, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: #2d2d2d;
+    color: #e0e0e0;
+    border: 1px solid #3d3d3d;
+}
+
+.btn-secondary:hover {
+    background: #3d3d3d;
+}
+
+/* Settings Section */
+.settings-section {
+    padding: 12px 20px;
+    border-top: 1px solid #3d3d3d;
+    background: #1e1e1e;
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+}
+
+.setting-label {
+    font-size: 12px;
+    color: #aaa;
+}
+
+.style-toggle {
+    display: flex;
+    background: #2d2d2d;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #3d3d3d;
+}
+
+.style-toggle button {
+    padding: 6px 12px;
+    font-size: 11px;
+    border: none;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.style-toggle button.active {
+    background: #107C10;
+    color: #fff;
+}
+
+.style-toggle button:hover:not(.active) {
+    background: #3d3d3d;
+    color: #fff;
+}
+
+/* Footer */
+.footer {
+    padding: 12px 20px;
+    text-align: center;
+    border-top: 1px solid #3d3d3d;
+    background: #1e1e1e;
+}
+
+.footer-text {
+    font-size: 10px;
+    color: #666;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #3d3d3d;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4d4d4d;
+}

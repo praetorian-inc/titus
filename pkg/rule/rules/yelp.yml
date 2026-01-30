@@ -1,0 +1,39 @@
+rules:
+  - name: Yelp API Key
+    id: kingfisher.yelp.1
+    pattern: |
+      (?xi)
+      \b
+      yelp
+      (?:.|[\n\r]){0,32}?
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (
+        [a-zA-Z0-9_\\=.\\-]{128}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 6
+    min_entropy: 3.8
+    confidence: medium
+    examples:
+      - yelp_token = wiuck20l8j-oWwCd9r53FqpN6ELB7K03zGw-ccUQR7uLHc9NaWubovOMdGdyFqIGGM4aVK6nxQ1DreDZn_qBYU4jky_5kQRVkiIDPSheCPggY3WzyRzi27kxoOpoYAYx
+    references:
+      - https://docs.developer.yelp.com/docs/places-authentication
+      - https://docs.developer.yelp.com/reference/v3_all_categories
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: "https://api.yelp.com/v3/categories?locale=en_US"
+          headers:
+            Authorization: "Bearer {{ TOKEN }}"
+            Accept: application/json
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [200]
+            - type: WordMatch
+              words: ['"categories"']
