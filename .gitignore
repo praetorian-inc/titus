@@ -30,3 +30,4 @@ coverage.out
 .feature-development/
 .capability-development/
 .claude/
+.worktrees/
