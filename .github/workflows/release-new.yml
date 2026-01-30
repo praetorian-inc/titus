@@ -24,7 +24,7 @@ jobs:
   # Build Linux binaries with static hyperscan
   build-linux:
     name: Build Linux ${{ matrix.arch }}
-        runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -87,7 +87,7 @@ jobs:
   # Build macOS binaries
   build-macos:
     name: Build macOS ${{ matrix.arch }}
-        runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -142,7 +142,7 @@ jobs:
   # Build Windows binary using vcpkg
   build-windows:
     name: Build Windows amd64
-        runs-on: windows-2022
+    runs-on: windows-2022
 
     steps:
     - name: Checkout code
@@ -213,7 +213,7 @@ jobs:
   # Build browser extension zip
   build-extension:
     name: Build Browser Extension
-        runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout code
@@ -245,7 +245,7 @@ jobs:
   # Create GitHub release with all artifacts (skipped on main branch push)
   release:
     name: Create Release
-        needs: [build-linux, build-macos, build-windows, build-burp, build-extension]
+    needs: [build-linux, build-macos, build-windows, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
     steps:
