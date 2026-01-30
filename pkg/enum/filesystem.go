@@ -104,7 +104,11 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 }
 
 // isHidden checks if a filename is hidden (starts with .).
+// The special entries "." and ".." are NOT considered hidden.
 func isHidden(name string) bool {
+	if name == "." || name == ".." {
+		return false
+	}
 	return strings.HasPrefix(name, ".")
 }
 

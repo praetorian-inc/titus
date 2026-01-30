@@ -272,6 +272,78 @@ func TestFilesystemEnumerator_Gitignore(t *testing.T) {
 	}
 }
 
+func TestFilesystemEnumerator_CurrentDirectory(t *testing.T) {
+	// Regression test: scanning "." should not skip the entire directory
+	// because "." starts with a dot (isHidden should not treat it as hidden)
+	tmpDir := t.TempDir()
+
+	// Create a test file
+	testFile := filepath.Join(tmpDir, "secret.txt")
+	if err := os.WriteFile(testFile, []byte("AWS_SECRET_ACCESS_KEY=test"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Change to the temp directory and scan "."
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current directory: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+
+	// Enumerate using "." as root (this was the bug: it would skip everything)
+	config := Config{
+		Root:          ".",
+		IncludeHidden: false, // The bug manifests when hidden files are NOT included
+	}
+	enumerator := NewFilesystemEnumerator(config)
+
+	var foundFiles []string
+	err = enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	// Should find the test file even though we used "." as root
+	if len(foundFiles) != 1 {
+		t.Errorf("expected 1 file when scanning '.', got %d: %v", len(foundFiles), foundFiles)
+	}
+	if len(foundFiles) > 0 && foundFiles[0] != "secret.txt" {
+		t.Errorf("expected secret.txt, got %s", foundFiles[0])
+	}
+}
+
+func TestIsHidden(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     bool
+	}{
+		{"current dir", ".", false},
+		{"parent dir", "..", false},
+		{"hidden file", ".hidden", true},
+		{"hidden directory", ".git", true},
+		{"normal file", "file.txt", false},
+		{"normal directory", "src", false},
+		{"dotfile", ".gitignore", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isHidden(tt.filename); got != tt.want {
+				t.Errorf("isHidden(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFilesystemEnumerator_ContextCancellation(t *testing.T) {
 	tmpDir := t.TempDir()
 
