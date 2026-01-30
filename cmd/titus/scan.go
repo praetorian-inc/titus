@@ -12,6 +12,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/praetorian-inc/titus/pkg/validator"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,9 @@ var (
 	scanMaxFileSize   int64
 	scanIncludeHidden bool
 	scanContextLines  int
-	scanIncremental   bool
+	scanIncremental     bool
+	scanValidate        bool
+	scanValidateWorkers int
 )
 
 var scanCmd = &cobra.Command{
@@ -47,6 +50,8 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncludeHidden, "include-hidden", false, "Include hidden files and directories")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
+	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
+	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -81,6 +86,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating store: %w", err)
 	}
 	defer s.Close()
+
+	// Initialize validation engine (nil if validation disabled)
+	validationEngine := initValidationEngine()
 
 	// Create enumerator
 	enumerator, err := createEnumerator(target, scanGit)
@@ -122,6 +130,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("matching content: %w", err)
 		}
+
+		// Validate matches if enabled
+		validateMatches(ctx, validationEngine, matches)
 
 		// Store matches and findings
 		for _, match := range matches {
@@ -331,4 +342,46 @@ func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches
 	}
 
 	return nil
+}
+
+// initValidationEngine creates the validation engine if validation is enabled.
+func initValidationEngine() *validator.Engine {
+	if !scanValidate {
+		return nil
+	}
+
+	var validators []validator.Validator
+
+	// Add AWS validator
+	validators = append(validators, validator.NewAWSValidator())
+
+	// Add embedded YAML validators
+	embedded, err := validator.LoadEmbeddedValidators()
+	if err != nil {
+		// Log warning but continue
+		fmt.Fprintf(os.Stderr, "warning: failed to load embedded validators: %v\n", err)
+	} else {
+		validators = append(validators, embedded...)
+	}
+
+	return validator.NewEngine(scanValidateWorkers, validators...)
+}
+
+// validateMatches validates matches using the validation engine.
+func validateMatches(ctx context.Context, engine *validator.Engine, matches []types.Match) {
+	if engine == nil || len(matches) == 0 {
+		return
+	}
+
+	// Submit all matches for async validation
+	results := make([]<-chan *types.ValidationResult, len(matches))
+	for i := range matches {
+		results[i] = engine.ValidateAsync(ctx, &matches[i])
+	}
+
+	// Wait for all validations and attach results
+	for i, ch := range results {
+		result := <-ch
+		matches[i].ValidationResult = result
+	}
 }
