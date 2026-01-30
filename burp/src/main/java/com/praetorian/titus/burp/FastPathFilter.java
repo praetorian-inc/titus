@@ -1,5 +1,6 @@
 package com.praetorian.titus.burp;
 
+import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 
 import java.util.Set;
@@ -40,8 +41,27 @@ public class FastPathFilter {
     // Minimum response size to scan (too small = unlikely to have secrets)
     private static final int MIN_RESPONSE_SIZE = 10;
 
-    // Maximum response size to scan (avoid memory issues)
-    private static final int MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10MB
+    // Default maximum response size to scan (avoid memory issues)
+    private static final int DEFAULT_MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10MB
+
+    // Configurable max response size
+    private int maxResponseSize = DEFAULT_MAX_RESPONSE_SIZE;
+
+    /**
+     * Set the maximum response size to scan.
+     *
+     * @param maxSizeBytes Maximum size in bytes
+     */
+    public void setMaxResponseSize(int maxSizeBytes) {
+        this.maxResponseSize = maxSizeBytes;
+    }
+
+    /**
+     * Get the current maximum response size.
+     */
+    public int getMaxResponseSize() {
+        return maxResponseSize;
+    }
 
     /**
      * Check if a response should be scanned.
@@ -56,7 +76,7 @@ public class FastPathFilter {
 
         // Check response size
         int bodyLength = response.body() != null ? response.body().length() : 0;
-        if (bodyLength < MIN_RESPONSE_SIZE || bodyLength > MAX_RESPONSE_SIZE) {
+        if (bodyLength < MIN_RESPONSE_SIZE || bodyLength > maxResponseSize) {
             return false;
         }
 
@@ -72,6 +92,47 @@ public class FastPathFilter {
         }
 
         return true;
+    }
+
+    /**
+     * Check if a request should be scanned.
+     * Request scanning includes URL, headers, and body.
+     *
+     * @param request The HTTP request
+     * @return true if the request has scannable content
+     */
+    public boolean shouldScanRequest(HttpRequest request) {
+        if (request == null) {
+            return false;
+        }
+
+        // Always scan requests if they have a body (POST/PUT/PATCH)
+        if (request.body() != null && request.body().length() > MIN_RESPONSE_SIZE) {
+            // Check size limit
+            if (request.body().length() > maxResponseSize) {
+                return false;
+            }
+            return true;
+        }
+
+        // Also scan if URL has query parameters (might contain secrets)
+        String url = request.url();
+        if (url != null && url.contains("?")) {
+            return true;
+        }
+
+        // Scan if headers might contain secrets (Authorization, API keys, etc.)
+        return request.headers().stream()
+            .anyMatch(h -> {
+                String name = h.name().toLowerCase();
+                return name.contains("auth") ||
+                       name.contains("token") ||
+                       name.contains("api") ||
+                       name.contains("key") ||
+                       name.contains("secret") ||
+                       name.contains("password") ||
+                       name.contains("credential");
+            });
     }
 
     /**
