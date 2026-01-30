@@ -88,3 +88,23 @@ func TestEngine_ValidateAsync_CacheHitFastPath(t *testing.T) {
 	result := <-resultCh
 	assert.Equal(t, types.StatusValid, result.Status)
 }
+
+func TestEngine_NoValidator(t *testing.T) {
+	mock := &mockValidator{
+		name:    "aws-only",
+		ruleIDs: []string{"np.aws.1"}, // Only handles AWS
+	}
+
+	engine := NewEngine(4, mock)
+
+	// Request validation for non-AWS rule
+	match := &types.Match{
+		RuleID: "np.github.1",
+		Groups: [][]byte{[]byte("ghp_xxxx")},
+	}
+
+	result, err := engine.ValidateMatch(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "no validator available")
+}
