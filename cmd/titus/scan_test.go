@@ -2,10 +2,8 @@
 package main
 
 import (
-	"encoding/json"
 	"testing"
 
-	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 
