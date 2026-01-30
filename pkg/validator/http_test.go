@@ -105,3 +105,115 @@ func TestHTTPValidator_Validate_Bearer_Invalid(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusInvalid, result.Status)
 }
+
+func TestHTTPValidator_Validate_Basic(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if ok && user == "api" && pass == "sk_live_test123" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "stripe",
+		RuleIDs: []string{"np.stripe.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "basic",
+				SecretGroup: 0,
+				Username:    "api", // Static username, secret as password
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.stripe.1",
+		Groups: [][]byte{[]byte("sk_live_test123")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_Header(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("DD-API-KEY") == "valid_datadog_key" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "datadog",
+		RuleIDs: []string{"np.datadog.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "header",
+				SecretGroup: 0,
+				HeaderName:  "DD-API-KEY",
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{403},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.datadog.1",
+		Groups: [][]byte{[]byte("valid_datadog_key")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_Query(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("key") == "AIzaSyValidGoogleKey" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "google-maps",
+		RuleIDs: []string{"np.google.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "query",
+				SecretGroup: 0,
+				QueryParam:  "key",
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{403},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.google.1",
+		Groups: [][]byte{[]byte("AIzaSyValidGoogleKey")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}

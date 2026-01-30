@@ -3,6 +3,7 @@ package validator
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 
@@ -88,6 +89,31 @@ func (v *HTTPValidator) applyAuth(req *http.Request, secret string) error {
 	switch v.def.HTTP.Auth.Type {
 	case "bearer":
 		req.Header.Set("Authorization", "Bearer "+secret)
+
+	case "basic":
+		username := v.def.HTTP.Auth.Username
+		if username == "" {
+			username = secret // Secret is the username if not specified
+		}
+		auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + secret))
+		req.Header.Set("Authorization", "Basic "+auth)
+
+	case "header":
+		headerName := v.def.HTTP.Auth.HeaderName
+		if headerName == "" {
+			return fmt.Errorf("header auth requires header_name")
+		}
+		req.Header.Set(headerName, secret)
+
+	case "query":
+		paramName := v.def.HTTP.Auth.QueryParam
+		if paramName == "" {
+			return fmt.Errorf("query auth requires query_param")
+		}
+		q := req.URL.Query()
+		q.Set(paramName, secret)
+		req.URL.RawQuery = q.Encode()
+
 	default:
 		return fmt.Errorf("unsupported auth type: %s", v.def.HTTP.Auth.Type)
 	}
