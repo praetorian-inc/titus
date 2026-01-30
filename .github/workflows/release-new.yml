@@ -185,10 +185,9 @@ jobs:
         name: titus-windows-amd64
         path: dist/titus-windows-amd64.exe
 
-  # Build Burp extension JAR
+  # Build Burp extension JAR - temporarily always runs to register workflow
   build-burp:
     name: Build Burp Extension
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
 
     steps:
@@ -249,7 +248,7 @@ jobs:
         name: titus-browser-extension
         path: titus-browser-extension-*.zip
 
-  # Create GitHub release with all artifacts
+  # Create GitHub release with all artifacts (skipped on main branch push)
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
