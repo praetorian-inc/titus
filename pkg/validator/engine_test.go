@@ -3,6 +3,7 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -107,4 +108,24 @@ func TestEngine_NoValidator(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusUndetermined, result.Status)
 	assert.Contains(t, result.Message, "no validator available")
+}
+
+func TestEngine_ValidationError(t *testing.T) {
+	mock := &mockValidator{
+		name:    "failing",
+		ruleIDs: []string{"np.test.1"},
+		err:     errors.New("network timeout"),
+	}
+
+	engine := NewEngine(4, mock)
+
+	match := &types.Match{
+		RuleID: "np.test.1",
+		Groups: [][]byte{[]byte("test-secret")},
+	}
+
+	result, err := engine.ValidateMatch(context.Background(), match)
+	assert.NoError(t, err) // Engine handles error gracefully
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "network timeout")
 }
