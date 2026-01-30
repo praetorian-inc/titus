@@ -38,3 +38,42 @@ validators:
 	assert.Contains(t, v.HTTP.SuccessCodes, 200)
 	assert.Contains(t, v.HTTP.FailureCodes, 401)
 }
+
+func TestLoadValidatorsFromYAML(t *testing.T) {
+	yamlData := []byte(`
+validators:
+  - name: github-token
+    rule_ids: [np.github.1]
+    http:
+      method: GET
+      url: https://api.github.com/user
+      auth:
+        type: bearer
+        secret_group: 0
+      success_codes: [200]
+      failure_codes: [401]
+  - name: slack-token
+    rule_ids: [np.slack.1]
+    http:
+      method: GET
+      url: https://slack.com/api/auth.test
+      auth:
+        type: bearer
+        secret_group: 0
+      success_codes: [200]
+      failure_codes: [401]
+`)
+
+	validators, err := LoadValidatorsFromYAML(yamlData)
+	assert.NoError(t, err)
+	assert.Len(t, validators, 2)
+
+	// Verify they implement Validator interface
+	for _, v := range validators {
+		assert.NotEmpty(t, v.Name())
+	}
+
+	// Check specific validators
+	assert.True(t, validators[0].CanValidate("np.github.1"))
+	assert.True(t, validators[1].CanValidate("np.slack.1"))
+}

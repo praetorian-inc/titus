@@ -1,6 +1,12 @@
 // pkg/validator/yaml.go
 package validator
 
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
 // ValidatorsConfig is the root YAML structure for validator definitions.
 type ValidatorsConfig struct {
 	Validators []ValidatorDef `yaml:"validators"`
@@ -36,4 +42,19 @@ type AuthDef struct {
 type Header struct {
 	Name  string `yaml:"name"`
 	Value string `yaml:"value"`
+}
+
+// LoadValidatorsFromYAML parses YAML and creates HTTPValidator instances.
+func LoadValidatorsFromYAML(data []byte) ([]Validator, error) {
+	var cfg ValidatorsConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	validators := make([]Validator, 0, len(cfg.Validators))
+	for _, def := range cfg.Validators {
+		validators = append(validators, NewHTTPValidator(def, nil))
+	}
+
+	return validators, nil
 }
