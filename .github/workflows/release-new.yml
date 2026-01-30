@@ -205,13 +205,12 @@ jobs:
         vcpkg integrate install
 
     - name: Build binary
-      env:
-        CGO_ENABLED: "1"
-        CGO_CFLAGS: "-I${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows-static/include"
-        CGO_LDFLAGS: "-L${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows-static/lib -lhs -lstdc++"
       run: |
-        mkdir -p dist
+        $env:CGO_ENABLED = "1"
+        $env:CGO_CFLAGS = "-I$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/include"
+        $env:CGO_LDFLAGS = "-L$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib -lhs -lstdc++"
         $env:GOWORK = "off"
+        mkdir -p dist
         go build -o dist/titus-windows-amd64.exe ./cmd/titus
         Get-ChildItem dist/
 
