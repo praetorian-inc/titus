@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v0.2.0)'
+        description: 'Version tag (e.g., v0.1.1)'
         required: true
         type: string
 
@@ -16,38 +16,21 @@ permissions:
   contents: write
 
 env:
-  # Use input version for workflow_dispatch, otherwise extract from tag
   VERSION: ${{ inputs.version || github.ref_name }}
 
 jobs:
-  # Build fully static/portable Go binaries for each platform
-  build-binaries:
-    name: Build ${{ matrix.artifact }}
+  # Build Linux binaries with static hyperscan
+  build-linux:
+    name: Build Linux ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux amd64 - fully static with musl
-          - os: linux
-            arch: amd64
+          - arch: amd64
             runner: ubuntu-22.04
-            artifact: titus-linux-amd64
-          # Linux arm64 - fully static with musl
-          - os: linux
-            arch: arm64
+          - arch: arm64
             runner: ubuntu-22.04-arm
-            artifact: titus-linux-arm64
-          # macOS arm64 (Apple Silicon) - uses vectorscan (ARM64 fork of hyperscan)
-          - os: darwin
-            arch: arm64
-            runner: macos-14
-            artifact: titus-darwin-arm64
-          # macOS amd64 (Intel) - uses hyperscan
-          - os: darwin
-            arch: amd64
-            runner: macos-13
-            artifact: titus-darwin-amd64
 
     steps:
     - name: Checkout code
@@ -59,105 +42,141 @@ jobs:
         go-version-file: 'go.mod'
         cache: true
 
-    # Linux: Install musl and build hyperscan statically
-    - name: Install dependencies (Linux)
-      if: matrix.os == 'linux'
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y musl-dev musl-tools cmake ragel pkg-config libboost-dev
+        sudo apt-get install -y cmake ragel pkg-config libboost-dev
 
-        # Build hyperscan from source with static libs
+    - name: Build hyperscan static library
+      run: |
         git clone --depth 1 --branch v5.4.2 https://github.com/intel/hyperscan.git /tmp/hyperscan
         cd /tmp/hyperscan
         mkdir build && cd build
         cmake .. \
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=OFF \
-          -DCMAKE_C_COMPILER=musl-gcc \
-          -DCMAKE_CXX_COMPILER=musl-gcc \
           -DCMAKE_INSTALL_PREFIX=/usr/local
         make -j$(nproc)
         sudo make install
-
-        # Verify static lib exists
         ls -la /usr/local/lib/libhs*.a
 
-    # macOS arm64: Use vectorscan (ARM64 fork of hyperscan)
-    - name: Install dependencies (macOS arm64)
-      if: matrix.os == 'darwin' && matrix.arch == 'arm64'
-      run: |
-        brew install vectorscan pkg-config
-
-        # vectorscan is API-compatible with hyperscan
-        BREW_PREFIX=$(brew --prefix vectorscan)
-        echo "HS_PREFIX=${BREW_PREFIX}" >> $GITHUB_ENV
-        ls -la ${BREW_PREFIX}/lib/
-
-    # macOS amd64: Use hyperscan
-    - name: Install dependencies (macOS amd64)
-      if: matrix.os == 'darwin' && matrix.arch == 'amd64'
-      run: |
-        brew install hyperscan pkg-config
-
-        BREW_PREFIX=$(brew --prefix hyperscan)
-        echo "HS_PREFIX=${BREW_PREFIX}" >> $GITHUB_ENV
-        ls -la ${BREW_PREFIX}/lib/
-
-    # Build Linux - fully static binary
-    - name: Build binary (Linux static)
-      if: matrix.os == 'linux'
+    - name: Build binary
       env:
         CGO_ENABLED: "1"
-        CC: musl-gcc
-        CXX: musl-gcc
         CGO_CFLAGS: "-I/usr/local/include"
-        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lm -lstdc++ -static"
+        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
       run: |
         mkdir -p dist
-        GOWORK=off go build \
-          -ldflags '-linkmode external -extldflags "-static"' \
-          -tags 'osusergo netgo sqlite_omit_load_extension' \
-          -o dist/${{ matrix.artifact }} ./cmd/titus
-        chmod +x dist/${{ matrix.artifact }}
-
-        # Verify it's static
-        file dist/${{ matrix.artifact }}
-        ldd dist/${{ matrix.artifact }} 2>&1 || echo "Binary is static (no dynamic dependencies)"
-
-    # Build macOS - static hyperscan/vectorscan linkage
-    - name: Build binary (macOS)
-      if: matrix.os == 'darwin'
-      env:
-        CGO_ENABLED: "1"
-      run: |
-        # Use static library (works for both hyperscan and vectorscan)
-        export CGO_CFLAGS="-I${HS_PREFIX}/include/hs"
-        export CGO_LDFLAGS="-L${HS_PREFIX}/lib ${HS_PREFIX}/lib/libhs.a -lc++"
-
-        mkdir -p dist
-        GOWORK=off go build -o dist/${{ matrix.artifact }} ./cmd/titus
-        chmod +x dist/${{ matrix.artifact }}
-
-        # Verify hyperscan/vectorscan is not a dynamic dependency
-        echo "Checking dynamic dependencies:"
-        otool -L dist/${{ matrix.artifact }}
-
-        # Should NOT show libhs.dylib
-        if otool -L dist/${{ matrix.artifact }} | grep -q "libhs"; then
-          echo "WARNING: hyperscan/vectorscan is dynamically linked!"
-          exit 1
-        fi
-        echo "✓ hyperscan/vectorscan is statically linked"
+        GOWORK=off go build -o dist/titus-linux-${{ matrix.arch }} ./cmd/titus
+        chmod +x dist/titus-linux-${{ matrix.arch }}
+        file dist/titus-linux-${{ matrix.arch }}
+        ldd dist/titus-linux-${{ matrix.arch }}
 
     - name: Verify binary runs
       run: |
-        dist/${{ matrix.artifact }} version || dist/${{ matrix.artifact }} --help
+        dist/titus-linux-${{ matrix.arch }} version
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact }}
-        path: dist/${{ matrix.artifact }}
+        name: titus-linux-${{ matrix.arch }}
+        path: dist/titus-linux-${{ matrix.arch }}
+
+  # Build macOS binaries
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+            hs_package: vectorscan
+          - arch: amd64
+            runner: macos-13
+            hs_package: hyperscan
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install dependencies
+      run: |
+        brew install ${{ matrix.hs_package }} pkg-config
+        HS_PREFIX=$(brew --prefix ${{ matrix.hs_package }})
+        echo "HS_PREFIX=${HS_PREFIX}" >> $GITHUB_ENV
+        ls -la ${HS_PREFIX}/lib/
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+      run: |
+        export CGO_CFLAGS="-I${HS_PREFIX}/include/hs"
+        export CGO_LDFLAGS="-L${HS_PREFIX}/lib -lhs -lc++"
+
+        mkdir -p dist
+        GOWORK=off go build -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
+        chmod +x dist/titus-darwin-${{ matrix.arch }}
+        file dist/titus-darwin-${{ matrix.arch }}
+        otool -L dist/titus-darwin-${{ matrix.arch }}
+
+    - name: Verify binary runs
+      run: |
+        dist/titus-darwin-${{ matrix.arch }} version
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-darwin-${{ matrix.arch }}
+        path: dist/titus-darwin-${{ matrix.arch }}
+
+  # Build Windows binary using vcpkg
+  build-windows:
+    name: Build Windows amd64
+    runs-on: windows-2022
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install hyperscan via vcpkg
+      run: |
+        vcpkg install hyperscan:x64-windows-static
+        vcpkg integrate install
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+        CGO_CFLAGS: "-I${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows-static/include"
+        CGO_LDFLAGS: "-L${{ env.VCPKG_INSTALLATION_ROOT }}/installed/x64-windows-static/lib -lhs -lstdc++"
+      run: |
+        mkdir -p dist
+        $env:GOWORK = "off"
+        go build -o dist/titus-windows-amd64.exe ./cmd/titus
+        Get-ChildItem dist/
+
+    - name: Verify binary runs
+      run: |
+        dist/titus-windows-amd64.exe version
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: titus-windows-amd64
+        path: dist/titus-windows-amd64.exe
 
   # Build Burp extension JAR
   build-burp:
@@ -180,7 +199,6 @@ jobs:
 
     - name: Rename JAR with version
       run: |
-        # VERSION is set in env at workflow level
         mkdir -p dist
         cp burp/build/libs/titus-burp-*-all.jar dist/titus-burp-${VERSION}.jar
 
@@ -213,7 +231,6 @@ jobs:
 
     - name: Create extension zip
       run: |
-        # VERSION is set in env at workflow level
         cd extension
         zip -r ../titus-browser-extension-${VERSION}.zip . -x "*.DS_Store" -x "*/.git/*" -x "test/*" -x ".feature-development/*"
 
@@ -226,7 +243,7 @@ jobs:
   # Create GitHub release with all artifacts
   release:
     name: Create Release
-    needs: [build-binaries, build-burp, build-extension]
+    needs: [build-linux, build-macos, build-windows, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
     steps:
@@ -241,13 +258,13 @@ jobs:
     - name: Prepare release assets
       run: |
         mkdir -p release
-        # VERSION is set in env at workflow level
 
         # Move binaries
         mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
         mv artifacts/titus-linux-arm64/titus-linux-arm64 release/ || true
         mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
         mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
+        mv artifacts/titus-windows-amd64/titus-windows-amd64.exe release/
 
         # Move JAR and extension
         mv artifacts/titus-burp-extension/*.jar release/
@@ -261,13 +278,10 @@ jobs:
 
     - name: Generate release notes
       run: |
-        # VERSION is set in env at workflow level
         cat << EOF > release_notes.md
 ## Titus Secret Scanner ${VERSION}
 
 ### Downloads
-
-All binaries are **portable** - no external dependencies required. Just download and run.
 
 | Platform | Architecture | File |
 |----------|-------------|------|
@@ -275,6 +289,7 @@ All binaries are **portable** - no external dependencies required. Just download
 | Linux | arm64 | \`titus-linux-arm64\` |
 | macOS | Apple Silicon | \`titus-darwin-arm64\` |
 | macOS | Intel | \`titus-darwin-amd64\` |
+| Windows | x64 | \`titus-windows-amd64.exe\` |
 
 ### Extensions
 
@@ -296,6 +311,9 @@ sudo mv titus /usr/local/bin/
 curl -L -o titus https://github.com/praetorian-inc/titus/releases/download/${VERSION}/titus-darwin-arm64
 chmod +x titus
 sudo mv titus /usr/local/bin/
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri https://github.com/praetorian-inc/titus/releases/download/${VERSION}/titus-windows-amd64.exe -OutFile titus.exe
 \`\`\`
 
 **Burp Extension:**
@@ -315,9 +333,10 @@ EOF
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ env.VERSION }}
         body_path: release_notes.md
         files: release/*
         draft: false
-        prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+        prerelease: ${{ contains(env.VERSION, '-alpha') || contains(env.VERSION, '-beta') || contains(env.VERSION, '-rc') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
