@@ -212,9 +212,17 @@
     let toastStyle = 'modern'; // 'modern' (Xbox One) or 'classic' (Xbox 360)
 
     // Load toast style preference
-    chrome.storage.local.get(['toastStyle'], (result) => {
-        toastStyle = result.toastStyle || 'modern';
-    });
+    try {
+        chrome.storage.local.get(['toastStyle'], (result) => {
+            if (chrome.runtime.lastError) {
+                console.log('[Titus] Could not load toast style preference:', chrome.runtime.lastError);
+                return;
+            }
+            toastStyle = result?.toastStyle || 'modern';
+        });
+    } catch (e) {
+        console.log('[Titus] Storage API not available:', e);
+    }
 
     // Decode base64 string to plaintext (Go encodes []byte as base64 in JSON)
     function decodeBase64(str) {
@@ -435,6 +443,23 @@
         setTimeout(() => toast.remove(), 300);
     }
 
+    // Send message with retry (service worker may be asleep)
+    async function sendMessageWithRetry(message, maxRetries = 3) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await chrome.runtime.sendMessage(message);
+                return response;
+            } catch (err) {
+                if (attempt === maxRetries) {
+                    throw err;
+                }
+                // Wait before retry - service worker may need time to wake up
+                console.log(`[Titus] Retry ${attempt}/${maxRetries} - service worker waking up...`);
+                await new Promise(r => setTimeout(r, 500 * attempt));
+            }
+        }
+    }
+
     // Scan page - queues content for async scanning
     async function scanPage() {
         console.log('[Titus] Starting page content collection...');
@@ -450,18 +475,19 @@
 
         // Fire and forget - queue the scan and don't wait for results
         // The service worker will process the queue asynchronously
-        chrome.runtime.sendMessage({
-            action: 'queueScan',
-            content
-        }).then(response => {
+        try {
+            const response = await sendMessageWithRetry({
+                action: 'queueScan',
+                content
+            });
             if (response?.queued) {
                 console.log(`[Titus] Scan queued successfully (position: ${response.position})`);
             } else if (response?.error) {
                 console.error('[Titus] Queue error:', response.error);
             }
-        }).catch(err => {
-            console.error('[Titus] Communication error:', err);
-        });
+        } catch (err) {
+            console.error('[Titus] Communication error after retries:', err);
+        }
     }
 
     // Listen for scan completion messages from service worker
@@ -470,8 +496,8 @@
             console.log(`[Titus] Scan complete for ${message.url}: ${message.total} findings`);
 
             if (message.total > 0) {
-                // Fetch the findings to show toast
-                chrome.runtime.sendMessage({ action: 'getFindings', url: message.url })
+                // Fetch the findings to show toast (with retry in case service worker is slow)
+                sendMessageWithRetry({ action: 'getFindings', url: message.url })
                     .then(findings => {
                         if (findings && findings.length > 0) {
                             showAchievementToast({
@@ -480,6 +506,9 @@
                                 scannedUrl: message.url  // Pass the scanned URL for display
                             });
                         }
+                    })
+                    .catch(err => {
+                        console.error('[Titus] Failed to fetch findings:', err);
                     });
             }
         }

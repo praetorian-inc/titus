@@ -18,6 +18,22 @@ let currentScanProgress = null; // Track progress within current scan
 
 console.log('[Titus] Service worker started');
 
+// ============================================================
+// Keepalive - Prevent service worker from being terminated
+// WASM initialization is expensive (~10-20s), so we keep alive
+// ============================================================
+const KEEPALIVE_INTERVAL = 'titus-keepalive';
+
+// Setup keepalive alarm (fires every 25 seconds to stay under 30s timeout)
+chrome.alarms.create(KEEPALIVE_INTERVAL, { periodInMinutes: 0.4 });
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === KEEPALIVE_INTERVAL) {
+        // Just log to keep service worker active
+        console.log('[Titus] Keepalive ping - WASM ready:', wasmReady);
+    }
+});
+
 // On install, immediately activate
 chrome.runtime.onInstalled.addListener((details) => {
     console.log('[Titus] Extension installed/updated:', details.reason);

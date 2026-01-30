@@ -9,9 +9,17 @@ function escapeHtml(str) {
 
 // Update stats
 async function updateStats() {
-    const stats = await chrome.runtime.sendMessage({ action: 'getStats' });
-    document.getElementById('total-count').textContent = stats.totalFindings;
-    document.getElementById('site-count').textContent = stats.uniqueSites;
+    try {
+        const stats = await chrome.runtime.sendMessage({ action: 'getStats' });
+        if (stats) {
+            document.getElementById('total-count').textContent = stats.totalFindings || 0;
+            document.getElementById('site-count').textContent = stats.uniqueSites || 0;
+        }
+    } catch (e) {
+        console.error('Failed to get stats:', e);
+        document.getElementById('total-count').textContent = '?';
+        document.getElementById('site-count').textContent = '?';
+    }
 }
 
 // Format URL for display (truncate)
@@ -150,22 +158,26 @@ let queuePollInterval = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-    // Load initial data
-    await Promise.all([
-        updateStats(),
-        updateQueueStatus(),
-        loadStylePreference()
-    ]);
-
-    // Start polling queue status every second
-    queuePollInterval = setInterval(updateQueueStatus, 1000);
-
-    // Button handlers
+    // Button handlers - attach FIRST before any async operations
     document.getElementById('open-dashboard').addEventListener('click', openDashboard);
 
     // Style toggle handlers
     document.getElementById('style-modern').addEventListener('click', () => setStylePreference('modern'));
     document.getElementById('style-classic').addEventListener('click', () => setStylePreference('classic'));
+
+    // Load initial data (with error handling so failures don't break the UI)
+    try {
+        await Promise.all([
+            updateStats().catch(e => console.error('Failed to load stats:', e)),
+            updateQueueStatus().catch(e => console.error('Failed to load queue status:', e)),
+            loadStylePreference().catch(e => console.error('Failed to load style preference:', e))
+        ]);
+    } catch (e) {
+        console.error('Failed to initialize popup:', e);
+    }
+
+    // Start polling queue status every second
+    queuePollInterval = setInterval(updateQueueStatus, 1000);
 });
 
 // Clean up interval when popup closes

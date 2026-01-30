@@ -456,13 +456,7 @@ let queuePollInterval = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-    // Load initial data
-    await Promise.all([
-        loadFindings(),
-        updateQueueStatus()
-    ]);
-
-    // Setup event listeners
+    // Setup event listeners FIRST before any async operations
     setupSorting();
 
     document.getElementById('rule-filter').addEventListener('change', applyFilters);
@@ -475,6 +469,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('export-btn').addEventListener('click', exportFindings);
     document.getElementById('clear-btn').addEventListener('click', clearFindings);
+
+    // Load initial data (with error handling)
+    try {
+        await Promise.all([
+            loadFindings().catch(e => console.error('Failed to load findings:', e)),
+            updateQueueStatus().catch(e => console.error('Failed to update queue status:', e))
+        ]);
+    } catch (e) {
+        console.error('Failed to initialize dashboard:', e);
+    }
 
     // Start polling queue status every second
     queuePollInterval = setInterval(updateQueueStatus, 1000);

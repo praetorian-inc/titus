@@ -6,8 +6,10 @@ Go port of NoseyParker secrets scanner - a high-performance secrets detection to
 ## Installation
 
 ```bash
-go build -o titus ./cmd/titus
+make build
 ```
+
+The binary will be at `dist/titus`.
 
 ## Usage
 
@@ -69,28 +71,34 @@ The serve command:
 
 Titus includes a Burp Suite extension that scans HTTP responses for secrets.
 
-### Building the Extension
+### Quick Install
 
 ```bash
-# Build Titus binary first
-go build -o dist/titus ./cmd/titus
-
-# Build Burp extension
-cd burp
-./gradlew shadowJar
+# Build everything and install (recommended)
+make install-burp
 ```
 
-The extension JAR will be at `burp/build/libs/titus-burp-*-all.jar`.
+This single command:
+1. Builds the `titus` binary
+2. Builds the Burp extension JAR
+3. Installs the binary to `~/.titus/titus`
 
-### Installation
+Then load `dist/titus-burp-1.0.0-all.jar` in Burp Suite (Extensions → Add).
 
-1. Copy the `titus` binary to one of:
-   - `~/.titus/titus`
-   - `~/bin/titus`
-   - `/usr/local/bin/titus`
-   - Or bundle it in the JAR resources
+### Manual Build
 
-2. Load the extension JAR in Burp Suite (Extensions → Add)
+```bash
+# Build Titus binary
+make build
+
+# Build Burp extension JAR
+make build-burp
+
+# Install binary to ~/.titus/
+make install
+```
+
+The extension JAR will be at `dist/titus-burp-1.0.0-all.jar`.
 
 ### Architecture
 
@@ -108,15 +116,39 @@ The extension uses native process communication instead of WASM:
 - **Deduplication**: Avoids reporting the same secret multiple times
 - **Fast-path filtering**: Skips binary content, images, and other non-scannable content
 
+## Browser Extension
+
+Titus includes a Chrome browser extension that scans web pages for secrets.
+
+### Building
+
+```bash
+make build-extension
+```
+
+### Installation
+
+1. Go to `chrome://extensions/`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select the `extension/` directory
+
+### Features
+
+- Scans inline and external JavaScript
+- Scans stylesheets
+- Scans localStorage and sessionStorage
+- Optional network response capture
+- Results displayed in popup and dashboard
+
 ## Testing
 
 ```bash
 # Run unit tests
-go test ./...
+make test
 
-# Run integration tests (requires building titus first)
-go build -o dist/titus ./cmd/titus
-go test -tags=integration ./tests/integration/...
+# Run integration tests
+make integration-test
 
 # Run Burp extension tests
 cd burp && ./gradlew test
@@ -147,7 +179,15 @@ titus/
 │       ├── TitusProcessScanner.java # Process communication
 │       ├── ProcessManager.java      # Process lifecycle
 │       └── ScanQueue.java           # Scan job queue
-├── wasi/               # WASM build (legacy)
+├── extension/          # Chrome browser extension
+│   ├── manifest.json   # Extension manifest
+│   ├── lib/            # WASM and JS libraries
+│   ├── background/     # Service worker
+│   ├── content/        # Content scripts
+│   └── popup/          # Popup UI
+├── wasm/               # WASM build for browser extension
+│   ├── main.go         # WASM entry point
+│   └── scanner.go      # WASM scanner wrapper
 └── tests/
     └── integration/    # Integration tests
 ```
