@@ -4,9 +4,19 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.2.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  # Use input version for workflow_dispatch, otherwise extract from tag
+  VERSION: ${{ inputs.version || github.ref_name }}
 
 jobs:
   # Build fully static/portable Go binaries for each platform
@@ -169,7 +179,7 @@ jobs:
 
     - name: Rename JAR with version
       run: |
-        VERSION=${GITHUB_REF#refs/tags/}
+        # VERSION is set in env at workflow level
         mkdir -p dist
         cp burp/build/libs/titus-burp-*-all.jar dist/titus-burp-${VERSION}.jar
 
@@ -202,7 +212,7 @@ jobs:
 
     - name: Create extension zip
       run: |
-        VERSION=${GITHUB_REF#refs/tags/}
+        # VERSION is set in env at workflow level
         cd extension
         zip -r ../titus-browser-extension-${VERSION}.zip . -x "*.DS_Store" -x "*/.git/*" -x "test/*" -x ".feature-development/*"
 
@@ -230,7 +240,7 @@ jobs:
     - name: Prepare release assets
       run: |
         mkdir -p release
-        VERSION=${GITHUB_REF#refs/tags/}
+        # VERSION is set in env at workflow level
 
         # Move binaries
         mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
@@ -250,7 +260,7 @@ jobs:
 
     - name: Generate release notes
       run: |
-        VERSION=${GITHUB_REF#refs/tags/}
+        # VERSION is set in env at workflow level
         cat << EOF > release_notes.md
 ## Titus Secret Scanner ${VERSION}
 
