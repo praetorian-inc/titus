@@ -94,7 +94,7 @@ jobs:
             runner: macos-14
             hs_package: vectorscan
           - arch: amd64
-            runner: macos-13
+            runner: macos-15
             hs_package: hyperscan
 
     steps:
