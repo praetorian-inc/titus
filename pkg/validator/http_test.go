@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -216,4 +217,42 @@ func TestHTTPValidator_Validate_Query(t *testing.T) {
 	result, err := v.Validate(context.Background(), match)
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_Timeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond) // Slow response
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "slow-service",
+		RuleIDs: []string{"np.test.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "bearer",
+				SecretGroup: 0,
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.test.1",
+		Groups: [][]byte{[]byte("test-token")},
+	}
+
+	// Context with short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	result, err := v.Validate(ctx, match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "request failed")
 }
