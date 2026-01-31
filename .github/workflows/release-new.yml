@@ -205,23 +205,16 @@ jobs:
 
     - name: Create pkg-config file for hyperscan
       run: |
-        $pkgconfigDir = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib/pkgconfig"
+        $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT -replace '\\','/'
+        $prefix = "$vcpkgRoot/installed/x64-windows-static"
+        $pkgconfigDir = "$prefix/lib/pkgconfig"
         New-Item -ItemType Directory -Force -Path $pkgconfigDir
-        $pcContent = @"
-        prefix=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static
-        exec_prefix=`${prefix}
-        libdir=`${prefix}/lib
-        includedir=`${prefix}/include/hs
-
-        Name: libhs
-        Description: Hyperscan regex library
-        Version: 5.4.2
-        Libs: -L`${libdir} -lhs
-        Cflags: -I`${includedir}
-        "@
-        $pcContent | Out-File -FilePath "$pkgconfigDir/libhs.pc" -Encoding ASCII
+        $pcContent = "prefix=$prefix`nexec_prefix=`${prefix}`nlibdir=`${prefix}/lib`nincludedir=`${prefix}/include/hs`n`nName: libhs`nDescription: Hyperscan regex library`nVersion: 5.4.2`nLibs: -L`${libdir} -lhs`nCflags: -I`${includedir}"
+        $pcContent | Out-File -FilePath "$pkgconfigDir/libhs.pc" -Encoding ASCII -NoNewline
+        Write-Output "--- pkg-config file content ---"
         Get-Content "$pkgconfigDir/libhs.pc"
-        dir "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/include/hs"
+        Write-Output "--- include directory ---"
+        dir "$prefix/include/hs"
 
     - name: Build binary
       run: |
