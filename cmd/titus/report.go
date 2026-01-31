@@ -52,7 +52,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 	// Output based on format
 	switch reportFormat {
 	case "json":
-		return outputReportJSON(cmd, findings)
+		return outputReportJSON(cmd, findings, matches)
 	case "human":
 		return outputReportHuman(cmd, findings, matches, reportDatastore)
 	case "sarif":
@@ -66,7 +66,20 @@ func runReport(cmd *cobra.Command, args []string) error {
 // HELPERS
 // =============================================================================
 
-func outputReportJSON(cmd *cobra.Command, findings []*types.Finding) error {
+func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match) error {
+	// Group matches by finding ID (which equals match.StructuralID per scan.go)
+	matchesByFinding := make(map[string][]*types.Match)
+	for _, m := range matches {
+		// Compute the finding ID that this match belongs to
+		findingID := m.StructuralID
+		matchesByFinding[findingID] = append(matchesByFinding[findingID], m)
+	}
+
+	// Attach matches to their findings
+	for _, f := range findings {
+		f.Matches = matchesByFinding[f.ID]
+	}
+
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(findings)
