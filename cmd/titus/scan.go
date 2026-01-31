@@ -132,7 +132,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 
 		// Validate matches if enabled
-		validateMatches(ctx, validationEngine, matches)
+		validateMatches(ctx, validationEngine, matches, verbose)
 
 		// Store matches and findings
 		for _, match := range matches {
@@ -211,6 +211,24 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("retrieving findings: %w", err)
 	}
+
+	// Get all matches to attach validation results to findings
+	allMatches, err := s.GetAllMatches()
+	if err != nil {
+		return fmt.Errorf("retrieving matches: %w", err)
+	}
+
+	// Build map of finding ID to matches
+	findingMatches := make(map[string][]*types.Match)
+	for _, m := range allMatches {
+		findingMatches[m.StructuralID] = append(findingMatches[m.StructuralID], m)
+	}
+
+	// Attach matches to findings
+	for _, f := range findings {
+		f.Matches = findingMatches[f.ID]
+	}
+
 	return outputFindings(cmd, findings)
 }
 
@@ -289,7 +307,14 @@ func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {
 
 		fmt.Fprintf(cmd.OutOrStdout(), "\nFindings:\n")
 		for i, f := range findings {
-			fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s\n", i+1, f.RuleID)
+			fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s", i+1, f.RuleID)
+
+			// Show validation status if available
+			if len(f.Matches) > 0 && f.Matches[0].ValidationResult != nil {
+				vr := f.Matches[0].ValidationResult
+				fmt.Fprintf(cmd.OutOrStdout(), " [%s]", vr.Status)
+			}
+			fmt.Fprintln(cmd.OutOrStdout())
 		}
 		return nil
 	default:
@@ -368,14 +393,21 @@ func initValidationEngine() *validator.Engine {
 }
 
 // validateMatches validates matches using the validation engine.
-func validateMatches(ctx context.Context, engine *validator.Engine, matches []*types.Match) {
+func validateMatches(ctx context.Context, engine *validator.Engine, matches []*types.Match, verbose bool) {
 	if engine == nil || len(matches) == 0 {
 		return
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[validate] Starting validation for %d matches\n", len(matches))
 	}
 
 	// Submit all matches for async validation
 	results := make([]<-chan *types.ValidationResult, len(matches))
 	for i := range matches {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[validate] Queueing match %d: rule=%s\n", i+1, matches[i].RuleID)
+		}
 		results[i] = engine.ValidateAsync(ctx, matches[i])
 	}
 
@@ -383,5 +415,13 @@ func validateMatches(ctx context.Context, engine *validator.Engine, matches []*t
 	for i, ch := range results {
 		result := <-ch
 		matches[i].ValidationResult = result
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[validate] Result %d: rule=%s status=%s confidence=%.1f message=%s\n",
+				i+1, matches[i].RuleID, result.Status, result.Confidence, result.Message)
+		}
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[validate] Validation complete\n")
 	}
 }
