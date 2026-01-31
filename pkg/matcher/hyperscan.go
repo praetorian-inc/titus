@@ -15,11 +15,12 @@ import (
 //  1. Hyperscan finds pattern offsets (fast, no capture groups)
 //  2. Go regexp extracts capture groups for each match
 type HyperscanMatcher struct {
-	db           hyperscan.BlockDatabase       // Compiled patterns
-	scratch      *hyperscan.Scratch            // Per-scan scratch space
-	rules        []*types.Rule                 // Rule metadata indexed by pattern ID
-	regexCache   map[string]*regexp.Regexp     // Cache for capture group extraction
-	contextLines int                           // Lines of context to extract before/after matches
+	db                hyperscan.BlockDatabase   // Compiled patterns
+	scratch           *hyperscan.Scratch        // Per-scan scratch space
+	rules             []*types.Rule             // Rule metadata indexed by pattern ID
+	processedPatterns []string                  // Processed patterns ((?x) stripped) for stage 2
+	regexCache        map[string]*regexp.Regexp // Cache for capture group extraction
+	contextLines      int                       // Lines of context to extract before/after matches
 }
 
 // NewHyperscan creates a Hyperscan-based matcher.
@@ -30,15 +31,22 @@ func NewHyperscan(rules []*types.Rule, contextLines int) (*HyperscanMatcher, err
 
 	// Prepare patterns for Hyperscan compilation
 	patterns := make([]*hyperscan.Pattern, len(rules))
+	processedPatterns := make([]string, len(rules))
 
 	for i, rule := range rules {
+		// Preprocess pattern to handle (?x) extended mode
+		// The Hyperscan library doesn't support the Extended flag, so we strip
+		// whitespace and comments from patterns that use (?x) mode.
+		processedPattern := stripExtendedMode(rule.Pattern)
+		processedPatterns[i] = processedPattern // Store for stage 2
+
 		// Create pattern with flags:
 		// - DotAll: . matches newlines
 		// - MultiLine: ^/$ match line boundaries
 		// Note: SomLeftMost (start-of-match tracking) is disabled to avoid memory issues
 		// with complex patterns, following NoseyParker's approach. We use Go regexp in
 		// stage 2 to find actual match boundaries.
-		p := hyperscan.NewPattern(rule.Pattern, hyperscan.DotAll|hyperscan.MultiLine)
+		p := hyperscan.NewPattern(processedPattern, hyperscan.DotAll|hyperscan.MultiLine)
 		p.Id = i // Pattern ID = index into rules array
 		patterns[i] = p
 	}
@@ -57,11 +65,12 @@ func NewHyperscan(rules []*types.Rule, contextLines int) (*HyperscanMatcher, err
 	}
 
 	return &HyperscanMatcher{
-		db:           db,
-		scratch:      scratch,
-		rules:        rules,
-		regexCache:   make(map[string]*regexp.Regexp),
-		contextLines: contextLines,
+		db:                db,
+		scratch:           scratch,
+		rules:             rules,
+		processedPatterns: processedPatterns,
+		regexCache:        make(map[string]*regexp.Regexp),
+		contextLines:      contextLines,
 	}, nil
 }
 
@@ -120,31 +129,23 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 
 	for _, raw := range bestMatches {
 		rule := m.rules[raw.ruleIdx]
+		processedPattern := m.processedPatterns[raw.ruleIdx]
 		hyperscanStart := raw.start
 		hyperscanEnd := raw.end
 
 		// Stage 2: Extract capture groups using Go regexp
 		// This also finds the actual start offset when start=0 (SomLeftMost disabled)
-		actualStart, actualEnd, captures, err := m.extractCapturesAndBounds(content, rule.Pattern, hyperscanStart, hyperscanEnd)
+		// Use processedPattern (with (?x) stripped) instead of original rule.Pattern
+		actualStart, actualEnd, rawCaptures, err := m.extractCapturesAndBounds(content, processedPattern, hyperscanStart, hyperscanEnd)
 		if err != nil {
 			// If capture extraction fails, skip this match
 			continue
 		}
 
-		// Convert captures map[string][]byte to Groups [][]byte
+		// Convert raw captures to Groups [][]byte (skip index 0 which is full match)
 		var groups [][]byte
-		if len(captures) > 0 {
-			re := m.getCachedRegexp(rule.Pattern)
-			if re != nil {
-				names := re.SubexpNames()
-				for _, name := range names {
-					if name != "" {
-						if val, ok := captures[name]; ok {
-							groups = append(groups, val)
-						}
-					}
-				}
-			}
+		if len(rawCaptures) > 1 {
+			groups = rawCaptures[1:] // Skip first element (full match), keep all capture groups
 		}
 
 		// Extract context lines before and after the match
@@ -205,16 +206,19 @@ func (m *HyperscanMatcher) Close() error {
 
 // extractCapturesAndBounds extracts capture groups and finds actual match boundaries.
 // When start=0 (SomLeftMost disabled), it uses Go regexp to find the match near the end offset.
-// Returns actualStart, actualEnd, captures map, and error.
-func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern string, start, end int) (int, int, map[string][]byte, error) {
+// Returns actualStart, actualEnd, rawCaptures slice (all groups including numbered), and error.
+func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern string, start, end int) (int, int, [][]byte, error) {
 	// Get or compile regexp
 	re := m.getCachedRegexp(pattern)
 	if re == nil {
-		compiled, err := regexp.Compile(pattern)
+		// Add (?s) for DotAll mode - Go regexp needs this explicitly
+		// (Hyperscan uses a flag, but Go regexp uses inline modifier)
+		patternWithDotAll := "(?s)" + pattern
+		compiled, err := regexp.Compile(patternWithDotAll)
 		if err != nil {
 			return 0, 0, nil, err
 		}
-		m.regexCache[pattern] = compiled
+		m.regexCache[pattern] = compiled // Cache with original pattern as key
 		re = compiled
 	}
 
@@ -241,21 +245,8 @@ func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern stri
 		}
 	}
 
-	// Build map of named capture groups
-	captures := make(map[string][]byte)
-	names := re.SubexpNames()
-
-	// Skip index 0 (full match), iterate over named groups
-	for i, name := range names {
-		if i == 0 || name == "" {
-			continue
-		}
-		if i < len(rawCaptures) {
-			captures[name] = rawCaptures[i]
-		}
-	}
-
-	return actualStart, actualEnd, captures, nil
+	// Return raw captures directly - caller will extract what it needs
+	return actualStart, actualEnd, rawCaptures, nil
 }
 
 // getCachedRegexp retrieves compiled regexp from cache.

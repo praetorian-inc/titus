@@ -42,7 +42,7 @@ func TestAWSValidator_ExtractCredentials_AWS6(t *testing.T) {
 		},
 	}
 
-	keyID, secret, err := v.extractCredentials(match)
+	keyID, secret, _, err := v.extractCredentials(match)
 	assert.NoError(t, err)
 	assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", keyID)
 	assert.Equal(t, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", secret)
@@ -59,7 +59,7 @@ func TestAWSValidator_ExtractCredentials_AWS1_Partial(t *testing.T) {
 		},
 	}
 
-	keyID, secret, err := v.extractCredentials(match)
+	keyID, secret, _, err := v.extractCredentials(match)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "partial")
 	assert.Empty(t, keyID)
@@ -77,7 +77,7 @@ func TestAWSValidator_ExtractCredentials_AWS2_Partial(t *testing.T) {
 		},
 	}
 
-	keyID, secret, err := v.extractCredentials(match)
+	keyID, secret, _, err := v.extractCredentials(match)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "partial")
 	assert.Empty(t, keyID)
