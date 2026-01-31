@@ -184,7 +184,9 @@ jobs:
         path: dist/titus-darwin-${{ matrix.arch }}
 
   # Build Windows binary using vcpkg
+  # DISABLED: vcpkg builds with MSVC, but Go CGO uses MinGW - incompatible
   build-windows:
+    if: false  # Disabled due to MSVC/MinGW incompatibility
     name: Build Windows amd64
     runs-on: windows-2022
 
@@ -300,7 +302,7 @@ jobs:
   # Create GitHub release with all artifacts (skipped on main branch push)
   release:
     name: Create Release
-    needs: [build-linux-amd64, build-linux-arm64, build-macos, build-windows, build-burp, build-extension]
+    needs: [build-linux-amd64, build-linux-arm64, build-macos, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
     steps:
@@ -321,7 +323,7 @@ jobs:
         mv artifacts/titus-linux-arm64/titus-linux-arm64 release/ || true
         mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
         # macOS Intel disabled - build from source if needed
-        mv artifacts/titus-windows-amd64/titus-windows-amd64.exe release/
+        # Windows disabled - build from source
 
         # Move JAR and extension
         mv artifacts/titus-burp-extension/*.jar release/
@@ -346,7 +348,7 @@ jobs:
         | Linux | arm64 | `titus-linux-arm64` |
         | macOS | Apple Silicon | `titus-darwin-arm64` |
         | macOS | Intel | Build from source |
-        | Windows | x64 | `titus-windows-amd64.exe` |
+        | Windows | x64 | Build from source |
 
         ### Extensions
 
