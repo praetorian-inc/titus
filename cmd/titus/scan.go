@@ -68,6 +68,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading rules: %w", err)
 	}
 
+	// Create rule map for finding ID computation
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
 	// Create matcher
 	m, err := matcher.New(matcher.Config{
 		Rules:        rules,
@@ -143,9 +149,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 
 			// Create finding (deduplicated by finding ID)
-			// Note: Finding ID is computed from rule structural ID + groups
-			// For now, we'll use a simpler approach based on structural ID
-			exists, err := s.FindingExists(match.StructuralID)
+			// Finding ID is computed from rule structural ID + groups (content-based)
+			rule, ok := ruleMap[match.RuleID]
+			if !ok {
+				return fmt.Errorf("rule not found: %s", match.RuleID)
+			}
+
+			findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+			exists, err := s.FindingExists(findingID)
 			if err != nil {
 				return fmt.Errorf("checking finding: %w", err)
 			}
@@ -153,7 +164,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			if !exists {
 				findingCount++
 				finding := &types.Finding{
-					ID:     match.StructuralID, // Use structural ID as finding ID for now
+					ID:     findingID,
 					RuleID: match.RuleID,
 					Groups: match.Groups,
 				}
@@ -221,7 +232,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Build map of finding ID to matches
 	findingMatches := make(map[string][]*types.Match)
 	for _, m := range allMatches {
-		findingMatches[m.StructuralID] = append(findingMatches[m.StructuralID], m)
+		// Compute content-based finding ID same way as during scan
+		rule, ok := ruleMap[m.RuleID]
+		if !ok {
+			return fmt.Errorf("rule not found: %s", m.RuleID)
+		}
+		findingID := types.ComputeFindingID(rule.StructuralID, m.Groups)
+		findingMatches[findingID] = append(findingMatches[findingID], m)
 	}
 
 	// Attach matches to findings

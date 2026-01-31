@@ -65,8 +65,13 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp)
+		INSERT INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(structural_id) DO UPDATE SET
+			validation_status = COALESCE(excluded.validation_status, validation_status),
+			validation_confidence = COALESCE(excluded.validation_confidence, validation_confidence),
+			validation_message = COALESCE(excluded.validation_message, validation_message),
+			validation_timestamp = COALESCE(excluded.validation_timestamp, validation_timestamp)
 	`,
 		m.BlobID.Hex(),
 		m.RuleID,
@@ -83,7 +88,7 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 		validationTimestamp,
 	)
 	if err != nil {
-		return fmt.Errorf("inserting match: %w", err)
+		return fmt.Errorf("inserting/updating match: %w", err)
 	}
 
 	return nil
