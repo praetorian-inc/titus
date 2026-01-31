@@ -140,9 +140,8 @@ jobs:
           - arch: arm64
             runner: macos-14
             hs_package: vectorscan
-          - arch: amd64
-            runner: macos-12
-            hs_package: hyperscan
+          # macOS Intel builds disabled - macos-12 runner unavailable
+          # Intel Mac users can build from source or use Rosetta 2 on ARM Macs
 
     steps:
     - name: Checkout code
@@ -212,7 +211,7 @@ jobs:
         prefix=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static
         exec_prefix=`${prefix}
         libdir=`${prefix}/lib
-        includedir=`${prefix}/include
+        includedir=`${prefix}/include/hs
 
         Name: libhs
         Description: Hyperscan regex library
@@ -222,6 +221,7 @@ jobs:
         "@
         $pcContent | Out-File -FilePath "$pkgconfigDir/libhs.pc" -Encoding ASCII
         Get-Content "$pkgconfigDir/libhs.pc"
+        dir "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/include/hs"
 
     - name: Build binary
       run: |
@@ -327,7 +327,7 @@ jobs:
         mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
         mv artifacts/titus-linux-arm64/titus-linux-arm64 release/ || true
         mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
-        mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
+        # macOS Intel disabled - build from source if needed
         mv artifacts/titus-windows-amd64/titus-windows-amd64.exe release/
 
         # Move JAR and extension
@@ -352,7 +352,7 @@ jobs:
         | Linux | x64 | `titus-linux-amd64` |
         | Linux | arm64 | `titus-linux-arm64` |
         | macOS | Apple Silicon | `titus-darwin-arm64` |
-        | macOS | Intel | `titus-darwin-amd64` |
+        | macOS | Intel | Build from source |
         | Windows | x64 | `titus-windows-amd64.exe` |
 
         ### Extensions
