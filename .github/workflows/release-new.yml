@@ -204,12 +204,29 @@ jobs:
         vcpkg install hyperscan:x64-windows-static
         vcpkg integrate install
 
+    - name: Create pkg-config file for hyperscan
+      run: |
+        $pkgconfigDir = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib/pkgconfig"
+        New-Item -ItemType Directory -Force -Path $pkgconfigDir
+        $pcContent = @"
+        prefix=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static
+        exec_prefix=`${prefix}
+        libdir=`${prefix}/lib
+        includedir=`${prefix}/include
+
+        Name: libhs
+        Description: Hyperscan regex library
+        Version: 5.4.2
+        Libs: -L`${libdir} -lhs
+        Cflags: -I`${includedir}
+        "@
+        $pcContent | Out-File -FilePath "$pkgconfigDir/libhs.pc" -Encoding ASCII
+        Get-Content "$pkgconfigDir/libhs.pc"
+
     - name: Build binary
       run: |
         $env:CGO_ENABLED = "1"
         $env:PKG_CONFIG_PATH = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib/pkgconfig"
-        $env:CGO_CFLAGS = "-I$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/include"
-        $env:CGO_LDFLAGS = "-L$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib -lhs -lstdc++"
         $env:GOWORK = "off"
         mkdir -p dist
         go build -o dist/titus-windows-amd64.exe ./cmd/titus
