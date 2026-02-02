@@ -104,23 +104,45 @@ func (v *AWSValidator) Validate(ctx context.Context, match *types.Match) (*types
 
 // extractCredentials extracts AWS credentials from match based on rule ID.
 // Returns error for partial credentials (np.aws.1, np.aws.2) when not found in snippet.
+//
+// Expected named capture groups:
+//   - key_id: AWS access key ID (e.g., AKIAIOSFODNN7EXAMPLE)
+//   - secret_key: AWS secret access key
+//   - session_token: (optional) AWS session token for temporary credentials
 func (v *AWSValidator) extractCredentials(match *types.Match) (keyID, secret, sessionToken string, err error) {
 	switch match.RuleID {
 	case "np.aws.6":
-		// np.aws.6 captures both: Group[0]=keyID, Group[1]=secret
-		if len(match.Groups) < 2 {
-			return "", "", "", fmt.Errorf("np.aws.6 expected 2 groups, got %d", len(match.Groups))
+		// np.aws.6 captures both key_id and secret_key
+		if match.NamedGroups == nil {
+			return "", "", "", fmt.Errorf("np.aws.6 requires named capture groups (key_id, secret_key)")
 		}
-		return string(match.Groups[0]), string(match.Groups[1]), "", nil
+
+		keyIDBytes, hasKeyID := match.NamedGroups["key_id"]
+		secretBytes, hasSecret := match.NamedGroups["secret_key"]
+
+		if !hasKeyID || !hasSecret {
+			return "", "", "", fmt.Errorf("np.aws.6 requires named groups 'key_id' and 'secret_key' (found: %v)", keysOf(match.NamedGroups))
+		}
+
+		// Check for optional session token
+		if tokenBytes, ok := match.NamedGroups["session_token"]; ok {
+			sessionToken = string(tokenBytes)
+		}
+
+		return string(keyIDBytes), string(secretBytes), sessionToken, nil
 
 	case "np.aws.1":
 		// np.aws.1 captures access key ID - check snippet for secret key
-		if len(match.Groups) < 1 {
-			return "", "", "", fmt.Errorf("np.aws.1 expected at least 1 group, got %d", len(match.Groups))
+		if match.NamedGroups == nil {
+			return "", "", "", fmt.Errorf("np.aws.1 requires named capture group 'key_id'")
 		}
-		
-		keyID = string(match.Groups[0])
-		
+
+		keyIDBytes, hasKeyID := match.NamedGroups["key_id"]
+		if !hasKeyID {
+			return "", "", "", fmt.Errorf("np.aws.1 requires named group 'key_id' (found: %v)", keysOf(match.NamedGroups))
+		}
+		keyID = string(keyIDBytes)
+
 		// Look for AWS_SECRET_ACCESS_KEY in snippet.After
 		secretPattern := regexp.MustCompile(`AWS_SECRET_ACCESS_KEY[=:"\s]+([A-Za-z0-9/+=]{40})`)
 		secretMatches := secretPattern.FindSubmatch(match.Snippet.After)
@@ -129,14 +151,14 @@ func (v *AWSValidator) extractCredentials(match *types.Match) (keyID, secret, se
 			return "", "", "", fmt.Errorf("partial credentials: np.aws.1 only contains access key ID")
 		}
 		secret = string(secretMatches[1])
-		
+
 		// Look for AWS_SESSION_TOKEN in snippet.After (optional)
 		tokenPattern := regexp.MustCompile(`AWS_SESSION_TOKEN[=:"\s]+([A-Za-z0-9/+=]+)`)
 		tokenMatches := tokenPattern.FindSubmatch(match.Snippet.After)
 		if len(tokenMatches) >= 2 {
 			sessionToken = string(tokenMatches[1])
 		}
-		
+
 		return keyID, secret, sessionToken, nil
 
 	case "np.aws.2":
@@ -146,4 +168,13 @@ func (v *AWSValidator) extractCredentials(match *types.Match) (keyID, secret, se
 	default:
 		return "", "", "", fmt.Errorf("unsupported rule ID: %s", match.RuleID)
 	}
+}
+
+// keysOf returns the keys of a map as a slice (for error messages).
+func keysOf(m map[string][]byte) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

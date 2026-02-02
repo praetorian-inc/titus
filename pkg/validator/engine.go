@@ -59,12 +59,22 @@ func (e *Engine) ValidateMatch(ctx context.Context, match *types.Match) (*types.
 	return types.NewValidationResult(types.StatusUndetermined, 0, "no validator available for this secret type"), nil
 }
 
-// extractSecret extracts the secret value from a match.
-// Prefers first capture group, falls back to matching snippet.
+// extractSecret extracts the secret value from a match for caching purposes.
+// Prefers named group "secret", falls back to matching snippet.
 func extractSecret(match *types.Match) []byte {
-	if len(match.Groups) > 0 && len(match.Groups[0]) > 0 {
-		return match.Groups[0]
+	// Prefer the named "secret" group if available
+	if match.NamedGroups != nil {
+		if secret, ok := match.NamedGroups["secret"]; ok && len(secret) > 0 {
+			return secret
+		}
+		// Also check common alternative names
+		for _, name := range []string{"token", "key", "password", "secret_key", "api_key"} {
+			if value, ok := match.NamedGroups[name]; ok && len(value) > 0 {
+				return value
+			}
+		}
 	}
+	// Fall back to matching snippet
 	return match.Snippet.Matching
 }
 

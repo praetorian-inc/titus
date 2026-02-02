@@ -33,12 +33,12 @@ func TestAWSValidator_CanValidate(t *testing.T) {
 func TestAWSValidator_ExtractCredentials_AWS6(t *testing.T) {
 	v := NewAWSValidator()
 
-	// np.aws.6 has both key ID and secret
+	// np.aws.6 has both key_id and secret_key named groups
 	match := &types.Match{
 		RuleID: "np.aws.6",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
-			[]byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		NamedGroups: map[string][]byte{
+			"key_id":     []byte("AKIAIOSFODNN7EXAMPLE"),
+			"secret_key": []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 		},
 	}
 
@@ -51,11 +51,11 @@ func TestAWSValidator_ExtractCredentials_AWS6(t *testing.T) {
 func TestAWSValidator_ExtractCredentials_AWS1_Partial(t *testing.T) {
 	v := NewAWSValidator()
 
-	// np.aws.1 only has access key ID
+	// np.aws.1 only has key_id named group
 	match := &types.Match{
 		RuleID: "np.aws.1",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
+		NamedGroups: map[string][]byte{
+			"key_id": []byte("AKIAIOSFODNN7EXAMPLE"),
 		},
 	}
 
@@ -69,11 +69,11 @@ func TestAWSValidator_ExtractCredentials_AWS1_Partial(t *testing.T) {
 func TestAWSValidator_ExtractCredentials_AWS2_Partial(t *testing.T) {
 	v := NewAWSValidator()
 
-	// np.aws.2 only has secret
+	// np.aws.2 only has secret_key named group
 	match := &types.Match{
 		RuleID: "np.aws.2",
-		Groups: [][]byte{
-			[]byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		NamedGroups: map[string][]byte{
+			"secret_key": []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 		},
 	}
 
@@ -120,9 +120,9 @@ func TestAWSValidator_Validate_Valid(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.aws.6",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
-			[]byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		NamedGroups: map[string][]byte{
+			"key_id":     []byte("AKIAIOSFODNN7EXAMPLE"),
+			"secret_key": []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 		},
 	}
 
@@ -142,9 +142,9 @@ func TestAWSValidator_Validate_Invalid(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.aws.6",
-		Groups: [][]byte{
-			[]byte("AKIAINVALIDKEYEXAMP"),
-			[]byte("InvalidSecretKeyThatDoesNotExistInAWS1234"),
+		NamedGroups: map[string][]byte{
+			"key_id":     []byte("AKIAINVALIDKEYEXAMP"),
+			"secret_key": []byte("InvalidSecretKeyThatDoesNotExistInAWS1234"),
 		},
 	}
 
@@ -157,11 +157,11 @@ func TestAWSValidator_Validate_Invalid(t *testing.T) {
 func TestAWSValidator_Validate_Partial(t *testing.T) {
 	v := NewAWSValidator()
 
-	// np.aws.1 only has access key ID
+	// np.aws.1 only has key_id named group
 	match := &types.Match{
 		RuleID: "np.aws.1",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
+		NamedGroups: map[string][]byte{
+			"key_id": []byte("AKIAIOSFODNN7EXAMPLE"),
 		},
 	}
 
@@ -183,9 +183,9 @@ func TestAWSValidator_Validate_ContextCancelled(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.aws.6",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
-			[]byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		NamedGroups: map[string][]byte{
+			"key_id":     []byte("AKIAIOSFODNN7EXAMPLE"),
+			"secret_key": []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 		},
 	}
 

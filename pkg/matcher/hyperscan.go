@@ -136,13 +136,14 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 		// Stage 2: Extract capture groups using Go regexp
 		// This also finds the actual start offset when start=0 (SomLeftMost disabled)
 		// Use processedPattern (with (?x) stripped) instead of original rule.Pattern
-		actualStart, actualEnd, rawCaptures, err := m.extractCapturesAndBounds(content, processedPattern, hyperscanStart, hyperscanEnd)
+		actualStart, actualEnd, rawCaptures, namedGroups, err := m.extractCapturesAndBounds(content, processedPattern, hyperscanStart, hyperscanEnd)
 		if err != nil {
 			// If capture extraction fails, skip this match
 			continue
 		}
 
 		// Convert raw captures to Groups [][]byte (skip index 0 which is full match)
+		// Note: Groups is deprecated, prefer NamedGroups for clarity
 		var groups [][]byte
 		if len(rawCaptures) > 1 {
 			groups = rawCaptures[1:] // Skip first element (full match), keep all capture groups
@@ -166,7 +167,8 @@ func (m *HyperscanMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 				},
 				Source: types.SourceSpan{},
 			},
-			Groups: groups,
+			Groups:      groups,
+			NamedGroups: namedGroups,
 			Snippet: types.Snippet{
 				Before:   before,
 				Matching: content[actualStart:actualEnd],
@@ -206,8 +208,8 @@ func (m *HyperscanMatcher) Close() error {
 
 // extractCapturesAndBounds extracts capture groups and finds actual match boundaries.
 // When start=0 (SomLeftMost disabled), it uses Go regexp to find the match near the end offset.
-// Returns actualStart, actualEnd, rawCaptures slice (all groups including numbered), and error.
-func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern string, start, end int) (int, int, [][]byte, error) {
+// Returns actualStart, actualEnd, rawCaptures slice (all groups including numbered), namedGroups map, and error.
+func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern string, start, end int) (int, int, [][]byte, map[string][]byte, error) {
 	// Get or compile regexp
 	re := m.getCachedRegexp(pattern)
 	if re == nil {
@@ -216,7 +218,7 @@ func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern stri
 		patternWithDotAll := "(?s)" + pattern
 		compiled, err := regexp.Compile(patternWithDotAll)
 		if err != nil {
-			return 0, 0, nil, err
+			return 0, 0, nil, nil, err
 		}
 		m.regexCache[pattern] = compiled // Cache with original pattern as key
 		re = compiled
@@ -230,7 +232,7 @@ func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern stri
 		var err error
 		actualStart, actualEnd, rawCaptures, err = findMatchNearEnd(content, re, end)
 		if err != nil {
-			return 0, 0, nil, err
+			return 0, 0, nil, nil, err
 		}
 	} else {
 		// Use the provided start/end bounds
@@ -241,12 +243,15 @@ func (m *HyperscanMatcher) extractCapturesAndBounds(content []byte, pattern stri
 		region := content[start:end]
 		rawCaptures = re.FindSubmatch(region)
 		if rawCaptures == nil {
-			return 0, 0, nil, fmt.Errorf("pattern did not match at specified location")
+			return 0, 0, nil, nil, fmt.Errorf("pattern did not match at specified location")
 		}
 	}
 
-	// Return raw captures directly - caller will extract what it needs
-	return actualStart, actualEnd, rawCaptures, nil
+	// Build named groups map from the captures
+	namedGroups := BuildNamedGroups(re, rawCaptures)
+
+	// Return raw captures and named groups - caller will use what it needs
+	return actualStart, actualEnd, rawCaptures, namedGroups, nil
 }
 
 // getCachedRegexp retrieves compiled regexp from cache.

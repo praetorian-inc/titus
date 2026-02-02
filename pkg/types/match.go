@@ -13,7 +13,8 @@ type Match struct {
 	RuleID           string // e.g., "np.aws.1"
 	RuleName         string // e.g., "AWS API Key"
 	Location         Location
-	Groups           [][]byte // regex capture groups
+	Groups           [][]byte          // regex capture groups (positional, deprecated - use NamedGroups)
+	NamedGroups      map[string][]byte // named capture groups from regex (?P<name>...)
 	Snippet          Snippet
 	ValidationResult *ValidationResult `json:"validation_result,omitempty"`
 }

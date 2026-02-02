@@ -32,7 +32,7 @@ type HTTPDef struct {
 // AuthDef defines authentication configuration.
 type AuthDef struct {
 	Type        string `yaml:"type"` // bearer, basic, header, query
-	SecretGroup int    `yaml:"secret_group"`
+	SecretGroup string `yaml:"secret_group"`           // named capture group containing the secret (e.g., "secret", "token")
 	HeaderName  string `yaml:"header_name,omitempty"`  // for type=header
 	QueryParam  string `yaml:"query_param,omitempty"`  // for type=query
 	Username    string `yaml:"username,omitempty"`     // for type=basic (if static)

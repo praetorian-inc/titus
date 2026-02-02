@@ -55,7 +55,7 @@ func TestHTTPValidator_Validate_Bearer_Valid(t *testing.T) {
 			URL:    server.URL,
 			Auth: AuthDef{
 				Type:        "bearer",
-				SecretGroup: 0,
+				SecretGroup: "token", // Named capture group
 			},
 			SuccessCodes: []int{200},
 			FailureCodes: []int{401, 403},
@@ -66,7 +66,9 @@ func TestHTTPValidator_Validate_Bearer_Valid(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.github.1",
-		Groups: [][]byte{[]byte("ghp_validtoken123456")},
+		NamedGroups: map[string][]byte{
+			"token": []byte("ghp_validtoken123456"),
+		},
 	}
 
 	result, err := v.Validate(context.Background(), match)
@@ -88,7 +90,7 @@ func TestHTTPValidator_Validate_Bearer_Invalid(t *testing.T) {
 			URL:    server.URL,
 			Auth: AuthDef{
 				Type:        "bearer",
-				SecretGroup: 0,
+				SecretGroup: "token",
 			},
 			SuccessCodes: []int{200},
 			FailureCodes: []int{401, 403},
@@ -99,7 +101,9 @@ func TestHTTPValidator_Validate_Bearer_Invalid(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.github.1",
-		Groups: [][]byte{[]byte("ghp_invalidtoken")},
+		NamedGroups: map[string][]byte{
+			"token": []byte("ghp_invalidtoken"),
+		},
 	}
 
 	result, err := v.Validate(context.Background(), match)
@@ -126,7 +130,7 @@ func TestHTTPValidator_Validate_Basic(t *testing.T) {
 			URL:    server.URL,
 			Auth: AuthDef{
 				Type:        "basic",
-				SecretGroup: 0,
+				SecretGroup: "secret",
 				Username:    "api", // Static username, secret as password
 			},
 			SuccessCodes: []int{200},
@@ -137,7 +141,9 @@ func TestHTTPValidator_Validate_Basic(t *testing.T) {
 	v := NewHTTPValidator(def, nil)
 	match := &types.Match{
 		RuleID: "np.stripe.1",
-		Groups: [][]byte{[]byte("sk_live_test123")},
+		NamedGroups: map[string][]byte{
+			"secret": []byte("sk_live_test123"),
+		},
 	}
 
 	result, err := v.Validate(context.Background(), match)
@@ -163,7 +169,7 @@ func TestHTTPValidator_Validate_Header(t *testing.T) {
 			URL:    server.URL,
 			Auth: AuthDef{
 				Type:        "header",
-				SecretGroup: 0,
+				SecretGroup: "api_key",
 				HeaderName:  "DD-API-KEY",
 			},
 			SuccessCodes: []int{200},
@@ -174,7 +180,9 @@ func TestHTTPValidator_Validate_Header(t *testing.T) {
 	v := NewHTTPValidator(def, nil)
 	match := &types.Match{
 		RuleID: "np.datadog.1",
-		Groups: [][]byte{[]byte("valid_datadog_key")},
+		NamedGroups: map[string][]byte{
+			"api_key": []byte("valid_datadog_key"),
+		},
 	}
 
 	result, err := v.Validate(context.Background(), match)
@@ -200,7 +208,7 @@ func TestHTTPValidator_Validate_Query(t *testing.T) {
 			URL:    server.URL,
 			Auth: AuthDef{
 				Type:        "query",
-				SecretGroup: 0,
+				SecretGroup: "api_key",
 				QueryParam:  "key",
 			},
 			SuccessCodes: []int{200},
@@ -211,7 +219,9 @@ func TestHTTPValidator_Validate_Query(t *testing.T) {
 	v := NewHTTPValidator(def, nil)
 	match := &types.Match{
 		RuleID: "np.google.1",
-		Groups: [][]byte{[]byte("AIzaSyValidGoogleKey")},
+		NamedGroups: map[string][]byte{
+			"api_key": []byte("AIzaSyValidGoogleKey"),
+		},
 	}
 
 	result, err := v.Validate(context.Background(), match)
@@ -234,7 +244,7 @@ func TestHTTPValidator_Validate_Timeout(t *testing.T) {
 			URL:    server.URL,
 			Auth: AuthDef{
 				Type:        "bearer",
-				SecretGroup: 0,
+				SecretGroup: "token",
 			},
 			SuccessCodes: []int{200},
 			FailureCodes: []int{401},
@@ -244,7 +254,9 @@ func TestHTTPValidator_Validate_Timeout(t *testing.T) {
 	v := NewHTTPValidator(def, nil)
 	match := &types.Match{
 		RuleID: "np.test.1",
-		Groups: [][]byte{[]byte("test-token")},
+		NamedGroups: map[string][]byte{
+			"token": []byte("test-token"),
+		},
 	}
 
 	// Context with short timeout

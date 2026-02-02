@@ -19,7 +19,7 @@ validators:
       url: https://api.github.com/user
       auth:
         type: bearer
-        secret_group: 0
+        secret_group: token
       success_codes: [200]
       failure_codes: [401, 403]
 `
@@ -34,7 +34,7 @@ validators:
 	assert.Equal(t, "GET", v.HTTP.Method)
 	assert.Equal(t, "https://api.github.com/user", v.HTTP.URL)
 	assert.Equal(t, "bearer", v.HTTP.Auth.Type)
-	assert.Equal(t, 0, v.HTTP.Auth.SecretGroup)
+	assert.Equal(t, "token", v.HTTP.Auth.SecretGroup) // Named capture group
 	assert.Contains(t, v.HTTP.SuccessCodes, 200)
 	assert.Contains(t, v.HTTP.FailureCodes, 401)
 }
@@ -49,7 +49,7 @@ validators:
       url: https://api.github.com/user
       auth:
         type: bearer
-        secret_group: 0
+        secret_group: token
       success_codes: [200]
       failure_codes: [401]
   - name: slack-token
@@ -59,7 +59,7 @@ validators:
       url: https://slack.com/api/auth.test
       auth:
         type: bearer
-        secret_group: 0
+        secret_group: token
       success_codes: [200]
       failure_codes: [401]
 `)

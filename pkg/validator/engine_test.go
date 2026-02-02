@@ -30,7 +30,9 @@ func TestEngine_ValidateMatch_CacheHit(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.test.1",
-		Groups: [][]byte{[]byte("test-secret")},
+		NamedGroups: map[string][]byte{
+			"secret": []byte("test-secret"),
+		},
 	}
 
 	// First call - validator invoked
@@ -55,7 +57,9 @@ func TestEngine_ValidateAsync(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.test.1",
-		Groups: [][]byte{[]byte("async-secret")},
+		NamedGroups: map[string][]byte{
+			"secret": []byte("async-secret"),
+		},
 	}
 
 	// Start async validation
@@ -78,7 +82,9 @@ func TestEngine_ValidateAsync_CacheHitFastPath(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.test.1",
-		Groups: [][]byte{[]byte("cached-secret")},
+		NamedGroups: map[string][]byte{
+			"secret": []byte("cached-secret"),
+		},
 	}
 
 	// Warm cache
@@ -101,7 +107,9 @@ func TestEngine_NoValidator(t *testing.T) {
 	// Request validation for non-AWS rule
 	match := &types.Match{
 		RuleID: "np.github.1",
-		Groups: [][]byte{[]byte("ghp_xxxx")},
+		NamedGroups: map[string][]byte{
+			"token": []byte("ghp_xxxx"),
+		},
 	}
 
 	result, err := engine.ValidateMatch(context.Background(), match)
@@ -121,7 +129,9 @@ func TestEngine_ValidationError(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.test.1",
-		Groups: [][]byte{[]byte("test-secret")},
+		NamedGroups: map[string][]byte{
+			"secret": []byte("test-secret"),
+		},
 	}
 
 	result, err := engine.ValidateMatch(context.Background(), match)

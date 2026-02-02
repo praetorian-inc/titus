@@ -162,9 +162,16 @@ func TestHyperscanMatcher_Match_WithCaptureGroups(t *testing.T) {
 
 	match := matches[0]
 	assert.Equal(t, "test.1", match.RuleID)
+
+	// Verify positional groups (deprecated but still populated for backwards compatibility)
 	assert.Len(t, match.Groups, 2)
 	assert.Equal(t, []byte("user"), match.Groups[0])
 	assert.Equal(t, []byte("example.com"), match.Groups[1])
+
+	// Verify named groups (preferred way to access captures)
+	assert.NotNil(t, match.NamedGroups)
+	assert.Equal(t, []byte("user"), match.NamedGroups["user"])
+	assert.Equal(t, []byte("example.com"), match.NamedGroups["domain"])
 }
 
 func TestHyperscanMatcher_Match_MultipleRules(t *testing.T) {

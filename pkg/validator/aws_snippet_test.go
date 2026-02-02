@@ -15,11 +15,11 @@ import (
 func TestAWSValidator_ExtractCredentials_AWS1_WithSnippet(t *testing.T) {
 	v := NewAWSValidator()
 
-	// np.aws.1 with secret key in snippet.After
+	// np.aws.1 with key_id named group and secret key in snippet.After
 	match := &types.Match{
 		RuleID: "np.aws.1",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
+		NamedGroups: map[string][]byte{
+			"key_id": []byte("AKIAIOSFODNN7EXAMPLE"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("export AWS_ACCESS_KEY_ID="),
@@ -39,11 +39,11 @@ func TestAWSValidator_ExtractCredentials_AWS1_WithSnippet(t *testing.T) {
 func TestAWSValidator_ExtractCredentials_AWS1_WithSnippet_NoSessionToken(t *testing.T) {
 	v := NewAWSValidator()
 
-	// np.aws.1 with secret key but no session token in snippet.After
+	// np.aws.1 with key_id named group and secret key but no session token in snippet.After
 	match := &types.Match{
 		RuleID: "np.aws.1",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
+		NamedGroups: map[string][]byte{
+			"key_id": []byte("AKIAIOSFODNN7EXAMPLE"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("export AWS_ACCESS_KEY_ID="),
@@ -63,11 +63,11 @@ func TestAWSValidator_ExtractCredentials_AWS1_WithSnippet_NoSessionToken(t *test
 func TestAWSValidator_ExtractCredentials_AWS1_NoSnippetSecret(t *testing.T) {
 	v := NewAWSValidator()
 
-	// np.aws.1 without secret in snippet
+	// np.aws.1 with key_id named group but without secret in snippet
 	match := &types.Match{
 		RuleID: "np.aws.1",
-		Groups: [][]byte{
-			[]byte("AKIAIOSFODNN7EXAMPLE"),
+		NamedGroups: map[string][]byte{
+			"key_id": []byte("AKIAIOSFODNN7EXAMPLE"),
 		},
 		Snippet: types.Snippet{
 			After: []byte("some other text"),
@@ -96,8 +96,8 @@ func TestAWSValidator_Validate_AWS1_WithSessionToken(t *testing.T) {
 
 	match := &types.Match{
 		RuleID: "np.aws.1",
-		Groups: [][]byte{
-			[]byte("ASIAIOSFODNN7EXAMPLE"), // Session token starts with ASIA
+		NamedGroups: map[string][]byte{
+			"key_id": []byte("ASIAIOSFODNN7EXAMPLE"), // Session token starts with ASIA
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("AWS_ACCESS_KEY_ID="),

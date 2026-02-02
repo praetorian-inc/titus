@@ -78,11 +78,27 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 }
 
 func (v *HTTPValidator) extractSecret(match *types.Match) (string, error) {
-	group := v.def.HTTP.Auth.SecretGroup
-	if group >= len(match.Groups) {
-		return "", fmt.Errorf("secret_group %d out of range (have %d groups)", group, len(match.Groups))
+	groupName := v.def.HTTP.Auth.SecretGroup
+	if groupName == "" {
+		return "", fmt.Errorf("secret_group not specified in validator config")
 	}
-	return string(match.Groups[group]), nil
+
+	// Look up the named capture group
+	if match.NamedGroups == nil {
+		return "", fmt.Errorf("no named capture groups in match (regex pattern needs (?P<%s>...) syntax)", groupName)
+	}
+
+	value, ok := match.NamedGroups[groupName]
+	if !ok {
+		// List available groups for debugging
+		available := make([]string, 0, len(match.NamedGroups))
+		for name := range match.NamedGroups {
+			available = append(available, name)
+		}
+		return "", fmt.Errorf("named group %q not found (available: %v)", groupName, available)
+	}
+
+	return string(value), nil
 }
 
 func (v *HTTPValidator) applyAuth(req *http.Request, secret string) error {

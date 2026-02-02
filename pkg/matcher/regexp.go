@@ -80,7 +80,7 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 			start := match.Index
 			end := start + match.Length
 
-			// Extract capture groups
+			// Extract capture groups (positional, for backwards compatibility)
 			var groups [][]byte
 			matchGroups := match.Groups()
 			for i := 1; i < len(matchGroups); i++ {
@@ -88,6 +88,20 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 				if len(group.Captures) > 0 {
 					capture := group.Captures[0]
 					groups = append(groups, []byte(capture.String()))
+				}
+			}
+
+			// Extract named capture groups
+			namedGroups := make(map[string][]byte)
+			groupNames := re.GetGroupNames()
+			for _, name := range groupNames {
+				// Skip numbered groups (they show up as "0", "1", etc.)
+				if name == "" || (len(name) > 0 && name[0] >= '0' && name[0] <= '9') {
+					continue
+				}
+				group := match.GroupByName(name)
+				if group != nil && len(group.Captures) > 0 {
+					namedGroups[name] = []byte(group.Captures[0].String())
 				}
 			}
 
@@ -107,7 +121,8 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 						End:   int64(end),
 					},
 				},
-				Groups: groups,
+				Groups:      groups,
+				NamedGroups: namedGroups,
 				Snippet: types.Snippet{
 					Before:   before,
 					Matching: content[start:end],
