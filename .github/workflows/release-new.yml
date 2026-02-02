@@ -233,14 +233,30 @@ jobs:
         mingw32-make install
         ls -la /mingw64/lib/libhs*.a
 
+    - name: Create pkg-config file for vectorscan
+      run: |
+        # Create libhs.pc for pkg-config discovery
+        cat > /mingw64/lib/pkgconfig/libhs.pc << 'EOF'
+        prefix=/mingw64
+        exec_prefix=${prefix}
+        libdir=${prefix}/lib
+        includedir=${prefix}/include
+
+        Name: libhs
+        Description: Vectorscan regex library (Hyperscan fork)
+        Version: 5.4.11
+        Libs: -L${libdir} -lhs
+        Cflags: -I${includedir}
+        EOF
+        cat /mingw64/lib/pkgconfig/libhs.pc
+
     - name: Build binary
       shell: pwsh
       env:
         CGO_ENABLED: "1"
-        CC: "gcc"
-        CXX: "g++"
-        CGO_CFLAGS: "-I/mingw64/include"
-        CGO_LDFLAGS: "-L/mingw64/lib -lhs -lstdc++ -lm -static"
+        CC: "C:/msys64/mingw64/bin/gcc.exe"
+        CXX: "C:/msys64/mingw64/bin/g++.exe"
+        PKG_CONFIG_PATH: "C:/msys64/mingw64/lib/pkgconfig"
       run: |
         $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
         $env:GOWORK = "off"
