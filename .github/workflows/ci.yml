@@ -40,5 +40,5 @@ jobs:
 
     - name: Verify binary exists
       run: |
-        test -x ./titus || (echo "Binary not created" && exit 1)
-        ./titus version || ./titus --help
+        test -x ./dist/titus || (echo "Binary not created" && exit 1)
+        ./dist/titus version || ./dist/titus --help

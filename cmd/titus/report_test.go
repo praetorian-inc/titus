@@ -258,3 +258,256 @@ func TestReportCommand_ByRuleSummary(t *testing.T) {
 	assert.Contains(t, output, "np.github.1")
 	assert.Contains(t, output, "2 findings")
 }
+
+func TestReportCommand_JSONFormat_IncludesValidationResults(t *testing.T) {
+	// Setup: Create test database with match containing validation result
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	s, err := store.New(store.Config{Path: dbPath})
+	require.NoError(t, err)
+
+	// Add blob
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = s.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	// Use real rule structural ID computation
+	ruleStructuralID := "test-rule-structural-id"
+	groups := [][]byte{[]byte("AKIAIOSFODNN7EXAMPLE")}
+	findingID := types.ComputeFindingID(ruleStructuralID, groups)
+
+	// Create match with validation result
+	validationResult := types.NewValidationResult(
+		types.StatusUndetermined,
+		0.0,
+		"cannot validate: partial credentials: np.aws.1 only contains access key ID",
+	)
+
+	match := &types.Match{
+		BlobID:           blobID,
+		StructuralID:     "location-based-structural-id", // Different from finding ID
+		RuleID:           "np.aws.1",
+		RuleName:         "AWS API Key",
+		Location:         types.Location{Offset: types.OffsetSpan{Start: 0, End: 20}},
+		Groups:           groups,
+		Snippet:          types.Snippet{Matching: []byte("AKIAIOSFODNN7EXAMPLE")},
+		ValidationResult: validationResult,
+	}
+	err = s.AddMatch(match)
+	require.NoError(t, err)
+
+	// Add finding with content-based ID
+	finding := &types.Finding{
+		ID:     findingID,
+		RuleID: "np.aws.1",
+		Groups: groups,
+	}
+	err = s.AddFinding(finding)
+	require.NoError(t, err)
+
+	require.NoError(t, s.Close())
+
+	// Execute: Run report command with JSON format
+	var stdout bytes.Buffer
+	cmd := newReportCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--datastore", dbPath, "--format", "json"})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+
+	// Verify: Check JSON output contains validation results
+	output := stdout.String()
+	assert.Contains(t, output, `"validation_result"`, "JSON should contain validation_result field")
+	assert.Contains(t, output, `"status"`, "validation_result should contain status")
+	assert.Contains(t, output, `"undetermined"`, "status should be undetermined")
+	assert.Contains(t, output, `only contains access key ID`, "message should be present")
+	assert.Contains(t, output, `"Matches"`, "Finding should contain Matches array")
+}
+
+func TestReportCommand_HumanFormat_ShowsValidationSummary(t *testing.T) {
+	// Setup: Create test database with matches containing validation results
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	s, err := store.New(store.Config{Path: dbPath})
+	require.NoError(t, err)
+
+	// Add blob
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = s.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	ruleStructuralID := "test-rule-structural-id"
+
+	// Create multiple matches with different validation statuses
+	groups1 := [][]byte{[]byte("AKIATEST12345678")}
+	match1 := &types.Match{
+		BlobID:       blobID,
+		StructuralID: "structural-id-1",
+		RuleID:       "np.aws.6",
+		RuleName:     "AWS API Key",
+		Location:     types.Location{Offset: types.OffsetSpan{Start: 0, End: 16}},
+		Groups:       groups1,
+		Snippet:      types.Snippet{Matching: []byte("AKIATEST12345678")},
+		ValidationResult: types.NewValidationResult(
+			types.StatusValid,
+			1.0,
+			"valid AWS credentials",
+		),
+	}
+
+	groups2 := [][]byte{[]byte("AKIATEST87654321")}
+	match2 := &types.Match{
+		BlobID:       blobID,
+		StructuralID: "structural-id-2",
+		RuleID:       "np.aws.6",
+		RuleName:     "AWS API Key",
+		Location:     types.Location{Offset: types.OffsetSpan{Start: 20, End: 36}},
+		Groups:       groups2,
+		Snippet:      types.Snippet{Matching: []byte("AKIATEST87654321")},
+		ValidationResult: types.NewValidationResult(
+			types.StatusInvalid,
+			0.9,
+			"invalid AWS credentials",
+		),
+	}
+
+	groups3 := [][]byte{[]byte("AKIATEST11111111")}
+	match3 := &types.Match{
+		BlobID:       blobID,
+		StructuralID: "structural-id-3",
+		RuleID:       "np.aws.6",
+		RuleName:     "AWS API Key",
+		Location:     types.Location{Offset: types.OffsetSpan{Start: 40, End: 56}},
+		Groups:       groups3,
+		Snippet:      types.Snippet{Matching: []byte("AKIATEST11111111")},
+		ValidationResult: types.NewValidationResult(
+			types.StatusUndetermined,
+			0.0,
+			"cannot validate",
+		),
+	}
+
+	err = s.AddMatch(match1)
+	require.NoError(t, err)
+	err = s.AddMatch(match2)
+	require.NoError(t, err)
+	err = s.AddMatch(match3)
+	require.NoError(t, err)
+
+	// Add findings
+	finding1 := &types.Finding{
+		ID:     types.ComputeFindingID(ruleStructuralID, groups1),
+		RuleID: "np.aws.6",
+		Groups: groups1,
+	}
+	finding2 := &types.Finding{
+		ID:     types.ComputeFindingID(ruleStructuralID, groups2),
+		RuleID: "np.aws.6",
+		Groups: groups2,
+	}
+	finding3 := &types.Finding{
+		ID:     types.ComputeFindingID(ruleStructuralID, groups3),
+		RuleID: "np.aws.6",
+		Groups: groups3,
+	}
+
+	err = s.AddFinding(finding1)
+	require.NoError(t, err)
+	err = s.AddFinding(finding2)
+	require.NoError(t, err)
+	err = s.AddFinding(finding3)
+	require.NoError(t, err)
+
+	require.NoError(t, s.Close())
+
+	// Execute: Run report command with human format
+	var stdout bytes.Buffer
+	cmd := newReportCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--datastore", dbPath, "--format", "human"})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+
+	// Verify: Check validation summary is present
+	output := stdout.String()
+	assert.Contains(t, output, "Validation Summary:", "should show validation summary")
+	assert.Contains(t, output, "Valid: 1", "should count valid")
+	assert.Contains(t, output, "Invalid: 1", "should count invalid")
+	assert.Contains(t, output, "Undetermined: 1", "should count undetermined")
+
+	// Verify: Check validation status shown in findings list
+	assert.Contains(t, output, "[valid]", "should show validation status")
+	assert.Contains(t, output, "valid AWS credentials", "should show validation message")
+}
+
+func TestReportCommand_HumanFormat_ShowsValidationInFindingsList(t *testing.T) {
+	// Setup: Create test database
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	s, err := store.New(store.Config{Path: dbPath})
+	require.NoError(t, err)
+
+	// Add blob
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = s.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	ruleStructuralID := "test-rule-structural-id"
+	groups := [][]byte{[]byte("AKIATEST12345678")}
+	findingID := types.ComputeFindingID(ruleStructuralID, groups)
+
+	// Create match with validation
+	match := &types.Match{
+		BlobID:       blobID,
+		StructuralID: "structural-id-1",
+		RuleID:       "np.aws.6",
+		RuleName:     "AWS API Key",
+		Location:     types.Location{Offset: types.OffsetSpan{Start: 0, End: 16}},
+		Groups:       groups,
+		Snippet:      types.Snippet{Matching: []byte("AKIATEST12345678")},
+		ValidationResult: types.NewValidationResult(
+			types.StatusValid,
+			1.0,
+			"valid AWS credentials for account 411435703965...",
+		),
+	}
+
+	err = s.AddMatch(match)
+	require.NoError(t, err)
+
+	// Add finding
+	finding := &types.Finding{
+		ID:     findingID,
+		RuleID: "np.aws.6",
+		Groups: groups,
+	}
+
+	err = s.AddFinding(finding)
+	require.NoError(t, err)
+
+	require.NoError(t, s.Close())
+
+	// Execute: Run report command
+	var stdout bytes.Buffer
+	cmd := newReportCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
+	cmd.SetArgs([]string{"--datastore", dbPath, "--format", "human"})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+
+	// Verify: Check validation shown in findings list
+	output := stdout.String()
+	assert.Contains(t, output, "Recent Findings:", "should show findings section")
+	assert.Contains(t, output, "Rule: np.aws.6", "should show rule")
+	assert.Contains(t, output, "Validation: [valid]", "should show validation status")
+	assert.Contains(t, output, "valid AWS credentials for account 411435703965...", "should show validation message")
+}

@@ -377,3 +377,77 @@ func TestSQLite_GetAllProvenance(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, emptyProv, "should return empty slice for non-existent blob")
 }
+
+func TestSQLite_AddMatch_WithValidation(t *testing.T) {
+	// Arrange
+	store, err := NewSQLite(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = store.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	validationResult := types.NewValidationResult(types.StatusValid, 0.95, "Successfully validated via API")
+
+	match := &types.Match{
+		BlobID:           blobID,
+		StructuralID:     "abc123",
+		RuleID:           "np.test.1",
+		RuleName:         "Test Rule",
+		Location:         types.Location{Offset: types.OffsetSpan{Start: 0, End: 10}},
+		Groups:           [][]byte{[]byte("group1")},
+		Snippet:          types.Snippet{Matching: []byte("test")},
+		ValidationResult: validationResult,
+	}
+
+	// Act
+	err = store.AddMatch(match)
+	require.NoError(t, err)
+
+	// Assert - retrieve the match and verify validation result was persisted
+	matches, err := store.GetAllMatches()
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+
+	retrievedMatch := matches[0]
+	require.NotNil(t, retrievedMatch.ValidationResult, "validation result should be persisted")
+	assert.Equal(t, types.StatusValid, retrievedMatch.ValidationResult.Status)
+	assert.Equal(t, 0.95, retrievedMatch.ValidationResult.Confidence)
+	assert.Equal(t, "Successfully validated via API", retrievedMatch.ValidationResult.Message)
+	assert.False(t, retrievedMatch.ValidationResult.ValidatedAt.IsZero(), "validated_at timestamp should be set")
+}
+
+func TestSQLite_AddMatch_WithoutValidation(t *testing.T) {
+	// Arrange
+	store, err := NewSQLite(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	blobID := types.ComputeBlobID([]byte("test content"))
+	err = store.AddBlob(blobID, 12)
+	require.NoError(t, err)
+
+	match := &types.Match{
+		BlobID:           blobID,
+		StructuralID:     "abc456",
+		RuleID:           "np.test.2",
+		RuleName:         "Test Rule 2",
+		Location:         types.Location{Offset: types.OffsetSpan{Start: 0, End: 10}},
+		Groups:           [][]byte{[]byte("group1")},
+		Snippet:          types.Snippet{Matching: []byte("test")},
+		ValidationResult: nil, // No validation
+	}
+
+	// Act
+	err = store.AddMatch(match)
+	require.NoError(t, err)
+
+	// Assert - retrieve the match and verify validation result is nil
+	matches, err := store.GetAllMatches()
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+
+	retrievedMatch := matches[0]
+	assert.Nil(t, retrievedMatch.ValidationResult, "validation result should be nil when not validated")
+}

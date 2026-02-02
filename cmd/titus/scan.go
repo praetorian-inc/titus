@@ -12,6 +12,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/praetorian-inc/titus/pkg/validator"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,9 @@ var (
 	scanMaxFileSize   int64
 	scanIncludeHidden bool
 	scanContextLines  int
-	scanIncremental   bool
+	scanIncremental     bool
+	scanValidate        bool
+	scanValidateWorkers int
 )
 
 var scanCmd = &cobra.Command{
@@ -47,6 +50,8 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncludeHidden, "include-hidden", false, "Include hidden files and directories")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
+	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
+	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -61,6 +66,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
+	}
+
+	// Create rule map for finding ID computation
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
 	}
 
 	// Create matcher
@@ -81,6 +92,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating store: %w", err)
 	}
 	defer s.Close()
+
+	// Initialize validation engine (nil if validation disabled)
+	validationEngine := initValidationEngine()
 
 	// Create enumerator
 	enumerator, err := createEnumerator(target, scanGit)
@@ -123,6 +137,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("matching content: %w", err)
 		}
 
+		// Validate matches if enabled
+		validateMatches(ctx, validationEngine, matches, verbose)
+
 		// Store matches and findings
 		for _, match := range matches {
 			matchCount++
@@ -132,9 +149,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 
 			// Create finding (deduplicated by finding ID)
-			// Note: Finding ID is computed from rule structural ID + groups
-			// For now, we'll use a simpler approach based on structural ID
-			exists, err := s.FindingExists(match.StructuralID)
+			// Finding ID is computed from rule structural ID + groups (content-based)
+			rule, ok := ruleMap[match.RuleID]
+			if !ok {
+				return fmt.Errorf("rule not found: %s", match.RuleID)
+			}
+
+			findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+			exists, err := s.FindingExists(findingID)
 			if err != nil {
 				return fmt.Errorf("checking finding: %w", err)
 			}
@@ -142,7 +164,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			if !exists {
 				findingCount++
 				finding := &types.Finding{
-					ID:     match.StructuralID, // Use structural ID as finding ID for now
+					ID:     findingID,
 					RuleID: match.RuleID,
 					Groups: match.Groups,
 				}
@@ -200,6 +222,30 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("retrieving findings: %w", err)
 	}
+
+	// Get all matches to attach validation results to findings
+	allMatches, err := s.GetAllMatches()
+	if err != nil {
+		return fmt.Errorf("retrieving matches: %w", err)
+	}
+
+	// Build map of finding ID to matches
+	findingMatches := make(map[string][]*types.Match)
+	for _, m := range allMatches {
+		// Compute content-based finding ID same way as during scan
+		rule, ok := ruleMap[m.RuleID]
+		if !ok {
+			return fmt.Errorf("rule not found: %s", m.RuleID)
+		}
+		findingID := types.ComputeFindingID(rule.StructuralID, m.Groups)
+		findingMatches[findingID] = append(findingMatches[findingID], m)
+	}
+
+	// Attach matches to findings
+	for _, f := range findings {
+		f.Matches = findingMatches[f.ID]
+	}
+
 	return outputFindings(cmd, findings)
 }
 
@@ -278,7 +324,14 @@ func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {
 
 		fmt.Fprintf(cmd.OutOrStdout(), "\nFindings:\n")
 		for i, f := range findings {
-			fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s\n", i+1, f.RuleID)
+			fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s", i+1, f.RuleID)
+
+			// Show validation status if available
+			if len(f.Matches) > 0 && f.Matches[0].ValidationResult != nil {
+				vr := f.Matches[0].ValidationResult
+				fmt.Fprintf(cmd.OutOrStdout(), " [%s]", vr.Status)
+			}
+			fmt.Fprintln(cmd.OutOrStdout())
 		}
 		return nil
 	default:
@@ -331,4 +384,61 @@ func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches
 	}
 
 	return nil
+}
+
+// initValidationEngine creates the validation engine if validation is enabled.
+func initValidationEngine() *validator.Engine {
+	if !scanValidate {
+		return nil
+	}
+
+	var validators []validator.Validator
+
+	// Add AWS validator
+	validators = append(validators, validator.NewAWSValidator())
+
+	// Add embedded YAML validators
+	embedded, err := validator.LoadEmbeddedValidators()
+	if err != nil {
+		// Log warning but continue
+		fmt.Fprintf(os.Stderr, "warning: failed to load embedded validators: %v\n", err)
+	} else {
+		validators = append(validators, embedded...)
+	}
+
+	return validator.NewEngine(scanValidateWorkers, validators...)
+}
+
+// validateMatches validates matches using the validation engine.
+func validateMatches(ctx context.Context, engine *validator.Engine, matches []*types.Match, verbose bool) {
+	if engine == nil || len(matches) == 0 {
+		return
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[validate] Starting validation for %d matches\n", len(matches))
+	}
+
+	// Submit all matches for async validation
+	results := make([]<-chan *types.ValidationResult, len(matches))
+	for i := range matches {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[validate] Queueing match %d: rule=%s\n", i+1, matches[i].RuleID)
+		}
+		results[i] = engine.ValidateAsync(ctx, matches[i])
+	}
+
+	// Wait for all validations and attach results
+	for i, ch := range results {
+		result := <-ch
+		matches[i].ValidationResult = result
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[validate] Result %d: rule=%s status=%s confidence=%.1f message=%s\n",
+				i+1, matches[i].RuleID, result.Status, result.Confidence, result.Message)
+		}
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[validate] Validation complete\n")
+	}
 }

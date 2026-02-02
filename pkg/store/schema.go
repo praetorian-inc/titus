@@ -99,7 +99,11 @@ func createMatchesTable(db *sql.DB) error {
 			snippet_before BLOB,
 			snippet_matching BLOB,
 			snippet_after BLOB,
-			groups_json TEXT
+			groups_json TEXT,
+			validation_status TEXT,
+			validation_confidence REAL,
+			validation_message TEXT,
+			validation_timestamp TEXT
 		)
 	`)
 	return err

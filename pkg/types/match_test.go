@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -112,4 +113,53 @@ func TestMatch_NilGroups(t *testing.T) {
 	}
 
 	assert.Nil(t, match.Groups)
+}
+
+func TestMatch_ValidationResult(t *testing.T) {
+	match := &Match{
+		RuleID:   "np.aws.6",
+		RuleName: "AWS API Credentials",
+	}
+
+	// Initially nil
+	assert.Nil(t, match.ValidationResult)
+
+	// Can be set
+	match.ValidationResult = NewValidationResult(StatusValid, 1.0, "valid")
+	assert.NotNil(t, match.ValidationResult)
+	assert.Equal(t, StatusValid, match.ValidationResult.Status)
+}
+
+func TestMatch_JSON_WithValidation(t *testing.T) {
+	match := &Match{
+		RuleID:           "np.aws.6",
+		RuleName:         "AWS API Credentials",
+		ValidationResult: NewValidationResult(StatusValid, 1.0, "active credentials"),
+	}
+
+	data, err := json.Marshal(match)
+	assert.NoError(t, err)
+
+	var decoded map[string]interface{}
+	err = json.Unmarshal(data, &decoded)
+	assert.NoError(t, err)
+
+	// Validation result should be present
+	vr, ok := decoded["validation_result"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, "valid", vr["status"])
+}
+
+func TestMatch_JSON_WithoutValidation(t *testing.T) {
+	match := &Match{
+		RuleID:   "np.aws.6",
+		RuleName: "AWS API Credentials",
+		// ValidationResult is nil
+	}
+
+	data, err := json.Marshal(match)
+	assert.NoError(t, err)
+
+	// validation_result should not be in JSON (omitempty)
+	assert.NotContains(t, string(data), "validation_result")
 }

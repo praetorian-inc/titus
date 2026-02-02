@@ -124,7 +124,12 @@ func ExtractCaptures(content []byte, pattern string, start, end int) (map[string
 		}
 	}
 
-	// Build map of named capture groups
+	return BuildNamedGroups(re, match), nil
+}
+
+// BuildNamedGroups extracts named capture groups from a compiled regexp and its match result.
+// Returns a map of group name -> captured value. Unnamed groups are skipped.
+func BuildNamedGroups(re *regexp.Regexp, match [][]byte) map[string][]byte {
 	captures := make(map[string][]byte)
 	names := re.SubexpNames()
 
@@ -138,5 +143,5 @@ func ExtractCaptures(content []byte, pattern string, start, end int) (map[string
 		}
 	}
 
-	return captures, nil
+	return captures
 }
