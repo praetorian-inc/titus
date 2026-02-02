@@ -251,23 +251,19 @@ jobs:
         cat /mingw64/lib/pkgconfig/libhs.pc
 
     - name: Build binary
-      shell: pwsh
       env:
         CGO_ENABLED: "1"
-        CC: "C:/msys64/mingw64/bin/gcc.exe"
-        CXX: "C:/msys64/mingw64/bin/g++.exe"
-        PKG_CONFIG_PATH: "C:/msys64/mingw64/lib/pkgconfig"
       run: |
-        $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-        $env:GOWORK = "off"
-        New-Item -ItemType Directory -Force -Path dist
+        # Get Go binary from actions/setup-go (Windows native path)
+        export PATH="$(cygpath -u "$GOROOT_1_25_X64/bin"):$PATH"
+        export GOWORK=off
+        mkdir -p dist
         go build -o dist/titus-windows-amd64.exe ./cmd/titus
-        Get-ChildItem dist/
+        ls -la dist/
 
     - name: Verify binary runs
-      shell: pwsh
       run: |
-        .\dist\titus-windows-amd64.exe version
+        ./dist/titus-windows-amd64.exe version
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
