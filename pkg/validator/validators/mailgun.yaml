@@ -1,0 +1,15 @@
+# pkg/validator/validators/mailgun.yaml
+# Mailgun uses Basic Auth with "api" as username and API key as password
+validators:
+  - name: mailgun-api-key
+    rule_ids:
+      - np.mailgun.1
+    http:
+      method: GET
+      url: https://api.mailgun.net/v3/domains
+      auth:
+        type: basic
+        username: api
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [401, 403]

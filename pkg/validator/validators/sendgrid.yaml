@@ -1,0 +1,15 @@
+# pkg/validator/validators/sendgrid.yaml
+# SendGrid uses Bearer token authentication
+# Validation endpoint returns API key scopes (permissions)
+validators:
+  - name: sendgrid-api-key
+    rule_ids:
+      - np.sendgrid.1
+    http:
+      method: GET
+      url: https://api.sendgrid.com/v3/scopes
+      auth:
+        type: bearer
+        secret_group: "token"  # Matches (?P<token>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]

@@ -5,7 +5,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (
+    (?P<token>
       00[a-zA-Z0-9]{13}             (?# organization ID )
       !
       [a-zA-Z0-9._]{96}             (?# opaque token )
