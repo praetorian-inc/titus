@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -50,8 +52,12 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 		return types.NewValidationResult(types.StatusUndetermined, 0, err.Error()), nil
 	}
 
-	// Build request
-	req, err := http.NewRequestWithContext(ctx, v.def.HTTP.Method, v.def.HTTP.URL, nil)
+	// Build request with optional body
+	var body io.Reader
+	if v.def.HTTP.Body != "" {
+		body = strings.NewReader(v.def.HTTP.Body)
+	}
+	req, err := http.NewRequestWithContext(ctx, v.def.HTTP.Method, v.def.HTTP.URL, body)
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to create request: %v", err)), nil
 	}
@@ -129,6 +135,15 @@ func (v *HTTPValidator) applyAuth(req *http.Request, secret string) error {
 		q := req.URL.Query()
 		q.Set(paramName, secret)
 		req.URL.RawQuery = q.Encode()
+
+	case "api_key":
+		// Sets "Authorization: key=SECRET" or custom prefix
+		// Used by Firebase FCM, Google APIs, etc.
+		prefix := v.def.HTTP.Auth.KeyPrefix
+		if prefix == "" {
+			prefix = "key="
+		}
+		req.Header.Set("Authorization", prefix+secret)
 
 	default:
 		return fmt.Errorf("unsupported auth type: %s", v.def.HTTP.Auth.Type)

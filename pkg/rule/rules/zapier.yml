@@ -1,0 +1,28 @@
+rules:
+
+- name: Zapier Webhook URL
+  id: np.zapier.1
+
+  pattern: 'https?://(?:www\.)?hooks\.zapier\.com/hooks/catch/(?P<user_id>[0-9]{5,10})/(?P<hook_id>[a-z0-9]{5,10})/?'
+
+  categories: [api, secret, webhook]
+
+  examples:
+  - 'ZAPIER_WEBHOOK=https://hooks.zapier.com/hooks/catch/11595998/3ouwv7m/'
+  - "webhook_url = 'https://hooks.zapier.com/hooks/catch/2929690/ztd17n/'"
+  - |
+    # Zapier integration endpoint
+    ENDPOINT = "https://hooks.zapier.com/hooks/catch/15616669/38qwq19/"
+
+  negative_examples:
+  - 'https://hooks.zapier.com/hooks/catch/123/abc'
+  - 'https://hooks.zapier.com/hooks/catch/12345678901/abcdefghijk'
+  - 'https://hooks.example.com/hooks/catch/1234567/abcdefg/'
+  - 'https://hooks.zapier.com/hooks/catch/YOUR_HOOK_ID/'
+  - 'https://hooks.zapier.com/hooks/catch/xxxxxxx/yyyyyy/'
+  - 'https://hooks.zapier.com/hooks/catch/XXXXXX/high/'
+
+  references:
+  - https://help.zapier.com/hc/en-us/articles/8496288690317-Trigger-Zaps-from-webhooks
+  - https://github.com/streaak/keyhacks#Zapier-Webhook-Token
+  - https://docs.gitguardian.com/secrets-detection/detectors/specifics/zapier_webhook_url

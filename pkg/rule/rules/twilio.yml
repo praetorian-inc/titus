@@ -3,7 +3,10 @@ rules:
 - name: Twilio API Key
   id: np.twilio.1
 
-  pattern: '(?i)twilio.{0,20}\b(sk[a-f0-9]{32})\b'
+  # Named capture group for validator compatibility
+  # Captures API Key SID (SK + 32 hex chars)
+  # Validator searches snippet context for API Key Secret
+  pattern: '(?i)twilio.{0,20}\b(?P<key_sid>SK[a-f0-9]{32})\b'
 
   categories: [api, fuzzy, secret]
 

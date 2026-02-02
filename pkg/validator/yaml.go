@@ -25,17 +25,19 @@ type HTTPDef struct {
 	URL          string   `yaml:"url"`
 	Auth         AuthDef  `yaml:"auth"`
 	Headers      []Header `yaml:"headers,omitempty"`
+	Body         string   `yaml:"body,omitempty"` // Static request body for POST/PUT
 	SuccessCodes []int    `yaml:"success_codes"`
 	FailureCodes []int    `yaml:"failure_codes"`
 }
 
 // AuthDef defines authentication configuration.
 type AuthDef struct {
-	Type        string `yaml:"type"` // bearer, basic, header, query
+	Type        string `yaml:"type"` // bearer, basic, header, query, api_key
 	SecretGroup string `yaml:"secret_group"`           // named capture group containing the secret (e.g., "secret", "token")
 	HeaderName  string `yaml:"header_name,omitempty"`  // for type=header
 	QueryParam  string `yaml:"query_param,omitempty"`  // for type=query
 	Username    string `yaml:"username,omitempty"`     // for type=basic (if static)
+	KeyPrefix   string `yaml:"key_prefix,omitempty"`   // for type=api_key, default "key=" (e.g., "Authorization: key=SECRET")
 }
 
 // Header is a custom header key-value pair.
