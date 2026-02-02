@@ -140,8 +140,9 @@ jobs:
           - arch: arm64
             runner: macos-14
             hs_package: vectorscan
-          # macOS Intel builds disabled - macos-12 runner unavailable
-          # Intel Mac users can build from source or use Rosetta 2 on ARM Macs
+          - arch: amd64
+            runner: macos-15-intel
+            hs_package: hyperscan
 
     steps:
     - name: Checkout code
@@ -183,14 +184,30 @@ jobs:
         name: titus-darwin-${{ matrix.arch }}
         path: dist/titus-darwin-${{ matrix.arch }}
 
-  # Build Windows binary using vcpkg
-  # DISABLED: vcpkg builds with MSVC, but Go CGO uses MinGW - incompatible
+  # Build Windows binary using MSYS2/MinGW (compatible with Go CGO)
   build-windows:
-    if: false  # Disabled due to MSVC/MinGW incompatibility
     name: Build Windows amd64
     runs-on: windows-2022
 
+    defaults:
+      run:
+        shell: msys2 {0}
+
     steps:
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-boost
+          mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-ragel
+          git
+          make
+
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -200,36 +217,41 @@ jobs:
         go-version-file: 'go.mod'
         cache: true
 
-    - name: Install hyperscan via vcpkg
+    - name: Build vectorscan static library with MinGW
       run: |
-        vcpkg install hyperscan:x64-windows-static
-        vcpkg integrate install
-
-    - name: Create pkg-config file for hyperscan
-      run: |
-        $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT -replace '\\','/'
-        $prefix = "$vcpkgRoot/installed/x64-windows-static"
-        $pkgconfigDir = "$prefix/lib/pkgconfig"
-        New-Item -ItemType Directory -Force -Path $pkgconfigDir
-        $pcContent = "prefix=$prefix`nexec_prefix=`${prefix}`nlibdir=`${prefix}/lib`nincludedir=`${prefix}/include/hs`n`nName: libhs`nDescription: Hyperscan regex library`nVersion: 5.4.2`nLibs: -L`${libdir} -lhs`nCflags: -I`${includedir}"
-        $pcContent | Out-File -FilePath "$pkgconfigDir/libhs.pc" -Encoding ASCII -NoNewline
-        Write-Output "--- pkg-config file content ---"
-        Get-Content "$pkgconfigDir/libhs.pc"
-        Write-Output "--- include directory ---"
-        dir "$prefix/include/hs"
+        git clone --depth 1 --branch vectorscan/5.4.11 https://github.com/VectorCamp/vectorscan.git /tmp/vectorscan
+        cd /tmp/vectorscan
+        mkdir build && cd build
+        cmake .. \
+          -G "MinGW Makefiles" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_C_COMPILER=gcc \
+          -DCMAKE_CXX_COMPILER=g++ \
+          -DCMAKE_INSTALL_PREFIX=/mingw64
+        mingw32-make -j$(nproc)
+        mingw32-make install
+        ls -la /mingw64/lib/libhs*.a
 
     - name: Build binary
+      shell: pwsh
+      env:
+        CGO_ENABLED: "1"
+        CC: "gcc"
+        CXX: "g++"
+        CGO_CFLAGS: "-I/mingw64/include"
+        CGO_LDFLAGS: "-L/mingw64/lib -lhs -lstdc++ -lm -static"
       run: |
-        $env:CGO_ENABLED = "1"
-        $env:PKG_CONFIG_PATH = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/lib/pkgconfig"
+        $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
         $env:GOWORK = "off"
-        mkdir -p dist
+        New-Item -ItemType Directory -Force -Path dist
         go build -o dist/titus-windows-amd64.exe ./cmd/titus
         Get-ChildItem dist/
 
     - name: Verify binary runs
+      shell: pwsh
       run: |
-        dist/titus-windows-amd64.exe version
+        .\dist\titus-windows-amd64.exe version
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -302,7 +324,7 @@ jobs:
   # Create GitHub release with all artifacts (skipped on main branch push)
   release:
     name: Create Release
-    needs: [build-linux-amd64, build-linux-arm64, build-macos, build-burp, build-extension]
+    needs: [build-linux-amd64, build-linux-arm64, build-macos, build-windows, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
     steps:
@@ -322,8 +344,8 @@ jobs:
         mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
         mv artifacts/titus-linux-arm64/titus-linux-arm64 release/ || true
         mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
-        # macOS Intel disabled - build from source if needed
-        # Windows disabled - build from source
+        mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
+        mv artifacts/titus-windows-amd64/titus-windows-amd64.exe release/
 
         # Move JAR and extension
         mv artifacts/titus-burp-extension/*.jar release/
@@ -347,8 +369,8 @@ jobs:
         | Linux | x64 | `titus-linux-amd64` |
         | Linux | arm64 | `titus-linux-arm64` |
         | macOS | Apple Silicon | `titus-darwin-arm64` |
-        | macOS | Intel | Build from source |
-        | Windows | x64 | Build from source |
+        | macOS | Intel | `titus-darwin-amd64` |
+        | Windows | x64 | `titus-windows-amd64.exe` |
 
         ### Extensions
 
