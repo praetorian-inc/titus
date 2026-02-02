@@ -236,20 +236,39 @@ jobs:
 
     - name: Create pkg-config file for vectorscan
       run: |
-        # Create libhs.pc for pkg-config discovery
-        cat > /mingw64/lib/pkgconfig/libhs.pc << 'EOF'
-        prefix=/mingw64
-        exec_prefix=${prefix}
-        libdir=${prefix}/lib
-        includedir=${prefix}/include
+        # Find where headers are installed
+        echo "=== Checking header locations ==="
+        find /mingw64/include -name "hs.h" 2>/dev/null || echo "hs.h not found in /mingw64/include"
+        ls -la /mingw64/include/hs/ 2>/dev/null || echo "No /mingw64/include/hs/ directory"
 
-        Name: libhs
-        Description: Vectorscan regex library (Hyperscan fork)
-        Version: 5.4.11
-        Libs: -L${libdir} -lhs
-        Cflags: -I${includedir}
-        EOF
+        # Determine include path (vectorscan may install to include/hs/ or include/)
+        if [ -f /mingw64/include/hs/hs.h ]; then
+          HS_INCLUDE="/mingw64/include/hs"
+        else
+          HS_INCLUDE="/mingw64/include"
+        fi
+        echo "Using include path: $HS_INCLUDE"
+
+        # Create libhs.pc for pkg-config discovery (no leading whitespace!)
+        printf '%s\n' \
+          "prefix=/mingw64" \
+          "exec_prefix=\${prefix}" \
+          "libdir=\${prefix}/lib" \
+          "includedir=$HS_INCLUDE" \
+          "" \
+          "Name: libhs" \
+          "Description: Vectorscan regex library (Hyperscan fork)" \
+          "Version: 5.4.11" \
+          "Libs: -L\${libdir} -lhs" \
+          "Cflags: -I\${includedir}" \
+          > /mingw64/lib/pkgconfig/libhs.pc
+
+        echo "=== libhs.pc contents ==="
         cat /mingw64/lib/pkgconfig/libhs.pc
+
+        echo "=== pkg-config test ==="
+        pkg-config --cflags libhs
+        pkg-config --libs libhs
 
     - name: Build binary
       env:
@@ -261,7 +280,8 @@ jobs:
         export GOWORK=off
 
         # Verify pkg-config can find libhs
-        pkg-config --cflags --libs libhs || echo "pkg-config failed"
+        echo "=== Final pkg-config verification ==="
+        pkg-config --cflags --libs libhs
 
         mkdir -p dist
         go build -o dist/titus-windows-amd64.exe ./cmd/titus
