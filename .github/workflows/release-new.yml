@@ -232,6 +232,7 @@ jobs:
         mingw32-make -j$(nproc)
         mingw32-make install
         ls -la /mingw64/lib/libhs*.a
+        ls -la /mingw64/include/hs/ || ls -la /mingw64/include/
 
     - name: Create pkg-config file for vectorscan
       run: |
@@ -253,10 +254,15 @@ jobs:
     - name: Build binary
       env:
         CGO_ENABLED: "1"
+        PKG_CONFIG_PATH: "/mingw64/lib/pkgconfig"
       run: |
         # Get Go binary from actions/setup-go (Windows native path)
         export PATH="$(cygpath -u "$GOROOT_1_25_X64/bin"):$PATH"
         export GOWORK=off
+
+        # Verify pkg-config can find libhs
+        pkg-config --cflags --libs libhs || echo "pkg-config failed"
+
         mkdir -p dist
         go build -o dist/titus-windows-amd64.exe ./cmd/titus
         ls -la dist/
