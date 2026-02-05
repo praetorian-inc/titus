@@ -3,13 +3,27 @@ rules:
 - name: SendGrid API Key
   id: np.sendgrid.1
 
-  pattern: '\b(SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43})\b'
+  pattern: '\b(?P<token>SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43})\b'
 
   categories: [api, secret]
 
   examples:
-  - "      'SENDGRID_API_KEYSID': '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'"
-  - "var sendgrid = require('sendgrid')('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');"
+  - "SENDGRID_API_KEY=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"
+  - "sendgrid_key = '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'"
+  - "ENV SENDGRID_API_KEY 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"
+
+  negative_examples:
+  - "SG.short.tooshort"
+  - "SG.abc123.def456"
+  - "sendgrid_api_key"
+  - "SENDGRID_KEY=my_api_key"
+
+  description: |
+    SendGrid API Key used for email delivery services. An attacker with this
+    credential can send emails on behalf of the account, access email statistics,
+    manage templates, and potentially exfiltrate contact lists. Keys with full
+    access can modify account settings and billing information.
 
   references:
   - https://docs.sendgrid.com/ui/account-and-settings/api-keys
+  - https://www.twilio.com/docs/sendgrid/api-reference/api-keys

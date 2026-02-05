@@ -6,7 +6,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (sl\.[a-zA-Z0-9_-]{130,152})
+    (?P<token>sl\.[a-zA-Z0-9_-]{130,152})
     (?: $ | [^a-zA-Z0-9_-] )
 
   categories: [api, secret]

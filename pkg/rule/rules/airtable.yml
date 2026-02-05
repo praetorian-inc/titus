@@ -1,16 +1,7 @@
 rules:
   - name: Airtable Personal Access Token
     id: kingfisher.airtable.1
-    pattern: |
-      (?xi)                    
-      \b                       
-      (                        
-        pat
-        [a-z0-9]{14}
-        \.                     
-        [a-z0-9]{64}
-      )
-      \b
+    pattern: '(?i)\b(?P<token>pat[a-zA-Z0-9]{14}\.[a-f0-9]{64})\b'
     pattern_requirements:
       min_digits: 2
       min_uppercase: 1
@@ -39,12 +30,7 @@ rules:
           url: https://api.airtable.com/v0/meta/whoami
   - name: Airtable OAuth Token
     id: kingfisher.airtable.2
-    pattern: |
-      (?xi)
-      (
-        [A-Z0-9]+\.v1\.[A-Z0-9_-]+\.[a-f0-9]+
-      )
-      \b
+    pattern: '(?P<token>[A-Z0-9]+\.v1\.[A-Z0-9_-]+\.[a-f0-9]+)\b'
     min_entropy: 3.5
     confidence: medium
     examples:

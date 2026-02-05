@@ -17,7 +17,7 @@ rules:
         # raw URLs in code/docs
         \bhttps?://(?:api\.|app\.)?
       )?
-      (
+      (?P<site_domain>
         datadoghq\.com
         | us3\.datadoghq\.com
         | us5\.datadoghq\.com
@@ -42,7 +42,7 @@ rules:
       (?:api[_-]?key|dd[_-]?api[_-]?key|secret|private|access|token)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<api_key>
         [A-Z0-9]{32}
       )
       \b
@@ -82,7 +82,7 @@ rules:
       (?:app(?:lication)?[_-]?key|dd[_-]?application[_-]?key|secret|private|access|token)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<application_key>
         [A-Za-z0-9-]{40}
       )
       \b

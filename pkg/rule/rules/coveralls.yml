@@ -9,25 +9,25 @@ rules:
       (?:
         coveralls\.io/
         (?:
-          (?:
+          (?P<service>
             github|bitbucket|gitlab
           )
           /
-          (
+          (?P<owner>
             [A-Z0-9_.-]+
           )
           /
-          (
+          (?P<repo>
             [A-Z0-9_.-]+
           )
         )
         |
         api/v1/repos/
-        (
+        (?P<service_alt>
           github|bitbucket|gitlab
         )
         /
-        (
+        (?P<repo_path>
           [A-Z0-9_.-]+
         )
       )
@@ -46,7 +46,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [A-Z0-9-]{37}
       )
       \b

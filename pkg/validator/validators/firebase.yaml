@@ -1,0 +1,39 @@
+# pkg/validator/validators/firebase.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "server_key" (e.g., pattern: (?P<server_key>AAAA[A-Za-z0-9_-]{7}:...))
+#
+# IMPORTANT: FCM Legacy API was deprecated June 21, 2024 and is now fully shut down.
+# The legacy validation endpoint (https://fcm.googleapis.com/fcm/send) returns HTTP 404.
+# Firebase now requires OAuth2/service account authentication via HTTP v1 API.
+#
+# This validator is DISABLED because:
+# 1. Legacy FCM server keys cannot be validated via simple HTTP request anymore
+# 2. HTTP v1 API requires OAuth2 token exchange, not simple API key auth
+# 3. The old /fcm/send endpoint returns 404 for all requests
+#
+# The rule (np.firebase.1) will still detect FCM server keys for alerting purposes,
+# but validation status will always be "undetermined" since no HTTP validator is active.
+#
+# Reference: https://firebase.google.com/docs/cloud-messaging/migrate-v1
+# Deprecation: https://firebase.google.com/support/faq#deprecated-fcm-apis
+#
+# Only np.firebase.2 (Device Token) could potentially be validated via:
+# GET https://iid.googleapis.com/iid/info/{token}
+# But this requires OAuth2 access token, not the device token itself.
+#
+# validators:
+#   - name: firebase-fcm-server-key
+#     rule_ids:
+#       - np.firebase.1
+#     http:
+#       method: POST
+#       url: https://fcm.googleapis.com/fcm/send  # DEPRECATED - returns 404
+#       auth:
+#         type: api_key
+#         secret_group: server_key
+#       headers:
+#         - name: Content-Type
+#           value: application/json
+#       body: '{"registration_ids":["test"]}'
+#       success_codes: [200]
+#       failure_codes: [401, 403]

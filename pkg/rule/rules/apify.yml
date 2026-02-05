@@ -3,7 +3,7 @@ rules:
     id: kingfisher.apify.1
     pattern: |
       (?xi)
-      (
+      (?P<token>
         apify_api_[A-Z0-9]{34,38}
       )
       \b

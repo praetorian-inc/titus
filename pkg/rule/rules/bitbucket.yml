@@ -6,7 +6,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (ATBB[a-zA-Z0-9]{32})
+    (?P<token>ATBB[a-zA-Z0-9]{32})
     \b
 
   examples:

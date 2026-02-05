@@ -9,7 +9,7 @@ rules:
       (?:ID|USER)
       (?:.|[\n\r]){0,16}?
       \b
-      (
+      (?P<token>
         [a-z0-9_-]{3,}
       )
       \b
@@ -26,7 +26,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         CLOJARS_[a-z0-9]{60}
       )
       \b

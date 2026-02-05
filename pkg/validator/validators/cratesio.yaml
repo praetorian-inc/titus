@@ -1,0 +1,19 @@
+http:
+  request:
+    url: https://crates.io/api/v1/me
+    method: GET
+    headers:
+      - name: Authorization
+        value: "Bearer ${candidate}"
+  responses:
+    '200':
+      verdict:
+        confidence: high
+        result: valid
+    '403':
+      verdict:
+        confidence: high
+        result: invalid
+    default:
+      verdict:
+        result: unknown

@@ -229,6 +229,154 @@ func TestHTTPValidator_Validate_Query(t *testing.T) {
 	assert.Equal(t, types.StatusValid, result.Status)
 }
 
+func TestHTTPValidator_Validate_ApiKey(t *testing.T) {
+	// Mock server that expects "Authorization: key=SECRET" format (Firebase FCM style)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "key=AAAATestKey:APA91bValidFCMServerKey" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "firebase-fcm",
+		RuleIDs: []string{"np.firebase.1"},
+		HTTP: HTTPDef{
+			Method: "POST",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "api_key",
+				SecretGroup: "server_key",
+				// KeyPrefix defaults to "key="
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401, 403},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.firebase.1",
+		NamedGroups: map[string][]byte{
+			"server_key": []byte("AAAATestKey:APA91bValidFCMServerKey"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_ApiKey_CustomPrefix(t *testing.T) {
+	// Test custom prefix like "Bearer " or "token "
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "token my_custom_token" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "custom-api",
+		RuleIDs: []string{"np.custom.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "api_key",
+				SecretGroup: "token",
+				KeyPrefix:   "token ", // Custom prefix with space
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.custom.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("my_custom_token"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_POST_WithBody(t *testing.T) {
+	// Test POST request with JSON body (Firebase FCM style)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify method
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Verify Content-Type
+		if r.Header.Get("Content-Type") != "application/json" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// Verify auth
+		auth := r.Header.Get("Authorization")
+		if auth != "key=AAAATestKey:APA91bValidFCMServerKey" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		// Verify body exists
+		buf := make([]byte, 100)
+		n, _ := r.Body.Read(buf)
+		if n == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "firebase-fcm",
+		RuleIDs: []string{"np.firebase.1"},
+		HTTP: HTTPDef{
+			Method: "POST",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "api_key",
+				SecretGroup: "server_key",
+			},
+			Headers: []Header{
+				{Name: "Content-Type", Value: "application/json"},
+			},
+			Body:         `{"registration_ids":["test"]}`,
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401, 403},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.firebase.1",
+		NamedGroups: map[string][]byte{
+			"server_key": []byte("AAAATestKey:APA91bValidFCMServerKey"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
 func TestHTTPValidator_Validate_Timeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond) // Slow response
@@ -267,4 +415,125 @@ func TestHTTPValidator_Validate_Timeout(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusUndetermined, result.Status)
 	assert.Contains(t, result.Message, "request failed")
+}
+
+func TestHTTPValidator_Validate_None_URLTemplateSubstitution(t *testing.T) {
+	// Test "none" auth type with URL template substitution (Slack webhook use case)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Slack webhook behavior: empty POST returns 400 if webhook exists
+		if r.Method == "POST" && r.URL.Path == "/services/T123/B456/secrettoken" {
+			w.WriteHeader(http.StatusBadRequest) // 400 = valid webhook (missing text)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound) // 404 = webhook doesn't exist
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "slack-webhook",
+		RuleIDs: []string{"np.slack.3"},
+		HTTP: HTTPDef{
+			Method: "POST",
+			URL:    "{{webhook}}", // Template - should be replaced with captured value
+			Auth: AuthDef{
+				Type:        "none", // No auth header - URL contains the secret
+				SecretGroup: "webhook",
+			},
+			SuccessCodes: []int{400}, // 400 with no_text means webhook exists
+			FailureCodes: []int{403, 404},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.slack.3",
+		NamedGroups: map[string][]byte{
+			"webhook": []byte(server.URL + "/services/T123/B456/secrettoken"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Contains(t, result.Message, "HTTP 400")
+}
+
+func TestHTTPValidator_Validate_None_MultipleTemplates(t *testing.T) {
+	// Test URL with multiple template substitutions
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/workspace123/channel/C456" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "multi-template",
+		RuleIDs: []string{"np.test.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL + "/api/{{workspace}}/channel/{{channel}}",
+			Auth: AuthDef{
+				Type:        "none",
+				SecretGroup: "workspace", // Still need to specify for extractSecret
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{404},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.test.1",
+		NamedGroups: map[string][]byte{
+			"workspace": []byte("workspace123"),
+			"channel":   []byte("C456"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_None_EmptyAuthType(t *testing.T) {
+	// Test that empty auth type (not specified) is treated same as "none"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify no Authorization header was set
+		if r.Header.Get("Authorization") != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "no-auth",
+		RuleIDs: []string{"np.test.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "", // Empty string should behave like "none"
+				SecretGroup: "token",
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{400},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.test.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("unused"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
 }

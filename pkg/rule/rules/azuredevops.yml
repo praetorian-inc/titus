@@ -5,7 +5,7 @@ rules:
       (?xi)
       \b
       dev\.azure\.com/
-      (
+      (?P<azure_devops_org>
         [a-z0-9][a-z0-9-]{0,61}[a-z0-9]
       )
     confidence: medium
@@ -20,7 +20,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         [a-z0-9]{76}AZDO[a-z0-9]{4,5}
       )
       \b

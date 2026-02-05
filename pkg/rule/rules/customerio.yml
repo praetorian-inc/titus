@@ -9,7 +9,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN|API[_-]?KEY)
       (?:.|[\n\r]){0,16}?
       \b
-      (
+      (?P<token>
         [0-9a-f]{20}
       )
       \b
@@ -34,7 +34,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN|API)
       (?:.|[\n\r]){0,16}?
       \b
-      (
+      (?P<token>
         [0-9a-f]{32}
       )
       \b

@@ -5,7 +5,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (
+    (?P<secret>
       dapi[a-f0-9]{32}
       (?: -[0-9]+ )?      (?# optional -NUM suffix )
     )

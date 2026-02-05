@@ -1,0 +1,16 @@
+# pkg/validator/validators/airtable.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "token" (e.g., pattern: (?P<token>pat[a-z0-9]{14}\.[a-z0-9]{64}))
+validators:
+  - name: airtable-token
+    rule_ids:
+      - kingfisher.airtable.1  # Personal Access Token
+      - kingfisher.airtable.2  # OAuth Token
+    http:
+      method: GET
+      url: https://api.airtable.com/v0/meta/whoami
+      auth:
+        type: bearer
+        secret_group: token  # Named capture group from regex pattern
+      success_codes: [200]
+      failure_codes: [401, 403]

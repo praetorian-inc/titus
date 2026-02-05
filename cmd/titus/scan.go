@@ -394,8 +394,12 @@ func initValidationEngine() *validator.Engine {
 
 	var validators []validator.Validator
 
-	// Add AWS validator
+	// Add Go validators (complex multi-credential validation)
 	validators = append(validators, validator.NewAWSValidator())
+	validators = append(validators, validator.NewSauceLabsValidator())
+	validators = append(validators, validator.NewTwilioValidator())
+	validators = append(validators, validator.NewAzureStorageValidator())
+	validators = append(validators, validator.NewPostgresValidator())
 
 	// Add embedded YAML validators
 	embedded, err := validator.LoadEmbeddedValidators()

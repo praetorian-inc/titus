@@ -1,0 +1,19 @@
+validators:
+
+- name: anthropic-api-key
+  rule_ids:
+    - np.anthropic.1
+
+  http:
+    method: GET
+    url: "https://api.anthropic.com/v1/messages"
+    auth:
+      type: header
+      secret_group: "token"
+      header_name: "x-api-key"
+
+    # Success codes indicate valid API key
+    success_codes: [200, 400]  # 200 = valid + proper request, 400 = valid key but malformed request body
+
+    # Failure codes indicate invalid or unauthorized key
+    failure_codes: [401, 403]

@@ -1,0 +1,15 @@
+# pkg/validator/validators/databricks.yaml
+# Databricks Personal Access Token (PAT) validation
+# Reference: https://docs.databricks.com/en/dev-tools/auth/pat.html
+validators:
+  - name: databricks-pat
+    rule_ids:
+      - np.databricks.1
+    http:
+      method: GET
+      url: https://accounts.cloud.databricks.com/api/2.0/preview/scim/v2/Me
+      auth:
+        type: bearer
+        secret_group: "secret"  # Matches (?P<secret>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]

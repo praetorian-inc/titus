@@ -3,7 +3,7 @@ rules:
 - name: AWS API Key
   id: np.aws.1
 
-  pattern: '\b((?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b'
+  pattern: '\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b'
 
   references:
   - https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
@@ -39,7 +39,7 @@ rules:
     (?::|=>|=)
     \s{0,30}
     ["'']?
-    ([a-z0-9/+=]{40})
+    (?P<secret_key>[a-z0-9/+=]{40})
     (?: [^a-z0-9/+=] | $ )
 
   references:
@@ -73,7 +73,7 @@ rules:
 - name: AWS Account ID
   id: np.aws.3
 
-  pattern: '(?i)aws_?(?:account)_?(?:id)?["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?([0-9]{4}-?[0-9]{4}-?[0-9]{4})'
+  pattern: '(?i)aws_?(?:account)_?(?:id)?["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?(?P<account_id>[0-9]{4}-?[0-9]{4}-?[0-9]{4})'
 
   categories:
   - api
@@ -118,7 +118,7 @@ rules:
 
 - name: AWS Session Token
   id: np.aws.4
-  pattern: '(?i)(?:aws.?session|aws.?session.?token|aws.?token)["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?([a-z0-9/+=]{16,200})[^a-z0-9/+=]'
+  pattern: '(?i)(?:aws.?session|aws.?session.?token|aws.?token)["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?(?P<session_token>[a-z0-9/+=]{16,200})[^a-z0-9/+=]'
 
   categories:
   - api
@@ -140,7 +140,7 @@ rules:
 # Note that this service is being deprecated on March 31, 2024
 - name: Amazon MWS Auth Token
   id: np.aws.5
-  pattern: '(?i)(amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
+  pattern: '(?i)(?P<mws_token>amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
 
   categories:
   - api
@@ -161,7 +161,7 @@ rules:
   pattern: |
     (?x)
     (?: ^ | [\s/"'] | %2F )
-    (
+    (?P<bucket_url>
     (?: [a-zA-Z0-9_-]+ \. )+   (?# bucket name as subdomain )
     (?: s3
       | s3-af-south-1
@@ -220,7 +220,7 @@ rules:
   pattern: |
     (?x)
     (?: ^ | [\s/"'] | %2F )
-    (
+    (?P<bucket_url>
     (?: s3
       | s3-af-south-1
       | s3-ap-east-1
@@ -283,7 +283,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (
+    (?P<arn>
       arn
       :
       (?: aws | aws-cn | aws-us-gov )         (?# partition )
@@ -353,7 +353,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (da2-[a-z0-9]{26})
+    (?P<appsync_key>da2-[a-z0-9]{26})
     \b
 
   # Note: AWS AppSync provides several authorization mechanisms.
@@ -388,11 +388,11 @@ rules:
   pattern: |
     (?x)
     \b
-    ((?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})     (?# API key )
+    (?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})     (?# API key )
     \b
     (?: (?s) .{0,40} )                                                        (?# Arbitrary intermediate stuff; ?s causes . to match newlines )
     \b
-    ([A-Za-z0-9/+=]{40})                                                      (?# secret )
+    (?P<secret_key>[A-Za-z0-9/+=]{40})                                                      (?# secret )
     (?: [^A-Za-z0-9/+=] | $ )
 
   references:

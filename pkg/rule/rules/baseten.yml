@@ -2,14 +2,14 @@ rules:
   - name: Baseten API Key
     id: kingfisher.baseten.1
     pattern: |
-      (?x)       
+      (?x)
       \b
       baseten
       (?:.|[\n\r]){0,32}?
       \b
-      (               
-        [A-Za-z0-9]{8} 
-        \.             
+      (?P<token>
+        [A-Za-z0-9]{8}
+        \.
         [A-Za-z0-9]{32}
       )
       \b

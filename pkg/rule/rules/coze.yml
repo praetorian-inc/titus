@@ -6,7 +6,7 @@ rules:
       coze
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         pat_[A-Z0-9]{64}
       )
       \b

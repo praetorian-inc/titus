@@ -3,7 +3,7 @@ rules:
     id: kingfisher.authress.1
     pattern: |
       (?xi)
-      (
+      (?P<TOKEN>
         (?:sc|ext|scauth|authress)_[a-z0-9]{5,30}\.[a-z0-9]{4,6}\.acc[_-][a-z0-9-]{10,32}\.[a-z0-9+/_=-]{30,120}
       )
       \b

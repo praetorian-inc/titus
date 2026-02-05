@@ -1,0 +1,49 @@
+# pkg/validator/validators/twitter.yaml
+# Twitter/X API credential validation
+#
+# Validation Methods:
+# - Bearer Token: GET request to protected endpoint with Authorization: Bearer header
+# - API Key/Secret: Basic auth to OAuth2 token endpoint (would require Go validator for complex flow)
+#
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named groups: "bearer_token", "access_token"
+validators:
+  # Twitter/X Bearer Token validation
+  # Uses a lightweight read-only endpoint to verify token validity
+  # Returns 200 if valid, 401/403 if invalid or revoked
+  - name: twitter-bearer-token
+    rule_ids:
+      - np.twitter.3
+    http:
+      method: GET
+      url: https://api.twitter.com/2/tweets/search/recent?query=test&max_results=10
+      auth:
+        type: bearer
+        secret_group: "bearer_token"  # Matches (?P<bearer_token>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]
+
+  # Twitter/X Access Token validation (OAuth 1.0a user tokens)
+  # Note: OAuth 1.0a requires signature - this is a simplified check
+  # Full validation would require Go validator with OAuth signature generation
+  - name: twitter-access-token
+    rule_ids:
+      - np.twitter.4
+    http:
+      method: GET
+      url: https://api.twitter.com/2/users/me
+      auth:
+        type: bearer
+        secret_group: "access_token"  # Matches (?P<access_token>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]
+
+# NOTE: np.twitter.1 (Client ID) and np.twitter.2 (Secret Key) validation
+# requires OAuth2 client credentials flow which needs both values together.
+# This would require a Go validator to:
+# 1. Extract both client_id and secret from the same file/context
+# 2. Make POST to https://api.twitter.com/oauth2/token with Basic auth
+# 3. Parse response for bearer_token (success) or error (invalid)
+#
+# For now, these rules detect credentials but validation is manual.
+# Future: Implement twitter_client_credentials.go validator

@@ -8,7 +8,7 @@ rules:
       (?:.|[\n\r]){0,32}?
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
-      (
+      (?P<token>
         [a-f0-9]{40}
       )
       \b
