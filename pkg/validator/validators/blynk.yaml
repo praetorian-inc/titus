@@ -16,7 +16,8 @@ validators:
     url: "https://fra1.blynk.cloud/api/organization/profile"
     method: GET
     headers:
-      Authorization: "Bearer {{.token}}"
+      - name: Authorization
+        value: "Bearer {{.token}}"
     valid_status:
     - 200
     invalid_status:
@@ -28,7 +29,8 @@ validators:
     url: "https://fra1.blynk.cloud/api/organization/profile"
     method: GET
     headers:
-      Authorization: "Bearer {{.token}}"
+      - name: Authorization
+        value: "Bearer {{.token}}"
     valid_status:
     - 200
     invalid_status:

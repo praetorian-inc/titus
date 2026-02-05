@@ -18,7 +18,9 @@ validators:
       method: GET
       url: https://{{ appid }}-dsn.algolia.net/1/keys/{{ token }}
       headers:
-        X-Algolia-API-Key: "{{ token }}"
-        X-Algolia-Application-Id: "{{ appid }}"
+        - name: X-Algolia-API-Key
+          value: "{{ token }}"
+        - name: X-Algolia-Application-Id
+          value: "{{ appid }}"
       success_codes: [200]
       failure_codes: [401, 403, 404]

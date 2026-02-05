@@ -9,7 +9,8 @@ validators:
       method: GET
       url: https://app.codacy.com/api/v3/user/organizations
       headers:
-        Accept: application/json
+        - name: Accept
+          value: application/json
       auth:
         type: api-token
         header: api-token
