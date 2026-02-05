@@ -1,0 +1,21 @@
+# pkg/validator/validators/azureopenai.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named groups: "token" for API key, "host" for hostname
+validators:
+  - name: azureopenai-api-key
+    rule_ids:
+      - kingfisher.azureopenai.1
+    depends_on:
+      - rule_id: kingfisher.azureopenai.host.1
+        secret_group: "host"
+    http:
+      method: GET
+      url: https://{{host}}/openai/models?api-version=2024-10-21
+      auth:
+        type: header
+        header_name: Api-Key
+        secret_group: "token"  # Named capture group from regex pattern
+      success_codes: [200]
+      failure_codes: [401, 403]
+      response_match:
+        contains: '"object":'

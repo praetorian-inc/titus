@@ -1,0 +1,34 @@
+# pkg/validator/validators/facebook.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "token" (e.g., pattern: (?P<token>EAACEdEose0cBA[a-zA-Z0-9]+))
+validators:
+  # Facebook Access Token validator
+  # Access tokens starting with EAACEdEose0cBA can be validated via Graph API
+  - name: facebook-access-token
+    rule_ids:
+      - np.facebook.2
+    http:
+      method: GET
+      url: "https://graph.facebook.com/me"
+      auth:
+        type: query
+        query_param: access_token
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [400, 401]
+
+  # Facebook App Credentials (np.facebook.3) - REQUIRES GO VALIDATOR
+  #
+  # Validation endpoint (from triage script facebook-tokens.py):
+  #   GET https://graph.facebook.com/oauth/access_token
+  #   Params: client_id={app_id}, client_secret={secret}, grant_type=client_credentials
+  #
+  # Response on success: {"access_token": "...", "token_type": "bearer"}
+  # Response on failure: {"error": {"code": 101|190, "message": "..."}}
+  #   - Error 101: Invalid app ID
+  #   - Error 190: Invalid app secret
+  #
+  # Why Go validator needed: Requires TWO capture groups (app_id, secret) plus static param
+  # Current HTTPValidator only supports single secret_group
+  #
+  # Future: Implement pkg/validator/facebook.go with multi-capture support

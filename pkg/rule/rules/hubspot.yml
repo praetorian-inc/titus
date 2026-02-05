@@ -1,13 +1,7 @@
 rules:
   - name: HubSpot Private App Token
     id: kingfisher.hubspot.1
-    pattern: |
-      (?xi)
-      \b
-      (
-        pat-[a-z0-9]{2,3}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
-      )
-      \b
+    pattern: '(?i)\b(?P<token>pat-[a-z0-9]{2,3}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'
     pattern_requirements:
       min_digits: 2
     confidence: medium

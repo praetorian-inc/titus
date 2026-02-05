@@ -1,0 +1,16 @@
+# pkg/validator/validators/adafruit.yaml
+# Adafruit IO uses X-AIO-Key header authentication
+# Validation endpoint returns current user info
+validators:
+  - name: adafruit-io-key
+    rule_ids:
+      - np.adafruit.1
+    http:
+      method: GET
+      url: https://io.adafruit.com/api/v2/user
+      auth:
+        type: header
+        header_name: X-AIO-Key
+        secret_group: "secret"  # Matches (?P<secret>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]

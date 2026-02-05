@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<webhook>
         https://[A-Z0-9]+\.webhook\.office\.com/webhookb2
         /
         [A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}

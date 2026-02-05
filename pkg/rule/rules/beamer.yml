@@ -7,7 +7,7 @@ rules:
       beamer
       (?:.|[\n\r]){0,64}?
       \b
-      (
+      (?P<token>
         b_[A-Z0-9=_\\/\\\-+]{44}
       )
     pattern_requirements:

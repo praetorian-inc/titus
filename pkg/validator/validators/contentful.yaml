@@ -1,0 +1,30 @@
+# pkg/validator/validators/contentful.yaml
+# Validates Contentful API tokens via their respective APIs
+# Rules must use named capture group: (?P<token>...)
+
+validators:
+  # Contentful Delivery API Token - read-only access to content
+  - name: contentful-delivery-token
+    rule_ids:
+      - kingfisher.contentful.1
+    http:
+      method: GET
+      url: https://cdn.contentful.com/spaces
+      auth:
+        type: bearer
+        secret_group: token
+      success_codes: [200]
+      failure_codes: [401, 403]
+
+  # Contentful Personal Access Token - full CMA access
+  - name: contentful-personal-access-token
+    rule_ids:
+      - kingfisher.contentful.2
+    http:
+      method: GET
+      url: https://api.contentful.com/users/me
+      auth:
+        type: bearer
+        secret_group: token
+      success_codes: [200]
+      failure_codes: [401, 403]

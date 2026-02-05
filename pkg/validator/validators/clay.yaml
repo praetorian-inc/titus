@@ -1,0 +1,18 @@
+validators:
+  - rule_id: kingfisher.clay.1
+    http:
+      request:
+        method: GET
+        url: https://api.clay.com/api/v1/me
+        headers:
+          Authorization: "Bearer {{ .token }}"
+      response:
+        status_codes:
+          valid: [200]
+          invalid: [401, 403]
+    classification:
+      valid:
+        - status: 200
+      invalid:
+        - status: 401
+        - status: 403

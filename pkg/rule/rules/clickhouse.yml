@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         4b1d[a-z0-9]{38}
       )
       \b
@@ -45,7 +45,7 @@ rules:
       (?:.|[\n\r]){0,16}?
       (?:ID|USER)
       (?:.|[\n\r]){0,16}?
-      (
+      (?P<token>
         [a-z0-9]{20}
       )
     pattern_requirements:

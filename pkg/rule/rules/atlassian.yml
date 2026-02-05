@@ -4,7 +4,7 @@ rules:
   id: np.atlassian.1
   pattern: |
     (?x)
-    \b(
+    \b(?P<token>
     ATATT3xFfGF0 [a-zA-Z0-9_-]{20,200} =[0-9A-F]{8}
     )\b
 

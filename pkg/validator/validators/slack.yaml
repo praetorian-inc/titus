@@ -1,0 +1,69 @@
+# pkg/validator/validators/slack.yaml
+# Slack webhook validation uses the webhook URL itself as the target
+# Empty POST returns 400/no_text (valid), 403/invalid_token or 404/no_service (invalid)
+#
+# NOTE: This validator requires URL template substitution support
+# The {{webhook}} template will be replaced with the captured named group value
+validators:
+  - name: slack-webhook
+    rule_ids:
+      - np.slack.3
+    http:
+      method: POST
+      url: "{{webhook}}"  # Template: use captured webhook URL directly
+      auth:
+        type: none  # No separate auth - webhook URL contains the secret
+        secret_group: "webhook"  # Matches (?P<webhook>...) in rule regex
+      success_codes: [400]  # 400 with "no_text" body means webhook exists (valid but missing payload)
+      failure_codes: [403, 404]  # 403=invalid_token (revoked), 404=no_service/no_team (doesn't exist)
+
+  # Slack token validation uses auth.test endpoint (read-only, no scopes required)
+  # Returns ok=true with team/user metadata if valid
+  # Returns ok=false with error field if invalid (invalid_auth, token_revoked, account_inactive, not_authed)
+  - name: slack-bot-token
+    rule_ids:
+      - np.slack.2
+    http:
+      method: POST
+      url: "https://slack.com/api/auth.test"
+      auth:
+        type: bearer
+        secret_group: "token"  # Matches (?P<token>...) in rule regex
+      success_codes: [200]  # 200 with ok=true in JSON response
+      failure_codes: []  # 200 with ok=false indicates invalid (check response body for error field)
+
+  - name: slack-user-token
+    rule_ids:
+      - np.slack.4
+    http:
+      method: POST
+      url: "https://slack.com/api/auth.test"
+      auth:
+        type: bearer
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: []
+
+  - name: slack-app-token
+    rule_ids:
+      - np.slack.5
+    http:
+      method: POST
+      url: "https://slack.com/api/auth.test"
+      auth:
+        type: bearer
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: []
+
+  - name: slack-legacy-bot-token
+    rule_ids:
+      - np.slack.6
+    http:
+      method: POST
+      url: "https://slack.com/api/auth.test"
+      auth:
+        type: bearer
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: []

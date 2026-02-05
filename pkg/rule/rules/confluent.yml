@@ -6,7 +6,7 @@ rules:
       \b(?:confluent|ccloud|cpdev|kafka)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<client_id>
         [A-Z0-9]{16}
       )
       \b
@@ -29,7 +29,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<secret>
         [A-Z0-9\+/]{64}
       )
     min_entropy: 3.3

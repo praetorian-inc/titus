@@ -1,0 +1,18 @@
+validators:
+  - rule_id: kingfisher.clojars.2
+    http:
+      method: GET
+      url: "https://clojars.org/api/groups/{token}"
+      headers:
+        Authorization: "token {token}"
+      expected_status: [200, 401, 403]
+      # 200 = valid token with access
+      # 401 = valid token format but invalid/expired
+      # 403 = valid token but no access to this resource
+      # Any other status (404, 500) = likely invalid
+      validation_type: "syntax_and_auth"
+      notes: |
+        Clojars API tokens follow the format CLOJARS_[60 hex chars].
+        Testing against the /api/groups endpoint to validate token format and authentication.
+        A 401 or 403 means the token format is valid but auth failed.
+        Reference: https://github.com/clojars/clojars-web/wiki/API

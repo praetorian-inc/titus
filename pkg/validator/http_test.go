@@ -416,3 +416,124 @@ func TestHTTPValidator_Validate_Timeout(t *testing.T) {
 	assert.Equal(t, types.StatusUndetermined, result.Status)
 	assert.Contains(t, result.Message, "request failed")
 }
+
+func TestHTTPValidator_Validate_None_URLTemplateSubstitution(t *testing.T) {
+	// Test "none" auth type with URL template substitution (Slack webhook use case)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Slack webhook behavior: empty POST returns 400 if webhook exists
+		if r.Method == "POST" && r.URL.Path == "/services/T123/B456/secrettoken" {
+			w.WriteHeader(http.StatusBadRequest) // 400 = valid webhook (missing text)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound) // 404 = webhook doesn't exist
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "slack-webhook",
+		RuleIDs: []string{"np.slack.3"},
+		HTTP: HTTPDef{
+			Method: "POST",
+			URL:    "{{webhook}}", // Template - should be replaced with captured value
+			Auth: AuthDef{
+				Type:        "none", // No auth header - URL contains the secret
+				SecretGroup: "webhook",
+			},
+			SuccessCodes: []int{400}, // 400 with no_text means webhook exists
+			FailureCodes: []int{403, 404},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.slack.3",
+		NamedGroups: map[string][]byte{
+			"webhook": []byte(server.URL + "/services/T123/B456/secrettoken"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Contains(t, result.Message, "HTTP 400")
+}
+
+func TestHTTPValidator_Validate_None_MultipleTemplates(t *testing.T) {
+	// Test URL with multiple template substitutions
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/workspace123/channel/C456" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "multi-template",
+		RuleIDs: []string{"np.test.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL + "/api/{{workspace}}/channel/{{channel}}",
+			Auth: AuthDef{
+				Type:        "none",
+				SecretGroup: "workspace", // Still need to specify for extractSecret
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{404},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.test.1",
+		NamedGroups: map[string][]byte{
+			"workspace": []byte("workspace123"),
+			"channel":   []byte("C456"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_None_EmptyAuthType(t *testing.T) {
+	// Test that empty auth type (not specified) is treated same as "none"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify no Authorization header was set
+		if r.Header.Get("Authorization") != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "no-auth",
+		RuleIDs: []string{"np.test.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "", // Empty string should behave like "none"
+				SecretGroup: "token",
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{400},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.test.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("unused"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}

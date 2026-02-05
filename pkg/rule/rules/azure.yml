@@ -14,9 +14,9 @@ rules:
   pattern: |
     (?x)
     (?i)
-    (?: AccountName | SharedAccessKeyName | SharedSecretIssuer) \s*=\s* ([^${;<\[.\s*"'\#] [^.;\n"'\#]{2,80}) \s*;\s*
+    (?: AccountName | SharedAccessKeyName | SharedSecretIssuer) \s*=\s* (?P<account_name>[^${;<\[.\s*"'\#] [^.;\n"'\#]{2,80}) \s*;\s*
     .{0,10}\s*  (?# possible extra stuff, e.g., string concatenation)
-    (?: AccountKey | SharedAccessKey | SharedSecretValue) \s*=\s* ([a-zA-Z0-9/+]{20,100}[=]{0,3})
+    (?: AccountKey | SharedAccessKey | SharedSecretValue) \s*=\s* (?P<account_key>[a-zA-Z0-9/+]{20,100}[=]{0,3})
     (?: [^a-zA-Z0-9/+=] | $ )
 
   references:
@@ -80,9 +80,9 @@ rules:
 
   pattern: |
     (?x)
-    (https://[a-zA-Z0-9-]+\.azconfig\.io);
-    Id=(.{4}-.{2}-.{2}:[a-zA-Z0-9+/]{18,22});
-    Secret=([a-zA-Z0-9+/]{36,50}=)
+    (?P<endpoint>https://[a-zA-Z0-9-]+\.azconfig\.io);
+    Id=(?P<id>.{4}-.{2}-.{2}:[a-zA-Z0-9+/]{18,22});
+    Secret=(?P<secret>[a-zA-Z0-9+/]{36,50}=)
 
   categories:
   - api
@@ -115,7 +115,7 @@ rules:
     (?i: ADO_PAT | pat_token | personal_?access_?token | \$token )
     \s* = \s*
     ["']
-    ([a-z0-9]{52})
+    (?P<token>[a-z0-9]{52})
     ["']
 
   examples:
@@ -144,7 +144,7 @@ rules:
 - name: Azure DevOps Personal Access Token
   id: np.azure.4
 
-  pattern: '\b([a-zA-Z0-9]{76}AZDO[a-zA-Z0-9]{4})\b'
+  pattern: '\b(?P<token>[a-zA-Z0-9]{76}AZDO[a-zA-Z0-9]{4})\b'
 
   references:
   - https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate

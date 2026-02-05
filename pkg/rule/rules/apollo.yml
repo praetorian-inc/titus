@@ -9,8 +9,8 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b
-      (
-        [A-Z0-9_-]{22}
+      (?P<secret>
+        [A-Za-z0-9_-]{22}
       )
       \b
     pattern_requirements:

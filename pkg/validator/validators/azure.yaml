@@ -1,0 +1,33 @@
+# pkg/validator/validators/azure.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named groups:
+# - np.azure.3: "token" (e.g., (?P<token>[a-z0-9]{52}))
+# - np.azure.4: "token" (e.g., (?P<token>[a-zA-Z0-9]{76}AZDO[a-zA-Z0-9]{4}))
+validators:
+  # Azure DevOps PAT (legacy 52-char format)
+  - name: azure-devops-pat-legacy
+    rule_ids:
+      - np.azure.3
+    http:
+      method: GET
+      url: https://dev.azure.com/_apis/profile/profiles/me?api-version=7.1
+      auth:
+        type: basic
+        secret_group: token
+        username: ""
+      success_codes: [200]
+      failure_codes: [401, 403]
+
+  # Azure DevOps PAT (new format with AZDO marker)
+  - name: azure-devops-pat-new
+    rule_ids:
+      - np.azure.4
+    http:
+      method: GET
+      url: https://dev.azure.com/_apis/profile/profiles/me?api-version=7.1
+      auth:
+        type: basic
+        secret_group: token
+        username: ""
+      success_codes: [200]
+      failure_codes: [401, 403]

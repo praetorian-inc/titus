@@ -2,12 +2,12 @@ rules:
   - name: Asana Client ID
     id: kingfisher.asana.1
     pattern: |
-      (?xi)                       
-      \b                         
+      (?xi)
+      \b
       asana
       (?:.|[\n\r]){0,32}?
-      \b                         
-      (
+      \b
+      (?P<token>
         [0-9]{16}
       )
       \b
@@ -24,12 +24,12 @@ rules:
   - name: Asana Client Secret
     id: kingfisher.asana.2
     pattern: |
-      (?xi)                       
-      \b                         
+      (?xi)
+      \b
       asana
       (?:.|[\n\r]){0,64}?
-      \b                         
-      (
+      \b
+      (?P<token>
         [a-z0-9]{30,40}
       )
       \b
@@ -46,20 +46,20 @@ rules:
   - name: Asana OAuth / Personal Access Token
     id: kingfisher.asana.3
     pattern: |
-      (?xi)                       
-      \b                         
+      (?xi)
+      \b
       asana
       (?:.|[\n\r]){0,64}?
-      \b                         
-      (                          
-        [01]{1,} 
+      \b
+      (?P<token>
+        [01]{1,}
         \/
         [0-9a-f]{16,32}
-        (?:                      
+        (?:
           :
           [a-z0-9]{32,64}
         )?
-      )                          
+      )
       \b
     pattern_requirements:
       min_digits: 4

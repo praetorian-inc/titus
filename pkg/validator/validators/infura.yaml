@@ -1,0 +1,25 @@
+# pkg/validator/validators/infura.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "token" (e.g., pattern: (?P<token>[0-9a-z]{32}))
+#
+# Infura API keys are project IDs embedded in the URL path.
+# Validation uses Ethereum JSON-RPC eth_chainId method which:
+# - Returns {"jsonrpc":"2.0","id":1,"result":"0x1"} for valid keys
+# - Returns "invalid project id" message for invalid keys
+# - Returns 403 with "rejected due to project ID settings" for restricted keys
+validators:
+  - name: infura-api-key
+    rule_ids:
+      - kingfisher.infura.1
+    http:
+      method: POST
+      url: "https://mainnet.infura.io/v3/{{token}}"
+      auth:
+        type: none
+        secret_group: token
+      headers:
+        - name: Content-Type
+          value: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
+      success_codes: [200]
+      failure_codes: [403]

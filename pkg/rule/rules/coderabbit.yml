@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         cr-[a-f0-9]{58}
       )
       \b

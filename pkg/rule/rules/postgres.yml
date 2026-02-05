@@ -6,10 +6,10 @@ rules:
 
   pattern: |
     (?x)
-    (?: postgres | postgresql ) ://                         (?# URI scheme )
-      ([a-zA-Z0-9%;._~!$&'()*+,;=-]{3,})                    (?# username)
-    : ([a-zA-Z0-9%;._~!$&'()*+,;=-]{3,})                    (?# password)
-    @ ([a-zA-Z0-9_.-]{3,} (?: :\d{1,5})?)                   (?# hostname and port)
+    (?: postgres | postgresql ) ://                                    (?# URI scheme )
+      (?P<username>[a-zA-Z0-9%;._~!$&'()*+,;=-]{3,})                  (?# username - named capture)
+    : (?P<password>[a-zA-Z0-9%;._~!$&'()*+,;=-]{3,})                  (?# password - named capture)
+    @ (?P<host>[a-zA-Z0-9_.-]{3,}) (?: :(?P<port>\d{1,5}))?           (?# hostname and optional port - named captures)
     (?: [^a-zA-Z0-9_.-] | $ )
 
   categories: [secret]

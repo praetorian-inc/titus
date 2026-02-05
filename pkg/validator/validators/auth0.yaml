@@ -1,0 +1,29 @@
+# pkg/validator/validators/auth0.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named groups: "domain", "client_id", "client_secret"
+#
+# Auth0 OAuth2 Client Credentials Flow validation
+# Uses the OAuth2 token endpoint to validate application credentials
+# - domain: Auth0 tenant domain (e.g., dev-example.us.auth0.com)
+# - client_id: Application client ID (32 alphanumeric characters)
+# - client_secret: Application client secret (32-80 characters)
+#
+# Validation approach:
+# - POST to https://{domain}/oauth/token with client credentials
+# - Success: Returns access_token (credentials valid)
+# - Failure: Returns 401/403 (credentials invalid)
+validators:
+  - name: auth0-credentials
+    rule_ids:
+      - np.auth0.1
+    http:
+      method: POST
+      url: "https://{{domain}}/oauth/token"
+      auth:
+        type: none  # Credentials sent in request body, not auth header
+      headers:
+        - name: Content-Type
+          value: application/x-www-form-urlencoded
+      body: "grant_type=client_credentials&client_id={{client_id}}&client_secret={{client_secret}}&audience=https://{{domain}}/api/v2/"
+      success_codes: [200]
+      failure_codes: [401, 403]

@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<secret>
         key_
         [0-9a-f]{64}
       )
@@ -19,6 +19,7 @@ rules:
       - https://cursor.com/docs/cloud-agent/api/endpoints
     validation:
       type: Http
+      secret_group: secret
       content:
         request:
           method: GET

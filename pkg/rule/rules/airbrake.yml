@@ -6,7 +6,7 @@ rules:
       \b
       airbrake
       (?:.|[\n\r]){0,32}?
-      (
+      (?P<token>
         [A-Z0-9-]{40}
       )
       \b

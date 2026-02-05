@@ -7,7 +7,7 @@ rules:
       cohere
       (?:.|[\n\r]){0,16}?
       \b
-      (
+      (?P<token>
         [A-Z0-9]{40}
       )
       \b

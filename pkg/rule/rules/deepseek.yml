@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<secret>
         sk-[a-f0-9]{32}
       )
       \b
