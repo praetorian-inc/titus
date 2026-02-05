@@ -9,7 +9,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [0-9a-z_]{35}
       )
       \b

@@ -1,26 +1,32 @@
 rules:
 
-- name: Twitter Client ID
+# Twitter/X Client ID (API Key / Consumer Key)
+# Used for app identification in OAuth flows
+# Format: 18-25 alphanumeric characters
+- name: Twitter/X Client ID
   id: np.twitter.1
 
   pattern: |
     (?x)(?i)
-    \b twitter
+    \b (?: twitter | x[\-_]?api )
     .?
     (?: api | app | application | client | consumer | customer )?
     .?
     (?: id | identifier | key )
     .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
-    \b ([a-z0-9]{18,25}) \b
+    \b (?P<client_id>[a-zA-Z0-9]{18,25}) \b
 
   references:
+  - https://developer.x.com/en/docs/authentication/overview
   - https://developer.twitter.com/en/docs/authentication/overview
 
   examples:
   - '     TWITTER_ID:               "DkWLqcP3ace3wHuJ7fiw",'
+  - '     X_API_KEY:                "UZYoBAfBzNace3mBwPOGY",'
   - |
       # TWITTER_API_KEY = 'UZYoBAfBzNace3mBwPOGYw'
       # TWITTER_API_SECRET = 'ngHaeaRPKA5BDQNXace3LWA1PvTA1kBGDaAJmc517E'
+  - 'x_api_client_id = "DkWLqcP3ace3wHuJ7fiw"'
 
   categories:
   - api
@@ -28,20 +34,24 @@ rules:
   - identifier
 
 
-- name: Twitter Secret Key
+# Twitter/X Secret Key (API Secret / Consumer Secret)
+# Used for app authentication in OAuth flows
+# Format: 35-50 alphanumeric characters
+- name: Twitter/X Secret Key
   id: np.twitter.2
 
   pattern: |
     (?x)(?i)
-    twitter
+    (?: twitter | x[\-_]?api )
     .?
     (?: api | app | application | client | consumer | customer | secret | key )
     .?
     (?: key | oauth | sec | secret )?
     .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
-    \b ([a-z0-9]{35,44}) \b
+    \b (?P<secret>[a-zA-Z0-9]{35,50}) \b
 
   references:
+  - https://developer.x.com/en/docs/authentication/overview
   - https://developer.twitter.com/en/docs/authentication/overview
 
   categories:
@@ -53,11 +63,79 @@ rules:
   - |
       # TWITTER_API_KEY = 'UZYoBAfBzNace3mBwPOGYw'
       # TWITTER_API_SECRET = 'ngHaeaRPKA5BDQNXace3LWA1PvTA1kBGDaAJmc517E'
+  - 'X_API_SECRET = "ngHaeaRPKA5BDQNXace3LWA1PvTA1kBGDaAJmc517E"'
+  - 'x_api_consumer_secret: "5VFVXVMq9bDJzFAKPfWOiYmJZin2F7YLhSfoyLBXf6Bc"'
 
-  # XXX It would be nice if this actually matched
   negative_examples:
   - |
       Twitter(auth=OAuth('MjuHWoGbzYmJv3ZuHaBvSENfyevu00NQuBc40VM',
                          'anJLBCOALCXl7aXeybmNA5oae9E03Cm23cKNMLaScuXwk',
                          'kl3E14NQx84qxO1dy247V0b2W',
                          '5VFVXVMq9bDJzFAKPfWOiYmJZin2F7YLhSfoyLBXf6Bc9ngX3g'))
+
+
+# Twitter/X Bearer Token (OAuth 2.0 App-Only Authentication)
+# Used for application-only authentication without user context
+# Format: Long base64 string, typically starts with 'AAAA'
+- name: Twitter/X Bearer Token
+  id: np.twitter.3
+
+  pattern: |
+    (?x)(?i)
+    (?: twitter | x[\-_]?api )
+    .?
+    (?: bearer | access | auth | oauth )?
+    .?
+    (?: token | key )
+    .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
+    \b (?P<bearer_token>AAAA[A-Za-z0-9%]{50,500}) \b
+
+  references:
+  - https://developer.x.com/en/docs/authentication/oauth-2-0/bearer-tokens
+  - https://developer.twitter.com/en/docs/authentication/oauth-2-0/bearer-tokens
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'TWITTER_BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAMLheAAAAAAA0%2BuSeid%2BULvsea4JtiGRiSd"'
+  - 'X_API_BEARER_TOKEN="AAAAAAAAAAAAAAAAAAAAANRILEN0Aacc3Aace3mBw2bE4JtiGRiS"'
+  - 'twitter_access_token: "AAAAAAAAAAAAAAAAAAAAAPYXBAAAAAAACLXUNDekMxqa8h%2F40K4moUkGsoc"'
+
+  negative_examples:
+  # Base64 encoded strings that aren't bearer tokens
+  - 'data = "AAAABBBBBCCCCCDDDDDEEEEEFFFFF11111222223333344444555556666677777"'
+
+
+# Twitter/X Access Token (OAuth 1.0a User Context)
+# Used for user-context authentication
+# Format: numeric-alphanumeric separated by hyphen
+- name: Twitter/X Access Token
+  id: np.twitter.4
+
+  pattern: |
+    (?x)(?i)
+    (?: twitter | x[\-_]?api )
+    .?
+    (?: access | oauth | user )?
+    .?
+    (?: token | key )
+    .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
+    \b (?P<access_token>[0-9]{15,20}-[a-zA-Z0-9]{30,45}) \b
+
+  references:
+  - https://developer.x.com/en/docs/authentication/oauth-1-0a
+  - https://developer.twitter.com/en/docs/authentication/oauth-1-0a
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'TWITTER_ACCESS_TOKEN = "1234567890123456789-abcdefABCDEFghijklABCD12345678"'
+  - 'x_api_access_token = "9876543210987654321-XYZabcdefghijklmnopqrstuvwxyz12"'
+
+  negative_examples:
+  # Random number-string combinations
+  - 'transaction_id = "123456789012345-ABCDEFGHIJKLMNOP"'

@@ -3,7 +3,7 @@ rules:
     id: kingfisher.cerebras.1
     pattern: |
       (?xi)
-      (
+      (?P<token>
         csk-[a-z0-9]{48}
       )
       \b

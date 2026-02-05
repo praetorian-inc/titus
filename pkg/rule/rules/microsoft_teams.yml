@@ -5,7 +5,7 @@ rules:
 
   pattern: |
     (?x)(?i)
-    (
+    (?P<webhook>
       https://
       outlook\.office\.com/webhook/
       [a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}
@@ -18,6 +18,24 @@ rules:
     )
 
   categories: [api, secret]
+
+  validation:
+    type: Http
+    content:
+      request:
+        body: '{"text":""}'
+        headers:
+          Content-Type: application/json
+        method: POST
+        response_matcher:
+          - type: StatusMatch
+            status:
+              - 400
+          - report_response: true
+            type: WordMatch
+            words:
+              - "Text is required"
+        url: '{{ TOKEN }}'
 
   examples:
   - "//test //url = 'https://outlook.office.com/webhook/9da5da9c-4218-4c22-aed6-b5c8baebfff5@2f2b54b7-0141-4ba7-8fcd-ab7d17a60547/IncomingWebhook/1bf66ccbb8e745e791fa6e6de0cf465b/4361420b-8fde-48eb-b62a-0e34fec63f5c';"

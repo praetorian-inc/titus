@@ -6,8 +6,8 @@ rules:
       \b
       baremetrics
       (?:.|[\n\r]){0,32}?
-      \b                         
-      (
+      \b
+      (?P<secret>
         [a-z0-9_-]{25}
       )
       \b

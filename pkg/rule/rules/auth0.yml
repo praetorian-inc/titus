@@ -5,11 +5,11 @@ rules:
 
   pattern: |
     (?x)(?s)
-    (?: AUTH0_DOMAIN | AUTH0_ISSUER_BASE_URL ) \s* = \s* ['"] ( (?:https?://)? [a-zA-Z0-9._-]{10,100}) ['"]
+    (?: AUTH0_DOMAIN | AUTH0_ISSUER_BASE_URL ) \s* = \s* ['"] (?P<domain> (?:https?://)? [a-zA-Z0-9._-]{10,100}) ['"]
     .{0,100}
-    AUTH0_CLIENT_ID \s* = \s* ['"] ([a-zA-Z0-9]{32}) ['"]
+    AUTH0_CLIENT_ID \s* = \s* ['"] (?P<client_id>[a-zA-Z0-9]{32}) ['"]
     .{0,100}
-    AUTH0_CLIENT_SECRET \s* = \s* ['"] ([a-zA-Z0-9_-]{32,80}) ['"]
+    AUTH0_CLIENT_SECRET \s* = \s* ['"] (?P<client_secret>[a-zA-Z0-9_-]{32,80}) ['"]
 
   categories: [api, secret, fuzzy]
 

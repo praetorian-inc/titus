@@ -1,0 +1,64 @@
+validators:
+
+- rule_id: np.blynk.1
+  http:
+    url: "https://blynk.cloud/external/api/isHardwareConnected?token={{.token}}"
+    method: GET
+    valid_status:
+    - 200
+    invalid_status:
+    - 400  # Invalid token
+    - 401  # Unauthorized
+    - 404  # Token not found
+
+- rule_id: np.blynk.2
+  http:
+    url: "https://fra1.blynk.cloud/api/organization/profile"
+    method: GET
+    headers:
+      Authorization: "Bearer {{.token}}"
+    valid_status:
+    - 200
+    invalid_status:
+    - 401  # Unauthorized
+    - 403  # Forbidden
+
+- rule_id: np.blynk.3
+  http:
+    url: "https://fra1.blynk.cloud/api/organization/profile"
+    method: GET
+    headers:
+      Authorization: "Bearer {{.token}}"
+    valid_status:
+    - 200
+    invalid_status:
+    - 401  # Unauthorized
+    - 403  # Forbidden
+
+- rule_id: np.blynk.8
+  http:
+    url: "https://fra1.blynk.cloud/oauth2/token?grant_type=client_credentials"
+    method: POST
+    auth:
+      type: basic
+      username: "{{.client_id}}"
+      password: "{{.client_secret}}"
+    valid_status:
+    - 200
+    invalid_status:
+    - 400  # Bad request
+    - 401  # Invalid credentials
+
+- rule_id: np.blynk.9
+  http:
+    url: "https://fra1.blynk.cloud/oauth2/token?grant_type=client_credentials"
+    method: POST
+    auth:
+      type: basic
+      username: "{{.client_id}}"
+      password: "{{.client_secret}}"
+    valid_status:
+    - 200
+    invalid_status:
+    - 400  # Bad request
+    - 401  # Invalid credentials

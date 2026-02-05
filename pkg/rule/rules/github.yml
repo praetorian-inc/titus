@@ -2,7 +2,7 @@ rules:
 
 - name: GitHub Personal Access Token
   id: np.github.1
-  pattern: '\b(ghp_[a-zA-Z0-9]{36})\b'
+  pattern: '\b(?P<token>ghp_[a-zA-Z0-9]{36})\b'
 
   categories: [api, secret]
 
@@ -21,7 +21,7 @@ rules:
 
 - name: GitHub OAuth Access Token
   id: np.github.2
-  pattern: '\b(gho_[a-zA-Z0-9]{36})\b'
+  pattern: '\b(?P<token>gho_[a-zA-Z0-9]{36})\b'
 
   categories: [api, secret]
 
@@ -38,7 +38,7 @@ rules:
 - name: GitHub App Token
   id: np.github.3
   # Note: `ghu_` prefix is for user-to-server tokens; `ghs_` is for server-to-server tokens
-  pattern: '\b((?:ghu|ghs)_[a-zA-Z0-9]{36})\b'
+  pattern: '\b(?P<token>(?:ghu|ghs)_[a-zA-Z0-9]{36})\b'
 
   categories: [api, secret]
 
@@ -56,7 +56,7 @@ rules:
 
 - name: GitHub Refresh Token
   id: np.github.4
-  pattern: '\b(ghr_[a-zA-Z0-9]{76})\b'
+  pattern: '\b(?P<token>ghr_[a-zA-Z0-9]{76})\b'
 
   categories: [api, secret]
 
@@ -79,7 +79,7 @@ rules:
     .?
     (?: id | identifier | key )
     .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
-    \b ([a-z0-9]{20}) \b
+    \b (?P<client_id>[a-z0-9]{20}) \b
 
   categories: [api, fuzzy, identifier]
 
@@ -103,7 +103,7 @@ rules:
     .?
     (?: key | oauth | sec | secret )?
     .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
-    \b ([a-z0-9]{40}) \b
+    \b (?P<secret>[a-z0-9]{40}) \b
 
   categories: [api, fuzzy, secret]
 
@@ -122,7 +122,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (github_pat_[0-9a-zA-Z_]{82})
+    (?P<token>github_pat_[0-9a-zA-Z_]{82})
     \b
 
   categories: [api, secret]

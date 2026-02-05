@@ -1,30 +1,39 @@
 rules:
-  - name: Azure Storage Account Name
-    id: kingfisher.azurestorage.1
+  - name: Azure Storage Account Name (Connection String)
+    id: kingfisher.azurestorage.1a
     pattern: |
       (?xi)
-      (?:
-        # A) Connection string: AccountName=<name>
-        (?i:AccountName)\s*=\s*([a-z0-9]{3,24})(?:\b|[^a-z0-9])
-      |
-        # B) Blob endpoint URL: <name>.blob.core.windows.net
-        ([a-z0-9]{3,24})\.blob\.core\.windows\.net\b
-      |
-        # C) Explicit KV labels near 'azure storage/account name' with tight separators
-        \bazure(?:[_\s-]*)(?:storage|account)(?:[_\s-]*)(?:name)\b
-        [\s:=\"']{0,6}
-        ([a-z0-9]{3,24})(?:\b|[^a-z0-9])
-      |
-        # D) Explicit KV labels near 'azure storage/account name' with tight separators
-        (?i:Account[_.-]?Name|Storage[_.-]?(?:Name))(?:.|\s){0,32}?\b([A-Z0-9]{3,32})\b|([A-Z0-9]{3,32})(?i:\.blob\.core\.windows\.net)
-      )
+      (?i:AccountName)\s*=\s*(?P<account_name>[a-z0-9]{3,24})(?:\b|[^a-z0-9])
     min_entropy: 2.0
     visible: false
     confidence: medium
     examples:
       - AccountName=mystorageaccount
+
+  - name: Azure Storage Account Name (Blob Endpoint)
+    id: kingfisher.azurestorage.1b
+    pattern: |
+      (?xi)
+      (?P<account_name>[a-z0-9]{3,24})\.blob\.core\.windows\.net\b
+    min_entropy: 2.0
+    visible: false
+    confidence: medium
+    examples:
       - mystorageaccount.blob.core.windows.net
+
+  - name: Azure Storage Account Name (Label)
+    id: kingfisher.azurestorage.1c
+    pattern: |
+      (?xi)
+      \bazure(?:[_\s-]*)(?:storage|account)(?:[_\s-]*)(?:name)\b
+      [\s:=\"']{0,6}
+      (?P<account_name>[a-z0-9]{3,24})
+    min_entropy: 2.0
+    visible: false
+    confidence: medium
+    examples:
       - azure_storage_name="prodblob2024"
+
   - name: Azure Storage Account Key
     id: kingfisher.azurestorage.2
     pattern: |
@@ -34,7 +43,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,128}?
       ["':\s=}\]\)]
-      (
+      (?P<account_key>
           (?:
               [A-Z0-9+\\/-]{86,88}={1,2}
           )
@@ -55,5 +64,9 @@ rules:
     validation:
       type: AzureStorage
     depends_on_rule:
-      - rule_id: kingfisher.azurestorage.1
+      - rule_id: kingfisher.azurestorage.1a
+        variable: AZURENAME
+      - rule_id: kingfisher.azurestorage.1b
+        variable: AZURENAME
+      - rule_id: kingfisher.azurestorage.1c
         variable: AZURENAME

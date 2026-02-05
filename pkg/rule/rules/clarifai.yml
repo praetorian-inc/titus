@@ -2,12 +2,12 @@ rules:
   - name: Clarifai API Key
     id: kingfisher.clarifai.1
     pattern: |
-      (?xi)             
+      (?xi)
       \b
       clarifai
       (?:.|[\n\r]){0,32}?
       \b
-      (                  
+      (?P<token>
         [0-9a-f]{32,36}
       )
       \b

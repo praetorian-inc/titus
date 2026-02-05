@@ -52,12 +52,18 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 		return types.NewValidationResult(types.StatusUndetermined, 0, err.Error()), nil
 	}
 
+	// Substitute URL templates with named capture group values
+	url := v.def.HTTP.URL
+	for name, value := range match.NamedGroups {
+		url = strings.ReplaceAll(url, "{{"+name+"}}", string(value))
+	}
+
 	// Build request with optional body
 	var body io.Reader
 	if v.def.HTTP.Body != "" {
 		body = strings.NewReader(v.def.HTTP.Body)
 	}
-	req, err := http.NewRequestWithContext(ctx, v.def.HTTP.Method, v.def.HTTP.URL, body)
+	req, err := http.NewRequestWithContext(ctx, v.def.HTTP.Method, url, body)
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to create request: %v", err)), nil
 	}
@@ -109,6 +115,10 @@ func (v *HTTPValidator) extractSecret(match *types.Match) (string, error) {
 
 func (v *HTTPValidator) applyAuth(req *http.Request, secret string) error {
 	switch v.def.HTTP.Auth.Type {
+	case "none", "":
+		// No authentication - URL itself may contain the secret (e.g., Slack webhooks)
+		return nil
+
 	case "bearer":
 		req.Header.Set("Authorization", "Bearer "+secret)
 

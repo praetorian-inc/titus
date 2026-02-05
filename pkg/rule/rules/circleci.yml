@@ -2,9 +2,9 @@ rules:
   - name: CircleCI API Personal Access Token
     id: kingfisher.circleci.1
     pattern: |
-      (?xi)                   
-      \b                     
-      (                      
+      (?xi)
+      \b
+      (?P<token>
         CCIPAT_
         [a-z0-9]{4}
         [a-z]{5}
@@ -19,7 +19,7 @@ rules:
         [a-z]{1}
         _
         [a-z0-9]{40}
-      )                      
+      )
       \b
     pattern_requirements:
       min_digits: 2
@@ -52,10 +52,10 @@ rules:
     id: kingfisher.circleci.2
     pattern: |
       (?xi)
-      \b                     
+      \b
       circleci
       (?:.|[\n\r]){0,64}?
-      (                      
+      (?P<token>
         [a-f0-9]{40}
       )
       \b

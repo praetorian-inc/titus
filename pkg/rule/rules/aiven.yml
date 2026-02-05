@@ -2,12 +2,12 @@ rules:
   - name: Aiven API Key
     id: kingfisher.aiven.1
     pattern: |
-      (?xi)             
+      (?xi)
       aiven
       (?:.|[\n\r]){0,32}?
       \b
-      (
-        [a-z0-9/+=]{372}      
+      (?P<token>
+        [A-Za-z0-9/+=]{372}
       )
       (?:[^A-Za-z0-9/+=])
     pattern_requirements:

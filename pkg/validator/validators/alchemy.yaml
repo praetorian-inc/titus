@@ -1,0 +1,15 @@
+# pkg/validator/validators/alchemy.yaml
+# Alchemy is a Web3/blockchain API provider offering Ethereum, Polygon, and other blockchain services
+# Validation uses Alchemy NFT API v3 endpoint with API key authentication
+validators:
+  - name: alchemy-api-key
+    rule_ids:
+      - kingfisher.alchemy.1
+    http:
+      method: GET
+      url: https://eth-mainnet.g.alchemy.com/nft/v3/{{ .secret }}/getNFTsForOwner?owner=0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+      auth:
+        type: none  # API key is in URL path
+        secret_group: token  # Named capture group from regex pattern
+      success_codes: [200]
+      failure_codes: [401, 403, 404]

@@ -3,7 +3,7 @@ rules:
     id: kingfisher.buildkite.1
     pattern: |
       (?xi)
-      (
+      (?P<token>
         bkua_[a-z0-9]{40}
       )
       \b

@@ -1,21 +1,21 @@
 rules:
   - name: AI21 Studio API Key
     id: kingfisher.ai21studio.1
-    pattern: | 
-      (?xi)                       
-      \b                         
+    pattern: |
+      (?xi)
+      \b
       ai21
       (?:.|[\n\r]){0,32}?
-      \b  
-      (               
-        [0-9a-f]{8}  
-        -          
-        [0-9a-f]{4}  
-        -              
+      \b
+      (?P<token>
+        [0-9a-f]{8}
+        -
         [0-9a-f]{4}
-        -               
+        -
         [0-9a-f]{4}
-        -              
+        -
+        [0-9a-f]{4}
+        -
         [0-9a-f]{12}
       )
       \b

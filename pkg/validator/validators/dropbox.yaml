@@ -1,0 +1,15 @@
+# pkg/validator/validators/dropbox.yaml
+# Dropbox uses Bearer token authentication
+# Validation endpoint returns current account info
+validators:
+  - name: dropbox-access-token
+    rule_ids:
+      - np.dropbox.1
+    http:
+      method: POST
+      url: https://api.dropboxapi.com/2/users/get_current_account
+      auth:
+        type: bearer
+        secret_group: "token"  # Matches (?P<token>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]

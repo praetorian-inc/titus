@@ -3,7 +3,7 @@ rules:
     id: kingfisher.alibabacloud.1
     pattern: |
       (?xi)
-      (
+      (?P<akid>
         LTAI[a-z0-9]{17,21}
       )
       \b
@@ -24,7 +24,7 @@ rules:
       \b
       alibaba
       (?:.|[\n\r]){0,32}?
-      (
+      (?P<token>
         [a-z0-9]{30}
       )
     min_entropy: 4.2

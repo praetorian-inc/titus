@@ -4,9 +4,11 @@ rules:
   id: np.cratesio.1
 
   # It's a 32-character alphanumeric identifier prefixed by `cio`
-  pattern: '\b(cio[a-zA-Z0-9]{32})\b'
+  pattern: '\b(?P<token>cio[a-zA-Z0-9]{32})\b'
 
   categories: [api, secret]
+
+  validator: cratesio
 
   references:
   - https://crates.io/data-access

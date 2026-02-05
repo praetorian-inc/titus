@@ -9,7 +9,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b                     
-      (
+      (?P<token>
         [a-z0-9_-]{38,42}
       )
       \b
@@ -48,7 +48,7 @@ rules:
       \b                     
       (?:cloudflare|x-auth-user-service-key)
       (?:.|[\n\r]){0,64}?
-      (
+      (?P<token>
         v1\.0-[a-z0-9._-]{160,}
       )
       \b      

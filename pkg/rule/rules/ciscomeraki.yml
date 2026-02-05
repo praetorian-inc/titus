@@ -5,7 +5,7 @@ rules:
       (?xi)
       meraki
       (?:.|[\n\r]){0,32}?
-      (
+      (?P<token>
         [0-9a-f]{40}
       )
       \b

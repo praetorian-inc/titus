@@ -5,9 +5,7 @@ rules:
       (?xi)
       algolia
       (?:.|[\n\r]){0,32}?
-      (
-        [a-z0-9]{32}
-      )
+      (?P<token>[a-z0-9]{32})
       \b
     pattern_requirements:
       min_digits: 2
@@ -40,9 +38,7 @@ rules:
       (?xi)
       algolia
       (?:.|[\n\r]){0,16}?
-      (
-        [A-Z0-9]{10}
-      )
+      (?P<appid>[A-Z0-9]{10})
       \b
     pattern_requirements:
       min_digits: 2

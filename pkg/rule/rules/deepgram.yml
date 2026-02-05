@@ -1,14 +1,14 @@
 rules:
   - name: Deepgram API Key
     id: kingfisher.deepgram.1
-    pattern: |         
-      (?xi)    
+    pattern: |
+      (?xi)
       \b
       deepgram
       (?:.|[\n\r]){0,32}?
       \b
-      (
-        [0-9a-f]{40}    
+      (?P<token>
+        [0-9a-f]{40}
       )
       \b
     pattern_requirements:
@@ -27,6 +27,7 @@ rules:
 
     validation:
       type: Http
+      secret_group: token
       content:
         request:
           method: GET

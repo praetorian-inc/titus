@@ -1,13 +1,13 @@
 rules:
   - name: AssemblyAI API Key
     id: kingfisher.assemblyai.1
-    pattern: |         
-      (?xi)        
+    pattern: |
+      (?xi)
       \b
       assemblyai
       (?:.|[\n\r]){0,32}?
-      \b  
-      (              
+      \b
+      (?P<token>
         [0-9a-z]{32}
       )
       \b

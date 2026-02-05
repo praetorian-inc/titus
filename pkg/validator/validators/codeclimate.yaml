@@ -1,0 +1,42 @@
+validators:
+
+# CodeClimate Reporter ID / Repo Token Validator
+#
+# NOTE: CodeClimate does not provide a dedicated API endpoint for validating
+# test reporter tokens (CC_TEST_REPORTER_ID or CODECLIMATE_REPO_TOKEN).
+#
+# These tokens are used to upload test coverage reports to:
+# https://codeclimate.com/test_reports
+#
+# The only way to validate these tokens is to attempt an actual coverage upload,
+# which is not practical for validation purposes.
+#
+# For API tokens (not reporter tokens), you can validate using:
+# GET https://api.codeclimate.com/v1/user
+# with header: Authorization: Token token={TOKEN}
+#
+# References:
+# - https://docs.codeclimate.com/docs/finding-your-test-coverage-token
+# - https://developer.codeclimate.com/
+# - https://github.com/codeclimate/test-reporter
+
+- name: CodeClimate Reporter Token
+  id: codeclimate.reporter.1
+
+  # No validation endpoint available for reporter tokens
+  validation:
+    supported: false
+    reason: "CodeClimate does not provide a validation endpoint for test reporter tokens"
+
+  notes: |
+    CodeClimate Reporter Tokens (CC_TEST_REPORTER_ID and CODECLIMATE_REPO_TOKEN)
+    are used exclusively for uploading test coverage data to CodeClimate.
+
+    These tokens:
+    - Are 64-character hexadecimal strings
+    - Have write-only access for coverage data
+    - Cannot be validated without attempting an actual coverage upload
+    - Are scoped to a specific repository
+
+    If you need to validate a CodeClimate API token (not a reporter token),
+    use the CodeClimate API endpoint: GET /v1/user
