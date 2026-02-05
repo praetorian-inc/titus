@@ -5,7 +5,8 @@ validators:
         method: GET
         url: https://api.clay.com/api/v1/me
         headers:
-          Authorization: "Bearer {{ .token }}"
+          - name: Authorization
+            value: "Bearer {{ .token }}"
       response:
         status_codes:
           valid: [200]

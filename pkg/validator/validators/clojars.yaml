@@ -4,7 +4,8 @@ validators:
       method: GET
       url: "https://clojars.org/api/groups/{token}"
       headers:
-        Authorization: "token {token}"
+        - name: Authorization
+          value: "token {token}"
       expected_status: [200, 401, 403]
       # 200 = valid token with access
       # 401 = valid token format but invalid/expired

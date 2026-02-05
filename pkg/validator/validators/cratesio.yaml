@@ -3,7 +3,8 @@ http:
     url: https://crates.io/api/v1/me
     method: GET
     headers:
-      Authorization: "Bearer ${candidate}"
+      - name: Authorization
+        value: "Bearer ${candidate}"
   responses:
     '200':
       verdict:

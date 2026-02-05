@@ -28,7 +28,8 @@ validators:
       method: GET
       url: "" # Would need to be extracted from curl command context
       headers:
-        Authorization: "{{.secret}}"
+        - name: Authorization
+          value: "{{.secret}}"
       success:
         status_code: [200, 201, 204, 401] # 401 means auth header was processed
       failure:
