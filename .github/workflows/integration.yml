@@ -90,11 +90,11 @@ jobs:
           -v "$(pwd)/titus-static:/titus:ro" \
           alpine:3.19 /titus --help
 
-        # Test actual scan
+        # Test actual scan (use :memory: since SQLite requires CGO)
         docker run --rm \
           -v "$(pwd)/titus-static:/titus:ro" \
           -v "$(pwd)/testdata:/testdata:ro" \
-          alpine:3.19 /titus scan /testdata/secrets --format=json
+          alpine:3.19 /titus scan /testdata/secrets --format=json --output :memory:
 
     - name: Upload static binary on success
       uses: actions/upload-artifact@v4
