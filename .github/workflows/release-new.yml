@@ -1,11 +1,7 @@
 # Titus Release Workflow - Creates portable binaries for all platforms
 #
-# NOTE: CGO is OPTIONAL. Titus uses regexp2 by default (no CGO required).
-# This workflow builds with Hyperscan (CGO) for maximum performance on Linux/macOS,
-# but pure Go builds work fine with CGO_ENABLED=0.
-#
-# To build without CGO:
-#   CGO_ENABLED=0 go build ./cmd/titus
+# All builds use pure Go (CGO_ENABLED=0) for maximum portability.
+# Titus now uses regexp2 by default (no CGO required).
 #
 name: Release
 
@@ -29,128 +25,34 @@ env:
   VERSION: ${{ inputs.version || github.ref_name }}
 
 jobs:
-  # Build Linux amd64 with Intel hyperscan
-  build-linux-amd64:
-    name: Build Linux amd64
-    runs-on: ubuntu-22.04
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: 'go.mod'
-        cache: true
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ragel pkg-config libboost-dev
-
-    - name: Build hyperscan static library
-      run: |
-        git clone --depth 1 --branch v5.4.2 https://github.com/intel/hyperscan.git /tmp/hyperscan
-        cd /tmp/hyperscan
-        mkdir build && cd build
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=OFF \
-          -DCMAKE_INSTALL_PREFIX=/usr/local
-        make -j$(nproc)
-        sudo make install
-        ls -la /usr/local/lib/libhs*.a
-
-    - name: Build binary
-      env:
-        CGO_ENABLED: "1"
-        CGO_CFLAGS: "-I/usr/local/include"
-        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
-      run: |
-        mkdir -p dist
-        GOWORK=off go build -o dist/titus-linux-amd64 ./cmd/titus
-        chmod +x dist/titus-linux-amd64
-        file dist/titus-linux-amd64
-        ldd dist/titus-linux-amd64
-
-    - name: Verify binary runs
-      run: dist/titus-linux-amd64 version
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: titus-linux-amd64
-        path: dist/titus-linux-amd64
-
-  # Build Linux arm64 with vectorscan (ARM port of hyperscan)
-  build-linux-arm64:
-    name: Build Linux arm64
-    runs-on: ubuntu-22.04-arm
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: 'go.mod'
-        cache: true
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ragel pkg-config libboost-dev
-
-    - name: Build vectorscan static library
-      run: |
-        git clone --depth 1 --branch vectorscan/5.4.11 https://github.com/VectorCamp/vectorscan.git /tmp/vectorscan
-        cd /tmp/vectorscan
-        mkdir build && cd build
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=OFF \
-          -DCMAKE_INSTALL_PREFIX=/usr/local
-        make -j$(nproc)
-        sudo make install
-        ls -la /usr/local/lib/libhs*.a
-
-    - name: Build binary
-      env:
-        CGO_ENABLED: "1"
-        CGO_CFLAGS: "-I/usr/local/include"
-        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
-      run: |
-        mkdir -p dist
-        GOWORK=off go build -o dist/titus-linux-arm64 ./cmd/titus
-        chmod +x dist/titus-linux-arm64
-        file dist/titus-linux-arm64
-        ldd dist/titus-linux-arm64
-
-    - name: Verify binary runs
-      run: dist/titus-linux-arm64 version
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: titus-linux-arm64
-        path: dist/titus-linux-arm64
-
-  # Build macOS binaries
-  build-macos:
-    name: Build macOS ${{ matrix.arch }}
+  # Build binaries for all platforms using pure Go (matrix strategy)
+  build:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: arm64
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-22.04
+            artifact: titus-linux-amd64
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-22.04
+            artifact: titus-linux-arm64
+          - goos: darwin
+            goarch: arm64
             runner: macos-14
-            hs_package: vectorscan
-          - arch: amd64
+            artifact: titus-darwin-arm64
+          - goos: darwin
+            goarch: amd64
             runner: macos-15-intel
-            hs_package: hyperscan
+            artifact: titus-darwin-amd64
+          - goos: windows
+            goarch: amd64
+            runner: windows-2022
+            artifact: titus-windows-amd64.exe
 
     steps:
     - name: Checkout code
@@ -162,150 +64,37 @@ jobs:
         go-version-file: 'go.mod'
         cache: true
 
-    - name: Install dependencies
-      run: |
-        brew install ${{ matrix.hs_package }} pkg-config
-        HS_PREFIX=$(brew --prefix ${{ matrix.hs_package }})
-        echo "HS_PREFIX=${HS_PREFIX}" >> $GITHUB_ENV
-        ls -la ${HS_PREFIX}/lib/
-
     - name: Build binary
       env:
-        CGO_ENABLED: "1"
+        CGO_ENABLED: "0"
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
       run: |
-        export CGO_CFLAGS="-I${HS_PREFIX}/include/hs"
-        export CGO_LDFLAGS="-L${HS_PREFIX}/lib -lhs -lc++"
-
         mkdir -p dist
-        GOWORK=off go build -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
-        chmod +x dist/titus-darwin-${{ matrix.arch }}
-        file dist/titus-darwin-${{ matrix.arch }}
-        otool -L dist/titus-darwin-${{ matrix.arch }}
+        GOWORK=off go build -ldflags '-s -w' -o dist/${{ matrix.artifact }} ./cmd/titus
+      shell: bash
+
+    - name: Make binary executable (Unix)
+      if: matrix.goos != 'windows'
+      run: chmod +x dist/${{ matrix.artifact }}
+      shell: bash
+
+    - name: Verify binary metadata (Unix)
+      if: matrix.goos != 'windows'
+      run: file dist/${{ matrix.artifact }}
+      shell: bash
 
     - name: Verify binary runs
-      run: |
-        dist/titus-darwin-${{ matrix.arch }} version
+      run: dist/${{ matrix.artifact }} version
+      shell: bash
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: titus-darwin-${{ matrix.arch }}
-        path: dist/titus-darwin-${{ matrix.arch }}
+        name: ${{ matrix.artifact }}
+        path: dist/${{ matrix.artifact }}
 
-  # Build Windows binary using MSYS2/MinGW (compatible with Go CGO)
-  build-windows:
-    name: Build Windows amd64
-    runs-on: windows-2022
-
-    defaults:
-      run:
-        shell: msys2 {0}
-
-    steps:
-    - name: Setup MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        update: true
-        install: >-
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-cmake
-          mingw-w64-x86_64-boost
-          mingw-w64-x86_64-pkg-config
-          mingw-w64-x86_64-ragel
-          git
-          make
-
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: 'go.mod'
-        cache: true
-
-    - name: Build vectorscan static library with MinGW
-      run: |
-        git clone --depth 1 --branch vectorscan/5.4.11 https://github.com/VectorCamp/vectorscan.git /tmp/vectorscan
-        cd /tmp/vectorscan
-        mkdir build && cd build
-        cmake .. \
-          -G "MinGW Makefiles" \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_SHARED_LIBS=OFF \
-          -DCMAKE_C_COMPILER=gcc \
-          -DCMAKE_CXX_COMPILER=g++ \
-          -DCMAKE_INSTALL_PREFIX=/mingw64
-        mingw32-make -j$(nproc)
-        mingw32-make install
-        ls -la /mingw64/lib/libhs*.a
-        ls -la /mingw64/include/hs/ || ls -la /mingw64/include/
-
-    - name: Create pkg-config file for vectorscan
-      run: |
-        # Find where headers are installed
-        echo "=== Checking header locations ==="
-        find /mingw64/include -name "hs.h" 2>/dev/null || echo "hs.h not found in /mingw64/include"
-        ls -la /mingw64/include/hs/ 2>/dev/null || echo "No /mingw64/include/hs/ directory"
-
-        # Determine include path (vectorscan may install to include/hs/ or include/)
-        if [ -f /mingw64/include/hs/hs.h ]; then
-          HS_INCLUDE="/mingw64/include/hs"
-        else
-          HS_INCLUDE="/mingw64/include"
-        fi
-        echo "Using include path: $HS_INCLUDE"
-
-        # Create libhs.pc for pkg-config discovery (no leading whitespace!)
-        printf '%s\n' \
-          "prefix=/mingw64" \
-          "exec_prefix=\${prefix}" \
-          "libdir=\${prefix}/lib" \
-          "includedir=$HS_INCLUDE" \
-          "" \
-          "Name: libhs" \
-          "Description: Vectorscan regex library (Hyperscan fork)" \
-          "Version: 5.4.11" \
-          "Libs: -L\${libdir} -lhs" \
-          "Cflags: -I\${includedir}" \
-          > /mingw64/lib/pkgconfig/libhs.pc
-
-        echo "=== libhs.pc contents ==="
-        cat /mingw64/lib/pkgconfig/libhs.pc
-
-        echo "=== pkg-config test ==="
-        pkg-config --cflags libhs
-        pkg-config --libs libhs
-
-    - name: Build binary
-      env:
-        CGO_ENABLED: "1"
-        PKG_CONFIG_PATH: "/mingw64/lib/pkgconfig"
-      run: |
-        # Get Go binary from actions/setup-go (Windows native path)
-        export PATH="$(cygpath -u "$GOROOT_1_25_X64/bin"):$PATH"
-        export GOWORK=off
-
-        # Verify pkg-config can find libhs
-        echo "=== Final pkg-config verification ==="
-        pkg-config --cflags --libs libhs
-
-        mkdir -p dist
-        go build -o dist/titus-windows-amd64.exe ./cmd/titus
-        ls -la dist/
-
-    - name: Verify binary runs
-      run: |
-        ./dist/titus-windows-amd64.exe version
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: titus-windows-amd64
-        path: dist/titus-windows-amd64.exe
-
-  # Build Burp extension JAR - temporarily always runs to register workflow
+  # Build Burp extension JAR
   build-burp:
     name: Build Burp Extension
     runs-on: ubuntu-22.04
@@ -370,7 +159,7 @@ jobs:
   # Create GitHub release with all artifacts (skipped on main branch push)
   release:
     name: Create Release
-    needs: [build-linux-amd64, build-linux-arm64, build-macos, build-windows, build-burp, build-extension]
+    needs: [build, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
     steps:
@@ -388,10 +177,10 @@ jobs:
 
         # Move binaries
         mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
-        mv artifacts/titus-linux-arm64/titus-linux-arm64 release/ || true
+        mv artifacts/titus-linux-arm64/titus-linux-arm64 release/
         mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
         mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
-        mv artifacts/titus-windows-amd64/titus-windows-amd64.exe release/
+        mv artifacts/titus-windows-amd64.exe/titus-windows-amd64.exe release/
 
         # Move JAR and extension
         mv artifacts/titus-burp-extension/*.jar release/
