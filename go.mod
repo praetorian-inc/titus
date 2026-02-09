@@ -9,11 +9,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/flier/gohs v1.2.3
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/google/go-github/v57 v57.0.0
 	github.com/jackc/pgx/v5 v5.7.2
-	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/praetorian-inc/capability-sdk v0.0.0-00010101000000-000000000000
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/spf13/cobra v1.10.2

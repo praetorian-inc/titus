@@ -6,18 +6,16 @@
 # Default target
 all: build test vet
 
-# Build the project (dynamic linking)
+# Build the project (pure Go, no CGO)
 build:
 	@mkdir -p dist
-	GOWORK=off CGO_ENABLED=1 go build -o dist/titus ./cmd/titus
+	GOWORK=off CGO_ENABLED=0 go build -o dist/titus ./cmd/titus
 
-# Build statically linked binary (for container deployment)
-# Requires musl-gcc: apt-get install musl-dev musl-tools
+# Build statically linked binary (pure Go, no CGO required)
 build-static:
 	@mkdir -p dist
-	GOWORK=off CGO_ENABLED=1 CC=musl-gcc go build \
-		-ldflags '-linkmode external -extldflags "-static"' \
-		-tags 'osusergo netgo sqlite_omit_load_extension' \
+	GOWORK=off CGO_ENABLED=0 go build \
+		-ldflags '-s -w' \
 		-o dist/titus-static ./cmd/titus
 
 # Build WASM binary for browser extension

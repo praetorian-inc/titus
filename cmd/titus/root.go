@@ -28,7 +28,6 @@ func init() {
 	rootCmd.AddCommand(rulesCmd)
 	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(versionCmd)
-rootCmd.AddCommand(mergeCmd)
 	rootCmd.AddCommand(gitlabCmd)
 }
 
