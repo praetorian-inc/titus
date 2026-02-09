@@ -177,3 +177,52 @@ rules:
     An Azure DevOps Personal Access Token was found.
     Azure DevOps is a code hosting, testing, and deployment platform.
     Depending on the privileges granted to the token, an attacker may be able to use it to access source code, secrets, and build resources, enabling a supply chain attack.
+
+
+- name: Azure API Management Subscription Key
+  id: np.azure.5
+
+  pattern: |
+    (?ix)
+    (?<![#/])                                            # Not immediately preceded by comment markers
+    (?:["']?Ocp-Apim-Subscription-Key["']?|subscription[-_]key)  # Header name with optional quotes
+    \s*[:=]\s*                                           # Separator
+    ['"]?                                                # Optional quote
+    (?P<key>
+      (?!0{32}|f{32})                                    # Reject all-zeros or all-F's patterns
+      [0-9a-f]{32}                                       # 32 hex characters
+    )
+    ['"]?                                                # Optional closing quote
+
+  references:
+  - https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions
+  - https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-create-subscriptions
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'Ocp-Apim-Subscription-Key: 1df236930c4f41d4a6ea8a5696d318a2'
+  - '"Ocp-Apim-Subscription-Key": "b2c3d4e5f67890a1b2c3d4e5f6789012"'
+  - 'subscription_key = "abcd1234ef567890abcd1234ef567890"'
+  - 'headers = {"Ocp-Apim-Subscription-Key": "a1b2c3d4e5f67890a1b2c3d4e5f67890"}'
+  - 'subscription-key=1234567890abcdef1234567890abcdef'
+
+  negative_examples:
+  - 'Ocp-Apim-Subscription-Key: YOUR_SUBSCRIPTION_KEY'
+  - 'Ocp-Apim-Subscription-Key: EXAMPLE_KEY_HERE'
+  - 'subscription_key = "SUBSCRIPTION_KEY"'
+  - '// Set: Ocp-Apim-Subscription-Key: abcd1234'
+  - 'Ocp-Apim-Subscription-Key: 00000000000000000000000000000000'
+  - 'Ocp-Apim-Subscription-Key: ffffffffffffffffffffffffffffffff'
+
+  description: >
+    Azure API Management subscription key used for authenticating API requests
+    to Azure APIM gateway endpoints. An attacker with this credential can access
+    APIs protected by the APIM gateway, potentially leading to unauthorized
+    data access, API abuse, or rate limit circumvention. Impact depends on the
+    scope of the subscription (all APIs, product, or single API) and the
+    permissions granted. Note: Azure APIM subscription keys are instance-specific
+    and validate against the specific APIM gateway URL. There is no universal
+    validation endpoint.
