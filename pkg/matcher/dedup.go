@@ -23,3 +23,8 @@ func (d *Deduplicator) IsDuplicate(m *types.Match) bool {
 func (d *Deduplicator) Add(m *types.Match) {
 	d.seen[m.StructuralID] = true
 }
+
+// Reset clears the deduplicator for reuse.
+func (d *Deduplicator) Reset() {
+	clear(d.seen)
+}
