@@ -1,23 +1,22 @@
-//go:build !wasm && cgo
+//go:build !wasm
 
 package store
 
 import "fmt"
 
-// New creates a store for native builds.
-// By default, uses MemoryStore (no CGO required).
-// For ":memory:" paths, returns MemoryStore.
-// For file paths, returns SQLite (requires CGO).
+// New creates a store for native builds (pure Go, no CGO).
+// Only MemoryStore is supported. SQLite support has been removed.
+// For persistent storage needs, use the memory store with external serialization.
 func New(cfg Config) (Store, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("path is required")
 	}
 
-	// Use MemoryStore for :memory: paths (no CGO)
+	// Only memory store supported (pure Go)
 	if cfg.Path == ":memory:" {
 		return NewMemory(), nil
 	}
 
-	// Use SQLite for file paths (requires CGO - user must build with CGO_ENABLED=1)
-	return NewSQLite(cfg.Path)
+	// File-based storage (SQLite) removed - pure Go only
+	return nil, fmt.Errorf("file-based storage not supported (SQLite removed). Use :memory: for pure Go builds")
 }
