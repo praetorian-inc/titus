@@ -1,4 +1,4 @@
-//go:build !wasm
+//go:build !wasm && cgo && hyperscan
 
 package matcher
 
@@ -10,14 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// hyperscanAvailable checks if Hyperscan library is available.
-func hyperscanAvailable() bool {
-	// Try to create a minimal database to test availability
-	p := hyperscan.NewPattern("test", hyperscan.DotAll)
-	_, err := hyperscan.NewBlockDatabase(p)
-	return err == nil
-}
 
 // computeRuleStructuralID is a test helper to compute StructuralID for a rule pattern.
 func computeRuleStructuralID(pattern string) string {

@@ -14,6 +14,7 @@ require (
 	github.com/google/go-github/v57 v57.0.0
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/mattn/go-sqlite3 v1.14.33
+	github.com/praetorian-inc/capability-sdk v0.0.0-00010101000000-000000000000
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
@@ -66,3 +67,5 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
+
+replace github.com/praetorian-inc/capability-sdk => ../capability-sdk

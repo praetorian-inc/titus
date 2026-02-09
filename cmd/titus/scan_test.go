@@ -1,3 +1,5 @@
+//go:build cgo
+
 // cmd/titus/scan_test.go
 package main
 

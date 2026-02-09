@@ -7,11 +7,11 @@ on:
     branches: [main, master]
 
 env:
-  CGO_ENABLED: 1
+  CGO_ENABLED: 0
 
 jobs:
   build-and-test:
-    name: Build and Test
+    name: Build and Test (No CGO)
     runs-on: ubuntu-22.04
 
     steps:
@@ -23,11 +23,6 @@ jobs:
       with:
         go-version-file: 'go.mod'
         cache: true
-
-    - name: Install Hyperscan
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libhyperscan-dev
 
     - name: Build
       run: make build

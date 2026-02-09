@@ -1,5 +1,3 @@
-//go:build wasm
-
 package store
 
 import (
@@ -16,7 +14,8 @@ type blobRecord struct {
 }
 
 // MemoryStore implements Store using in-memory data structures.
-// Used for WASM builds where SQLite (CGO) is unavailable.
+// No CGO dependency required.
+// Originally used only for WASM builds, but now the default for non-CGO builds.
 type MemoryStore struct {
 	mu         sync.RWMutex
 	blobs      map[string]blobRecord        // keyed by BlobID.Hex()

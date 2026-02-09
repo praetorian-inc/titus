@@ -1,3 +1,5 @@
+//go:build !wasm && cgo
+
 package store
 
 import (

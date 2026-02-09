@@ -1,4 +1,12 @@
 # Titus Release Workflow - Creates portable binaries for all platforms
+#
+# NOTE: CGO is OPTIONAL. Titus uses regexp2 by default (no CGO required).
+# This workflow builds with Hyperscan (CGO) for maximum performance on Linux/macOS,
+# but pure Go builds work fine with CGO_ENABLED=0.
+#
+# To build without CGO:
+#   CGO_ENABLED=0 go build ./cmd/titus
+#
 name: Release
 
 on:
