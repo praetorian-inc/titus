@@ -1,0 +1,92 @@
+rules:
+  - id: np.redis.1
+    name: Redis URI Connection String
+    pattern: |
+      (?xi)
+      (?<! [#/] .{0,50} )                                             (?# not in comments )
+      (?: redis | rediss | redis\+sentinel ) ://                      (?# URI scheme )
+        (?: (?P<username>[a-zA-Z0-9%;._~!$&'()*+,;=-]{1,})           (?# username - optional )
+          :
+        )?
+        (?P<password>[a-zA-Z0-9%;._~!$&'()*+,;=/+-]{8,})             (?# password - named capture, min 8 chars )
+      @ (?P<host>[a-zA-Z0-9_.-]{1,}) (?: :(?P<port>\d{1,5}))?        (?# hostname and optional port )
+      (?: / (?P<db>\d{1,2}))?                                        (?# optional database number )
+      \b
+
+    pattern_requirements:
+      ignore_if_contains:
+        - "****"
+        - "xxxx"
+        - "example.com"
+        - "your_password"
+        - "your-password"
+        - ":password@"
+        - ":secret@"
+        - "localhost"
+
+    min_entropy: 3.0
+
+    categories:
+      - secret
+      - api
+
+    examples:
+      - 'REDIS_URL="redis://user:EXAMPLEp4ssw0rd123@localhost:6379/0"'
+      - 'rediss://admin:TESTsecur3K3y456@redis.example.com:6380/1'
+      - 'redis+sentinel://default:SAMPLEr3d1sK3y789@sentinel.host:26379'
+      - 'redis://:oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=@gainazurecacheforredis03.eastus.redisenterprise.cache.azure.net:10000'
+
+    negative_examples:
+      - 'redis://user:password@localhost:6379'
+      - 'redis://localhost:6379'
+      - '# redis://user:secret@example.com:6379'
+      - 'redis://user:xxxxxxxxxxxx@host:6379'
+
+    description: |
+      Redis connection string with embedded credentials used for Redis server authentication.
+      An attacker with this connection string can authenticate to the Redis server and potentially
+      read, modify, or delete cached data, execute commands, or compromise data integrity.
+      Potential impact includes data exfiltration, cache poisoning, and denial of service.
+
+    references:
+      - https://redis.io/docs/latest/develop/clients/redis-py/connect/
+      - https://redis.io/docs/latest/commands/auth/
+      - https://github.com/redis/redis-py/blob/master/redis/client.py
+
+  - id: np.redis.2
+    name: Python Redis Client Debug Output
+    pattern: |
+      (?xi)
+      redis\.(?:client\.Redis|connection\.(?:Connection|SSLConnection|ConnectionPool))  (?# Python Redis class )
+      .*?
+      (?:password|passwd|pwd)                                         (?# password key )
+      \s*=\s*                                                         (?# equals separator )
+      (?! None )                                                      (?# exclude None )
+      (?P<password>[a-zA-Z0-9+/=_-]{8,})                              (?# password value - named capture )
+      (?:,|\s)                                                        (?# separator )
+      .*?
+      host\s*=\s*                                                     (?# host key )
+      (?P<host>[a-zA-Z0-9_.-]+)                                       (?# host value - named capture )
+
+    min_entropy: 3.0
+
+    categories:
+      - secret
+
+    examples:
+      - '<redis.client.Redis(<redis.connection.ConnectionPool(<redis.connection.Connection(db=0,username=None,password=oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=,host=gainazurecacheforredis03.eastus.redisenterprise.cache.azure.net,port=10000,...)>)>)>'
+      - '<redis.client.Redis(<redis.connection.ConnectionPool(<redis.connection.SSLConnection(db=0,password=EXAMPLEsecretKey123,host=redis-server.local,port=6379,...)>)>)>'
+
+    negative_examples:
+      - '<redis.client.Redis(<redis.connection.Connection(db=0,password=None,host=localhost,...)>)>'
+      - 'password=test123,host=example'
+
+    description: |
+      Redis connection password extracted from Python redis-py client debug output or error messages.
+      This pattern detects credentials that may appear in application logs, error traces, or debugging output.
+      An attacker with access to these logs can extract the password and use it to authenticate to the Redis server,
+      potentially leading to data exfiltration, cache manipulation, or service disruption.
+
+    references:
+      - https://github.com/redis/redis-py
+      - https://redis.readthedocs.io/en/stable/connections.html

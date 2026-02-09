@@ -147,6 +147,8 @@ rulesets:
   - np.pypi.1         # PyPI Upload Token
   - np.reactapp.1     # React App Username
   - np.reactapp.2     # React App Password
+  - np.redis.1        # Redis URI Connection String
+  - np.redis.2        # Python Redis Client Debug Output
   - np.rubygems.1     # RubyGems API Key
   - np.salesforce.1   # Salesforce Access Token
   - np.sauce.1        # Sauce Token
