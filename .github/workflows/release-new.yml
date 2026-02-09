@@ -37,22 +37,27 @@ jobs:
             goarch: amd64
             runner: ubuntu-22.04
             artifact: titus-linux-amd64
+            native: true
           - goos: linux
             goarch: arm64
             runner: ubuntu-22.04
             artifact: titus-linux-arm64
+            native: false
           - goos: darwin
             goarch: arm64
             runner: macos-14
             artifact: titus-darwin-arm64
+            native: true
           - goos: darwin
             goarch: amd64
             runner: macos-15-intel
             artifact: titus-darwin-amd64
+            native: true
           - goos: windows
             goarch: amd64
             runner: windows-2022
             artifact: titus-windows-amd64.exe
+            native: true
 
     steps:
     - name: Checkout code
@@ -85,6 +90,7 @@ jobs:
       shell: bash
 
     - name: Verify binary runs
+      if: matrix.native
       run: dist/${{ matrix.artifact }} version
       shell: bash
 
