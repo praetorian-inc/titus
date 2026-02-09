@@ -3,6 +3,7 @@
 package matcher
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"sync"
@@ -28,12 +29,13 @@ const parallelThreshold = 10000 // bytes
 //
 // Thread Safety: PortableRegexpMatcher is NOT safe for concurrent use.
 // If you need to scan multiple files concurrently, create separate matcher instances per goroutine.
-// The regexCache is read-only after initialization, so calling Match() serially on the same
-// instance is safe, but concurrent Match() calls on the same instance may race.
+// The regexCache and groupNameCache are read-only after initialization (safe for concurrent reads).
+// Calling Match() serially on the same instance is safe, but concurrent Match() calls on the same
+// instance may race due to the shared dedup state.
 type PortableRegexpMatcher struct {
 	rules          []*types.Rule
-	regexCache     map[string]*regexp2.Regexp
-	groupNameCache map[string][]string
+	regexCache     map[string]*regexp2.Regexp   // read-only after init, safe for concurrent reads
+	groupNameCache map[string][]string          // read-only after init, safe for concurrent reads
 	dedup          *Deduplicator
 	contextLines   int
 }
@@ -55,7 +57,7 @@ func NewPortableRegexp(rules []*types.Rule, contextLines int) (*PortableRegexpMa
 		rules:          rules,
 		regexCache:     make(map[string]*regexp2.Regexp),
 		groupNameCache: make(map[string][]string),
-		dedup:          NewDeduplicator(),
+		dedup:          NewContentDeduplicator(),
 		contextLines:   contextLines,
 	}
 
@@ -122,58 +124,12 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 			start := match.Index
 			end := start + match.Length
 
-			// Extract capture groups (positional, for backwards compatibility)
-			var groups [][]byte
-			matchGroups := match.Groups()
-			for i := 1; i < len(matchGroups); i++ {
-				group := matchGroups[i]
-				if len(group.Captures) > 0 {
-					capture := group.Captures[0]
-					groups = append(groups, []byte(capture.String()))
-				}
-			}
+			// Extract capture groups
+			groups := extractCaptureGroups(match)
+			namedGroups := extractNamedGroups(match, m.groupNameCache[rule.Pattern])
 
-			// Extract named capture groups
-			namedGroups := make(map[string][]byte)
-			groupNames := m.groupNameCache[rule.Pattern]
-			for _, name := range groupNames {
-				// Skip numbered groups (they show up as "0", "1", etc.)
-				if name == "" || (len(name) > 0 && name[0] >= '0' && name[0] <= '9') {
-					continue
-				}
-				group := match.GroupByName(name)
-				if group != nil && len(group.Captures) > 0 {
-					namedGroups[name] = []byte(group.Captures[0].String())
-				}
-			}
-
-			// Extract context
-			var before, after []byte
-			if m.contextLines > 0 {
-				before, after = ExtractContext(content, start, end, m.contextLines)
-			}
-
-			result := &types.Match{
-				BlobID:   blobID,
-				RuleID:   rule.ID,
-				RuleName: rule.Name,
-				Location: types.Location{
-					Offset: types.OffsetSpan{
-						Start: int64(start),
-						End:   int64(end),
-					},
-				},
-				Groups:      groups,
-				NamedGroups: namedGroups,
-				Snippet: types.Snippet{
-					Before:   before,
-					Matching: content[start:end],
-					After:    after,
-				},
-			}
-
-			// Compute structural ID for deduplication
-			result.StructuralID = result.ComputeStructuralID(rule.StructuralID)
+			// Build match result
+			result := buildMatchResult(blobID, rule, start, end, groups, namedGroups, content, m.contextLines)
 
 			// Deduplicate
 			if !m.dedup.IsDuplicate(result) {
@@ -211,21 +167,39 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 	}
 	results := make(chan result, numWorkers)
 
+	// Create cancellable context for worker coordination
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Start workers
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var workerMatches []*types.Match
+
+			// Pre-allocate worker match slice
+			estimatedPerWorker := len(m.rules) / (50 * numWorkers)
+			if estimatedPerWorker < 5 {
+				estimatedPerWorker = 5
+			}
+			workerMatches := make([]*types.Match, 0, estimatedPerWorker)
 
 			for j := range jobs {
+				// Check if context cancelled (another worker errored)
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
 				rule := j.rule
 				re := j.re
 
 				// Find first match
 				match, err := re.FindStringMatch(contentStr)
 				if err != nil {
+					cancel() // Cancel other workers
 					results <- result{err: fmt.Errorf("regex match error for rule %s: %w", rule.ID, err)}
 					return
 				}
@@ -235,63 +209,16 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 					start := match.Index
 					end := start + match.Length
 
-					// Extract capture groups (positional, for backwards compatibility)
-					var groups [][]byte
-					matchGroups := match.Groups()
-					for i := 1; i < len(matchGroups); i++ {
-						group := matchGroups[i]
-						if len(group.Captures) > 0 {
-							capture := group.Captures[0]
-							groups = append(groups, []byte(capture.String()))
-						}
-					}
-
-					// Extract named capture groups
-					namedGroups := make(map[string][]byte)
-					groupNames := m.groupNameCache[rule.Pattern]
-					for _, name := range groupNames {
-						// Skip numbered groups (they show up as "0", "1", etc.)
-						if name == "" || (len(name) > 0 && name[0] >= '0' && name[0] <= '9') {
-							continue
-						}
-						group := match.GroupByName(name)
-						if group != nil && len(group.Captures) > 0 {
-							namedGroups[name] = []byte(group.Captures[0].String())
-						}
-					}
-
-					// Extract context
-					var before, after []byte
-					if m.contextLines > 0 {
-						before, after = ExtractContext(content, start, end, m.contextLines)
-					}
-
-					matchResult := &types.Match{
-						BlobID:   blobID,
-						RuleID:   rule.ID,
-						RuleName: rule.Name,
-						Location: types.Location{
-							Offset: types.OffsetSpan{
-								Start: int64(start),
-								End:   int64(end),
-							},
-						},
-						Groups:      groups,
-						NamedGroups: namedGroups,
-						Snippet: types.Snippet{
-							Before:   before,
-							Matching: content[start:end],
-							After:    after,
-						},
-					}
-
-					// Compute structural ID for deduplication
-					matchResult.StructuralID = matchResult.ComputeStructuralID(rule.StructuralID)
+					// Extract capture groups and build result
+					groups := extractCaptureGroups(match)
+					namedGroups := extractNamedGroups(match, m.groupNameCache[rule.Pattern])
+					matchResult := buildMatchResult(blobID, rule, start, end, groups, namedGroups, content, m.contextLines)
 					workerMatches = append(workerMatches, matchResult)
 
 					// Find next match
 					match, err = re.FindNextMatch(match)
 					if err != nil {
+						cancel() // Cancel other workers
 						results <- result{err: fmt.Errorf("regex match error for rule %s: %w", rule.ID, err)}
 						return
 					}
