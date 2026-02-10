@@ -6,20 +6,30 @@ rules:
   pattern: |
     (?x)
     \b
-    (eyJrIjoi [A-Za-z0-9]{60,100})
-    \b
+    (?P<token>eyJrIjoi [A-Za-z0-9+/]{60,400} ={0,3})
+    (?: [^A-Za-z0-9+/=] | $ )
 
   categories: [api, secret]
 
+  description: >
+    A Grafana API token was found. This is a legacy authentication method (deprecated).
+    Grafana API keys provide programmatic access to Grafana dashboards and APIs.
+    An attacker with this token can access monitoring dashboards, modify configurations,
+    and potentially exfiltrate sensitive monitoring data. Grafana recommends migrating
+    to Service Account Tokens.
+
   references:
   - https://grafana.com/docs/grafana/latest/developers/http_api/auth/
+  - https://grafana.com/docs/grafana/latest/administration/api-keys/
 
   examples:
-  - 'Authorization: Bearer eyJrIjoiWHZiSWd5NzdCYUZnNUtibE8obUpESmE2bzJYNDRIc1UiLCJuIjoibXlrZXkiLCJpZCI7MX1'
-  - 'admin_client = GrafanaClient("eyJrIjoiY21sM1JRYjB6RnVYSTNLenRWQkFEaWN2bXI2V202U2IiLCJuIjoiYWRtaW5rZXkiLCJpZCI6MX0=", host=grafana_host, port=3000, protocol="http")'
+  - 'Authorization: Bearer eyJrIjoiWHZiSWd5NzdCYUZnNUtibE9obUpESmE2bzJYNDRIc1UiLCJuIjoibXlrZXkiLCJpZCI6MX0='
+  - 'admin_client = GrafanaClient("eyJrIjoiY21sM1JRYjB6RnVYSTNLenRWQkFEaWN2bXI2V202U2IiLCJuIjoiYWRtaW5rZXkiLCJpZCI6MX0=", host=grafana_host)'
+  - 'GRAFANA_API_KEY=eyJrIjoiSnp6N0N2WGJwZFJoYTB0OVpORW5uaGFaamwzWHo5WjQiLCJuIjoiYmFja3VwcyIsImlkIjoxfQ=='
 
-  non_examples:
-  - 'View the latest results [here](https://heyo.powerbi.com/view?r=eyJrIjoiYTZjMTk3YjEtMzQ4Yi00NTI5LTg6ZDItNmUyMGRlOTkwMGRlIiwidCI5IjcyZjk4OGJmLTg3ZjEtNDFhZi06MWFiLTJkN2NkMDExZGI0NyIsImMiOjV9&pageName=ReportSection9567390a89a2d30b0eda).'
+  negative_examples:
+  - 'View results [here](https://heyo.powerbi.com/view?r=eyJrIjoiYTZjMTk3YjEtMzQ4Yi00NTI5LTg6ZDItNmUyMGRlOTkwMGRlIiwidCI5IjcyZjk4OGJmLTg3ZjEtNDFhZi02MWFiLTJkN2NkMDExZGI0NyIsImMiOjV9).'
+  - 'eyJrIjoiRVhBTVBMRVRFU1RURVNURW5uaGFaamwzWHo5WjQiLCJuIjoiZXhhbXBsZSIsImlkIjoxfQ=='
 
 
 - name: Grafana Cloud API Token
@@ -28,16 +38,29 @@ rules:
   pattern: |
     (?x)
     \b
-    (glc_eyJrIjoi [A-Za-z0-9]{60,100})
-    \b
+    (?P<token>glc_ [A-Za-z0-9+/]{32,400} ={0,3})
+    (?: [^A-Za-z0-9+/=] | $ )
 
   categories: [api, secret]
 
+  description: >
+    A Grafana Cloud API token was found. Grafana Cloud Access Policy tokens use the glc_ prefix
+    and provide programmatic access to Grafana Cloud APIs. An attacker with this token can
+    access cloud-based monitoring services, manipulate dashboards, query metrics, and potentially
+    access sensitive observability data from your infrastructure.
+
   references:
-  - https://grafana.com/docs/grafana-cloud/api-reference/cloud-api/
+  - https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api/
+  - https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/
 
   examples:
-  - '  "token": "glc_eyJrIjoiZjI0YzZkNGEwZDBmZmZjMmUzNTU3ODcxMmY0ZWZlNTQ1NTljMDFjOCIsIm6iOiJteXRva3VuIiwiaWQiOjF8"'
+  - 'token = "glc_eyJrIjoiZjI0YzZkNGEwZDBmZmZjMmUzNTU3ODcxMmY0ZWZlNTQ1NTljMDFjOCIsIm4iOiJteXRva2VuIiwiaWQiOjF9"'
+  - 'GRAFANA_CLOUD_API_KEY=glc_eyJrIjoiVGVzdEV4YW1wbGUwZDBmZmZjMmUzNTU3ODcxMmY0ZWZlNTQ1NTljMDFjOCIsIm4iOiJ0ZXN0IiwiaWQiOjF9'
+  - 'Authorization: Bearer glc_eyJrIjoiU2FtcGxlVG9rZW4wZDBmZmZjMmUzNTU3ODcxMmY0ZWZlNTQ1NTljMDFjOCIsIm4iOiJzYW1wbGUiLCJpZCI6MX0='
+
+  negative_examples:
+  - 'glc_EXAMPLETESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTESTTEST'
+  - '# Set your token: glc_YOUR_TOKEN_HERE'
 
 
 - name: Grafana Service Account Token
@@ -46,25 +69,33 @@ rules:
   pattern: |
     (?x)
     \b
-    (glsa_[a-zA-Z0-9]{32}_[a-fA-F0-9]{8})
-    \b
+    (?P<token>glsa_ [A-Za-z0-9]{32} _ [a-fA-F0-9]{8})
+    (?: [^A-Za-z0-9_] | $ )
 
   categories: [api, secret]
 
+  description: >
+    A Grafana Service Account Token was found. Service accounts are the recommended method
+    for authenticating applications with Grafana HTTP APIs, replacing legacy API keys.
+    These tokens use a visually identifiable format with a glsa_ prefix and include a
+    checksum for validation. An attacker with this token can access Grafana APIs with
+    the permissions assigned to the service account, potentially reading dashboards,
+    modifying configurations, or accessing monitoring data.
+
   references:
   - https://grafana.com/docs/grafana/latest/administration/service-accounts/
+  - https://grafana.com/blog/2022/08/24/new-in-grafana-9.1-service-accounts-are-now-ga/
+  - https://grafana.com/docs/grafana/latest/administration/service-accounts/migrate-api-keys/
 
   examples:
+  - 'Authorization: Bearer glsa_HOruNAb7SOiCdshU9algkrq7FDsNSLAa_54e2f8be'
+  - 'GRAFANA_TOKEN=glsa_9244xlVFZK0j8Lh4fU8Cz6Z5tO664zIi_7a762939'
   - |
-      curl -H "Authorization: Bearer glsa_HOruNAb7SOiCdshU7algkrq7FDsNSLAa_55e2f8be" -X GET '<grafana_url>/api/access-control/user/permissions' | jq
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer glsa_Sof0HKi3agxrQP9qm5r2G98VacBNwV5P_9b638c45`
+      })
 
-  - |
-      // getData()
-      // {
-      //  let url="http://localhost:4200/api/search"
-      //  const headers = new HttpHeaders({
-      //    'Content-Type': 'application/json',
-      //    'Authorization': `Bearer glsa_Sof0HKi3agxrQP9qm5r2G98VacBNwV5P_9b638c45`
-      //  })
-      //  return this.http.get(url, {headers: headers});
-      // }
+  negative_examples:
+  - 'glsa_EXAMPLEEXAMPLEEXAMPLEEXAM_00000000'
+  - 'glsa_iNValIdinValiDinvalidinvalidinva_5b582697'  # Invalid format (lowercase 'i')
+  - '# Example token: glsa_YOUR_TOKEN_HERE_12345678'
