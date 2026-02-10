@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       recaptcha
-      (?:.|[\n\r]){0,16}?
+      (?:.|[\n\r]){0,40}?
       \b
       (
         6l[c-f][a-z0-9_-].{36}
@@ -16,6 +16,7 @@ rules:
     examples:
       - recaptcha apikey = 6Lcr--w-BBBBBw-w-w----w-w-www-www--ww-w-
       - recaptcha_secret = 6Lcw--w-AAAAAw-w-w----w-w-www-www--ww-w-
+      - '"recaptcha": { "site_key": "6Lcs--w-AAAAAw-w-w----w-w-www-www--ww-w-" }'
     validation:
       type: Http
       content:
