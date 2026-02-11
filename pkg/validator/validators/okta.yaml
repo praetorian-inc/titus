@@ -1,0 +1,29 @@
+# pkg/validator/validators/okta.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "token" (e.g., pattern: (?P<token>00[a-z0-9_-]{39}[a-z0-9_]))
+#
+# LIMITATION: Okta API tokens are org-specific. Validation requires knowing the Okta
+# org domain (e.g., dev-123456.okta.com). The current regex does not capture the domain.
+#
+# For full validation, either:
+# 1. Configure OKTA_DOMAIN environment variable
+# 2. Use a Go validator that extracts domain from surrounding context
+# 3. Manually test with known org URLs
+#
+# Reference: https://developer.okta.com/docs/guides/create-an-api-token/main/
+validators:
+  - name: okta-api-token
+    rule_ids:
+      - np.okta.1
+    http:
+      method: GET
+      # URL requires org-specific domain - use OKTA_DOMAIN env var or configure manually
+      # Example: https://dev-123456.okta.com/api/v1/users/me
+      url: https://${OKTA_DOMAIN}/api/v1/users/me
+      auth:
+        type: header
+        header_name: Authorization
+        header_value: "SSWS ${token}"
+        secret_group: token  # Named capture group from regex pattern
+      success_codes: [200]
+      failure_codes: [401, 403]
