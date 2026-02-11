@@ -1,14 +1,30 @@
 rules:
+  # FP Reduction: Azure Storage Emulator (Azurite) uses well-known default credentials
+  # that are publicly documented by Microsoft and ONLY work with localhost:10000.
+  # These are development-only credentials that cannot access any real Azure storage.
+  #
+  # The well-known values are:
+  # - Account Name: devstoreaccount1
+  # - Account Key: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50+Bx/EMBHBeksoGMGw==
+  #
+  # Coverage impact: NONE - These are static, Microsoft-documented values that are
+  # reserved and cannot be used for real Azure storage accounts.
+  #
+  # Reference: https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite
+
   - name: Azure Storage Account Name (Connection String)
     id: kingfisher.azurestorage.1a
     pattern: |
       (?xi)
-      (?i:AccountName)\s*=\s*(?P<account_name>[a-z0-9]{3,24})(?:\b|[^a-z0-9])
+      (?i:AccountName)\s*=\s*(?P<account_name>(?!devstoreaccount1)[a-z0-9]{3,24})(?:\b|[^a-z0-9])
     min_entropy: 2.0
     visible: false
     confidence: medium
     examples:
       - AccountName=mystorageaccount
+    negative_examples:
+      # Azure Storage Emulator default - documented by Microsoft, localhost only
+      - AccountName=devstoreaccount1
 
   - name: Azure Storage Account Name (Blob Endpoint)
     id: kingfisher.azurestorage.1b

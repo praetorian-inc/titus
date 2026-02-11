@@ -8,6 +8,15 @@
 
 rules:
 
+# FP Reduction: Original pattern matched TypeScript/JavaScript type guard function names
+# from SDKs like HashiCorp Vault (e.g., "instanceOfAppRoleLookUpSecretIdResponse").
+# These are code identifiers, not secrets - they follow camelCase naming conventions.
+#
+# Fix: Add negative lookahead to exclude patterns starting with "instanceOf" which
+# indicates TypeScript type guard functions, commonly found in generated SDK code.
+#
+# Coverage impact: NONE - Real secrets are random/high-entropy strings and never
+# follow TypeScript/JavaScript naming conventions like "instanceOfXxxSecretYyyResponse".
 - name: Generic Secret
   id: np.generic.1
 
@@ -16,6 +25,7 @@ rules:
     secret
     .{0,20}
     \b
+    (?!instanceOf)  (?# Exclude TypeScript type guard function names )
     ([0-9a-z]{32,64})
     \b
 
@@ -24,8 +34,12 @@ rules:
   examples:
   - '    private static String CLIENT_SECRET = "6fb1cff7690db9ac066cadbbde8e3c078efdabcf";'
 
-  # FIXME: extend this rule so these examples get matched
   negative_examples:
+  # TypeScript SDK type guard functions - not secrets
+  - 'instanceOfAppRoleLookUpSecretIdResponse'
+  - 'instanceOfAppRoleWriteCustomSecretIdRequest'
+  - 'instanceOfAppRoleReadBoundCidrListResponse'
+  # FIXME: extend this rule so these examples get matched
   - "    client_credential='5pX8Q~MmTI8OMBJFVqMlFR4DE3Spz6Qm.xO.Gbf-'"
   - "    secret_access_key = 'abcdefg12346+FJQCK'"
   - '    Ldap password               ----   H7IKC85R#@4$'
@@ -167,6 +181,21 @@ rules:
       password = env.PERKEEP_TEST_PASSWORD
 
 
+# FP Reduction: Original pattern matched i18n/translation strings containing translated
+# words for "password" in various languages (e.g., PASSWORD:"密碼", PASSWORD:"Senha").
+# These are UI labels used for form field translations, not actual passwords.
+#
+# Also matched webpack chunk hashes in route mappings like:
+# "views/admin/force-reset-password":"4f36963ced79d61945d7"
+# These are module IDs, not passwords.
+#
+# Fix: Add minimum length requirement (8 chars) and exclude:
+# - Short values that are likely translation labels
+# - Pure hex strings (20 chars) which are likely webpack chunk hashes
+# - Common placeholder/constant values
+#
+# Coverage impact: LOW - Real passwords typically have 8+ characters with mixed
+# character types. Short translated labels and hex hashes are never real passwords.
 - name: Generic Password
   id: np.generic.5
 
@@ -175,7 +204,14 @@ rules:
     password["']?                                (?# preceding context )
     [\ \t]* (?: = | : | := | => ) [\ \t]*        (?# binder )
     "
-    ([^$<%@.,\s+'"(){}&/\#\-][^\s+'"(){}/]{4,})  (?# password )
+    (?!                                          (?# Negative lookahead for known FP patterns )
+      [a-f0-9]{16,24}"                           (?# Pure hex - likely webpack chunk hash )
+      |
+      [A-Z_]{5,}"                                (?# ALL_CAPS constants like UPDATE_PASSWORD )
+      |
+      password"                                  (?# Literal "password" placeholder )
+    )
+    ([^$<%@.,\s+'"(){}&/\#\-][^\s+'"(){}/]{7,})  (?# password - min 8 chars total )
     "
 
   categories: [fuzzy, generic, secret]
@@ -212,6 +248,20 @@ rules:
                 })
 
   negative_examples:
+  # i18n/translation strings - UI labels, not passwords
+  - 'PASSWORD":"密碼"'
+  - 'PASSWORD:"Clave"'
+  - 'PASSWORD":"Senha"'
+  - 'PASSWORD:"Wachtwoord"'
+  - 'PASSWORD":"密码"'
+  - 'password": "Slaptažodis"'
+  # Webpack chunk hashes in route mappings
+  - '"views/admin/force-reset-password":"4f36963ced79d61945d7"'
+  - '"app/login/recovery-password":"0c781e2155f6a227dabd"'
+  # Constants and placeholders
+  - 'PASSWORD="PASSWORD"'
+  - 'PASSWORD="UPDATE_PASSWORD"'
+  # Original negative examples
   - |
       password = "123"
   - |

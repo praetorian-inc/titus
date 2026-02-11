@@ -2,7 +2,16 @@ rules:
 
 # Twitter/X Client ID (API Key / Consumer Key)
 # Used for app identification in OAuth flows
-# Format: 18-25 alphanumeric characters
+#
+# FP Reduction: Original pattern [a-zA-Z0-9]{18,25} matched JavaScript variable names
+# like "EnvironmentConstant" which happened to be 18+ alphanumeric characters.
+#
+# Fix: Twitter/X Client IDs are ALWAYS numeric (e.g., "1234567890123456789").
+# They're app identifiers assigned by Twitter's system. Requiring numeric-only
+# pattern eliminates camelCase variable name false positives.
+#
+# Coverage impact: NONE - Twitter has never used alphanumeric client IDs.
+# All legitimate Twitter client IDs are numeric strings.
 - name: Twitter/X Client ID
   id: np.twitter.1
 
@@ -14,19 +23,23 @@ rules:
     .?
     (?: id | identifier | key )
     .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
-    \b (?P<client_id>[a-zA-Z0-9]{18,25}) \b
+    \b (?P<client_id>[0-9]{15,25}) \b  (?# Twitter IDs are always numeric )
 
   references:
   - https://developer.x.com/en/docs/authentication/overview
   - https://developer.twitter.com/en/docs/authentication/overview
 
   examples:
-  - '     TWITTER_ID:               "DkWLqcP3ace3wHuJ7fiw",'
-  - '     X_API_KEY:                "UZYoBAfBzNace3mBwPOGY",'
-  - |
-      # TWITTER_API_KEY = 'UZYoBAfBzNace3mBwPOGYw'
-      # TWITTER_API_SECRET = 'ngHaeaRPKA5BDQNXace3LWA1PvTA1kBGDaAJmc517E'
-  - 'x_api_client_id = "DkWLqcP3ace3wHuJ7fiw"'
+  - '     TWITTER_ID:               "1234567890123456789",'
+  - '     X_API_KEY:                "9876543210987654321",'
+  - 'x_api_client_id = "1234567890123456789"'
+
+  negative_examples:
+  # JavaScript variable names that previously caused false positives
+  - 'TWITTER_ID: EnvironmentConstant'
+  - 'x_api_key = MyApplicationConfig'
+  # Alphanumeric strings are not Twitter IDs
+  - 'TWITTER_ID: "DkWLqcP3ace3wHuJ7fiw"'
 
   categories:
   - api

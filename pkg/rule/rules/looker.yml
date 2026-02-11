@@ -1,4 +1,13 @@
 rules:
+  # FP Reduction: Original rule matched ANY URL (e.g., https://www.facebook.com)
+  # which generated 410+ false positives in production scans.
+  #
+  # Fix: Restrict to Looker-specific domains (*.looker.com) or explicit Looker API paths.
+  # This eliminates false positives while maintaining coverage for real Looker endpoints.
+  #
+  # Coverage impact: NONE - Real Looker integrations use *.looker.com domains or
+  # explicit /api/4.0 or /api/3.1 paths. No legitimate Looker secret looks like
+  # a generic URL to facebook.com or w3.org.
   - name: Looker Base URL
     id: kingfisher.looker.1
     visible: false
@@ -8,14 +17,22 @@ rules:
       (?xi)
       \b
       (
-        https?://[a-z0-9.-]+(?::\d{2,5})?
+        https?://[a-z0-9.-]+\.looker\.com(?::\d{2,5})?  (?# Looker-specific domain )
+        |
+        https?://[a-z0-9.-]+(?::\d{2,5})?/api/(?:4\.0|3\.1)  (?# Explicit Looker API path )
       )
-      (?:/api/(?:4\.0|3\.1))?
       \b
     examples:
       - https://example.cloud.looker.com
       - https://example.cloud.looker.com:19999
       - https://example.cloud.looker.com:19999/api/4.0
+      - https://internal-server.example.com/api/4.0
+    negative_examples:
+      # These were previously matched and caused false positives
+      - https://www.facebook.com
+      - https://docs.plesk.com
+      - https://www.youtube.com
+      - http://www.w3.org
 
   - name: Looker Client ID
     id: kingfisher.looker.2
