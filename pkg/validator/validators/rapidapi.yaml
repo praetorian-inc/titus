@@ -1,0 +1,21 @@
+# pkg/validator/validators/rapidapi.yaml
+# RapidAPI uses custom header authentication (x-rapidapi-key)
+# Validation uses a public API endpoint to test key validity
+validators:
+  - name: rapidapi-key
+    rule_ids:
+      - kingfisher.rapidapi.1
+    http:
+      method: GET
+      url: https://weatherapi-com.p.rapidapi.com/current.json?q=London
+      auth:
+        type: header
+        header_name: x-rapidapi-key
+        secret_group: "key"  # Matches (?P<key>...) in rule regex
+      headers:
+        - name: x-rapidapi-host
+          value: weatherapi-com.p.rapidapi.com
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]
