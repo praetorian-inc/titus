@@ -10,13 +10,13 @@ This release implements targeted false positive reductions for Titus rules that 
 
 | Rule | FPs Eliminated | Coverage Risk |
 |------|----------------|---------------|
-| kingfisher.looker.1 | ~410 | NONE |
-| np.generic.1 | ~36 | NONE |
-| np.generic.5 | ~48 | LOW |
+| kingfisher.looker.1 | ~656 | NONE |
+| np.generic.1 | ~9 | NONE |
+| np.generic.5 | ~14 | LOW |
 | kingfisher.azurestorage.1a | ~1 | NONE |
 | np.twitter.1 | ~1 | NONE |
 
-**Total FPs Eliminated:** ~496
+**Total FPs Eliminated:** ~681
 **Coverage Risk:** NONE to LOW
 
 ---
@@ -25,20 +25,27 @@ This release implements targeted false positive reductions for Titus rules that 
 
 ### 1. kingfisher.looker.1 - Looker Base URL
 
-**Problem:** Original pattern matched ANY HTTP/HTTPS URL, causing 410+ false positives on URLs like `https://www.facebook.com`, `https://docs.plesk.com`, and `https://www.youtube.com`.
+**Problem:** Original pattern matched ANY HTTP/HTTPS URL, causing 656+ false positives on URLs like `https://www.facebook.com`, `https://github.com`, `https://www.w3.org`, and `https://reactjs.org`.
 
 **Root Cause:** Pattern `https?://[a-z0-9.-]+(?::\d{2,5})?` was too broad - it captured any URL structure without requiring Looker-specific context.
 
 **Fix:** Restricted pattern to match only:
-- Looker-specific domains: `*.looker.com`
-- Explicit Looker API paths: `/api/4.0` or `/api/3.1`
+1. Cloud-hosted domains: `*.looker.com` (e.g., example.cloud.looker.com)
+2. Self-hosted with looker subdomain: `looker.*` (e.g., looker.company.com, looker.analytics.example.com)
+3. Explicit Looker API paths: `/api/4.0` or `/api/3.1` on any domain
 
 **Why This Won't Miss Real Secrets:**
-- Real Looker integrations use `*.looker.com` domains (cloud.looker.com, company.looker.com)
-- Self-hosted Looker instances use `/api/4.0` or `/api/3.1` paths for API access
-- No legitimate Looker secret is a URL to facebook.com or w3.org
+- Real Looker cloud integrations use `*.looker.com` domains
+- Real self-hosted Looker instances commonly use `looker.` subdomain pattern
+- Self-hosted instances accessing API use `/api/4.0` or `/api/3.1` paths
+- No legitimate Looker secret is a URL to facebook.com, github.com, or w3.org
 
-**Coverage Impact:** NONE
+**Coverage Note:** Self-hosted instances on custom domains (e.g., `analytics.company.com`) without the `/api/X.Y` path are not covered. This is a reasonable tradeoff because:
+- The URL helper rule is used via `depends_on_rule` with Client ID/Secret rules that have "looker" keyword context
+- Most self-hosted configs include the API path or use looker.* subdomain pattern
+- GitHub research showed no common pattern for identifying custom-domain Looker without API path
+
+**Coverage Impact:** MINIMAL
 
 ---
 
