@@ -1,13 +1,15 @@
 rules:
   # FP Reduction: Original rule matched ANY URL (e.g., https://www.facebook.com)
-  # which generated 410+ false positives in production scans.
+  # which generated 656+ false positives in production scans.
   #
-  # Fix: Restrict to Looker-specific domains (*.looker.com) or explicit Looker API paths.
-  # This eliminates false positives while maintaining coverage for real Looker endpoints.
+  # Fix: Restrict to Looker-specific patterns:
+  #   1. Cloud-hosted: *.looker.com domains
+  #   2. Self-hosted: looker.* subdomains (e.g., looker.company.com)
+  #   3. API paths: Any domain with /api/4.0 or /api/3.1
   #
-  # Coverage impact: NONE - Real Looker integrations use *.looker.com domains or
-  # explicit /api/4.0 or /api/3.1 paths. No legitimate Looker secret looks like
-  # a generic URL to facebook.com or w3.org.
+  # Coverage impact: Minimal - Real Looker integrations use one of these patterns.
+  # Self-hosted instances on custom domains without API path are not covered,
+  # but this is a reasonable tradeoff vs 656 FPs.
   - name: Looker Base URL
     id: kingfisher.looker.1
     visible: false
@@ -17,22 +19,31 @@ rules:
       (?xi)
       \b
       (
-        https?://[a-z0-9.-]+\.looker\.com(?::\d{2,5})?  (?# Looker-specific domain )
+        https?://[a-z0-9.-]+\.looker\.com(?::\d{2,5})?      (?# Cloud-hosted Looker domains )
         |
-        https?://[a-z0-9.-]+(?::\d{2,5})?/api/(?:4\.0|3\.1)  (?# Explicit Looker API path )
+        https?://looker\.[a-z0-9.-]+(?::\d{2,5})?          (?# Self-hosted with looker subdomain )
+        |
+        https?://[a-z0-9.-]+(?::\d{2,5})?/api/(?:4\.0|3\.1) (?# Any domain with Looker API path )
       )
       \b
     examples:
       - https://example.cloud.looker.com
       - https://example.cloud.looker.com:19999
       - https://example.cloud.looker.com:19999/api/4.0
-      - https://internal-server.example.com/api/4.0
+      - https://looker.company.com
+      - https://looker.analytics.example.com:19999
+      - https://custom-bi.company.com/api/4.0
+      - https://internal-server.example.com/api/3.1
     negative_examples:
       # These were previously matched and caused false positives
       - https://www.facebook.com
+      - https://github.com
       - https://docs.plesk.com
       - https://www.youtube.com
-      - http://www.w3.org
+      - https://www.w3.org
+      - https://reactjs.org
+      - http://localhost
+      - https://apis.google.com
 
   - name: Looker Client ID
     id: kingfisher.looker.2
