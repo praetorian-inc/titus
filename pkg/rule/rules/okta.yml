@@ -7,7 +7,7 @@ rules:
   # bit more restrictive here, not allowing `-` at the end, so that we can use
   # the word boundary `\b` zero-width assertion, and also requiring "okta" or
   # "ssws" out front.
-  pattern: '(?i)(?s)(?:okta|ssws).{0,40}\b(00[a-z0-9_-]{39}[a-z0-9_])\b'
+  pattern: '(?i)(?s)(?:okta|ssws).{0,40}\b(?P<token>00[a-z0-9_-]{39}[a-z0-9_])\b'
 
   categories: [api, secret]
 
