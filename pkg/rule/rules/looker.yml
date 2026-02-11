@@ -8,7 +8,7 @@ rules:
       (?xi)
       \b
       (
-        https?://[a-z0-9.-]+(?::\d{2,5})?
+        https?://[a-z0-9.-]+\.looker\.com(?::\d{2,5})?
       )
       (?:/api/(?:4\.0|3\.1))?
       \b
@@ -16,6 +16,11 @@ rules:
       - https://example.cloud.looker.com
       - https://example.cloud.looker.com:19999
       - https://example.cloud.looker.com:19999/api/4.0
+    negative_examples:
+      - https://graph.microsoft.com
+      - https://app-peco.azurewebsites.net
+      - https://login.microsoftonline.com
+      - https://example.azure-api.net
 
   - name: Looker Client ID
     id: kingfisher.looker.2
