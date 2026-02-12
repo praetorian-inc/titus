@@ -9,7 +9,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<key>
         [A-Za-z0-9_-]{50}
       )
       \b
@@ -20,22 +20,9 @@ rules:
     examples:
       - rapidapi_key=abcdefghij1234567890ABCDEFGHIJ1234567890abcdefghij
       - '"rapidapiKey":"ABCDEFGHIJ1234567890abcdefghij1234567890ABCDEFGHIJ"'
+    negative_examples:
+      - rapidapi_example=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      - rapidapi_key=your_api_key_here_placeholder_text_example_12345
     references:
       - https://docs.rapidapi.com/docs/configuring-api-security
       - https://docs.rapidapi.com/docs/keys-and-key-rotation
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: "https://weatherapi-com.p.rapidapi.com/current.json?q=London"
-          headers:
-            x-rapidapi-key: "{{ TOKEN }}"
-            x-rapidapi-host: "weatherapi-com.p.rapidapi.com"
-            Accept: application/json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status: [200]
-            - type: WordMatch
-              words: ['"country"']
