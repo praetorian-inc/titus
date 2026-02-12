@@ -87,6 +87,13 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	}
 	defer s.Close()
 
+	// Store rules for foreign key constraints
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return fmt.Errorf("storing rule: %w", err)
+		}
+	}
+
 	// Create GitLab enumerator
 	enumerator, err := enum.NewGitLabEnumerator(enum.GitLabConfig{
 		Token:   token,

@@ -42,6 +42,12 @@ func (s *SQLiteStore) AddBlob(id types.BlobID, size int64) error {
 	return err
 }
 
+func (s *SQLiteStore) AddRule(r *types.Rule) error {
+	_, err := s.db.Exec("INSERT OR IGNORE INTO rules (id, name, pattern, structural_id) VALUES (?, ?, ?, ?)",
+		r.ID, r.Name, r.Pattern, r.StructuralID)
+	return err
+}
+
 func (s *SQLiteStore) BlobExists(id types.BlobID) (bool, error) {
 	var count int
 	err := s.db.QueryRow("SELECT COUNT(*) FROM blobs WHERE id = ?", id.Hex()).Scan(&count)
