@@ -26,6 +26,19 @@ titus scan --directory path/to/dir
 titus scan --file config.json --rules custom-rules.json
 ```
 
+### Output Options
+
+The `--output` flag controls where scan results are stored during a scan:
+
+- `:memory:` (default) — results are held in-memory for the duration of the scan. This is the default and works on all platforms.
+- `<file-path>` — writes results to a SQLite database file (requires a CGO-enabled build with SQLite support; not available in prebuilt release binaries).
+
+Results can also be emitted to stdout in different formats using `--format`:
+
+- `human` (default) — summarized findings printed to the console
+- `json` — full match details as JSON
+- `sarif` — SARIF 2.1.0 for CI/CD integration
+
 ### Server Mode (for Burp Integration)
 
 Titus can run as a streaming server for integration with Burp Suite:
