@@ -168,6 +168,7 @@ func convertYAMLRule(yr yamlRule) *types.Rule {
 		NegativeExamples: yr.NegativeExamples,
 		References:       yr.References,
 		Categories:       yr.Categories,
+		Keywords:         yr.Keywords,
 	}
 	r.StructuralID = r.ComputeStructuralID()
 	return r

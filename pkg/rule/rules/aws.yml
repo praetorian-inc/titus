@@ -5,6 +5,17 @@ rules:
 
   pattern: '\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b'
 
+  keywords:
+    - "A3T"
+    - "AKIA"
+    - "AGPA"
+    - "AIDA"
+    - "AROA"
+    - "AIPA"
+    - "ANPA"
+    - "ANVA"
+    - "ASIA"
+
   references:
   - https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
   - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
@@ -142,6 +153,9 @@ rules:
   id: np.aws.5
   pattern: '(?i)(?P<mws_token>amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
 
+  keywords:
+    - "amzn.mws."
+
   categories:
   - api
 
@@ -196,6 +210,9 @@ rules:
       )
     \.amazonaws\.com
     ) \b
+
+  keywords:
+    - ".amazonaws.com"
 
   references:
   - https://docs.aws.amazon.com/general/latest/gr/rande.html
@@ -257,6 +274,9 @@ rules:
     [a-zA-Z0-9_][a-zA-Z0-9_-]* (?: \. [a-zA-Z0-9_-]+)*   (?# bucket name as path )
     )
     (?: [^a-zA-Z0-9_-] | $ )                             (?# this instead of a \b anchor because that doesn't play nicely with `-` )
+
+  keywords:
+    - ".amazonaws.com"
 
   references:
   - https://docs.aws.amazon.com/general/latest/gr/rande.html
@@ -328,6 +348,9 @@ rules:
     )
     (?: [\s"'&<>\\%] | $ )
 
+  keywords:
+    - "arn:"
+
   references:
   - https://docs.aws.amazon.com/IAM/latest/UserGuide/reference-arns.html
 
@@ -355,6 +378,9 @@ rules:
     \b
     (?P<appsync_key>da2-[a-z0-9]{26})
     \b
+
+  keywords:
+    - "da2-"
 
   # Note: AWS AppSync provides several authorization mechanisms.
   # This API Key mechanism is but one.
@@ -394,6 +420,17 @@ rules:
     \b
     (?P<secret_key>[A-Za-z0-9/+=]{40})                                                      (?# secret )
     (?: [^A-Za-z0-9/+=] | $ )
+
+  keywords:
+    - "A3T"
+    - "AKIA"
+    - "AGPA"
+    - "AIDA"
+    - "AROA"
+    - "AIPA"
+    - "ANPA"
+    - "ANVA"
+    - "ASIA"
 
   references:
   - https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html

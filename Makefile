@@ -1,7 +1,7 @@
 # Titus Makefile
 # Build automation for secrets scanner
 
-.PHONY: all build build-static build-wasm build-extension test vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension
+.PHONY: all build build-static build-wasm build-extension build-vectorscan test test-vectorscan vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension
 
 # Default target
 all: build test vet
@@ -17,6 +17,33 @@ build-static:
 	GOWORK=off CGO_ENABLED=0 go build \
 		-ldflags '-s -w' \
 		-o dist/titus-static ./cmd/titus
+
+# Build with Vectorscan/Hyperscan support (requires CGO and libhs)
+# This is the high-performance build with SIMD acceleration
+#
+# Prerequisites (macOS):
+#   brew install hyperscan
+#
+# Prerequisites (Ubuntu/Debian):
+#   apt install libhs-dev
+#
+# Prerequisites (ARM/others - build vectorscan from source):
+#   git clone https://github.com/VectorCamp/vectorscan.git
+#   cd vectorscan && cmake -B build && cmake --build build && cmake --install build
+#
+build-vectorscan:
+	@mkdir -p dist
+	@echo "Building with Vectorscan/Hyperscan support..."
+	@echo "Note: Requires libhs (hyperscan/vectorscan) to be installed"
+	GOWORK=off CGO_ENABLED=1 go build \
+		-tags vectorscan \
+		-ldflags '-s -w' \
+		-o dist/titus-vectorscan ./cmd/titus
+	@echo "Built dist/titus-vectorscan with SIMD-accelerated regex matching"
+
+# Test with Vectorscan support
+test-vectorscan:
+	GOWORK=off CGO_ENABLED=1 go test -tags vectorscan -v ./...
 
 # Build WASM binary for browser extension
 build-wasm:
@@ -59,6 +86,13 @@ install:
 	cp dist/titus ~/.titus/titus
 	chmod +x ~/.titus/titus
 	@echo "Installed titus to ~/.titus/titus"
+
+# Install vectorscan-enabled titus binary (high-performance)
+install-vectorscan: build-vectorscan
+	@mkdir -p ~/.titus
+	cp dist/titus-vectorscan ~/.titus/titus
+	chmod +x ~/.titus/titus
+	@echo "Installed titus (with Vectorscan) to ~/.titus/titus"
 
 # Build Burp extension JAR (builds titus binary first)
 build-burp: build

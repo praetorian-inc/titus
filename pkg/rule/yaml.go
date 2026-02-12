@@ -11,6 +11,7 @@ type yamlRule struct {
 	NegativeExamples []string `yaml:"negative_examples,omitempty"`
 	References       []string `yaml:"references,omitempty"`
 	Categories       []string `yaml:"categories,omitempty"`
+	Keywords         []string `yaml:"keywords,omitempty"`
 }
 
 // yamlRulesFile represents the top-level structure of a rules YAML file.

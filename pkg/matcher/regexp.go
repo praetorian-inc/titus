@@ -8,6 +8,7 @@ import (
 
 	"github.com/dlclark/regexp2"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/praetorian-inc/titus/pkg/prefilter"
 )
 
 // RegexpMatcher implements Matcher using regexp2 for Perl-style regex support.
@@ -17,6 +18,7 @@ import (
 type RegexpMatcher struct {
 	rules        []*types.Rule
 	regexCache   map[string]*regexp2.Regexp
+	prefilter    *prefilter.Prefilter
 	contextLines int
 }
 
@@ -30,6 +32,7 @@ func NewRegexp(rules []*types.Rule, contextLines int) (*RegexpMatcher, error) {
 		rules:        rules,
 		regexCache:   make(map[string]*regexp2.Regexp),
 		contextLines: contextLines,
+		prefilter:    prefilter.New(rules),
 	}
 
 	// Pre-compile all patterns to catch errors early
@@ -63,7 +66,10 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 	dedup := NewDeduplicator()
 	contentStr := string(content)
 
-	for _, rule := range m.rules {
+	// Get candidate rules via prefilter
+	candidateRules := m.prefilter.Filter(content)
+
+	for _, rule := range candidateRules {
 		re := m.regexCache[rule.Pattern]
 		if re == nil {
 			continue

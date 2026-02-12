@@ -1,7 +1,8 @@
 # Titus Release Workflow - Creates portable binaries for all platforms
 #
-# All builds use pure Go (CGO_ENABLED=0) for maximum portability.
-# Titus now uses regexp2 by default (no CGO required).
+# Builds two variants:
+# 1. Pure Go (CGO_ENABLED=0) - Maximum portability, regexp2-based matching
+# 2. Vectorscan-enabled (CGO_ENABLED=1) - High-performance SIMD regex with Hyperscan
 #
 name: Release
 
@@ -100,6 +101,81 @@ jobs:
         name: ${{ matrix.artifact }}
         path: dist/${{ matrix.artifact }}
 
+  # Build vectorscan-enabled binaries (high-performance SIMD regex)
+  # Only available on platforms where vectorscan/hyperscan can be compiled
+  build-vectorscan:
+    name: Build Vectorscan ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-22.04
+            artifact: titus-linux-amd64-vectorscan
+            native: true
+          - goos: darwin
+            goarch: arm64
+            runner: macos-14
+            artifact: titus-darwin-arm64-vectorscan
+            native: true
+          - goos: darwin
+            goarch: amd64
+            runner: macos-15-intel
+            artifact: titus-darwin-amd64-vectorscan
+            native: true
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install vectorscan (Linux)
+      if: matrix.goos == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhyperscan-dev
+
+    - name: Install vectorscan (macOS)
+      if: matrix.goos == 'darwin'
+      run: |
+        brew install vectorscan
+
+    - name: Build vectorscan binary
+      env:
+        CGO_ENABLED: "1"
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        mkdir -p dist
+        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w' -o dist/${{ matrix.artifact }} ./cmd/titus
+      shell: bash
+
+    - name: Make binary executable
+      run: chmod +x dist/${{ matrix.artifact }}
+      shell: bash
+
+    - name: Verify binary metadata
+      run: file dist/${{ matrix.artifact }}
+      shell: bash
+
+    - name: Verify binary runs
+      if: matrix.native
+      run: dist/${{ matrix.artifact }} version
+      shell: bash
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: dist/${{ matrix.artifact }}
+
   # Build Burp extension JAR
   build-burp:
     name: Build Burp Extension
@@ -165,7 +241,7 @@ jobs:
   # Create GitHub release with all artifacts (skipped on main branch push)
   release:
     name: Create Release
-    needs: [build, build-burp, build-extension]
+    needs: [build, build-vectorscan, build-burp, build-extension]
     runs-on: ubuntu-22.04
 
     steps:
@@ -181,12 +257,17 @@ jobs:
       run: |
         mkdir -p release
 
-        # Move binaries
+        # Move pure Go binaries (portable, no CGO)
         mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
         mv artifacts/titus-linux-arm64/titus-linux-arm64 release/
         mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
         mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
         mv artifacts/titus-windows-amd64.exe/titus-windows-amd64.exe release/
+
+        # Move vectorscan-enabled binaries (high-performance)
+        mv artifacts/titus-linux-amd64-vectorscan/titus-linux-amd64-vectorscan release/
+        mv artifacts/titus-darwin-arm64-vectorscan/titus-darwin-arm64-vectorscan release/
+        mv artifacts/titus-darwin-amd64-vectorscan/titus-darwin-amd64-vectorscan release/
 
         # Move JAR and extension
         mv artifacts/titus-burp-extension/*.jar release/
@@ -205,6 +286,10 @@ jobs:
 
         ### Downloads
 
+        #### Standard Binaries (Pure Go - Portable)
+
+        These binaries use regexp2 for pattern matching and work on any system without dependencies.
+
         | Platform | Architecture | File |
         |----------|-------------|------|
         | Linux | x64 | `titus-linux-amd64` |
@@ -212,6 +297,21 @@ jobs:
         | macOS | Apple Silicon | `titus-darwin-arm64` |
         | macOS | Intel | `titus-darwin-amd64` |
         | Windows | x64 | `titus-windows-amd64.exe` |
+
+        #### High-Performance Binaries (Vectorscan-enabled)
+
+        These binaries use Intel Hyperscan/Vectorscan for SIMD-accelerated multi-pattern matching.
+        ~2-3x faster for large scans. Requires vectorscan/hyperscan library on your system.
+
+        | Platform | Architecture | File |
+        |----------|-------------|------|
+        | Linux | x64 | `titus-linux-amd64-vectorscan` |
+        | macOS | Apple Silicon | `titus-darwin-arm64-vectorscan` |
+        | macOS | Intel | `titus-darwin-amd64-vectorscan` |
+
+        **Installing vectorscan dependency:**
+        - Linux: `apt install libhyperscan5` or `dnf install hyperscan`
+        - macOS: `brew install vectorscan`
 
         ### Extensions
 

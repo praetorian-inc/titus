@@ -17,18 +17,19 @@ import (
 )
 
 var (
-	scanRulesPath     string
-	scanRulesInclude  string
-	scanRulesExclude  string
-	scanOutputPath    string
-	scanOutputFormat  string
-	scanGit           bool
-	scanMaxFileSize   int64
-	scanIncludeHidden bool
-	scanContextLines  int
+	scanRulesPath       string
+	scanRulesInclude    string
+	scanRulesExclude    string
+	scanOutputPath      string
+	scanOutputFormat    string
+	scanGit             bool
+	scanMaxFileSize     int64
+	scanIncludeHidden   bool
+	scanContextLines    int
 	scanIncremental     bool
 	scanValidate        bool
 	scanValidateWorkers int
+	scanTolerant        bool
 )
 
 var scanCmd = &cobra.Command{
@@ -52,6 +53,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
+	scanCmd.Flags().BoolVar(&scanTolerant, "tolerant", false, "Continue scanning even if some rules timeout (returns partial results)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -108,6 +110,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 	findingCount := 0
 	skippedCount := 0
 
+	// Track rule failures if tolerant mode enabled
+	var allRuleStats map[string]matcher.RuleStat
+
 	err = enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		// Check for incremental scanning
 		if scanIncremental {
@@ -131,10 +136,40 @@ func runScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("storing provenance: %w", err)
 		}
 
-		// Match content
-		matches, err := m.MatchWithBlobID(content, blobID)
-		if err != nil {
-			return fmt.Errorf("matching content: %w", err)
+		// Match content (with tolerant mode if enabled)
+		var matches []*types.Match
+		if scanTolerant {
+			// Use tolerant mode with options
+			if portableMatcher, ok := m.(*matcher.PortableRegexpMatcher); ok {
+				opts := matcher.DefaultOptions()
+				opts.Tolerant = true
+				result, err := portableMatcher.MatchWithBlobIDAndOptions(content, blobID, opts)
+				if err != nil {
+					return fmt.Errorf("matching content: %w", err)
+				}
+				matches = result.Matches
+				// Accumulate rule stats across all blobs
+				if allRuleStats == nil {
+					allRuleStats = make(map[string]matcher.RuleStat)
+				}
+				for ruleID, stat := range result.RuleStats {
+					allRuleStats[ruleID] = stat
+				}
+			} else {
+				// Fallback to standard matching if not PortableRegexpMatcher
+				var err error
+				matches, err = m.MatchWithBlobID(content, blobID)
+				if err != nil {
+					return fmt.Errorf("matching content: %w", err)
+				}
+			}
+		} else {
+			// Standard matching
+			var err error
+			matches, err = m.MatchWithBlobID(content, blobID)
+			if err != nil {
+				return fmt.Errorf("matching content: %w", err)
+			}
 		}
 
 		// Validate matches if enabled
@@ -181,7 +216,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
-// Output results (to stderr when using json/sarif format to keep stdout pure JSON)
+	// Print rule failures if in tolerant mode
+	if scanTolerant && allRuleStats != nil {
+		printRuleFailures(cmd, allRuleStats)
+	}
+
+	// Output results (to stderr when using json/sarif format to keep stdout pure JSON)
 	if scanOutputFormat == "json" || scanOutputFormat == "sarif" {
 		if scanIncremental {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
@@ -444,5 +484,48 @@ func validateMatches(ctx context.Context, engine *validator.Engine, matches []*t
 
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[validate] Validation complete\n")
+	}
+}
+
+// printRuleFailures prints information about rules that failed or timed out in tolerant mode.
+func printRuleFailures(cmd *cobra.Command, ruleStats map[string]matcher.RuleStat) {
+	if len(ruleStats) == 0 {
+		return
+	}
+
+	// Collect failed and timed-out rules
+	var timedOut []matcher.RuleStat
+	var errored []matcher.RuleStat
+
+	for _, stat := range ruleStats {
+		switch stat.Status {
+		case matcher.RuleTimedOut:
+			timedOut = append(timedOut, stat)
+		case matcher.RuleError:
+			errored = append(errored, stat)
+		}
+	}
+
+	// Print timed-out rules
+	if len(timedOut) > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "\nWarning: %d rule(s) timed out:\n", len(timedOut))
+		for _, stat := range timedOut {
+			fmt.Fprintf(cmd.ErrOrStderr(), "  - %s (duration: %v, matches before timeout: %d)\n",
+				stat.RuleID, stat.Duration, stat.Matches)
+		}
+	}
+
+	// Print errored rules
+	if len(errored) > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "\nWarning: %d rule(s) encountered errors:\n", len(errored))
+		for _, stat := range errored {
+			fmt.Fprintf(cmd.ErrOrStderr(), "  - %s (error: %v)\n", stat.RuleID, stat.Error)
+		}
+	}
+
+	// Print summary
+	totalFailures := len(timedOut) + len(errored)
+	if totalFailures > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "\nResults are partial due to %d failed rule(s). Rerun without --tolerant to see full errors.\n", totalFailures)
 	}
 }

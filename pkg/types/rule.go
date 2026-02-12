@@ -16,6 +16,7 @@ type Rule struct {
 	NegativeExamples []string // negative test cases
 	References       []string // documentation URLs
 	Categories       []string // classification tags
+	Keywords         []string // literal strings for Aho-Corasick prefiltering (optional)
 }
 
 // ComputeStructuralID computes SHA-1 of pattern.

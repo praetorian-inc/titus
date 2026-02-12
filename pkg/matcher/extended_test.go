@@ -85,6 +85,47 @@ test\ pattern    (?# with escaped space )
 			input:    `(?x) (?s) \. .+`,
 			expected: `\..+`,
 		},
+		{
+			name: "pattern with (?xi) - case insensitive + extended",
+			input: `(?xi)
+\b
+test    (?# match test )
+\b`,
+			expected: `(?i)\btest\b`,
+		},
+		{
+			name: "pattern with (?xis) - case insensitive + extended + dotall",
+			input: `(?xis)
+\b
+test .+    (?# match test and more )
+\b`,
+			expected: `(?is)\btest.+\b`,
+		},
+		{
+			name: "pattern with (?ix) - case insensitive + extended (reversed order)",
+			input: `(?ix)
+\b
+test    (?# match test )
+\b`,
+			expected: `(?i)\btest\b`,
+		},
+		{
+			name: "pattern with (?xism) - all flags",
+			input: `(?xism)
+^test    (?# match test at start )
+$`,
+			expected: `(?ism)^test$`,
+		},
+		{
+			name:     "pattern with (?i) only (no extended, should not modify)",
+			input:    `(?i)\btest\b`,
+			expected: `(?i)\btest\b`,
+		},
+		{
+			name:     "pattern with (?xs) - extended + dotall",
+			input:    `(?xs) test .+`,
+			expected: `(?s)test.+`,
+		},
 	}
 
 	for _, tt := range tests {

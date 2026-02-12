@@ -8,7 +8,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6
+	github.com/cloudflare/ahocorasick v0.0.0-20240916140611-054963ec9396
 	github.com/dlclark/regexp2 v1.11.5
+	github.com/flier/gohs v1.2.2
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/google/go-github/v57 v57.0.0
 	github.com/jackc/pgx/v5 v5.7.2

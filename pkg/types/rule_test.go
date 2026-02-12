@@ -29,6 +29,32 @@ func TestRule(t *testing.T) {
 	require.Len(t, rule.Categories, 3)
 }
 
+func TestRule_WithKeywords(t *testing.T) {
+	rule := Rule{
+		ID:       "np.aws.1",
+		Name:     "AWS API Key",
+		Pattern:  `AKIA[0-9A-Z]{16}`,
+		Keywords: []string{"AKIA", "ASIA", "AIDA", "AROA"},
+	}
+
+	require.Len(t, rule.Keywords, 4)
+	assert.Equal(t, "AKIA", rule.Keywords[0])
+	assert.Equal(t, "ASIA", rule.Keywords[1])
+	assert.Equal(t, "AIDA", rule.Keywords[2])
+	assert.Equal(t, "AROA", rule.Keywords[3])
+}
+
+func TestRule_KeywordsOptional(t *testing.T) {
+	// Rule without keywords (backwards compatible)
+	rule := Rule{
+		ID:      "np.test.1",
+		Name:    "Test Rule",
+		Pattern: `test`,
+	}
+
+	assert.Nil(t, rule.Keywords)
+}
+
 func TestRule_ComputeStructuralID(t *testing.T) {
 	rule := Rule{
 		ID:      "np.aws.1",
