@@ -1,0 +1,16 @@
+# pkg/validator/validators/square.yaml
+# Square uses Bearer token authentication
+# Validation endpoint: GET /v2/locations returns merchant location data
+# Only validates access tokens (np.square.1) - OAuth secrets require token exchange
+validators:
+  - name: square-access-token
+    rule_ids:
+      - np.square.1
+    http:
+      method: GET
+      url: https://connect.squareup.com/v2/locations
+      auth:
+        type: bearer
+        secret_group: "token"  # Matches (?P<token>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]
