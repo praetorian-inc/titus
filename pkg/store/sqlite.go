@@ -67,15 +67,35 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 		validationMessage = sql.NullString{String: m.ValidationResult.Message, Valid: true}
 		validationTimestamp = sql.NullString{String: m.ValidationResult.ValidatedAt.Format(time.RFC3339), Valid: true}
 	}
-	_, err = s.db.Exec(`INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+
+	// Extract line/column from m.Location.Source
+	var startLine, startColumn, endLine, endColumn sql.NullInt64
+	if m.Location.Source.Start.Line != 0 {
+		startLine = sql.NullInt64{Int64: int64(m.Location.Source.Start.Line), Valid: true}
+	}
+	if m.Location.Source.Start.Column != 0 {
+		startColumn = sql.NullInt64{Int64: int64(m.Location.Source.Start.Column), Valid: true}
+	}
+	if m.Location.Source.End.Line != 0 {
+		endLine = sql.NullInt64{Int64: int64(m.Location.Source.End.Line), Valid: true}
+	}
+	if m.Location.Source.End.Column != 0 {
+		endColumn = sql.NullInt64{Int64: int64(m.Location.Source.End.Column), Valid: true}
+	}
+
+	// finding_id is null for now
+	var findingID sql.NullInt64
+
+	_, err = s.db.Exec(`INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		m.BlobID.Hex(), m.RuleID, m.StructuralID, m.Location.Offset.Start, m.Location.Offset.End,
 		m.Snippet.Before, m.Snippet.Matching, m.Snippet.After, groupsJSON,
-		validationStatus, validationConfidence, validationMessage, validationTimestamp)
+		validationStatus, validationConfidence, validationMessage, validationTimestamp,
+		findingID, startLine, startColumn, endLine, endColumn)
 	return err
 }
 
 func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
-	rows, err := s.db.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp FROM matches WHERE blob_id = ?`, blobID.Hex())
+	rows, err := s.db.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches WHERE blob_id = ?`, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +104,7 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 }
 
 func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
-	rows, err := s.db.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp FROM matches`)
+	rows, err := s.db.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches`)
 	if err != nil {
 		return nil, err
 	}
@@ -212,9 +232,11 @@ func scanMatches(rows *sql.Rows) ([]*types.Match, error) {
 		var snippetBefore, snippetMatching, snippetAfter []byte
 		var validationStatus, validationMessage, validationTimestamp sql.NullString
 		var validationConfidence sql.NullFloat64
+		var findingID, startLine, startColumn, endLine, endColumn sql.NullInt64
 		err := rows.Scan(&blobIDHex, &m.RuleID, &m.StructuralID, &m.Location.Offset.Start, &m.Location.Offset.End,
 			&snippetBefore, &snippetMatching, &snippetAfter, &groupsJSON,
-			&validationStatus, &validationConfidence, &validationMessage, &validationTimestamp)
+			&validationStatus, &validationConfidence, &validationMessage, &validationTimestamp,
+			&findingID, &startLine, &startColumn, &endLine, &endColumn)
 		if err != nil {
 			return nil, err
 		}
@@ -232,6 +254,19 @@ func scanMatches(rows *sql.Rows) ([]*types.Match, error) {
 			if validationTimestamp.Valid {
 				m.ValidationResult.ValidatedAt, _ = time.Parse(time.RFC3339, validationTimestamp.String)
 			}
+		}
+		// Populate m.Location.Source from the line/column values
+		if startLine.Valid {
+			m.Location.Source.Start.Line = int(startLine.Int64)
+		}
+		if startColumn.Valid {
+			m.Location.Source.Start.Column = int(startColumn.Int64)
+		}
+		if endLine.Valid {
+			m.Location.Source.End.Line = int(endLine.Int64)
+		}
+		if endColumn.Valid {
+			m.Location.Source.End.Column = int(endColumn.Int64)
 		}
 		result = append(result, &m)
 	}

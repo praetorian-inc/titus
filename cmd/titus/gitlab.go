@@ -131,6 +131,16 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("matching content: %w", err)
 		}
 
+		// Compute line/column for each match
+		for _, match := range matches {
+			startLine, startCol := types.ComputeLineColumn(content, int(match.Location.Offset.Start))
+			endLine, endCol := types.ComputeLineColumn(content, int(match.Location.Offset.End))
+			match.Location.Source.Start.Line = startLine
+			match.Location.Source.Start.Column = startCol
+			match.Location.Source.End.Line = endLine
+			match.Location.Source.End.Column = endCol
+		}
+
 		// Store matches and findings
 		for _, match := range matches {
 			matchCount++

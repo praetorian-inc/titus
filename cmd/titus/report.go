@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/store"
@@ -124,99 +123,27 @@ func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*
 
 func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, datastorePath string, ruleMap map[string]*types.Rule) error {
 	out := cmd.OutOrStdout()
-
-	// Header
-	fmt.Fprintf(out, "=== Titus Report ===\n")
-	fmt.Fprintf(out, "Datastore: %s\n", datastorePath)
-	fmt.Fprintf(out, "\n")
-
-	// Summary
-	fmt.Fprintf(out, "Findings Summary:\n")
-	fmt.Fprintf(out, "  Total findings: %d\n", len(findings))
-
-	// Unique secrets (by structural ID)
-	uniqueStructuralIDs := make(map[string]bool)
-	for _, f := range findings {
-		uniqueStructuralIDs[f.ID] = true
+	s, err := store.New(store.Config{Path: datastorePath})
+	if err != nil {
+		return fmt.Errorf("opening datastore for provenance: %w", err)
 	}
-	fmt.Fprintf(out, "  Unique secrets: %d (by structural ID)\n", len(uniqueStructuralIDs))
+	defer s.Close()
 
-	// Rules matched
-	uniqueRules := make(map[string]bool)
-	for _, f := range findings {
-		uniqueRules[f.RuleID] = true
-	}
-	fmt.Fprintf(out, "  Rules matched: %d\n", len(uniqueRules))
-	fmt.Fprintf(out, "\n")
-
-	// Validation Summary (if any matches have validation)
-	validCount := 0
-	invalidCount := 0
-	undeterminedCount := 0
-	for _, m := range matches {
-		if m.ValidationResult != nil {
-			switch m.ValidationResult.Status {
-			case types.StatusValid:
-				validCount++
-			case types.StatusInvalid:
-				invalidCount++
-			default:
-				undeterminedCount++
-			}
-		}
-	}
-	if validCount > 0 || invalidCount > 0 || undeterminedCount > 0 {
-		fmt.Fprintf(out, "Validation Summary:\n")
-		fmt.Fprintf(out, "  Valid: %d\n", validCount)
-		fmt.Fprintf(out, "  Invalid: %d\n", invalidCount)
-		fmt.Fprintf(out, "  Undetermined: %d\n", undeterminedCount)
-		fmt.Fprintf(out, "\n")
-	}
-
-	// By Rule breakdown
-	if len(findings) > 0 {
-		fmt.Fprintf(out, "By Rule:\n")
-
-		// Count findings per rule
-		ruleCount := make(map[string]int)
-		for _, f := range findings {
-			ruleCount[f.RuleID]++
-		}
-
-		// Sort rules by name for consistent output
-		rules := make([]string, 0, len(ruleCount))
-		for rule := range ruleCount {
-			rules = append(rules, rule)
-		}
-		sort.Strings(rules)
-
-		// Output each rule with count
-		for _, rule := range rules {
-			count := ruleCount[rule]
-			fmt.Fprintf(out, "  %s: %d findings\n", rule, count)
-		}
-		fmt.Fprintf(out, "\n")
-	}
-
-	// Build content-based finding-to-match map for validation lookup
+	// Build content-based finding-to-match map
 	matchesByFinding := make(map[string][]*types.Match)
 	for _, m := range matches {
 		r, ok := ruleMap[m.RuleID]
 		if ok {
-			// Use content-based finding ID when rule is available
 			findingID := types.ComputeFindingID(r.StructuralID, m.Groups)
 			matchesByFinding[findingID] = append(matchesByFinding[findingID], m)
 		}
 	}
 
-	// Fallback: if no rule found, try to match findings and matches by RuleID and Groups
-	// This handles cases where rules aren't in builtin rules
+	// Fallback for rules not in builtin rules
 	for _, f := range findings {
 		if _, exists := matchesByFinding[f.ID]; !exists {
-			// No matches found yet for this finding, try RuleID + Groups match
 			for _, m := range matches {
 				if m.RuleID == f.RuleID && len(m.Groups) == len(f.Groups) {
-					// Check if groups match
 					groupsMatch := true
 					for i := range m.Groups {
 						if string(m.Groups[i]) != string(f.Groups[i]) {
@@ -232,37 +159,62 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 		}
 	}
 
-	// Recent Findings (up to 10)
-	if len(findings) > 0 {
-		fmt.Fprintf(out, "Recent Findings:\n")
-		limit := 10
-		if len(findings) < limit {
-			limit = len(findings)
+	totalFindings := len(findings)
+
+	// Output each finding in noseyparker format
+	for i, f := range findings {
+		// Finding header
+		fmt.Fprintf(out, "Finding %d/%d (id %s)\n", i+1, totalFindings, f.ID)
+
+		// Rule name
+		ruleName := f.RuleID
+		if r, ok := ruleMap[f.RuleID]; ok {
+			ruleName = r.Name
+		}
+		fmt.Fprintf(out, "Rule: %s\n", ruleName)
+
+		// Capture groups
+		for j, group := range f.Groups {
+			fmt.Fprintf(out, "Group %d: %s\n", j+1, string(group))
 		}
 
-		for i := 0; i < limit; i++ {
-			f := findings[i]
-			fmt.Fprintf(out, "  %d. Rule: %s\n", i+1, f.RuleID)
+		// Matches for this finding
+		findingMatches := matchesByFinding[f.ID]
+		if len(findingMatches) > 3 {
+			fmt.Fprintf(out, "Showing 3/%d matches:\n", len(findingMatches))
+			findingMatches = findingMatches[:3]
+		}
 
-			// Find match for this finding using content-based ID
-			var matchForFinding *types.Match
-			if matchList := matchesByFinding[f.ID]; len(matchList) > 0 {
-				matchForFinding = matchList[0] // use first match
+		for k, match := range findingMatches {
+			fmt.Fprintf(out, "\n    Match %d/%d (id %s)\n", k+1, len(matchesByFinding[f.ID]), match.StructuralID)
+
+			// File path from provenance
+			prov, err := s.GetProvenance(match.BlobID)
+			if err == nil && prov != nil {
+				fmt.Fprintf(out, "    File: %s\n", prov.Path())
 			}
 
-			// Show validation status if available
-			if matchForFinding != nil && matchForFinding.ValidationResult != nil {
-				fmt.Fprintf(out, "     Validation: [%s] %s\n",
-					matchForFinding.ValidationResult.Status,
-					matchForFinding.ValidationResult.Message)
+			// Blob info
+			fmt.Fprintf(out, "    Blob: %s\n", match.BlobID.Hex())
+
+			// Line info
+			if match.Location.Source.Start.Line > 0 {
+				fmt.Fprintf(out, "    Lines: %d:%d-%d:%d\n",
+					match.Location.Source.Start.Line, match.Location.Source.Start.Column,
+					match.Location.Source.End.Line, match.Location.Source.End.Column)
 			}
 
-			// Show snippet
-			if matchForFinding != nil && len(matchForFinding.Snippet.Matching) > 0 {
-				fmt.Fprintf(out, "     Snippet: %s\n", matchForFinding.Snippet.Matching)
+			// Context snippet
+			if len(match.Snippet.Matching) > 0 {
+				snippet := string(match.Snippet.Matching)
+				if len(snippet) > 100 {
+					snippet = snippet[:100] + "..."
+				}
+				fmt.Fprintf(out, "\n        %s\n", snippet)
 			}
 		}
-		fmt.Fprintf(out, "\n")
+
+		fmt.Fprintf(out, "\n\n")
 	}
 
 	return nil
