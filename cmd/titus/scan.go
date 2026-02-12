@@ -15,6 +15,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/praetorian-inc/titus/pkg/validator"
+	"github.com/praetorian-inc/titus/pkg/datastore"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,7 @@ var (
 	scanIncremental     bool
 	scanValidate        bool
 	scanValidateWorkers int
+	scanStoreBlobs      bool
 )
 
 var scanCmd = &cobra.Command{
@@ -45,7 +47,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory")
 	scanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	scanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
-	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.db", "Output database path (use :memory: for in-memory only)")
+	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.ds", "Output datastore path (use :memory: for in-memory only)")
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
@@ -54,6 +56,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
+	scanCmd.Flags().BoolVar(&scanStoreBlobs, "store-blobs", false, "Store file contents in blobs/ directory")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -86,14 +89,29 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	defer m.Close()
 
-	// Create store
-	s, err := store.New(store.Config{
-		Path: scanOutputPath,
-	})
-	if err != nil {
-		return fmt.Errorf("creating store: %w", err)
+	// Create store (memory or datastore)
+	var s store.Store
+	var ds *datastore.Datastore
+	if scanOutputPath == ":memory:" {
+		// In-memory store for ephemeral scans
+		var err error
+		s, err = store.New(store.Config{Path: ":memory:"})
+		if err != nil {
+			return fmt.Errorf("creating store: %w", err)
+		}
+		defer s.Close()
+	} else {
+		// Directory-based datastore
+		var err error
+		ds, err = datastore.Open(scanOutputPath, datastore.Options{
+			StoreBlobs: scanStoreBlobs,
+		})
+		if err != nil {
+			return fmt.Errorf("creating datastore: %w", err)
+		}
+		defer ds.Close()
+		s = ds.Store
 	}
-	defer s.Close()
 
 	// Store rules for foreign key constraints
 	for _, r := range rules {
@@ -140,6 +158,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 		// Store blob
 		if err := s.AddBlob(blobID, int64(len(content))); err != nil {
 			return fmt.Errorf("storing blob: %w", err)
+		}
+
+		// Store blob content if enabled
+		if ds != nil && ds.BlobStore != nil {
+			if _, err := ds.BlobStore.Store(content); err != nil {
+				return fmt.Errorf("storing blob content: %w", err)
+			}
 		}
 
 		// Store provenance
@@ -218,7 +243,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	if scanOutputFormat == "json" || scanOutputFormat == "sarif" {
 		fmt.Fprint(cmd.ErrOrStderr(), statsLine)
-		fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s\n\n", scanOutputPath)
+		if scanOutputPath != ":memory:" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s/datastore.db\n\n", scanOutputPath)
+		}
 	} else {
 		fmt.Fprint(cmd.OutOrStdout(), statsLine)
 		fmt.Fprintf(cmd.OutOrStdout(), "\n")
