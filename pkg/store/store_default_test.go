@@ -22,8 +22,11 @@ func TestNew_EmptyPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "path is required")
 }
 
-func TestNew_FilePathReturnsError(t *testing.T) {
-	_, err := New(Config{Path: "titus.db"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "file-based storage not supported")
+func TestNew_FilePath(t *testing.T) {
+	// Create temp file for testing
+	tmpFile := t.TempDir() + "/test.db"
+	s, err := New(Config{Path: tmpFile})
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	defer s.Close()
 }
