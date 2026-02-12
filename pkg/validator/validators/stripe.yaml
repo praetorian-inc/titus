@@ -1,0 +1,16 @@
+# pkg/validator/validators/stripe.yaml
+# Stripe uses Basic Auth with the API key as the password
+# Validation uses the balance endpoint which is read-only
+validators:
+  - name: stripe-api-key
+    rule_ids:
+      - np.stripe.1
+      - np.stripe.2
+    http:
+      method: GET
+      url: https://api.stripe.com/v1/balance
+      auth:
+        type: basic
+        secret_group: "key"
+      success_codes: [200]
+      failure_codes: [401]
