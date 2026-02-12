@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/store"
@@ -23,14 +25,32 @@ var reportCmd = &cobra.Command{
 }
 
 func init() {
-	reportCmd.Flags().StringVar(&reportDatastore, "datastore", "titus.db", "Path to datastore file")
+	reportCmd.Flags().StringVar(&reportDatastore, "datastore", "titus.ds", "Path to datastore directory or file")
 	reportCmd.Flags().StringVar(&reportFormat, "format", "human", "Output format: human, json, sarif")
 }
 
 func runReport(cmd *cobra.Command, args []string) error {
+	// Determine store path
+	storePath := reportDatastore
+
+	// Check if it's :memory: (invalid for report)
+	if storePath == ":memory:" {
+		return fmt.Errorf("cannot report from in-memory store")
+	}
+
+	// Check if it's a directory (new datastore format)
+	info, err := os.Stat(storePath)
+	if err != nil {
+		return fmt.Errorf("datastore not found: %s", storePath)
+	}
+	if info.IsDir() {
+		// New datastore directory format - open datastore.db inside
+		storePath = filepath.Join(storePath, "datastore.db")
+	}
+
 	// Open store
 	s, err := store.New(store.Config{
-		Path: reportDatastore,
+		Path: storePath,
 	})
 	if err != nil {
 		return fmt.Errorf("opening datastore: %w", err)
@@ -65,7 +85,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 	case "json":
 		return outputReportJSON(cmd, findings, matches, ruleMap)
 	case "human":
-		return outputReportHuman(cmd, findings, matches, reportDatastore, ruleMap)
+		return outputReportHuman(cmd, findings, matches, storePath, ruleMap)
 	case "sarif":
 		return fmt.Errorf("SARIF output not yet implemented")
 	default:
@@ -176,7 +196,15 @@ func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*
 
 func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, datastorePath string, ruleMap map[string]*types.Rule) error {
 	out := cmd.OutOrStdout()
-	s, err := store.New(store.Config{Path: datastorePath})
+
+	// Resolve datastore path (same logic as runReport)
+	storePath := datastorePath
+	info, err := os.Stat(storePath)
+	if err == nil && info.IsDir() {
+		storePath = filepath.Join(storePath, "datastore.db")
+	}
+
+	s, err := store.New(store.Config{Path: storePath})
 	if err != nil {
 		return fmt.Errorf("opening datastore for provenance: %w", err)
 	}
