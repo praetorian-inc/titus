@@ -204,12 +204,9 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 					match.Location.Source.End.Line, match.Location.Source.End.Column)
 			}
 
-			// Context snippet
-			if len(match.Snippet.Matching) > 0 {
-				snippet := string(match.Snippet.Matching)
-				if len(snippet) > 100 {
-					snippet = snippet[:100] + "..."
-				}
+			// Context snippet (before + matching + after)
+			snippet := string(match.Snippet.Before) + string(match.Snippet.Matching) + string(match.Snippet.After)
+			if len(snippet) > 0 {
 				fmt.Fprintf(out, "\n        %s\n", snippet)
 			}
 		}
