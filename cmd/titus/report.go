@@ -77,6 +77,59 @@ func runReport(cmd *cobra.Command, args []string) error {
 // HELPERS
 // =============================================================================
 
+
+// formatSnippet combines before/matching/after and truncates to maxLen chars,
+// centering the window around the matched text.
+func formatSnippet(before, matching, after []byte, maxLen int) string {
+	full := string(before) + string(matching) + string(after)
+	if len(full) <= maxLen {
+		return full
+	}
+
+	// Find where the match sits in the combined string
+	matchStart := len(before)
+	matchEnd := matchStart + len(matching)
+	matchLen := len(matching)
+
+	// If match itself exceeds maxLen, show as much of match as possible
+	if matchLen >= maxLen {
+		result := string(matching[:maxLen-6]) + "..."
+		return "..." + result
+	}
+
+	// Calculate how much context we can show around the match
+	availableContext := maxLen - matchLen - 6 // reserve 6 for potential "..." on each side
+	halfContext := availableContext / 2
+
+	// Determine start and end positions
+	start := matchStart - halfContext
+	end := matchEnd + halfContext
+
+	// Adjust if we're near boundaries
+	if start < 0 {
+		end -= start // shift end right by the amount we're short on left
+		start = 0
+	}
+	if end > len(full) {
+		start -= (end - len(full)) // shift start left by amount we're over on right
+		if start < 0 {
+			start = 0
+		}
+		end = len(full)
+	}
+
+	// Build result with truncation indicators
+	var result string
+	if start > 0 {
+		result = "..."
+	}
+	result += full[start:end]
+	if end < len(full) {
+		result += "..."
+	}
+	return result
+}
+
 func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
 	// Group matches by finding ID using content-based computation
 	matchesByFinding := make(map[string][]*types.Match)
@@ -204,8 +257,9 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 					match.Location.Source.End.Line, match.Location.Source.End.Column)
 			}
 
-			// Context snippet (before + matching + after)
-			snippet := string(match.Snippet.Before) + string(match.Snippet.Matching) + string(match.Snippet.After)
+
+			// Context snippet (before + matching + after, truncated to ~500 chars centered on match)
+			snippet := formatSnippet(match.Snippet.Before, match.Snippet.Matching, match.Snippet.After, 500)
 			if len(snippet) > 0 {
 				fmt.Fprintf(out, "\n        %s\n", snippet)
 			}
