@@ -80,10 +80,30 @@ rules:
   pattern: |
     (?x)
     \b
-    (AIza[0-9A-Za-z_-]{35})
+    (?P<key>AIza[0-9A-Za-z_-]{35})
     (?: [^0-9A-Za-z_-] | $ )
 
   categories: [api, secret]
+
+  examples:
+  - "  var DEVELOPER_KEY = 'AIzaSyB4sUaCes5bR_87qNb7eUVQN72_vv8mpbU';"
+  - 'GOOGLE_API_KEY=AIzaSyBnAoaCesVUco4MXf4enYCVBg6ZnpY49N-'
+  - "api_key: AIzaSyAKqPaCesigvvNNcRt_gL0A6cgx3ZB-kuQ"
+
+  negative_examples:
+  - "AIza-short"
+  - "AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  - "GOOGLE_API_KEY=your-api-key-here"
+  - "AIzaSyEXAMPLE_KEY_REPLACE_ME_1234567"
+
+  description: |
+    Google API key used for accessing Google Cloud APIs and services.
+    Keys use the AIza prefix and are 39 characters total. An attacker
+    with this key can access any Google API the key is authorized for,
+    including Maps, YouTube, Cloud, Gemini, and other services. Keys
+    are associated with Google Cloud projects for quota and billing.
+    Google considers API keys semi-public identifiers, but they can
+    still enable unauthorized API usage and incur billing charges.
 
   references:
   - https://cloud.google.com/docs/authentication/api-keys#securing
@@ -91,10 +111,6 @@ rules:
   # Note: the following reference claims that as far as Google is concerned, API keys that start with `AIza` are public.
   # Though other Google resources disagree.
   - https://bughunters.google.com/learn/invalid-reports/google-products/5222475159961600/understanding-api-key-leaks
-
-  examples:
-  - "  var DEVELOPER_KEY = 'AIzaSyB4sU8lU15bR_87qNb7eUVQN72_vv8mpbU';"
-  - 'value="AIzaSyBnAoO3VNVUco4MXf4enYCVBg6ZnpY49N-'
 
 
 - name: Google Cloud Storage Bucket
