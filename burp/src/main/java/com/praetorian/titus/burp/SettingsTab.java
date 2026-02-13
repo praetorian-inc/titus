@@ -30,6 +30,7 @@ public class SettingsTab extends JPanel {
     private RequestsTableModel requestsTableModel;
     private RequestsView requestsView;
     private SecretsView secretsView;
+    private StatisticsView statisticsView;
     private MessagePersistence messagePersistence;
     private FindingsExporter findingsExporter;
     private JLabel queueSizeLabel;
@@ -65,6 +66,10 @@ public class SettingsTab extends JPanel {
         // Secrets tab
         secretsView = new SecretsView(api, dedupCache);
         tabbedPane.addTab("Secrets", secretsView);
+
+        // Statistics tab
+        statisticsView = new StatisticsView(api, secretsView.getTableModel());
+        tabbedPane.addTab("Statistics", statisticsView);
 
         add(tabbedPane, BorderLayout.CENTER);
 
