@@ -221,3 +221,97 @@ func TestFormatSnippet_MinifiedJS_100KB_Line(t *testing.T) {
 		t.Error("Expected to see some context after the match")
 	}
 }
+
+// =============================================================================
+// Tests for color styles
+// =============================================================================
+
+func TestNewStyles_Enabled(t *testing.T) {
+	// Test: Color styles should be created when enabled
+	styles := newStyles(true)
+
+	if styles == nil {
+		t.Fatal("Expected styles to be non-nil")
+	}
+
+	if styles.findingHeading == nil {
+		t.Error("Expected findingHeading style to be initialized")
+	}
+	if styles.id == nil {
+		t.Error("Expected id style to be initialized")
+	}
+	if styles.ruleName == nil {
+		t.Error("Expected ruleName style to be initialized")
+	}
+	if styles.heading == nil {
+		t.Error("Expected heading style to be initialized")
+	}
+	if styles.match == nil {
+		t.Error("Expected match style to be initialized")
+	}
+	if styles.metadata == nil {
+		t.Error("Expected metadata style to be initialized")
+	}
+}
+
+func TestNewStyles_Disabled(t *testing.T) {
+	// Test: When disabled, styles should still format but without colors
+	styles := newStyles(false)
+
+	if styles == nil {
+		t.Fatal("Expected styles to be non-nil")
+	}
+
+	// Test that formatting still works without colors
+	testText := "test"
+	result := styles.findingHeading.Sprint(testText)
+
+	// When disabled, should return the same text without ANSI codes
+	if result != testText {
+		t.Errorf("Expected plain text %q, got %q", testText, result)
+	}
+}
+
+func TestSnippetParts_Structure(t *testing.T) {
+	// Test: snippetParts should separate before/matching/after
+	before := []byte("context before ")
+	matching := []byte("SECRET_KEY")
+	after := []byte(" context after")
+
+	parts := formatSnippetWithParts(before, matching, after, 500)
+
+	if parts.before != "context before " {
+		t.Errorf("Expected before to be %q, got %q", "context before ", parts.before)
+	}
+	if parts.matching != "SECRET_KEY" {
+		t.Errorf("Expected matching to be %q, got %q", "SECRET_KEY", parts.matching)
+	}
+	if parts.after != " context after" {
+		t.Errorf("Expected after to be %q, got %q", " context after", parts.after)
+	}
+	if parts.prefix != "" {
+		t.Error("Expected no prefix for short snippet")
+	}
+	if parts.suffix != "" {
+		t.Error("Expected no suffix for short snippet")
+	}
+}
+
+func TestSnippetParts_Truncation(t *testing.T) {
+	// Test: Long snippets should have ellipsis in prefix/suffix
+	before := []byte(strings.Repeat("x", 400))
+	matching := []byte("MATCH")
+	after := []byte(strings.Repeat("y", 400))
+
+	parts := formatSnippetWithParts(before, matching, after, 500)
+
+	if parts.prefix != "..." {
+		t.Errorf("Expected prefix to be '...', got %q", parts.prefix)
+	}
+	if parts.suffix != "..." {
+		t.Errorf("Expected suffix to be '...', got %q", parts.suffix)
+	}
+	if !strings.Contains(parts.matching, "MATCH") {
+		t.Error("Expected matching to contain 'MATCH'")
+	}
+}
