@@ -9,6 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
 
 // ExtractedContent represents text extracted from a binary file.
@@ -131,42 +135,43 @@ func extractDOCX(content []byte) ([]ExtractedContent, error) {
 	return results, nil
 }
 
-// extractPDF extracts text from PDF files (basic extraction).
+// extractPDF extracts text from PDF files using pdfcpu.
 func extractPDF(content []byte) ([]ExtractedContent, error) {
+	// Create a reader from the PDF content
+	reader := bytes.NewReader(content)
+
+	// Read and validate the PDF using pdfcpu
+	conf := model.NewDefaultConfiguration()
+	ctx, err := api.ReadValidateAndOptimize(reader, conf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PDF: %w", err)
+	}
+
+	// Extract content from all pages
 	var text strings.Builder
-
-	// Simple PDF text extraction - look for text between stream/endstream markers
-	// This is a very basic approach that works for simple PDFs
-	streamStart := []byte("stream")
-	streamEnd := []byte("endstream")
-
-	pos := 0
-	for pos < len(content) {
-		// Find next stream marker
-		streamIdx := bytes.Index(content[pos:], streamStart)
-		if streamIdx == -1 {
-			break
+	for i := 1; i <= ctx.PageCount; i++ {
+		pageReader, err := pdfcpu.ExtractPageContent(ctx, i)
+		if err != nil {
+			// Continue on error to extract what we can
+			continue
 		}
-		streamIdx += pos
-
-		// Find corresponding endstream marker
-		endIdx := bytes.Index(content[streamIdx:], streamEnd)
-		if endIdx == -1 {
-			break
+		if pageReader == nil {
+			continue
 		}
-		endIdx += streamIdx
 
-		// Extract content between markers
-		streamContent := content[streamIdx+len(streamStart) : endIdx]
+		// Read the content from the page
+		pageContent, err := io.ReadAll(pageReader)
+		if err != nil {
+			continue
+		}
 
-		// Extract printable ASCII text
-		for _, b := range streamContent {
-			if b >= 32 && b <= 126 || b == '\n' || b == '\r' || b == '\t' {
+		// Extract printable text from the raw content stream
+		for _, b := range pageContent {
+			if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' {
 				text.WriteByte(b)
 			}
 		}
-
-		pos = endIdx + len(streamEnd)
+		text.WriteString("\n")
 	}
 
 	extracted := text.String()
