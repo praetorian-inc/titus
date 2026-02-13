@@ -16,20 +16,36 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// extensionsValue is a custom flag type that displays as "extensions" in help
+type extensionsValue string
+
+func (e *extensionsValue) String() string {
+	return string(*e)
+}
+
+func (e *extensionsValue) Set(val string) error {
+	*e = extensionsValue(val)
+	return nil
+}
+
+func (e *extensionsValue) Type() string {
+	return "extensions"
+}
+
 var (
-	scanRulesPath       string
-	scanRulesInclude    string
-	scanRulesExclude    string
-	scanOutputPath      string
-	scanOutputFormat    string
-	scanGit             bool
-	scanMaxFileSize     int64
-	scanIncludeHidden   bool
-	scanContextLines    int
-	scanIncremental     bool
-	scanValidate        bool
-	scanValidateWorkers int
-	scanExtractArchives string
+	scanRulesPath           string
+	scanRulesInclude        string
+	scanRulesExclude        string
+	scanOutputPath          string
+	scanOutputFormat        string
+	scanGit                 bool
+	scanMaxFileSize         int64
+	scanIncludeHidden       bool
+	scanContextLines        int
+	scanIncremental         bool
+	scanValidate            bool
+	scanValidateWorkers     int
+	scanExtractArchivesFlag extensionsValue
 )
 
 var scanCmd = &cobra.Command{
@@ -53,7 +69,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
-	scanCmd.Flags().StringVar(&scanExtractArchives, "extract-archives", "", "Extract text from binary files (comma-separated: xlsx,docx,pdf,zip or 'all')")
+	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract-archives", "Extract text from binary files (comma-separated: xlsx,docx,pdf,zip or 'all')")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -297,7 +313,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 		IncludeHidden:   scanIncludeHidden,
 		MaxFileSize:     scanMaxFileSize,
 		FollowSymlinks:  false,
-		ExtractArchives: scanExtractArchives,
+		ExtractArchives: string(scanExtractArchivesFlag),
 	}
 
 	if useGit {
