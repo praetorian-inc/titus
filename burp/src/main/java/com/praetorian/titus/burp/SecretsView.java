@@ -19,12 +19,12 @@ public class SecretsView extends JPanel {
     private final MontoyaApi api;
     private final SecretsTableModel tableModel;
     private final DedupCache dedupCache;
-    private final JTable secretsTable;
-    private final JTextArea detailArea;
-    private final JLabel statusLabel;
-    private final JButton validateButton;
-    private final JButton copyButton;
-    private final JButton refreshButton;
+    private JTable secretsTable;
+    private JTextArea detailArea;
+    private JLabel statusLabel;
+    private JButton validateButton;
+    private JButton copyButton;
+    private JButton refreshButton;
 
     private ValidationListener validationListener;
 
