@@ -128,6 +128,22 @@ public class DedupCache {
      * @return The updated finding record
      */
     public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName) {
+        return recordOccurrence(url, secretContent, ruleId, ruleName, null, null);
+    }
+
+    /**
+     * Record an occurrence of a finding with rule name and HTTP content.
+     *
+     * @param url             The URL where the secret was found
+     * @param secretContent   The secret content
+     * @param ruleId          The rule that matched
+     * @param ruleName        The human-readable rule name
+     * @param requestContent  The full HTTP request content
+     * @param responseContent The full HTTP response content
+     * @return The updated finding record
+     */
+    public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName,
+                                          String requestContent, String responseContent) {
         String normalizedUrl = normalizeUrl(url);
         String host = SecretCategoryMapper.extractHost(url);
         String key = computeKey(normalizedUrl, secretContent);
@@ -149,6 +165,10 @@ public class DedupCache {
                     1,
                     Instant.now()
                 );
+                // Store HTTP content for first occurrence only
+                if (requestContent != null || responseContent != null) {
+                    newRecord.setHttpContent(requestContent, responseContent);
+                }
                 return newRecord;
             } else {
                 existing.urls.add(normalizedUrl);
@@ -348,6 +368,8 @@ public class DedupCache {
         public String validationMessage;
         public Instant validatedAt;
         public String responseSnippet; // Snippet of response around the secret
+        public String requestContent;  // Full request content for display
+        public String responseContent; // Full response content for display
 
         public FindingRecord() {
             this.urls = new HashSet<>();
@@ -387,6 +409,14 @@ public class DedupCache {
          */
         public void setResponseSnippet(String snippet) {
             this.responseSnippet = snippet;
+        }
+
+        /**
+         * Set request and response content for display.
+         */
+        public void setHttpContent(String requestContent, String responseContent) {
+            this.requestContent = requestContent;
+            this.responseContent = responseContent;
         }
     }
 }
