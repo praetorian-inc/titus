@@ -69,7 +69,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
-	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract-archives", "Extract text from binary files (comma-separated: xlsx,docx,pdf,zip or 'all')")
+	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract", "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
