@@ -11,11 +11,11 @@ public class SecretCategoryMapper {
      * Secret categories for grouping and color-coding.
      */
     public enum Category {
-        CLOUD("Cloud Credentials", new Color(220, 53, 69)),      // Red
-        DATABASE("Database Credentials", new Color(255, 152, 0)), // Orange
-        API_KEY("API Keys", new Color(255, 193, 7)),              // Yellow
-        PRIVATE_KEY("Private Keys", new Color(156, 39, 176)),     // Purple
-        GENERIC("Generic Secrets", new Color(158, 158, 158));     // Gray
+        CLOUD("Cloud Credentials", new Color(220, 53, 69)),        // Red - critical
+        DATABASE("Database Credentials", new Color(255, 152, 0)),  // Orange - high
+        API_KEY("API Keys", new Color(255, 193, 7)),               // Yellow - medium
+        PRIVATE_KEY("Private Keys", new Color(220, 53, 69)),       // Red - critical
+        GENERIC("Generic Secrets", null);                          // Default background
 
         private final String displayName;
         private final Color color;
@@ -34,6 +34,10 @@ public class SecretCategoryMapper {
         }
 
         public Color getLightColor() {
+            // Return null for default/transparent background
+            if (color == null) {
+                return null;
+            }
             // Lighter version for backgrounds
             return new Color(
                 Math.min(255, color.getRed() + 60),

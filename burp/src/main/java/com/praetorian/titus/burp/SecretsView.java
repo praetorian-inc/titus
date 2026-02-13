@@ -6,8 +6,13 @@ import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableRowSorter;
+import javax.swing.RowFilter;
 import java.awt.*;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * View panel for the Secrets tab showing deduplicated findings.
@@ -20,13 +25,30 @@ public class SecretsView extends JPanel {
     private final SecretsTableModel tableModel;
     private final DedupCache dedupCache;
     private JTable secretsTable;
+    private TableRowSorter<SecretsTableModel> rowSorter;
     private JTextArea detailArea;
+    private JTextArea urlsArea;
+    private JTabbedPane detailTabbedPane;
     private JLabel statusLabel;
     private JButton validateButton;
+    private JButton falsePositiveButton;
     private JButton copyButton;
     private JButton refreshButton;
 
+    // Filter components
+    private JComboBox<String> typeFilter;
+    private JComboBox<String> hostFilter;
+    private JComboBox<String> validationFilter;
+
     private ValidationListener validationListener;
+    private FalsePositiveListener falsePositiveListener;
+
+    /**
+     * Listener for false positive marking requests.
+     */
+    public interface FalsePositiveListener {
+        void onFalsePositiveRequested(List<DedupCache.FindingRecord> records);
+    }
 
     /**
      * Listener for validation requests.
@@ -41,11 +63,13 @@ public class SecretsView extends JPanel {
         this.tableModel = new SecretsTableModel(dedupCache);
 
         setLayout(new BorderLayout());
-        setBorder(new TitledBorder("Detected Secrets"));
+        setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        // Create table
+        // Create table with row sorter for filtering
         secretsTable = new JTable(tableModel);
-        secretsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        rowSorter = new TableRowSorter<>(tableModel);
+        secretsTable.setRowSorter(rowSorter);
+        secretsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         secretsTable.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
         secretsTable.getSelectionModel().addListSelectionListener(this::onSelectionChanged);
 
@@ -59,7 +83,7 @@ public class SecretsView extends JPanel {
         JScrollPane tableScroll = new JScrollPane(secretsTable);
         tableScroll.setPreferredSize(new Dimension(800, 250));
 
-        // Detail panel
+        // Detail panel with tabs
         JPanel detailPanel = createDetailPanel();
 
         // Split pane: table above, details below
@@ -73,9 +97,11 @@ public class SecretsView extends JPanel {
 
         add(splitPane, BorderLayout.CENTER);
 
-        // Toolbar
-        JPanel toolbar = createToolbar();
-        add(toolbar, BorderLayout.NORTH);
+        // Top panel with toolbar and filters
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.add(createToolbar(), BorderLayout.NORTH);
+        topPanel.add(createFilterPanel(), BorderLayout.SOUTH);
+        add(topPanel, BorderLayout.NORTH);
 
         // Status bar
         statusLabel = new JLabel("0 secrets");
@@ -108,30 +134,161 @@ public class SecretsView extends JPanel {
         validateButton.setEnabled(false);
         validateButton.addActionListener(e -> validateSelected());
 
+        falsePositiveButton = new JButton("Mark False Positive");
+        falsePositiveButton.setEnabled(false);
+        falsePositiveButton.addActionListener(e -> markFalsePositive());
+
         copyButton = new JButton("Copy Secret");
         copyButton.setEnabled(false);
         copyButton.addActionListener(e -> copySelectedSecret());
 
         toolbar.add(refreshButton);
         toolbar.add(validateButton);
+        toolbar.add(falsePositiveButton);
         toolbar.add(copyButton);
 
         return toolbar;
+    }
+
+    private JPanel createFilterPanel() {
+        JPanel filterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        filterPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+
+        // Type filter
+        filterPanel.add(new JLabel("Type:"));
+        typeFilter = new JComboBox<>();
+        typeFilter.addItem("All Types");
+        typeFilter.setPreferredSize(new Dimension(150, 25));
+        typeFilter.addActionListener(e -> applyFilters());
+        filterPanel.add(typeFilter);
+
+        // Host filter
+        filterPanel.add(new JLabel("Host:"));
+        hostFilter = new JComboBox<>();
+        hostFilter.addItem("All Hosts");
+        hostFilter.setPreferredSize(new Dimension(200, 25));
+        hostFilter.addActionListener(e -> applyFilters());
+        filterPanel.add(hostFilter);
+
+        // Validation filter
+        filterPanel.add(new JLabel("Status:"));
+        validationFilter = new JComboBox<>();
+        validationFilter.addItem("All");
+        validationFilter.addItem("Not Checked");
+        validationFilter.addItem("Active");
+        validationFilter.addItem("Inactive");
+        validationFilter.addItem("False Positive");
+        validationFilter.setPreferredSize(new Dimension(120, 25));
+        validationFilter.addActionListener(e -> applyFilters());
+        filterPanel.add(validationFilter);
+
+        // Clear filters button
+        JButton clearButton = new JButton("Clear Filters");
+        clearButton.addActionListener(e -> clearFilters());
+        filterPanel.add(clearButton);
+
+        return filterPanel;
+    }
+
+    private void updateFilterDropdowns() {
+        // Save current selections
+        Object selectedType = typeFilter.getSelectedItem();
+        Object selectedHost = hostFilter.getSelectedItem();
+
+        // Update type filter
+        typeFilter.removeAllItems();
+        typeFilter.addItem("All Types");
+        for (String type : tableModel.getUniqueTypes()) {
+            typeFilter.addItem(type);
+        }
+        if (selectedType != null) {
+            typeFilter.setSelectedItem(selectedType);
+        }
+
+        // Update host filter
+        hostFilter.removeAllItems();
+        hostFilter.addItem("All Hosts");
+        for (String host : tableModel.getUniqueHosts()) {
+            hostFilter.addItem(host);
+        }
+        if (selectedHost != null) {
+            hostFilter.setSelectedItem(selectedHost);
+        }
+    }
+
+    private void applyFilters() {
+        List<RowFilter<SecretsTableModel, Integer>> filters = new ArrayList<>();
+
+        // Type filter
+        String selectedType = (String) typeFilter.getSelectedItem();
+        if (selectedType != null && !selectedType.equals("All Types")) {
+            filters.add(RowFilter.regexFilter("^" + java.util.regex.Pattern.quote(selectedType) + "$", 1));
+        }
+
+        // Host filter
+        String selectedHost = (String) hostFilter.getSelectedItem();
+        if (selectedHost != null && !selectedHost.equals("All Hosts")) {
+            filters.add(RowFilter.regexFilter("^" + java.util.regex.Pattern.quote(selectedHost) + "$", 3));
+        }
+
+        // Validation filter
+        String selectedValidation = (String) validationFilter.getSelectedItem();
+        if (selectedValidation != null && !selectedValidation.equals("All")) {
+            String statusText = switch (selectedValidation) {
+                case "Not Checked" -> "-";
+                case "Active" -> "Active";
+                case "Inactive" -> "Inactive";
+                case "False Positive" -> "False Positive";
+                default -> "";
+            };
+            if (!statusText.isEmpty()) {
+                filters.add(RowFilter.regexFilter("^" + java.util.regex.Pattern.quote(statusText) + "$", 5));
+            }
+        }
+
+        if (filters.isEmpty()) {
+            rowSorter.setRowFilter(null);
+        } else {
+            rowSorter.setRowFilter(RowFilter.andFilter(filters));
+        }
+
+        updateStatus();
+    }
+
+    private void clearFilters() {
+        typeFilter.setSelectedIndex(0);
+        hostFilter.setSelectedIndex(0);
+        validationFilter.setSelectedIndex(0);
+        rowSorter.setRowFilter(null);
+        updateStatus();
     }
 
     private JPanel createDetailPanel() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(new TitledBorder("Secret Details"));
 
+        detailTabbedPane = new JTabbedPane();
+
+        // Details tab
         detailArea = new JTextArea();
         detailArea.setEditable(false);
         detailArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         detailArea.setLineWrap(true);
         detailArea.setWrapStyleWord(true);
+        JScrollPane detailScroll = new JScrollPane(detailArea);
+        detailTabbedPane.addTab("Details", detailScroll);
 
-        JScrollPane scroll = new JScrollPane(detailArea);
-        scroll.setPreferredSize(new Dimension(800, 150));
-        panel.add(scroll, BorderLayout.CENTER);
+        // URLs tab
+        urlsArea = new JTextArea();
+        urlsArea.setEditable(false);
+        urlsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        urlsArea.setLineWrap(true);
+        urlsArea.setWrapStyleWord(true);
+        JScrollPane urlsScroll = new JScrollPane(urlsArea);
+        detailTabbedPane.addTab("URLs", urlsScroll);
+
+        panel.add(detailTabbedPane, BorderLayout.CENTER);
+        panel.setPreferredSize(new Dimension(800, 150));
 
         return panel;
     }
@@ -141,20 +298,46 @@ public class SecretsView extends JPanel {
             return;
         }
 
-        int selectedRow = secretsTable.getSelectedRow();
-        if (selectedRow >= 0) {
-            DedupCache.FindingRecord record = tableModel.getRecordAt(selectedRow);
-            if (record != null) {
-                displayRecordDetails(record);
-                validateButton.setEnabled(record.validationStatus == DedupCache.ValidationStatus.NOT_CHECKED);
-                copyButton.setEnabled(true);
-                return;
+        int[] selectedRows = secretsTable.getSelectedRows();
+        if (selectedRows.length == 0) {
+            detailArea.setText("");
+            urlsArea.setText("");
+            validateButton.setEnabled(false);
+            falsePositiveButton.setEnabled(false);
+            copyButton.setEnabled(false);
+            return;
+        }
+
+        // Convert view rows to model rows
+        int[] modelRows = new int[selectedRows.length];
+        for (int i = 0; i < selectedRows.length; i++) {
+            modelRows[i] = secretsTable.convertRowIndexToModel(selectedRows[i]);
+        }
+
+        // Enable buttons based on selection
+        boolean anyValidatable = false;
+        for (int row : modelRows) {
+            DedupCache.FindingRecord record = tableModel.getRecordAt(row);
+            if (record != null && record.validationStatus == DedupCache.ValidationStatus.NOT_CHECKED) {
+                anyValidatable = true;
+                break;
             }
         }
 
-        detailArea.setText("");
-        validateButton.setEnabled(false);
-        copyButton.setEnabled(false);
+        validateButton.setEnabled(anyValidatable);
+        falsePositiveButton.setEnabled(true);
+        copyButton.setEnabled(modelRows.length == 1);
+
+        // Show details for single selection
+        if (modelRows.length == 1) {
+            DedupCache.FindingRecord record = tableModel.getRecordAt(modelRows[0]);
+            if (record != null) {
+                displayRecordDetails(record);
+            }
+        } else {
+            detailArea.setText(modelRows.length + " secrets selected");
+            urlsArea.setText("");
+        }
     }
 
     private void displayRecordDetails(DedupCache.FindingRecord record) {
@@ -176,14 +359,6 @@ public class SecretsView extends JPanel {
         }
         sb.append("\n");
 
-        sb.append("URLs Found:\n");
-        if (record.urls != null) {
-            for (String url : record.urls) {
-                sb.append("  - ").append(url).append("\n");
-            }
-        }
-        sb.append("\n");
-
         sb.append("Validation Status: ").append(record.validationStatus.getDisplayText()).append("\n");
         if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
             sb.append("Validation Message: ").append(record.validationMessage).append("\n");
@@ -194,17 +369,61 @@ public class SecretsView extends JPanel {
 
         detailArea.setText(sb.toString());
         detailArea.setCaretPosition(0);
+
+        // URLs tab
+        StringBuilder urlsSb = new StringBuilder();
+        urlsSb.append("URLs where this secret was found:\n\n");
+        if (record.urls != null) {
+            int i = 1;
+            for (String url : record.urls) {
+                urlsSb.append(i++).append(". ").append(url).append("\n");
+            }
+        }
+        urlsArea.setText(urlsSb.toString());
+        urlsArea.setCaretPosition(0);
     }
 
     private void validateSelected() {
-        int selectedRow = secretsTable.getSelectedRow();
-        if (selectedRow < 0) {
+        int[] selectedRows = secretsTable.getSelectedRows();
+        if (selectedRows.length == 0 || validationListener == null) {
             return;
         }
 
-        DedupCache.FindingRecord record = tableModel.getRecordAt(selectedRow);
-        if (record != null && validationListener != null) {
-            validationListener.onValidateRequested(record);
+        for (int row : selectedRows) {
+            int modelRow = secretsTable.convertRowIndexToModel(row);
+            DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+            if (record != null && record.validationStatus == DedupCache.ValidationStatus.NOT_CHECKED) {
+                validationListener.onValidateRequested(record);
+            }
+        }
+    }
+
+    private void markFalsePositive() {
+        int[] selectedRows = secretsTable.getSelectedRows();
+        if (selectedRows.length == 0) {
+            return;
+        }
+
+        List<DedupCache.FindingRecord> records = new ArrayList<>();
+        for (int row : selectedRows) {
+            int modelRow = secretsTable.convertRowIndexToModel(row);
+            DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+            if (record != null) {
+                records.add(record);
+            }
+        }
+
+        if (!records.isEmpty()) {
+            if (falsePositiveListener != null) {
+                falsePositiveListener.onFalsePositiveRequested(records);
+            } else {
+                // Default behavior - mark as false positive directly
+                for (DedupCache.FindingRecord record : records) {
+                    record.setValidation(DedupCache.ValidationStatus.FALSE_POSITIVE, "Marked by user");
+                }
+                dedupCache.saveToSettings();
+                refresh();
+            }
         }
     }
 
@@ -214,7 +433,8 @@ public class SecretsView extends JPanel {
             return;
         }
 
-        DedupCache.FindingRecord record = tableModel.getRecordAt(selectedRow);
+        int modelRow = secretsTable.convertRowIndexToModel(selectedRow);
+        DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
         if (record != null && record.secretContent != null) {
             java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(record.secretContent);
             java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
@@ -227,6 +447,7 @@ public class SecretsView extends JPanel {
      */
     public void refresh() {
         tableModel.refresh();
+        updateFilterDropdowns();
         updateStatus();
     }
 
@@ -234,9 +455,16 @@ public class SecretsView extends JPanel {
      * Update the status label.
      */
     public void updateStatus() {
-        int count = tableModel.getTotalCount();
+        int totalCount = tableModel.getTotalCount();
+        int visibleCount = secretsTable.getRowCount();
         int[] validationCounts = tableModel.getValidationCounts();
-        String status = count + " secret" + (count != 1 ? "s" : "");
+
+        String status;
+        if (visibleCount != totalCount) {
+            status = "Showing " + visibleCount + " of " + totalCount + " secrets";
+        } else {
+            status = totalCount + " secret" + (totalCount != 1 ? "s" : "");
+        }
 
         if (validationCounts[0] > 0 || validationCounts[1] > 0) {
             status += " (" + validationCounts[0] + " active, " + validationCounts[1] + " inactive)";
@@ -250,6 +478,13 @@ public class SecretsView extends JPanel {
      */
     public void setValidationListener(ValidationListener listener) {
         this.validationListener = listener;
+    }
+
+    /**
+     * Set the false positive listener.
+     */
+    public void setFalsePositiveListener(FalsePositiveListener listener) {
+        this.falsePositiveListener = listener;
     }
 
     /**
@@ -270,8 +505,16 @@ public class SecretsView extends JPanel {
             Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
             if (!isSelected) {
-                SecretCategoryMapper.Category category = tableModel.getCategoryAt(row);
-                c.setBackground(category.getLightColor());
+                // Convert view row to model row for correct category lookup
+                int modelRow = table.convertRowIndexToModel(row);
+                SecretCategoryMapper.Category category = tableModel.getCategoryAt(modelRow);
+                Color bgColor = category.getLightColor();
+                if (bgColor != null) {
+                    c.setBackground(bgColor);
+                } else {
+                    // Use default table background
+                    c.setBackground(table.getBackground());
+                }
             }
 
             // Center align numeric columns

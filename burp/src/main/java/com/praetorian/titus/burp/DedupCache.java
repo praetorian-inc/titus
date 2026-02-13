@@ -238,6 +238,23 @@ public class DedupCache {
                             String url = record.urls.iterator().next();
                             // We don't have the original secret, so use preview as approximation
                             String key = computeKey(url, record.secretPreview);
+
+                            // Fix missing host data from older cache versions
+                            if (record.primaryHost == null || record.primaryHost.isEmpty()) {
+                                record.primaryHost = SecretCategoryMapper.extractHost(url);
+                            }
+                            if (record.hosts == null) {
+                                record.hosts = new HashSet<>();
+                            }
+                            if (record.hosts.isEmpty()) {
+                                for (String u : record.urls) {
+                                    record.hosts.add(SecretCategoryMapper.extractHost(u));
+                                }
+                            }
+                            if (record.validationStatus == null) {
+                                record.validationStatus = ValidationStatus.NOT_CHECKED;
+                            }
+
                             cache.put(key, record);
                         }
                     }
@@ -300,7 +317,8 @@ public class DedupCache {
         VALIDATING("..."),
         VALID("Active"),
         INVALID("Inactive"),
-        UNDETERMINED("Unknown");
+        UNDETERMINED("Unknown"),
+        FALSE_POSITIVE("False Positive");
 
         private final String displayText;
 
