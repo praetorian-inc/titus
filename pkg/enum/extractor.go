@@ -76,7 +76,7 @@ func extractWithState(path string, content []byte, state *extractState) ([]Extra
 		return extractPPTX(content)
 	case ".pdf":
 		return extractPDF(content)
-	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi":
+	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".crx":
 		return extractZIPWithState(content, state)
 	case ".tar":
 		return extractTar(content, false, state)
@@ -521,7 +521,7 @@ func extractZIPWithState(content []byte, state *extractState) ([]ExtractedConten
 // isExtractable checks if a file extension is extractable.
 func isExtractable(ext string) bool {
 	switch ext {
-	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".xlsx", ".docx", ".pptx", ".pdf", ".tar", ".tar.gz", ".tgz", ".ipynb", ".odt", ".ods", ".odp", ".eml", ".rtf", ".sqlite", ".db", ".7z":
+	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".crx", ".xlsx", ".docx", ".pptx", ".pdf", ".tar", ".tar.gz", ".tgz", ".ipynb", ".odt", ".ods", ".odp", ".eml", ".rtf", ".sqlite", ".db", ".7z":
 		return true
 	}
 	return false
