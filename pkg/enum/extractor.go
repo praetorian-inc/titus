@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -14,7 +15,9 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/bodgit/sevenzip"
 	"github.com/ledongthuc/pdf"
+	_ "modernc.org/sqlite"
 )
 
 // ExtractedContent represents text extracted from a binary file.
@@ -63,7 +66,7 @@ func extractWithState(path string, content []byte, state *extractState) ([]Extra
 		return extractPPTX(content)
 	case ".pdf":
 		return extractPDF(content)
-	case ".zip", ".jar", ".war", ".ear":
+	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi":
 		return extractZIPWithState(content, state)
 	case ".tar":
 		return extractTar(content, false, state)
@@ -71,6 +74,16 @@ func extractWithState(path string, content []byte, state *extractState) ([]Extra
 		return extractTar(content, true, state)
 	case ".ipynb":
 		return extractIPYNB(content)
+	case ".odt", ".ods", ".odp":
+		return extractOpenDocument(content)
+	case ".eml":
+		return extractEML(content)
+	case ".rtf":
+		return extractRTF(content)
+	case ".sqlite", ".db":
+		return extractSQLite(content)
+	case ".7z":
+		return extract7z(content, state)
 	default:
 		return nil, fmt.Errorf("unsupported file type: %s", ext)
 	}
@@ -498,7 +511,7 @@ func extractZIPWithState(content []byte, state *extractState) ([]ExtractedConten
 // isExtractable checks if a file extension is extractable.
 func isExtractable(ext string) bool {
 	switch ext {
-	case ".zip", ".jar", ".war", ".ear", ".xlsx", ".docx", ".pptx", ".pdf", ".tar", ".tar.gz", ".tgz", ".ipynb":
+	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".xlsx", ".docx", ".pptx", ".pdf", ".tar", ".tar.gz", ".tgz", ".ipynb", ".odt", ".ods", ".odp", ".eml", ".rtf", ".sqlite", ".db", ".7z":
 		return true
 	}
 	return false
@@ -511,4 +524,206 @@ func isBinaryContent(content []byte) bool {
 		checkSize = 8192
 	}
 	return bytes.IndexByte(content[:checkSize], 0) != -1
+}
+// extractOpenDocument extracts text from OpenDocument files (.odt, .ods, .odp).
+func extractOpenDocument(content []byte) ([]ExtractedContent, error) {
+	reader := bytes.NewReader(content)
+	zipReader, err := zip.NewReader(reader, int64(len(content)))
+	if err != nil {
+		return nil, err
+	}
+
+	var results []ExtractedContent
+	for _, file := range zipReader.File {
+		if file.Name == "content.xml" {
+			rc, err := file.Open()
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				continue
+			}
+			text := extractXMLText(data)
+			if len(text) > 0 {
+				results = append(results, ExtractedContent{Name: file.Name, Content: []byte(text)})
+			}
+		}
+	}
+	return results, nil
+}
+
+// extractEML extracts text from email files (.eml).
+func extractEML(content []byte) ([]ExtractedContent, error) {
+	// EML is mostly text, just return the whole content
+	// Could parse headers but body often contains secrets
+	text := string(content)
+	if len(text) == 0 {
+		return nil, nil
+	}
+	return []ExtractedContent{{Name: "email", Content: content}}, nil
+}
+
+// extractRTF extracts text from Rich Text Format files (.rtf).
+func extractRTF(content []byte) ([]ExtractedContent, error) {
+	// RTF contains text mixed with control codes
+	// Simple approach: extract text between braces, skip control words
+	var text strings.Builder
+	inControl := false
+
+	for i := 0; i < len(content); i++ {
+		b := content[i]
+		if b == '\\' {
+			inControl = true
+			continue
+		}
+		if inControl {
+			if b == ' ' || b == '\n' || b == '\r' {
+				inControl = false
+			}
+			continue
+		}
+		if b == '{' || b == '}' {
+			continue
+		}
+		if b >= 32 && b <= 126 || b == '\n' || b == '\r' || b == '\t' {
+			text.WriteByte(b)
+		}
+	}
+
+	result := text.String()
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return []ExtractedContent{{Name: "content", Content: []byte(result)}}, nil
+}
+
+// extractSQLite extracts text from SQLite database files (.sqlite, .db).
+func extractSQLite(content []byte) ([]ExtractedContent, error) {
+	// Write to temp file (SQLite needs file)
+	tmpFile, err := os.CreateTemp("", "titus-sqlite-*.db")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	if _, err := tmpFile.Write(content); err != nil {
+		return nil, err
+	}
+	tmpFile.Close()
+
+	db, err := sql.Open("sqlite", tmpFile.Name())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	var text strings.Builder
+
+	// Get all table names
+	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table'")
+	if err != nil {
+		return nil, err
+	}
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		tables = append(tables, name)
+	}
+	rows.Close()
+
+	// Extract text from each table (limit rows to prevent huge output)
+	for _, table := range tables {
+		rows, err := db.Query(fmt.Sprintf("SELECT * FROM %q LIMIT 1000", table))
+		if err != nil {
+			continue
+		}
+		cols, _ := rows.Columns()
+		values := make([]interface{}, len(cols))
+		ptrs := make([]interface{}, len(cols))
+		for i := range values {
+			ptrs[i] = &values[i]
+		}
+
+		for rows.Next() {
+			rows.Scan(ptrs...)
+			for _, v := range values {
+				if s, ok := v.(string); ok {
+					text.WriteString(s)
+					text.WriteString(" ")
+				}
+			}
+			text.WriteString("\n")
+		}
+		rows.Close()
+	}
+
+	result := text.String()
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return []ExtractedContent{{Name: "tables", Content: []byte(result)}}, nil
+}
+
+// extract7z extracts text from 7-Zip archives (.7z).
+func extract7z(content []byte, state *extractState) ([]ExtractedContent, error) {
+	reader := bytes.NewReader(content)
+	archive, err := sevenzip.NewReader(reader, int64(len(content)))
+	if err != nil {
+		return nil, err
+	}
+
+	var results []ExtractedContent
+	for _, file := range archive.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+
+		// Check size limits
+		if file.UncompressedSize > uint64(state.limits.MaxSize) {
+			continue
+		}
+		if state.total+int64(file.UncompressedSize) > state.limits.MaxTotal {
+			break
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			continue
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			continue
+		}
+		state.total += int64(len(data))
+
+		// Check for nested extractable files
+		ext := strings.ToLower(filepath.Ext(file.Name))
+		if isExtractable(ext) {
+			state.depth++
+			if state.depth <= state.limits.MaxDepth {
+				nested, _ := extractWithState(file.Name, data, state)
+				for _, n := range nested {
+					results = append(results, ExtractedContent{
+						Name:    file.Name + ":" + n.Name,
+						Content: n.Content,
+					})
+				}
+			}
+			state.depth--
+			continue
+		}
+
+		if isBinaryContent(data) {
+			continue
+		}
+
+		results = append(results, ExtractedContent{Name: file.Name, Content: data})
+	}
+	return results, nil
 }
