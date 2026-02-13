@@ -631,7 +631,9 @@ func extractSQLite(content []byte) ([]ExtractedContent, error) {
 	var tables []string
 	for rows.Next() {
 		var name string
-		rows.Scan(&name)
+		if err := rows.Scan(&name); err != nil {
+			continue
+		}
 		tables = append(tables, name)
 	}
 	rows.Close()
@@ -650,7 +652,9 @@ func extractSQLite(content []byte) ([]ExtractedContent, error) {
 		}
 
 		for rows.Next() {
-			rows.Scan(ptrs...)
+			if err := rows.Scan(ptrs...); err != nil {
+				continue
+			}
 			for _, v := range values {
 				if s, ok := v.(string); ok {
 					text.WriteString(s)
