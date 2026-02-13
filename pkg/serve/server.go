@@ -58,26 +58,43 @@ func (s *Server) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-errChan:
-			if err == io.EOF {
-				return nil
+			// Drain any pending requests before handling EOF
+			for {
+				select {
+				case req := <-reqChan:
+					if s.processRequest(req) {
+						return nil
+					}
+				default:
+					// No more pending requests
+					if err == io.EOF {
+						return nil
+					}
+					s.sendError("decode", err.Error())
+					return nil
+				}
 			}
-			s.sendError("decode", err.Error())
-			// After a decode error, the stream is likely corrupted,
-			// but we continue to allow context cancellation
-			return nil
 		case req := <-reqChan:
-			switch req.Type {
-			case "scan":
-				s.handleScan(req.Payload)
-			case "scan_batch":
-				s.handleScanBatch(req.Payload)
-			case "close":
+			if s.processRequest(req) {
 				return nil
-			default:
-				s.sendError("unknown", "unknown request type: "+req.Type)
 			}
 		}
 	}
+}
+
+// processRequest handles a single request and returns true if the server should exit
+func (s *Server) processRequest(req Request) bool {
+	switch req.Type {
+	case "scan":
+		s.handleScan(req.Payload)
+	case "scan_batch":
+		s.handleScanBatch(req.Payload)
+	case "close":
+		return true
+	default:
+		s.sendError("unknown", "unknown request type: "+req.Type)
+	}
+	return false
 }
 
 func (s *Server) sendReady() {

@@ -6,7 +6,7 @@ rules:
 - name: Stripe API Key
   id: np.stripe.1
 
-  pattern: '(?i)\b((?:sk|rk)_live_[a-z0-9]{24})\b'
+  pattern: '(?i)\b(?P<key>(?:sk|rk)_live_[a-z0-9]{24})\b'
 
   categories:
   - api
@@ -22,7 +22,7 @@ rules:
 - name: Stripe API Test Key
   id: np.stripe.2
 
-  pattern: '(?i)\b((?:sk|rk)_test_[a-z0-9]{24})\b'
+  pattern: '(?i)\b(?P<key>(?:sk|rk)_test_[a-z0-9]{24})\b'
 
   categories:
   - api

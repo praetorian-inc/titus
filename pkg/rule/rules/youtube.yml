@@ -1,31 +1,35 @@
 rules:
-  - name: YouTube API Key
-    id: kingfisher.youtube.1
-    pattern: |
-      (?xi)
-        \b
-        (
-          AIza[a-zA-Z0-9_\-\\]{35}
-        )
-        \b
-    min_entropy: 2.0
-    confidence: medium
-    examples:
-      - '"youtube":{"api_key":"AIzaSyCKHtojSg-UNteBWlLUR2kHSgjGpUScYjk"'
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: https://www.googleapis.com/youtube/v3/videos?part=id&id=dummy&key={{ TOKEN }}
-          response_matcher:
-            - report_response: true
-            - type: WordMatch
-              words:
-                - "API key not valid"
-                - "keyInvalid"
-                - "API_KEY_INVALID"
-                - "forbidden"
-              match_all_words: false
-              negative: true
-            - type: JsonValid
+
+- name: YouTube API Key
+  id: np.youtube.1
+  pattern: '\b(?P<key>AIza[0-9A-Za-z_-]{35})\b'
+  categories: [api, secret]
+
+  examples:
+  - "YOUTUBE_API_KEY=AIzaSyAKqPaCesigvvNNcRt_gL0A6cgx3ZB-kuQ"
+  - |
+      var config = {
+        apiKey: 'AIzaSyBJguaCesZXozdkPVpBZNbGMVJ_LTOYuQA',
+        channelId: 'UCxxxxxxxxxxxxxxxxxxxxxx'
+      };
+  - "youtube_key: AIzaSyDDwPaCesKWwf-6Rq7vkpOkihlVr6uaxkA"
+
+  negative_examples:
+  - "AIza-short"
+  - "AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  - "YOUTUBE_API_KEY=your-api-key-here"
+  - "AIzaSyEXAMPLE_KEY_REPLACE_ME_1234567"
+
+  description: |
+    Google API key used for YouTube Data API v3 access. These keys use the
+    AIza prefix shared by all Google API keys and are 39 characters total.
+    An attacker with this key can query the YouTube Data API to access
+    video metadata, channel information, playlists, and search results.
+    Depending on API restrictions, the key may also grant access to other
+    Google services (Maps, Cloud, Gemini, etc.). Keys are associated with
+    Google Cloud projects for quota and billing.
+
+  references:
+  - https://developers.google.com/youtube/v3/getting-started
+  - https://cloud.google.com/docs/authentication/api-keys
+  - https://support.google.com/googleapi/answer/6310037

@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         sk_
         [a-z]{1,}
         _

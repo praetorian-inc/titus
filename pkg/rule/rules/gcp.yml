@@ -3,18 +3,20 @@ rules:
     id: kingfisher.gcp.1
     pattern: |
       (?xims)
-      (
+      (?P<service_account>
         \{[^{}]*
         \"auth_provider_x509_cert_url\":
         .{0,512}?
         }
       )
       |
-      \{
-        (?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*
-        "auth_provider_x509_cert_url":\s*".+?"
-        (?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*
-      \}
+      (?P<service_account_nested>
+        \{
+          (?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*
+          "auth_provider_x509_cert_url":\s*".+?"
+          (?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*
+        \}
+      )
     pattern_requirements:
       min_digits: 2
     min_entropy: 4.5
@@ -34,13 +36,18 @@ rules:
             }
           }
         }
+    negative_examples:
+      - '{"auth_provider_x509_cert_url":"https://example.com","client_email":"example@example.com"}'
+    references:
+      - https://cloud.google.com/iam/docs/service-account-creds
+      - https://cloud.google.com/iam/docs/keys-create-delete
     validation:
       type: GCP
   - name: GCP Private Key ID
     id: kingfisher.gcp.3
     pattern: |
       (?xi)
-      \b                     
+      \b
       gcp
       (?:
         .{0,20}?
@@ -50,7 +57,7 @@ rules:
       [=:]
       \s{0,8}
       ["']?
-      (
+      (?P<key_id>
         [0-9a-z]{35,40}
       )
       ["']?
@@ -61,3 +68,9 @@ rules:
     confidence: medium
     examples:
       - gcp_secret = ANzaSy0c3475372a7b10f7740dbda47abfdca42
+    negative_examples:
+      - gcp_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      - gcp_secret = your_private_key_id_placeholder_here1234
+    references:
+      - https://cloud.google.com/iam/docs/service-account-creds
+      - https://cloud.google.com/iam/docs/keys-create-delete

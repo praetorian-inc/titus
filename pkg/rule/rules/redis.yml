@@ -1,16 +1,17 @@
 rules:
   - id: np.redis.1
     name: Redis URI Connection String
+    # Hyperscan-compatible pattern (no lookbehind)
+    # Comment filtering moved to ignore_if_contains
     pattern: |
       (?xi)
-      (?<! [#/] .{0,50} )                                             (?# not in comments )
       (?: redis | rediss | redis\+sentinel ) ://                      (?# URI scheme )
-        (?: (?P<username>[a-zA-Z0-9%;._~!$&'()*+,;=-]{1,})           (?# username - optional )
+        (?: (?P<username>[a-zA-Z0-9%;._~!$&'()*+,;=-]{1,})            (?# username - optional )
           :
         )?
-        (?P<password>[a-zA-Z0-9%;._~!$&'()*+,;=/+-]{8,})             (?# password - named capture, min 8 chars )
-      @ (?P<host>[a-zA-Z0-9_.-]{1,}) (?: :(?P<port>\d{1,5}))?        (?# hostname and optional port )
-      (?: / (?P<db>\d{1,2}))?                                        (?# optional database number )
+        (?P<password>[a-zA-Z0-9%;._~!$&'()*+,;=/+-]{8,})              (?# password - min 8 chars )
+      @ (?P<host>[a-zA-Z0-9_.-]{1,}) (?: :(?P<port>\d{1,5}))?         (?# hostname and optional port )
+      (?: / (?P<db>\d{1,2}))?                                         (?# optional database number )
       \b
 
     pattern_requirements:
@@ -23,6 +24,8 @@ rules:
         - ":password@"
         - ":secret@"
         - "localhost"
+        - "# redis"
+        - "// redis"
 
     min_entropy: 3.0
 
@@ -55,18 +58,25 @@ rules:
 
   - id: np.redis.2
     name: Python Redis Client Debug Output
+    # Hyperscan-compatible pattern (no lookahead)
+    # "None" filtering moved to ignore_if_contains
     pattern: |
       (?xi)
       redis\.(?:client\.Redis|connection\.(?:Connection|SSLConnection|ConnectionPool))  (?# Python Redis class )
       .*?
       (?:password|passwd|pwd)                                         (?# password key )
       \s*=\s*                                                         (?# equals separator )
-      (?! None )                                                      (?# exclude None )
-      (?P<password>[a-zA-Z0-9+/=_-]{8,})                              (?# password value - named capture )
+      (?P<password>[a-zA-Z0-9+/=_-]{8,})                              (?# password value )
       (?:,|\s)                                                        (?# separator )
       .*?
       host\s*=\s*                                                     (?# host key )
-      (?P<host>[a-zA-Z0-9_.-]+)                                       (?# host value - named capture )
+      (?P<host>[a-zA-Z0-9_.-]+)                                       (?# host value )
+
+    pattern_requirements:
+      ignore_if_contains:
+        - "password=None"
+        - "passwd=None"
+        - "pwd=None"
 
     min_entropy: 3.0
 

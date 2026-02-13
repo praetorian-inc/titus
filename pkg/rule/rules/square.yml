@@ -3,36 +3,63 @@ rules:
 - name: Square Access Token
   id: np.square.1
 
-  pattern: '(?i)\b(sq0atp-[a-z0-9_-]{22})\b'
+  pattern: '(?i)\b(?P<token>sq0atp-[a-z0-9_-]{22})\b'
 
-  categories:
-  - api
-  - secret
+  categories: [api, secret]
 
   examples:
-  - '  personal access token sq0atp-qUlZzae8wVMc5P5NZdf5DA<br/>'
+  - "SQUARE_ACCESS_TOKEN=sq0atp-qUlZzae8wVMc5P5NZdf5DA"
   - |
       var applicationId = 'sq0idp-r34HdSnJVWaCesH3dnJrGA';
       var accessToken = 'sq0atp-RdSPeJa5qDMaCesxHOjeRQ';
+  - "access_token: sq0atp-HMKVjMfhw-nluwIJj2C1dQ"
+
+  negative_examples:
+  - "sq0atp-short"
+  - "sq0atp-xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  - "sq0idp-r34HdSnJVWaCesH3dnJrGA"
+  - "SQUARE_ACCESS_TOKEN=your-token-here"
+
+  description: |
+    Square Access Token (legacy format) used for payment processing APIs.
+    An attacker with this credential can process payments, access transaction
+    history, manage inventory, and retrieve customer information via the
+    Square Connect API. Tokens with full access can modify account settings
+    and financial data. Legacy tokens use the sq0atp- prefix; newer tokens
+    use a different format (EAAA prefix).
+
+  references:
+  - https://developer.squareup.com/docs/build-basics/access-tokens
+  - https://developer.squareup.com/docs/oauth-api/overview
 
 
 - name: Square OAuth Secret
   id: np.square.2
 
-  pattern: '(?i)\b(sq0csp-[a-z0-9_-]{43})\b'
+  pattern: '(?i)\b(?P<secret>sq0csp-[a-z0-9_-]{43})\b'
 
-  categories:
-  - api
-  - secret
+  categories: [api, secret]
 
   examples:
+  - "app_secret: sq0csp-VQgEphNJFVxfoEtJ1M_2KaCesfzP2_ugNWnlMPwZaZk"
   - |
-      app_secret: sq0csp-VQgEphNJFVxfoEtJ1M_2KaCesfzP2_ugNWnlMPwZaZk
-      sandbox_app_id: sandbox-sq0idp-wWAaCesVx0PhRbXkdUUg9Q
-      sandbox_access_token: sandbox-sq0atb-KVmmWPaCesnJkFsvje76sQ
-      production_app_id: sq0idp-wWACO1oVx0aCesXkdUUg9Q
-  - |
-      private String accessTokenEndpoint = "https://connect.squareup.com/oauth2/token";
-      private String baseURL = "https://connect.squareup.com";
-      private String clientId = "sq0idp-Ux0S-9iMfaCeszTkDpSjDw";
       private String clientSecret = "sq0csp-lBGGHNQmcaCesLfa3x6W7jJj8SQ-Fx5Y0yQiCrUWM40";
+  - "SQUARE_APPLICATION_SECRET=sq0csp-3_EwTtH0OJKMaCes2UNfSPXjs3J_PXwnx5JLVNFzgfE"
+
+  negative_examples:
+  - "sq0csp-tooshort"
+  - "sq0csp-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  - "sq0idp-r34HdSnJVWaCesH3dnJrGA"
+  - "SQUARE_APPLICATION_SECRET=my_secret"
+
+  description: |
+    Square OAuth Application Secret used for OAuth2 token exchange.
+    An attacker with this credential, combined with the application ID,
+    can obtain OAuth access tokens on behalf of merchants, potentially
+    gaining access to payment processing, customer data, and financial
+    records. The secret is used in the OAuth2 authorization flow to
+    exchange authorization codes for access tokens.
+
+  references:
+  - https://developer.squareup.com/docs/oauth-api/overview
+  - https://developer.squareup.com/reference/square/o-auth-api/obtain-token

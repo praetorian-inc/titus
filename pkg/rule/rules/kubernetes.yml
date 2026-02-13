@@ -13,7 +13,7 @@ rules:
     (?: token | Token | TOKEN | bootstrap | BOOTSTRAP)
     .{0,8}
     \b
-    ([a-z0-9]{6}\.[a-z0-9]{16})
+    (?P<token>[a-z0-9]{6}\.[a-z0-9]{16})
     \b
 
   categories: [api, secret, fuzzy]
@@ -40,8 +40,8 @@ rules:
 
   pattern: |
     (?x)
-    token-id: \s+ ([a-z0-9]{6}) \s+
-    token-secret: \s+ ([a-z0-9]{16}) \b
+    token-id: \s+ (?P<token_id>[a-z0-9]{6}) \s+
+    token-secret: \s+ (?P<token_secret>[a-z0-9]{16}) \b
 
   categories: [api, secret]
 
