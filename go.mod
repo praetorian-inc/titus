@@ -22,6 +22,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	gitlab.com/gitlab-org/api/client-go v1.22.0
 	golang.org/x/oauth2 v0.34.0
+	golang.org/x/term v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.45.0
 )

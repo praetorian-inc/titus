@@ -11,12 +11,13 @@ import (
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
 	reportDatastore string
 	reportFormat    string
-	reportNoColor   bool
+	reportColor     string
 )
 
 // styles holds color formatters matching NoseyParker color scheme
@@ -69,15 +70,15 @@ var reportCmd = &cobra.Command{
 	Long: `Read findings from a datastore and output a summary report.
 
 Default format is human-readable with NoseyParker-style colored output showing
-findings, matches, file locations, and context snippets. Use --no-color or
-set NO_COLOR env var to disable colors.`,
+findings, matches, file locations, and context snippets. Use --color flag to
+control color output (auto, always, never).`,
 	RunE:  runReport,
 }
 
 func init() {
 	reportCmd.Flags().StringVar(&reportDatastore, "datastore", "titus.ds", "Path to datastore directory or file")
 	reportCmd.Flags().StringVar(&reportFormat, "format", "human", "Output format: human, json, sarif")
-	reportCmd.Flags().BoolVar(&reportNoColor, "no-color", false, "Disable colored output")
+	reportCmd.Flags().StringVar(&reportColor, "color", "auto", "Color output: auto, always, never")
 }
 
 func runReport(cmd *cobra.Command, args []string) error {
@@ -330,10 +331,21 @@ func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*
 func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, datastorePath string, ruleMap map[string]*types.Rule) error {
 	out := cmd.OutOrStdout()
 
-	// Check if colors should be enabled
-	// Respect --no-color flag and NO_COLOR environment variable (fatih/color does this automatically)
-	colorsEnabled := !reportNoColor && os.Getenv("NO_COLOR") == ""
-	s := newStyles(colorsEnabled)
+	// Determine if colors should be enabled based on --color flag
+	switch reportColor {
+	case "always":
+		color.NoColor = false
+	case "never":
+		color.NoColor = true
+	default: // "auto"
+		// Check if stdout is a TTY and NO_COLOR is not set
+		if !term.IsTerminal(int(os.Stdout.Fd())) || os.Getenv("NO_COLOR") != "" {
+			color.NoColor = true
+		} else {
+			color.NoColor = false
+		}
+	}
+	s := newStyles(!color.NoColor)
 
 	// Resolve datastore path (same logic as runReport)
 	storePath := datastorePath
