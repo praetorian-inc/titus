@@ -182,17 +182,22 @@ rules:
 - name: Azure API Management Subscription Key
   id: np.azure.5
 
+  # Hyperscan-compatible pattern (no lookbehind/lookahead)
+  # Comment filtering and all-zeros/all-f rejection moved to ignore_if_contains
   pattern: |
     (?ix)
-    (?<![#/])                                            # Not immediately preceded by comment markers
-    (?:["']?Ocp-Apim-Subscription-Key["']?|subscription[-_]key)  # Header name with optional quotes
-    \s*[:=]\s*                                           # Separator
-    ['"]?                                                # Optional quote
-    (?P<key>
-      (?!0{32}|f{32})                                    # Reject all-zeros or all-F's patterns
-      [0-9a-f]{32}                                       # 32 hex characters
-    )
-    ['"]?                                                # Optional closing quote
+    (?:["']?Ocp-Apim-Subscription-Key["']?|subscription[-_]key)  (?# Header name with optional quotes )
+    \s*[:=]\s*                                                   (?# Separator )
+    ['"]?                                                        (?# Optional quote )
+    (?P<key>[0-9a-f]{32})                                        (?# 32 hex characters )
+    ['"]?                                                        (?# Optional closing quote )
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "00000000000000000000000000000000"
+      - "ffffffffffffffffffffffffffffffff"
+      - "// "
+      - "# "
 
   references:
   - https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions
