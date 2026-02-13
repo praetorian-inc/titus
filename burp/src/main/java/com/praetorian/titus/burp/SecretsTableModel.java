@@ -162,17 +162,19 @@ public class SecretsTableModel extends AbstractTableModel {
 
     /**
      * Get validated counts.
+     * Returns: [valid, invalid, undetermined, notChecked, falsePositive]
      */
     public int[] getValidationCounts() {
-        int valid = 0, invalid = 0, undetermined = 0, notChecked = 0;
+        int valid = 0, invalid = 0, undetermined = 0, notChecked = 0, falsePositive = 0;
         for (DedupCache.FindingRecord record : findings) {
             switch (record.validationStatus) {
                 case VALID -> valid++;
                 case INVALID -> invalid++;
                 case UNDETERMINED -> undetermined++;
+                case FALSE_POSITIVE -> falsePositive++;
                 default -> notChecked++;
             }
         }
-        return new int[]{valid, invalid, undetermined, notChecked};
+        return new int[]{valid, invalid, undetermined, notChecked, falsePositive};
     }
 }

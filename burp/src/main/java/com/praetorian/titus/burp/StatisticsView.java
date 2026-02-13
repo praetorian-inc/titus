@@ -37,34 +37,24 @@ public class StatisticsView extends JPanel {
         refreshButton = new JButton("Refresh Statistics");
         refreshButton.addActionListener(e -> refresh());
         toolbar.add(refreshButton);
-        add(toolbar, BorderLayout.NORTH);
+
+        // Summary bar at top
+        summaryLabel = new JLabel("No statistics available");
+        summaryLabel.setBorder(BorderFactory.createCompoundBorder(
+            new TitledBorder("Summary"),
+            BorderFactory.createEmptyBorder(5, 10, 5, 10)
+        ));
+        summaryLabel.setFont(summaryLabel.getFont().deriveFont(Font.BOLD));
+
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.add(toolbar, BorderLayout.NORTH);
+        topPanel.add(summaryLabel, BorderLayout.SOUTH);
+        add(topPanel, BorderLayout.NORTH);
 
         // Main content - two tables side by side
         JPanel tablesPanel = new JPanel(new GridLayout(1, 2, 10, 0));
 
-        // Host statistics table
-        hostTableModel = new DefaultTableModel(new String[]{"Host", "Secrets"}, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-            @Override
-            public Class<?> getColumnClass(int column) {
-                return column == 1 ? Integer.class : String.class;
-            }
-        };
-        hostTable = new JTable(hostTableModel);
-        hostTable.setAutoCreateRowSorter(true);
-        hostTable.getColumnModel().getColumn(1).setPreferredWidth(60);
-        hostTable.getColumnModel().getColumn(1).setMaxWidth(80);
-        centerColumn(hostTable, 1);
-
-        JPanel hostPanel = new JPanel(new BorderLayout());
-        hostPanel.setBorder(new TitledBorder("Secrets by Host"));
-        hostPanel.add(new JScrollPane(hostTable), BorderLayout.CENTER);
-        tablesPanel.add(hostPanel);
-
-        // Type statistics table
+        // Type statistics table (on left)
         typeTableModel = new DefaultTableModel(new String[]{"Type", "Count", "Category"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -90,16 +80,29 @@ public class StatisticsView extends JPanel {
         typePanel.add(new JScrollPane(typeTable), BorderLayout.CENTER);
         tablesPanel.add(typePanel);
 
-        add(tablesPanel, BorderLayout.CENTER);
+        // Host statistics table (on right)
+        hostTableModel = new DefaultTableModel(new String[]{"Host", "Secrets"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+            @Override
+            public Class<?> getColumnClass(int column) {
+                return column == 1 ? Integer.class : String.class;
+            }
+        };
+        hostTable = new JTable(hostTableModel);
+        hostTable.setAutoCreateRowSorter(true);
+        hostTable.getColumnModel().getColumn(1).setPreferredWidth(60);
+        hostTable.getColumnModel().getColumn(1).setMaxWidth(80);
+        centerColumn(hostTable, 1);
 
-        // Summary bar
-        summaryLabel = new JLabel("No statistics available");
-        summaryLabel.setBorder(BorderFactory.createCompoundBorder(
-            new TitledBorder("Summary"),
-            BorderFactory.createEmptyBorder(5, 10, 5, 10)
-        ));
-        summaryLabel.setFont(summaryLabel.getFont().deriveFont(Font.BOLD));
-        add(summaryLabel, BorderLayout.SOUTH);
+        JPanel hostPanel = new JPanel(new BorderLayout());
+        hostPanel.setBorder(new TitledBorder("Secrets by Host"));
+        hostPanel.add(new JScrollPane(hostTable), BorderLayout.CENTER);
+        tablesPanel.add(hostPanel);
+
+        add(tablesPanel, BorderLayout.CENTER);
 
         // Initial refresh
         refresh();
@@ -164,17 +167,24 @@ public class StatisticsView extends JPanel {
         int totalSecrets = secretsModel.getTotalCount();
         int totalHosts = secretsModel.getUniqueHosts().size();
         int[] validationCounts = secretsModel.getValidationCounts();
+        // [valid, invalid, undetermined, notChecked, falsePositive]
+        int valid = validationCounts[0];
+        int invalid = validationCounts[1];
+        int undetermined = validationCounts[2];
+        int falsePositive = validationCounts[4];
+        int validated = valid + invalid + undetermined;
 
         StringBuilder sb = new StringBuilder();
         sb.append(totalSecrets).append(" unique secret").append(totalSecrets != 1 ? "s" : "");
         sb.append(" across ").append(totalHosts).append(" host").append(totalHosts != 1 ? "s" : "");
 
-        int validated = validationCounts[0] + validationCounts[1] + validationCounts[2];
+        sb.append(" | Validated: ").append(validated);
         if (validated > 0) {
-            sb.append(" | ").append(validated).append(" validated");
-            sb.append(" (").append(validationCounts[0]).append(" active, ");
-            sb.append(validationCounts[1]).append(" inactive)");
+            sb.append(" (").append(valid).append(" active, ");
+            sb.append(invalid).append(" inactive)");
         }
+
+        sb.append(" | False Positive: ").append(falsePositive);
 
         summaryLabel.setText(sb.toString());
     }

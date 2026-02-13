@@ -347,6 +347,7 @@ public class DedupCache {
         public ValidationStatus validationStatus;
         public String validationMessage;
         public Instant validatedAt;
+        public String responseSnippet; // Snippet of response around the secret
 
         public FindingRecord() {
             this.urls = new HashSet<>();
@@ -379,6 +380,13 @@ public class DedupCache {
             this.validationStatus = status;
             this.validationMessage = message;
             this.validatedAt = Instant.now();
+        }
+
+        /**
+         * Set response snippet.
+         */
+        public void setResponseSnippet(String snippet) {
+            this.responseSnippet = snippet;
         }
     }
 }
