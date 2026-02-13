@@ -38,6 +38,16 @@ type extractState struct {
 	limits ExtractionLimits
 }
 
+
+// getExtension returns the file extension, handling .tar.gz specially.
+// filepath.Ext("file.tar.gz") returns ".gz", but we need ".tar.gz".
+func getExtension(path string) string {
+	lower := strings.ToLower(path)
+	if strings.HasSuffix(lower, ".tar.gz") {
+		return ".tar.gz"
+	}
+	return strings.ToLower(filepath.Ext(path))
+}
 // ExtractText extracts text from supported binary files (xlsx, docx, pptx, pdf, zip, tar, ipynb).
 func ExtractText(path string, content []byte, limits ExtractionLimits) ([]ExtractedContent, error) {
 	state := &extractState{
@@ -55,7 +65,7 @@ func extractWithState(path string, content []byte, state *extractState) ([]Extra
 		return nil, nil // Silently skip - too deep
 	}
 
-	ext := strings.ToLower(filepath.Ext(path))
+	ext := getExtension(path)
 
 	switch ext {
 	case ".xlsx":
@@ -353,7 +363,7 @@ func extractTar(content []byte, isGzipped bool, state *extractState) ([]Extracte
 		state.total += int64(len(data))
 
 		// Check if it's a nested extractable file
-		ext := strings.ToLower(filepath.Ext(header.Name))
+		ext := getExtension(header.Name)
 		if isExtractable(ext) {
 			// Recurse with incremented depth
 			nestedState := &extractState{
@@ -473,7 +483,7 @@ func extractZIPWithState(content []byte, state *extractState) ([]ExtractedConten
 		state.total += int64(len(data))
 
 		// Check if it's a nested extractable file
-		ext := strings.ToLower(filepath.Ext(file.Name))
+		ext := getExtension(file.Name)
 		if isExtractable(ext) {
 			// Recurse with incremented depth
 			nestedState := &extractState{
@@ -707,7 +717,7 @@ func extract7z(content []byte, state *extractState) ([]ExtractedContent, error) 
 		state.total += int64(len(data))
 
 		// Check for nested extractable files
-		ext := strings.ToLower(filepath.Ext(file.Name))
+		ext := getExtension(file.Name)
 		if isExtractable(ext) {
 			state.depth++
 			if state.depth <= state.limits.MaxDepth {

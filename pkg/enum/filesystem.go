@@ -23,6 +23,7 @@ func NewFilesystemEnumerator(config Config) *FilesystemEnumerator {
 	return &FilesystemEnumerator{config: config}
 }
 
+
 // Enumerate walks the filesystem and yields file blobs.
 func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	// Load .gitignore patterns if present
@@ -90,7 +91,7 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 
 		// Handle binary files with extraction enabled
 		if binary && e.config.ExtractArchives != "" {
-			ext := strings.ToLower(filepath.Ext(path))
+			ext := getExtension(path)
 			if shouldExtract(e.config, ext) {
 				// Try to extract text from binary file
 				extracted, err := ExtractText(path, content, e.config.ExtractLimits)
