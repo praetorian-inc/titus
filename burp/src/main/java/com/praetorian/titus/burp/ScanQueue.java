@@ -226,7 +226,7 @@ public class ScanQueue implements AutoCloseable {
                         totalMatches.incrementAndGet();
 
                         // Record and report
-                        dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId());
+                        dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId(), match.ruleName());
                         issueReporter.reportIssue(job, match);
                     }
                 }

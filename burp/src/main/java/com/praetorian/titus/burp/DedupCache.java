@@ -115,7 +115,21 @@ public class DedupCache {
      * @return The updated finding record
      */
     public FindingRecord recordOccurrence(String url, String secretContent, String ruleId) {
+        return recordOccurrence(url, secretContent, ruleId, null);
+    }
+
+    /**
+     * Record an occurrence of a finding with rule name.
+     *
+     * @param url           The URL where the secret was found
+     * @param secretContent The secret content
+     * @param ruleId        The rule that matched
+     * @param ruleName      The human-readable rule name
+     * @return The updated finding record
+     */
+    public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName) {
         String normalizedUrl = normalizeUrl(url);
+        String host = SecretCategoryMapper.extractHost(url);
         String key = computeKey(normalizedUrl, secretContent);
 
         // Evict oldest entries if at max capacity before adding new
@@ -127,7 +141,10 @@ public class DedupCache {
             if (existing == null) {
                 FindingRecord newRecord = new FindingRecord(
                     ruleId,
+                    ruleName != null ? ruleName : SecretCategoryMapper.getDisplayName(ruleId, null),
                     createPreview(secretContent),
+                    secretContent,
+                    host,
                     new HashSet<>(Set.of(normalizedUrl)),
                     1,
                     Instant.now()
@@ -135,6 +152,7 @@ public class DedupCache {
                 return newRecord;
             } else {
                 existing.urls.add(normalizedUrl);
+                existing.hosts.add(host);
                 existing.occurrenceCount++;
                 return existing;
             }
@@ -275,26 +293,74 @@ public class DedupCache {
     }
 
     /**
+     * Validation status for secrets.
+     */
+    public enum ValidationStatus {
+        NOT_CHECKED("-"),
+        VALIDATING("..."),
+        VALID("Active"),
+        INVALID("Inactive"),
+        UNDETERMINED("Unknown");
+
+        private final String displayText;
+
+        ValidationStatus(String displayText) {
+            this.displayText = displayText;
+        }
+
+        public String getDisplayText() {
+            return displayText;
+        }
+    }
+
+    /**
      * Record of a deduplicated finding.
      */
     public static class FindingRecord {
         public String ruleId;
+        public String ruleName;
         public String secretPreview;
+        public String secretContent;  // Full content for validation
+        public String primaryHost;    // Host where first seen
         public Set<String> urls;
+        public Set<String> hosts;     // All hosts where seen
         public int occurrenceCount;
         public Instant firstSeen;
+        public ValidationStatus validationStatus;
+        public String validationMessage;
+        public Instant validatedAt;
 
         public FindingRecord() {
             this.urls = new HashSet<>();
+            this.hosts = new HashSet<>();
+            this.validationStatus = ValidationStatus.NOT_CHECKED;
         }
 
-        public FindingRecord(String ruleId, String secretPreview, Set<String> urls,
+        public FindingRecord(String ruleId, String ruleName, String secretPreview,
+                           String secretContent, String primaryHost, Set<String> urls,
                            int occurrenceCount, Instant firstSeen) {
             this.ruleId = ruleId;
+            this.ruleName = ruleName;
             this.secretPreview = secretPreview;
+            this.secretContent = secretContent;
+            this.primaryHost = primaryHost;
             this.urls = urls;
+            this.hosts = new HashSet<>();
+            if (primaryHost != null && !primaryHost.isEmpty()) {
+                this.hosts.add(primaryHost);
+            }
             this.occurrenceCount = occurrenceCount;
             this.firstSeen = firstSeen;
+            this.validationStatus = ValidationStatus.NOT_CHECKED;
+        }
+
+        /**
+         * Update validation status.
+         */
+        public void setValidation(ValidationStatus status, String message) {
+            this.validationStatus = status;
+            this.validationMessage = message;
+            this.validatedAt = Instant.now();
         }
     }
 }
