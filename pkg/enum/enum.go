@@ -13,6 +13,22 @@ type Enumerator interface {
 	Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error
 }
 
+// ExtractionLimits defines safety limits for archive extraction.
+type ExtractionLimits struct {
+	MaxSize  int64 // Max uncompressed size per file (10MB default)
+	MaxTotal int64 // Max total bytes extracted from one archive (100MB default)
+	MaxDepth int   // Max nested archive depth (5 default)
+}
+
+// DefaultExtractionLimits returns the default extraction safety limits.
+func DefaultExtractionLimits() ExtractionLimits {
+	return ExtractionLimits{
+		MaxSize:  10 * 1024 * 1024,
+		MaxTotal: 100 * 1024 * 1024,
+		MaxDepth: 5,
+	}
+}
+
 // Config for enumeration.
 type Config struct {
 	// Root is the starting path for enumeration.
@@ -29,4 +45,7 @@ type Config struct {
 
 	// ExtractArchives enables text extraction from binary files (extensions: xlsx,docx,pdf,zip or 'all').
 	ExtractArchives string
+
+	// ExtractLimits specifies safety limits for archive extraction.
+	ExtractLimits ExtractionLimits
 }

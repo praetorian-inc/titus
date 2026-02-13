@@ -93,7 +93,7 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 			ext := strings.ToLower(filepath.Ext(path))
 			if shouldExtract(e.config, ext) {
 				// Try to extract text from binary file
-				extracted, err := ExtractText(path, content)
+				extracted, err := ExtractText(path, content, e.config.ExtractLimits)
 				if err == nil && len(extracted) > 0 {
 					// Yield each extracted piece of content
 					for _, ec := range extracted {

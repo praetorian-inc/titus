@@ -1,8 +1,11 @@
 package enum
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -22,11 +25,33 @@ type ExtractedContent struct {
 
 // Extractor extracts text from binary files.
 type Extractor interface {
-	ExtractText(path string, content []byte) ([]ExtractedContent, error)
+	ExtractText(path string, content []byte, limits ExtractionLimits) ([]ExtractedContent, error)
 }
 
-// ExtractText extracts text from supported binary files (xlsx, docx, pdf, zip).
-func ExtractText(path string, content []byte) ([]ExtractedContent, error) {
+// extractState tracks extraction progress for recursive archive processing.
+type extractState struct {
+	depth  int
+	total  int64
+	limits ExtractionLimits
+}
+
+// ExtractText extracts text from supported binary files (xlsx, docx, pptx, pdf, zip, tar, ipynb).
+func ExtractText(path string, content []byte, limits ExtractionLimits) ([]ExtractedContent, error) {
+	state := &extractState{
+		depth:  0,
+		total:  0,
+		limits: limits,
+	}
+	return extractWithState(path, content, state)
+}
+
+// extractWithState performs extraction with depth and size tracking.
+func extractWithState(path string, content []byte, state *extractState) ([]ExtractedContent, error) {
+	// Check depth limit
+	if state.depth > state.limits.MaxDepth {
+		return nil, nil // Silently skip - too deep
+	}
+
 	ext := strings.ToLower(filepath.Ext(path))
 
 	switch ext {
@@ -34,10 +59,18 @@ func ExtractText(path string, content []byte) ([]ExtractedContent, error) {
 		return extractXLSX(content)
 	case ".docx":
 		return extractDOCX(content)
+	case ".pptx":
+		return extractPPTX(content)
 	case ".pdf":
 		return extractPDF(content)
-	case ".zip":
-		return extractZIP(content)
+	case ".zip", ".jar", ".war", ".ear":
+		return extractZIPWithState(content, state)
+	case ".tar":
+		return extractTar(content, false, state)
+	case ".tar.gz", ".tgz":
+		return extractTar(content, true, state)
+	case ".ipynb":
+		return extractIPYNB(content)
 	default:
 		return nil, fmt.Errorf("unsupported file type: %s", ext)
 	}
@@ -136,6 +169,42 @@ func extractDOCX(content []byte) ([]ExtractedContent, error) {
 	return results, nil
 }
 
+// extractPPTX extracts text from PowerPoint files (pptx format).
+func extractPPTX(content []byte) ([]ExtractedContent, error) {
+	reader := bytes.NewReader(content)
+	zipReader, err := zip.NewReader(reader, int64(len(content)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open pptx as zip: %w", err)
+	}
+
+	var results []ExtractedContent
+
+	// Extract text from ppt/slides/*.xml
+	for _, file := range zipReader.File {
+		if strings.HasPrefix(file.Name, "ppt/slides/slide") && strings.HasSuffix(file.Name, ".xml") {
+			rc, err := file.Open()
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				continue
+			}
+
+			text := extractXMLText(data)
+			if len(text) > 0 {
+				results = append(results, ExtractedContent{
+					Name:    file.Name,
+					Content: []byte(text),
+				})
+			}
+		}
+	}
+
+	return results, nil
+}
+
 // extractPDF extracts text from PDF files using ledongthuc/pdf.
 func extractPDF(content []byte) ([]ExtractedContent, error) {
 	// Create a temporary file since ledongthuc/pdf requires a file or ReaderAt with size
@@ -195,6 +264,117 @@ func extractPDF(content []byte) ([]ExtractedContent, error) {
 	}, nil
 }
 
+// extractIPYNB extracts code and markdown cells from Jupyter notebooks.
+func extractIPYNB(content []byte) ([]ExtractedContent, error) {
+	var notebook struct {
+		Cells []struct {
+			CellType string   `json:"cell_type"`
+			Source   []string `json:"source"`
+		} `json:"cells"`
+	}
+
+	if err := json.Unmarshal(content, &notebook); err != nil {
+		return nil, fmt.Errorf("failed to parse ipynb: %w", err)
+	}
+
+	var results []ExtractedContent
+	for i, cell := range notebook.Cells {
+		if cell.CellType == "code" || cell.CellType == "markdown" {
+			cellContent := strings.Join(cell.Source, "")
+			if len(strings.TrimSpace(cellContent)) > 0 {
+				results = append(results, ExtractedContent{
+					Name:    fmt.Sprintf("cell_%d_%s", i, cell.CellType),
+					Content: []byte(cellContent),
+				})
+			}
+		}
+	}
+
+	return results, nil
+}
+
+// extractTar extracts text from tar archives (optionally gzipped).
+func extractTar(content []byte, isGzipped bool, state *extractState) ([]ExtractedContent, error) {
+	var reader io.Reader = bytes.NewReader(content)
+
+	// Decompress if gzipped
+	if isGzipped {
+		gzr, err := gzip.NewReader(reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open gzip: %w", err)
+		}
+		defer gzr.Close()
+		reader = gzr
+	}
+
+	tarReader := tar.NewReader(reader)
+	var results []ExtractedContent
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tar: %w", err)
+		}
+
+		// Skip directories
+		if header.Typeflag == tar.TypeDir {
+			continue
+		}
+
+		// Check size limits
+		if header.Size > state.limits.MaxSize {
+			continue
+		}
+		if state.total+header.Size > state.limits.MaxTotal {
+			break // Stop extraction
+		}
+
+		data, err := io.ReadAll(tarReader)
+		if err != nil {
+			continue
+		}
+
+		state.total += int64(len(data))
+
+		// Check if it's a nested extractable file
+		ext := strings.ToLower(filepath.Ext(header.Name))
+		if isExtractable(ext) {
+			// Recurse with incremented depth
+			nestedState := &extractState{
+				depth:  state.depth + 1,
+				total:  state.total,
+				limits: state.limits,
+			}
+			nested, err := extractWithState(header.Name, data, nestedState)
+			if err == nil {
+				for _, n := range nested {
+					results = append(results, ExtractedContent{
+						Name:    header.Name + ":" + n.Name,
+						Content: n.Content,
+					})
+				}
+			}
+			state.total = nestedState.total
+			continue
+		}
+
+		// Skip binary files
+		if isBinaryContent(data) {
+			continue
+		}
+
+		results = append(results, ExtractedContent{
+			Name:    header.Name,
+			Content: data,
+		})
+	}
+
+	return results, nil
+}
+
 // extractXMLText extracts text content from XML data.
 // It parses XML and collects all text nodes.
 func extractXMLText(data []byte) string {
@@ -244,8 +424,8 @@ func cleanText(s string) string {
 	return strings.TrimSpace(result.String())
 }
 
-// extractZIP extracts text from ZIP archives.
-func extractZIP(content []byte) ([]ExtractedContent, error) {
+// extractZIPWithState extracts text from ZIP archives with state tracking.
+func extractZIPWithState(content []byte, state *extractState) ([]ExtractedContent, error) {
 	reader := bytes.NewReader(content)
 	zipReader, err := zip.NewReader(reader, int64(len(content)))
 	if err != nil {
@@ -259,9 +439,12 @@ func extractZIP(content []byte) ([]ExtractedContent, error) {
 			continue
 		}
 
-		// Skip large files
-		if file.UncompressedSize64 > 10*1024*1024 {
+		// Check size limits
+		if file.UncompressedSize64 > uint64(state.limits.MaxSize) {
 			continue
+		}
+		if state.total+int64(file.UncompressedSize64) > state.limits.MaxTotal {
+			break // Stop extraction
 		}
 
 		rc, err := file.Open()
@@ -274,10 +457,18 @@ func extractZIP(content []byte) ([]ExtractedContent, error) {
 			continue
 		}
 
+		state.total += int64(len(data))
+
 		// Check if it's a nested extractable file
 		ext := strings.ToLower(filepath.Ext(file.Name))
-		if ext == ".zip" || ext == ".xlsx" || ext == ".docx" || ext == ".pdf" {
-			nested, err := ExtractText(file.Name, data)
+		if isExtractable(ext) {
+			// Recurse with incremented depth
+			nestedState := &extractState{
+				depth:  state.depth + 1,
+				total:  state.total,
+				limits: state.limits,
+			}
+			nested, err := extractWithState(file.Name, data, nestedState)
 			if err == nil {
 				for _, n := range nested {
 					results = append(results, ExtractedContent{
@@ -286,6 +477,7 @@ func extractZIP(content []byte) ([]ExtractedContent, error) {
 					})
 				}
 			}
+			state.total = nestedState.total
 			continue
 		}
 
@@ -301,6 +493,15 @@ func extractZIP(content []byte) ([]ExtractedContent, error) {
 	}
 
 	return results, nil
+}
+
+// isExtractable checks if a file extension is extractable.
+func isExtractable(ext string) bool {
+	switch ext {
+	case ".zip", ".jar", ".war", ".ear", ".xlsx", ".docx", ".pptx", ".pdf", ".tar", ".tar.gz", ".tgz", ".ipynb":
+		return true
+	}
+	return false
 }
 
 // isBinaryContent detects if content is binary by checking for null bytes.

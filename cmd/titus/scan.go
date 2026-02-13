@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
@@ -46,6 +48,9 @@ var (
 	scanValidate            bool
 	scanValidateWorkers     int
 	scanExtractArchivesFlag extensionsValue
+	extractMaxSize          string
+	extractMaxTotal         string
+	extractMaxDepth         int
 )
 
 var scanCmd = &cobra.Command{
@@ -70,6 +75,9 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
 	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract", "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')")
+	scanCmd.Flags().StringVar(&extractMaxSize, "extract-max-size", "10MB", "Max uncompressed size per extracted file")
+	scanCmd.Flags().StringVar(&extractMaxTotal, "extract-max-total", "100MB", "Max total bytes to extract from one archive")
+	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -307,13 +315,61 @@ func loadRules(path, include, exclude string) ([]*types.Rule, error) {
 	return rules, nil
 }
 
+// parseSize converts size strings like "10MB" to bytes.
+func parseSize(sizeStr string) (int64, error) {
+	sizeStr = strings.TrimSpace(strings.ToUpper(sizeStr))
+	
+	// Parse multiplier suffix
+	multiplier := int64(1)
+	if strings.HasSuffix(sizeStr, "KB") {
+		multiplier = 1024
+		sizeStr = strings.TrimSuffix(sizeStr, "KB")
+	} else if strings.HasSuffix(sizeStr, "MB") {
+		multiplier = 1024 * 1024
+		sizeStr = strings.TrimSuffix(sizeStr, "MB")
+	} else if strings.HasSuffix(sizeStr, "GB") {
+		multiplier = 1024 * 1024 * 1024
+		sizeStr = strings.TrimSuffix(sizeStr, "GB")
+	}
+	
+	// Parse numeric value
+	val, err := strconv.ParseInt(strings.TrimSpace(sizeStr), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size format: %s", sizeStr)
+	}
+	
+	return val * multiplier, nil
+}
+
 func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
+	// Parse extraction limits
+	limits := enum.DefaultExtractionLimits()
+	
+	if extractMaxSize != "" {
+		size, err := parseSize(extractMaxSize)
+		if err != nil {
+			return nil, fmt.Errorf("parsing extract-max-size: %w", err)
+		}
+		limits.MaxSize = size
+	}
+	
+	if extractMaxTotal != "" {
+		size, err := parseSize(extractMaxTotal)
+		if err != nil {
+			return nil, fmt.Errorf("parsing extract-max-total: %w", err)
+		}
+		limits.MaxTotal = size
+	}
+	
+	limits.MaxDepth = extractMaxDepth
+
 	config := enum.Config{
 		Root:            target,
 		IncludeHidden:   scanIncludeHidden,
 		MaxFileSize:     scanMaxFileSize,
 		FollowSymlinks:  false,
 		ExtractArchives: string(scanExtractArchivesFlag),
+		ExtractLimits:   limits,
 	}
 
 	if useGit {
