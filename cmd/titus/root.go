@@ -15,7 +15,12 @@ var rootCmd = &cobra.Command{
 	Long: `Titus is a fast secrets scanner that finds credentials in code, files, and git history.
 It uses regex-based detection rules to identify sensitive data like API keys, passwords, and tokens.
 
-This is a Go port of the original NoseyParker tool.`,
+Features:
+  • NoseyParker-compatible output with colored terminal display
+  • Directory-based datastore format (titus.ds/) for persistent results
+  • Git history scanning with incremental support
+  • Archive extraction (PDF, Office docs, ZIP)
+  • Secret validation against source APIs`,
 }
 
 func init() {

@@ -59,7 +59,11 @@ var (
 var scanCmd = &cobra.Command{
 	Use:   "scan <target>",
 	Short: "Scan a target for secrets",
-	Long:  "Scan a file, directory, or git repository for secrets using detection rules",
+	Long: `Scan a file, directory, or git repository for secrets using detection rules.
+
+Outputs results to a directory-based datastore (titus.ds/) for persistent storage.
+Use --incremental to skip already-scanned content, --git to enumerate git history,
+and --validate to verify secrets against their source APIs.`,
 	Args:  cobra.ExactArgs(1),
 	RunE:  runScan,
 }
