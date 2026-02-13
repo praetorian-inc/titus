@@ -89,9 +89,9 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 		binary := isBinary(content)
 
 		// Handle binary files with extraction enabled
-		if binary && e.config.ExtractArchives {
+		if binary && e.config.ExtractArchives != "" {
 			ext := strings.ToLower(filepath.Ext(path))
-			if ext == ".xlsx" || ext == ".docx" || ext == ".pdf" || ext == ".zip" {
+			if shouldExtract(e.config, ext) {
 				// Try to extract text from binary file
 				extracted, err := ExtractText(path, content)
 				if err == nil && len(extracted) > 0 {
@@ -128,6 +128,23 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 		// Yield to callback
 		return callback(content, blobID, prov)
 	})
+}
+
+// shouldExtract checks if a file type should be extracted based on config.
+func shouldExtract(config Config, ext string) bool {
+	if config.ExtractArchives == "" {
+		return false
+	}
+	if config.ExtractArchives == "all" {
+		return true
+	}
+	types := strings.Split(strings.ToLower(config.ExtractArchives), ",")
+	for _, t := range types {
+		if strings.TrimSpace(t) == strings.TrimPrefix(ext, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 // isHidden checks if a filename is hidden (starts with .).
