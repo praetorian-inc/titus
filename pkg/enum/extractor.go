@@ -25,7 +25,7 @@ type Extractor interface {
 	ExtractText(path string, content []byte) ([]ExtractedContent, error)
 }
 
-// ExtractText extracts text from supported binary files (xlsx, docx, pdf).
+// ExtractText extracts text from supported binary files (xlsx, docx, pdf, zip).
 func ExtractText(path string, content []byte) ([]ExtractedContent, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 
@@ -36,6 +36,8 @@ func ExtractText(path string, content []byte) ([]ExtractedContent, error) {
 		return extractDOCX(content)
 	case ".pdf":
 		return extractPDF(content)
+	case ".zip":
+		return extractZIP(content)
 	default:
 		return nil, fmt.Errorf("unsupported file type: %s", ext)
 	}
@@ -240,4 +242,72 @@ func cleanText(s string) string {
 	}
 
 	return strings.TrimSpace(result.String())
+}
+
+// extractZIP extracts text from ZIP archives.
+func extractZIP(content []byte) ([]ExtractedContent, error) {
+	reader := bytes.NewReader(content)
+	zipReader, err := zip.NewReader(reader, int64(len(content)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open zip: %w", err)
+	}
+
+	var results []ExtractedContent
+
+	for _, file := range zipReader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+
+		// Skip large files
+		if file.UncompressedSize64 > 10*1024*1024 {
+			continue
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			continue
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			continue
+		}
+
+		// Check if it's a nested extractable file
+		ext := strings.ToLower(filepath.Ext(file.Name))
+		if ext == ".zip" || ext == ".xlsx" || ext == ".docx" || ext == ".pdf" {
+			nested, err := ExtractText(file.Name, data)
+			if err == nil {
+				for _, n := range nested {
+					results = append(results, ExtractedContent{
+						Name:    file.Name + ":" + n.Name,
+						Content: n.Content,
+					})
+				}
+			}
+			continue
+		}
+
+		// Skip binary files
+		if isBinaryContent(data) {
+			continue
+		}
+
+		results = append(results, ExtractedContent{
+			Name:    file.Name,
+			Content: data,
+		})
+	}
+
+	return results, nil
+}
+
+// isBinaryContent detects if content is binary by checking for null bytes.
+func isBinaryContent(content []byte) bool {
+	checkSize := len(content)
+	if checkSize > 8192 {
+		checkSize = 8192
+	}
+	return bytes.IndexByte(content[:checkSize], 0) != -1
 }

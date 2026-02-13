@@ -91,7 +91,7 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 		// Handle binary files with extraction enabled
 		if binary && e.config.ExtractArchives {
 			ext := strings.ToLower(filepath.Ext(path))
-			if ext == ".xlsx" || ext == ".docx" || ext == ".pdf" {
+			if ext == ".xlsx" || ext == ".docx" || ext == ".pdf" || ext == ".zip" {
 				// Try to extract text from binary file
 				extracted, err := ExtractText(path, content)
 				if err == nil && len(extracted) > 0 {
