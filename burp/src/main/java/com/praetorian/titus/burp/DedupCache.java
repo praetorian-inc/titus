@@ -370,11 +370,13 @@ public class DedupCache {
         public String responseSnippet; // Snippet of response around the secret
         public String requestContent;  // Full request content for display
         public String responseContent; // Full response content for display
+        public Map<String, String> validationDetails;
 
         public FindingRecord() {
             this.urls = new HashSet<>();
             this.hosts = new HashSet<>();
             this.validationStatus = ValidationStatus.NOT_CHECKED;
+            this.validationDetails = new HashMap<>();
         }
 
         public FindingRecord(String ruleId, String ruleName, String secretPreview,
@@ -393,6 +395,7 @@ public class DedupCache {
             this.occurrenceCount = occurrenceCount;
             this.firstSeen = firstSeen;
             this.validationStatus = ValidationStatus.NOT_CHECKED;
+            this.validationDetails = new HashMap<>();
         }
 
         /**
@@ -417,6 +420,13 @@ public class DedupCache {
         public void setHttpContent(String requestContent, String responseContent) {
             this.requestContent = requestContent;
             this.responseContent = responseContent;
+        }
+
+        /**
+         * Set validation details.
+         */
+        public void setValidationDetails(Map<String, String> details) {
+            this.validationDetails = details;
         }
     }
 }

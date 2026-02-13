@@ -91,6 +91,7 @@ public class ValidationManager {
                 };
 
                 record.setValidation(status, result.message());
+                record.setValidationDetails(result.details());
                 validationCache.put(cacheKey, status);
                 dedupCache.saveToSettings(); // Persist
 
@@ -128,14 +129,25 @@ public class ValidationManager {
 
         if (!response.get("success").getAsBoolean()) {
             String error = response.has("error") ? response.get("error").getAsString() : "Unknown error";
-            return new ValidationResult("undetermined", 0, error);
+            return new ValidationResult("undetermined", 0, error, new HashMap<>());
         }
 
         JsonObject data = response.getAsJsonObject("data");
+        
+        // Extract details
+        Map<String, String> details = new HashMap<>();
+        if (data.has("details") && !data.get("details").isJsonNull()) {
+            JsonObject detailsObj = data.getAsJsonObject("details");
+            for (String key : detailsObj.keySet()) {
+                details.put(key, detailsObj.get(key).getAsString());
+            }
+        }
+        
         return new ValidationResult(
             data.has("status") ? data.get("status").getAsString() : "undetermined",
             data.has("confidence") ? data.get("confidence").getAsDouble() : 0,
-            data.has("message") ? data.get("message").getAsString() : ""
+            data.has("message") ? data.get("message").getAsString() : "",
+            details
         );
     }
 
@@ -168,5 +180,5 @@ public class ValidationManager {
     /**
      * Validation result record.
      */
-    public record ValidationResult(String status, double confidence, String message) {}
+    public record ValidationResult(String status, double confidence, String message, Map<String, String> details) {}
 }

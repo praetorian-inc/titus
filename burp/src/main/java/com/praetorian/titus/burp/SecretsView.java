@@ -14,6 +14,7 @@ import java.awt.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -540,6 +541,15 @@ public class SecretsView extends JPanel {
         }
         if (record.validatedAt != null) {
             sb.append("Validated At: ").append(TIME_FORMAT.format(record.validatedAt.atZone(java.time.ZoneId.systemDefault()))).append("\n");
+        }
+        if (record.validationDetails != null && !record.validationDetails.isEmpty()) {
+            sb.append("\nValidation Details:\n");
+            for (Map.Entry<String, String> entry : record.validationDetails.entrySet()) {
+                String key = entry.getKey();
+                // Format key nicely (e.g., "user_id" -> "User ID")
+                String displayKey = key.substring(0, 1).toUpperCase() + key.substring(1).replace("_", " ");
+                sb.append("  ").append(displayKey).append(": ").append(entry.getValue()).append("\n");
+            }
         }
 
         detailArea.setText(sb.toString());

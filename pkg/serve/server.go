@@ -199,6 +199,7 @@ func (s *Server) handleValidate(ctx context.Context, payload json.RawMessage) {
 		Status:     string(validationResult.Status),
 		Confidence: validationResult.Confidence,
 		Message:    validationResult.Message,
+		Details:    validationResult.Details,
 	}
 
 	data, _ := json.Marshal(result)

@@ -45,7 +45,8 @@ type ValidatePayload struct {
 
 // ValidateResult is the result for "validate" responses
 type ValidateResult struct {
-	Status     string  `json:"status"`
-	Confidence float64 `json:"confidence"`
-	Message    string  `json:"message"`
+	Status     string            `json:"status"`
+	Confidence float64           `json:"confidence"`
+	Message    string            `json:"message"`
+	Details    map[string]string `json:"details,omitempty"`
 }
