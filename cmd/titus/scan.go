@@ -17,18 +17,19 @@ import (
 )
 
 var (
-	scanRulesPath     string
-	scanRulesInclude  string
-	scanRulesExclude  string
-	scanOutputPath    string
-	scanOutputFormat  string
-	scanGit           bool
-	scanMaxFileSize   int64
-	scanIncludeHidden bool
-	scanContextLines  int
+	scanRulesPath       string
+	scanRulesInclude    string
+	scanRulesExclude    string
+	scanOutputPath      string
+	scanOutputFormat    string
+	scanGit             bool
+	scanMaxFileSize     int64
+	scanIncludeHidden   bool
+	scanContextLines    int
 	scanIncremental     bool
 	scanValidate        bool
 	scanValidateWorkers int
+	scanExtractArchives bool
 )
 
 var scanCmd = &cobra.Command{
@@ -52,6 +53,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
+	scanCmd.Flags().BoolVar(&scanExtractArchives, "extract-archives", false, "Extract and scan text from binary files (xlsx, docx, pdf)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -291,10 +293,11 @@ func loadRules(path, include, exclude string) ([]*types.Rule, error) {
 
 func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	config := enum.Config{
-		Root:           target,
-		IncludeHidden:  scanIncludeHidden,
-		MaxFileSize:    scanMaxFileSize,
-		FollowSymlinks: false,
+		Root:            target,
+		IncludeHidden:   scanIncludeHidden,
+		MaxFileSize:     scanMaxFileSize,
+		FollowSymlinks:  false,
+		ExtractArchives: scanExtractArchives,
 	}
 
 	if useGit {

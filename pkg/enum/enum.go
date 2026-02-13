@@ -26,4 +26,7 @@ type Config struct {
 
 	// FollowSymlinks follows symbolic links.
 	FollowSymlinks bool
+
+	// ExtractArchives enables text extraction from binary files (xlsx, docx, pdf).
+	ExtractArchives bool
 }

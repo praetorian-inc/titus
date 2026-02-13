@@ -85,8 +85,35 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 			return fmt.Errorf("failed to read file %s: %w", path, err)
 		}
 
-		// Skip binary files
-		if isBinary(content) {
+		// Check if binary
+		binary := isBinary(content)
+
+		// Handle binary files with extraction enabled
+		if binary && e.config.ExtractArchives {
+			ext := strings.ToLower(filepath.Ext(path))
+			if ext == ".xlsx" || ext == ".docx" || ext == ".pdf" {
+				// Try to extract text from binary file
+				extracted, err := ExtractText(path, content)
+				if err == nil && len(extracted) > 0 {
+					// Yield each extracted piece of content
+					for _, ec := range extracted {
+						blobID := types.ComputeBlobID(ec.Content)
+						prov := types.ArchiveProvenance{
+							ArchivePath: path,
+							MemberPath:  ec.Name,
+						}
+						if err := callback(ec.Content, blobID, prov); err != nil {
+							return err
+						}
+					}
+				}
+				// Skip the binary file itself (extracted or not)
+				return nil
+			}
+		}
+
+		// Skip binary files (not extracted or extraction disabled)
+		if binary {
 			return nil
 		}
 
