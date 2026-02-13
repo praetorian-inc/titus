@@ -51,6 +51,12 @@ public class SecretsView extends JPanel {
     private JTextField searchField;
     private JCheckBox regexCheckbox;
     private JCheckBox negateCheckbox;
+    private JButton typeFilterButton;
+    private JButton hostFilterButton;
+    private JButton statusFilterButton;
+    private JPopupMenu typePopup;
+    private JPopupMenu hostPopup;
+    private JPopupMenu statusPopup;
 
     private ValidationListener validationListener;
     private FalsePositiveListener falsePositiveListener;
@@ -110,9 +116,10 @@ public class SecretsView extends JPanel {
         add(splitPane, BorderLayout.CENTER);
 
         // Top panel with toolbar and filters
-        JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.add(createToolbar(), BorderLayout.NORTH);
-        topPanel.add(createFilterPanel(), BorderLayout.CENTER);
+        JPanel topPanel = new JPanel();
+        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+        topPanel.add(createToolbar());
+        topPanel.add(createFilterPanel());
         add(topPanel, BorderLayout.NORTH);
 
         // Status bar
@@ -168,13 +175,12 @@ public class SecretsView extends JPanel {
     }
 
     private JPanel createFilterPanel() {
-        JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
+        JPanel mainPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
 
-        // Search panel
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        searchPanel.add(new JLabel("Search:"));
-        searchField = new JTextField(25);
+        // Search field
+        mainPanel.add(new JLabel("Search:"));
+        searchField = new JTextField(20);
         searchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) { applyFilters(); }
@@ -183,58 +189,55 @@ public class SecretsView extends JPanel {
             @Override
             public void changedUpdate(DocumentEvent e) { applyFilters(); }
         });
-        searchPanel.add(searchField);
+        mainPanel.add(searchField);
 
         regexCheckbox = new JCheckBox("Regex");
         regexCheckbox.addActionListener(e -> applyFilters());
-        searchPanel.add(regexCheckbox);
+        mainPanel.add(regexCheckbox);
 
         negateCheckbox = new JCheckBox("Negate");
         negateCheckbox.addActionListener(e -> applyFilters());
-        searchPanel.add(negateCheckbox);
+        mainPanel.add(negateCheckbox);
 
-        JButton clearButton = new JButton("Clear All");
-        clearButton.addActionListener(e -> clearFilters());
-        searchPanel.add(clearButton);
-
-        mainPanel.add(searchPanel, BorderLayout.NORTH);
-
-        // Multi-select filter lists
-        JPanel filtersPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-
-        // Type filter
-        JPanel typePanel = new JPanel(new BorderLayout());
-        typePanel.add(new JLabel("Type:"), BorderLayout.NORTH);
+        // Type filter dropdown button
         typeListModel = new DefaultListModel<>();
         typeFilterList = new JList<>(typeListModel);
         typeFilterList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        typeFilterList.setVisibleRowCount(4);
+        typeFilterList.setVisibleRowCount(8);
         typeFilterList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) applyFilters();
+            if (!e.getValueIsAdjusting()) {
+                applyFilters();
+                updateFilterButtonText(typeFilterButton, "Type", typeFilterList.getSelectedValuesList());
+            }
         });
+        typePopup = new JPopupMenu();
         JScrollPane typeScroll = new JScrollPane(typeFilterList);
-        typeScroll.setPreferredSize(new Dimension(150, 80));
-        typePanel.add(typeScroll, BorderLayout.CENTER);
-        filtersPanel.add(typePanel);
+        typeScroll.setPreferredSize(new Dimension(180, 150));
+        typePopup.add(typeScroll);
+        typeFilterButton = new JButton("Type \u25BC");
+        typeFilterButton.addActionListener(e -> typePopup.show(typeFilterButton, 0, typeFilterButton.getHeight()));
+        mainPanel.add(typeFilterButton);
 
-        // Host filter
-        JPanel hostPanel = new JPanel(new BorderLayout());
-        hostPanel.add(new JLabel("Host:"), BorderLayout.NORTH);
+        // Host filter dropdown button
         hostListModel = new DefaultListModel<>();
         hostFilterList = new JList<>(hostListModel);
         hostFilterList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        hostFilterList.setVisibleRowCount(4);
+        hostFilterList.setVisibleRowCount(8);
         hostFilterList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) applyFilters();
+            if (!e.getValueIsAdjusting()) {
+                applyFilters();
+                updateFilterButtonText(hostFilterButton, "Host", hostFilterList.getSelectedValuesList());
+            }
         });
+        hostPopup = new JPopupMenu();
         JScrollPane hostScroll = new JScrollPane(hostFilterList);
-        hostScroll.setPreferredSize(new Dimension(200, 80));
-        hostPanel.add(hostScroll, BorderLayout.CENTER);
-        filtersPanel.add(hostPanel);
+        hostScroll.setPreferredSize(new Dimension(220, 150));
+        hostPopup.add(hostScroll);
+        hostFilterButton = new JButton("Host \u25BC");
+        hostFilterButton.addActionListener(e -> hostPopup.show(hostFilterButton, 0, hostFilterButton.getHeight()));
+        mainPanel.add(hostFilterButton);
 
-        // Status filter
-        JPanel statusPanel = new JPanel(new BorderLayout());
-        statusPanel.add(new JLabel("Status:"), BorderLayout.NORTH);
+        // Status filter dropdown button
         statusListModel = new DefaultListModel<>();
         statusListModel.addElement("Not Checked");
         statusListModel.addElement("Active");
@@ -243,18 +246,41 @@ public class SecretsView extends JPanel {
         statusListModel.addElement("Unknown");
         statusFilterList = new JList<>(statusListModel);
         statusFilterList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        statusFilterList.setVisibleRowCount(4);
+        statusFilterList.setVisibleRowCount(5);
         statusFilterList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) applyFilters();
+            if (!e.getValueIsAdjusting()) {
+                applyFilters();
+                updateFilterButtonText(statusFilterButton, "Status", statusFilterList.getSelectedValuesList());
+            }
         });
+        statusPopup = new JPopupMenu();
         JScrollPane statusScroll = new JScrollPane(statusFilterList);
-        statusScroll.setPreferredSize(new Dimension(120, 80));
-        statusPanel.add(statusScroll, BorderLayout.CENTER);
-        filtersPanel.add(statusPanel);
+        statusScroll.setPreferredSize(new Dimension(140, 120));
+        statusPopup.add(statusScroll);
+        statusFilterButton = new JButton("Status \u25BC");
+        statusFilterButton.addActionListener(e -> statusPopup.show(statusFilterButton, 0, statusFilterButton.getHeight()));
+        mainPanel.add(statusFilterButton);
 
-        mainPanel.add(filtersPanel, BorderLayout.CENTER);
+        // Clear button
+        JButton clearButton = new JButton("Clear All");
+        clearButton.addActionListener(e -> clearFilters());
+        mainPanel.add(clearButton);
 
         return mainPanel;
+    }
+
+    private void updateFilterButtonText(JButton button, String label, List<String> selected) {
+        if (selected.isEmpty()) {
+            button.setText(label + " \u25BC");
+        } else if (selected.size() == 1) {
+            String text = selected.get(0);
+            if (text.length() > 15) {
+                text = text.substring(0, 12) + "...";
+            }
+            button.setText(label + ": " + text + " \u25BC");
+        } else {
+            button.setText(label + ": " + selected.size() + " selected \u25BC");
+        }
     }
 
     private void updateFilterDropdowns() {
@@ -375,6 +401,9 @@ public class SecretsView extends JPanel {
         typeFilterList.clearSelection();
         hostFilterList.clearSelection();
         statusFilterList.clearSelection();
+        typeFilterButton.setText("Type \u25BC");
+        hostFilterButton.setText("Host \u25BC");
+        statusFilterButton.setText("Status \u25BC");
         rowSorter.setRowFilter(null);
         updateStatus();
     }
