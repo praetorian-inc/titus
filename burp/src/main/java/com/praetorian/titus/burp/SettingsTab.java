@@ -29,6 +29,7 @@ public class SettingsTab extends JPanel {
     private ScanParametersPanel parametersPanel;
     private RequestsTableModel requestsTableModel;
     private RequestsView requestsView;
+    private SecretsView secretsView;
     private MessagePersistence messagePersistence;
     private FindingsExporter findingsExporter;
     private JLabel queueSizeLabel;
@@ -61,6 +62,10 @@ public class SettingsTab extends JPanel {
         requestsView = new RequestsView(api, requestsTableModel);
         tabbedPane.addTab("Requests", requestsView);
 
+        // Secrets tab
+        secretsView = new SecretsView(api, dedupCache);
+        tabbedPane.addTab("Secrets", secretsView);
+
         add(tabbedPane, BorderLayout.CENTER);
 
         // Initialize message persistence
@@ -72,11 +77,15 @@ public class SettingsTab extends JPanel {
         // Restore persisted messages
         restorePersistedMessages();
 
-        // Wire up scan queue listener to populate table
+        // Wire up scan queue listener to populate table and refresh secrets
         scanQueue.setListener(job -> {
             SwingUtilities.invokeLater(() -> {
                 requestsTableModel.addEntry(job);
                 requestsView.updateStatus();
+                // Refresh secrets view periodically (every 5 jobs to avoid excessive updates)
+                if (requestsTableModel.getEntryCount() % 5 == 0) {
+                    secretsView.refresh();
+                }
             });
         });
 
@@ -141,6 +150,13 @@ public class SettingsTab extends JPanel {
      */
     public RequestsView getRequestsView() {
         return requestsView;
+    }
+
+    /**
+     * Get the secrets view.
+     */
+    public SecretsView getSecretsView() {
+        return secretsView;
     }
 
     /**
