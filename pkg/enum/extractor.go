@@ -6,13 +6,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
 
-	"github.com/pdfcpu/pdfcpu/pkg/api"
-	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
-	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+	"github.com/ledongthuc/pdf"
 )
 
 // ExtractedContent represents text extracted from a binary file.
@@ -135,47 +134,54 @@ func extractDOCX(content []byte) ([]ExtractedContent, error) {
 	return results, nil
 }
 
-// extractPDF extracts text from PDF files using pdfcpu.
+// extractPDF extracts text from PDF files using ledongthuc/pdf.
 func extractPDF(content []byte) ([]ExtractedContent, error) {
-	// Create a reader from the PDF content
-	reader := bytes.NewReader(content)
-
-	// Read and validate the PDF using pdfcpu
-	conf := model.NewDefaultConfiguration()
-	ctx, err := api.ReadValidateAndOptimize(reader, conf)
+	// Create a temporary file since ledongthuc/pdf requires a file or ReaderAt with size
+	tmpFile, err := os.CreateTemp("", "pdf-*.pdf")
 	if err != nil {
-		return nil, fmt.Errorf("failed to read PDF: %w", err)
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	// Write the PDF content to the temp file
+	if _, err := tmpFile.Write(content); err != nil {
+		return nil, fmt.Errorf("failed to write temp file: %w", err)
 	}
 
-	// Extract content from all pages
+	// Close the file so pdf.Open can read it
+	tmpFile.Close()
+
+	// Open the PDF file
+	f, r, err := pdf.Open(tmpFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open PDF: %w", err)
+	}
+	defer f.Close()
+
+	// Extract text from all pages
 	var text strings.Builder
-	for i := 1; i <= ctx.PageCount; i++ {
-		pageReader, err := pdfcpu.ExtractPageContent(ctx, i)
+	totalPages := r.NumPage()
+
+	for pageNum := 1; pageNum <= totalPages; pageNum++ {
+		page := r.Page(pageNum)
+		if page.V.IsNull() {
+			continue
+		}
+
+		// Get plain text from the page
+		pageText, err := page.GetPlainText(nil)
 		if err != nil {
 			// Continue on error to extract what we can
 			continue
 		}
-		if pageReader == nil {
-			continue
-		}
 
-		// Read the content from the page
-		pageContent, err := io.ReadAll(pageReader)
-		if err != nil {
-			continue
-		}
-
-		// Extract printable text from the raw content stream
-		for _, b := range pageContent {
-			if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' {
-				text.WriteByte(b)
-			}
-		}
+		text.WriteString(pageText)
 		text.WriteString("\n")
 	}
 
 	extracted := text.String()
-	if len(extracted) == 0 {
+	if len(strings.TrimSpace(extracted)) == 0 {
 		return nil, nil
 	}
 
