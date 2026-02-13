@@ -56,10 +56,12 @@ type VectorscanMatcher struct {
 // routed to the regexp2 fallback without attempting Hyperscan compilation.
 // This optimization allows the fast path (single batch compilation) to succeed
 // immediately, reducing initialization time from ~24 seconds to ~100-200ms.
+//
+// Note: np.azure.5, np.redis.1, np.redis.2 were previously incompatible due to
+// lookbehind/lookahead assertions. They have been rewritten to be Hyperscan-
+// compatible by moving the filtering logic to ignore_if_contains.
 var knownIncompatiblePatterns = map[string]bool{
-	"np.azure.5": true,
-	"np.redis.1": true,
-	"np.redis.2": true,
+	// Currently empty - all rules are Hyperscan-compatible
 }
 
 // NewVectorscan creates a new Hyperscan/Vectorscan-based matcher.
