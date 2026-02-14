@@ -333,12 +333,12 @@ public class DedupCache {
      * Validation status for secrets.
      */
     public enum ValidationStatus {
-        NOT_CHECKED("-"),
+        NOT_CHECKED("No"),
         VALIDATING("..."),
         VALID("Active"),
         INVALID("Inactive"),
         UNDETERMINED("Unknown"),
-        FALSE_POSITIVE("False Positive");
+        FALSE_POSITIVE("FP");
 
         private final String displayText;
 

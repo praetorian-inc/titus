@@ -33,8 +33,6 @@ public class SecretsView extends JPanel {
     private TableRowSorter<SecretsTableModel> rowSorter;
     private JTextArea detailArea;
     private JTextArea urlsArea;
-    private JTextPane requestPane;
-    private JTextPane responsePane;
     private JTabbedPane detailTabbedPane;
     private JLabel statusLabel;
     private JButton validateButton;
@@ -44,12 +42,6 @@ public class SecretsView extends JPanel {
     private JButton refreshButton;
 
     // Filter components
-    private JList<String> typeFilterList;
-    private JList<String> hostFilterList;
-    private JList<String> statusFilterList;
-    private DefaultListModel<String> typeListModel;
-    private DefaultListModel<String> hostListModel;
-    private DefaultListModel<String> statusListModel;
     private JTextField searchField;
     private JCheckBox regexCheckbox;
     private JCheckBox negateCheckbox;
@@ -59,6 +51,15 @@ public class SecretsView extends JPanel {
     private JPopupMenu typePopup;
     private JPopupMenu hostPopup;
     private JPopupMenu statusPopup;
+    private JPanel typeCheckboxPanel;
+    private JPanel hostCheckboxPanel;
+    private JPanel statusCheckboxPanel;
+    private JCheckBox typeAllCheckbox;
+    private JCheckBox hostAllCheckbox;
+    private JCheckBox statusAllCheckbox;
+    private List<JCheckBox> typeCheckboxes = new ArrayList<>();
+    private List<JCheckBox> hostCheckboxes = new ArrayList<>();
+    private List<JCheckBox> statusCheckboxes = new ArrayList<>();
 
     private ValidationListener validationListener;
     private FalsePositiveListener falsePositiveListener;
@@ -90,7 +91,9 @@ public class SecretsView extends JPanel {
         rowSorter = new TableRowSorter<>(tableModel);
         secretsTable.setRowSorter(rowSorter);
         secretsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        secretsTable.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
+        secretsTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
+        secretsTable.getTableHeader().setReorderingAllowed(true);
+        secretsTable.getTableHeader().setResizingAllowed(true);
         secretsTable.getSelectionModel().addListSelectionListener(this::onSelectionChanged);
 
         // Configure column widths
@@ -139,10 +142,12 @@ public class SecretsView extends JPanel {
         secretsTable.getColumnModel().getColumn(1).setPreferredWidth(150);  // Type
         secretsTable.getColumnModel().getColumn(2).setPreferredWidth(200);  // Preview
         secretsTable.getColumnModel().getColumn(3).setPreferredWidth(150);  // Host
-        secretsTable.getColumnModel().getColumn(4).setPreferredWidth(60);   // Count
-        secretsTable.getColumnModel().getColumn(4).setMaxWidth(80);
-        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(80);   // Validation
-        secretsTable.getColumnModel().getColumn(5).setMaxWidth(100);
+        secretsTable.getColumnModel().getColumn(4).setPreferredWidth(50);   // Count
+        secretsTable.getColumnModel().getColumn(4).setMaxWidth(60);
+        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(70);   // Validated
+        secretsTable.getColumnModel().getColumn(5).setMaxWidth(80);
+        secretsTable.getColumnModel().getColumn(6).setPreferredWidth(80);   // False Positive
+        secretsTable.getColumnModel().getColumn(6).setMaxWidth(100);
     }
 
     private JPanel createToolbar() {
@@ -201,65 +206,79 @@ public class SecretsView extends JPanel {
         negateCheckbox.addActionListener(e -> applyFilters());
         mainPanel.add(negateCheckbox);
 
-        // Type filter dropdown button
-        typeListModel = new DefaultListModel<>();
-        typeFilterList = new JList<>(typeListModel);
-        typeFilterList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        typeFilterList.setVisibleRowCount(8);
-        typeFilterList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                applyFilters();
-                updateFilterButtonText(typeFilterButton, "Type", typeFilterList.getSelectedValuesList());
+        // Type filter dropdown
+        typeCheckboxPanel = new JPanel();
+        typeCheckboxPanel.setLayout(new BoxLayout(typeCheckboxPanel, BoxLayout.Y_AXIS));
+        typeAllCheckbox = new JCheckBox("All");
+        typeAllCheckbox.setSelected(true);
+        typeAllCheckbox.addActionListener(e -> {
+            boolean selected = typeAllCheckbox.isSelected();
+            for (JCheckBox cb : typeCheckboxes) {
+                cb.setSelected(selected);
             }
+            applyFilters();
+            updateFilterButtonText(typeFilterButton, "Type", getSelectedItems(typeCheckboxes, typeAllCheckbox));
         });
         typePopup = new JPopupMenu();
-        JScrollPane typeScroll = new JScrollPane(typeFilterList);
-        typeScroll.setPreferredSize(new Dimension(180, 150));
+        JScrollPane typeScroll = new JScrollPane(typeCheckboxPanel);
+        typeScroll.setPreferredSize(new Dimension(200, 180));
         typePopup.add(typeScroll);
-        typeFilterButton = new JButton("Type \u25BC");
+        typeFilterButton = new JButton("Type");
         typeFilterButton.addActionListener(e -> typePopup.show(typeFilterButton, 0, typeFilterButton.getHeight()));
         mainPanel.add(typeFilterButton);
 
-        // Host filter dropdown button
-        hostListModel = new DefaultListModel<>();
-        hostFilterList = new JList<>(hostListModel);
-        hostFilterList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        hostFilterList.setVisibleRowCount(8);
-        hostFilterList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                applyFilters();
-                updateFilterButtonText(hostFilterButton, "Host", hostFilterList.getSelectedValuesList());
+        // Host filter dropdown
+        hostCheckboxPanel = new JPanel();
+        hostCheckboxPanel.setLayout(new BoxLayout(hostCheckboxPanel, BoxLayout.Y_AXIS));
+        hostAllCheckbox = new JCheckBox("All");
+        hostAllCheckbox.setSelected(true);
+        hostAllCheckbox.addActionListener(e -> {
+            boolean selected = hostAllCheckbox.isSelected();
+            for (JCheckBox cb : hostCheckboxes) {
+                cb.setSelected(selected);
             }
+            applyFilters();
+            updateFilterButtonText(hostFilterButton, "Host", getSelectedItems(hostCheckboxes, hostAllCheckbox));
         });
         hostPopup = new JPopupMenu();
-        JScrollPane hostScroll = new JScrollPane(hostFilterList);
-        hostScroll.setPreferredSize(new Dimension(220, 150));
+        JScrollPane hostScroll = new JScrollPane(hostCheckboxPanel);
+        hostScroll.setPreferredSize(new Dimension(250, 180));
         hostPopup.add(hostScroll);
-        hostFilterButton = new JButton("Host \u25BC");
+        hostFilterButton = new JButton("Host");
         hostFilterButton.addActionListener(e -> hostPopup.show(hostFilterButton, 0, hostFilterButton.getHeight()));
         mainPanel.add(hostFilterButton);
 
-        // Status filter dropdown button
-        statusListModel = new DefaultListModel<>();
-        statusListModel.addElement("Not Checked");
-        statusListModel.addElement("Active");
-        statusListModel.addElement("Inactive");
-        statusListModel.addElement("False Positive");
-        statusListModel.addElement("Unknown");
-        statusFilterList = new JList<>(statusListModel);
-        statusFilterList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        statusFilterList.setVisibleRowCount(5);
-        statusFilterList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                applyFilters();
-                updateFilterButtonText(statusFilterButton, "Status", statusFilterList.getSelectedValuesList());
+        // Status filter dropdown (fixed options)
+        statusCheckboxPanel = new JPanel();
+        statusCheckboxPanel.setLayout(new BoxLayout(statusCheckboxPanel, BoxLayout.Y_AXIS));
+        statusAllCheckbox = new JCheckBox("All");
+        statusAllCheckbox.setSelected(true);
+        statusAllCheckbox.addActionListener(e -> {
+            boolean selected = statusAllCheckbox.isSelected();
+            for (JCheckBox cb : statusCheckboxes) {
+                cb.setSelected(selected);
             }
+            applyFilters();
+            updateFilterButtonText(statusFilterButton, "Status", getSelectedItems(statusCheckboxes, statusAllCheckbox));
         });
+        statusCheckboxPanel.add(statusAllCheckbox);
+        String[] statuses = {"No", "Active", "Inactive", "Unknown"};
+        for (String status : statuses) {
+            JCheckBox cb = new JCheckBox(status);
+            cb.setSelected(true);
+            cb.addActionListener(e -> {
+                updateAllCheckbox(statusAllCheckbox, statusCheckboxes);
+                applyFilters();
+                updateFilterButtonText(statusFilterButton, "Status", getSelectedItems(statusCheckboxes, statusAllCheckbox));
+            });
+            statusCheckboxes.add(cb);
+            statusCheckboxPanel.add(cb);
+        }
         statusPopup = new JPopupMenu();
-        JScrollPane statusScroll = new JScrollPane(statusFilterList);
-        statusScroll.setPreferredSize(new Dimension(140, 120));
+        JScrollPane statusScroll = new JScrollPane(statusCheckboxPanel);
+        statusScroll.setPreferredSize(new Dimension(150, 140));
         statusPopup.add(statusScroll);
-        statusFilterButton = new JButton("Status \u25BC");
+        statusFilterButton = new JButton("Status");
         statusFilterButton.addActionListener(e -> statusPopup.show(statusFilterButton, 0, statusFilterButton.getHeight()));
         mainPanel.add(statusFilterButton);
 
@@ -271,61 +290,101 @@ public class SecretsView extends JPanel {
         return mainPanel;
     }
 
+    private List<String> getSelectedItems(List<JCheckBox> checkboxes, JCheckBox allCheckbox) {
+        if (allCheckbox.isSelected()) {
+            return new ArrayList<>(); // Empty means all selected
+        }
+        List<String> selected = new ArrayList<>();
+        for (JCheckBox cb : checkboxes) {
+            if (cb.isSelected()) {
+                selected.add(cb.getText());
+            }
+        }
+        return selected;
+    }
+
+    private void updateAllCheckbox(JCheckBox allCheckbox, List<JCheckBox> checkboxes) {
+        boolean allSelected = true;
+        for (JCheckBox cb : checkboxes) {
+            if (!cb.isSelected()) {
+                allSelected = false;
+                break;
+            }
+        }
+        allCheckbox.setSelected(allSelected);
+    }
+
     private void updateFilterButtonText(JButton button, String label, List<String> selected) {
         if (selected.isEmpty()) {
-            button.setText(label + " \u25BC");
+            button.setText(label);
         } else if (selected.size() == 1) {
             String text = selected.get(0);
-            if (text.length() > 15) {
-                text = text.substring(0, 12) + "...";
+            if (text.length() > 12) {
+                text = text.substring(0, 10) + "...";
             }
-            button.setText(label + ": " + text + " \u25BC");
+            button.setText(label + ": " + text);
         } else {
-            button.setText(label + ": " + selected.size() + " selected \u25BC");
+            button.setText(label + ": " + selected.size());
         }
     }
 
     private void updateFilterDropdowns() {
-        // Save current selections
-        List<String> selectedTypes = typeFilterList.getSelectedValuesList();
-        List<String> selectedHosts = hostFilterList.getSelectedValuesList();
-
-        // Update type filter
-        typeListModel.clear();
-        for (String type : tableModel.getUniqueTypes()) {
-            typeListModel.addElement(type);
-        }
-
-        // Update host filter
-        hostListModel.clear();
-        for (String host : tableModel.getUniqueHosts()) {
-            hostListModel.addElement(host);
-        }
-
-        // Restore selections
-        restoreSelection(typeFilterList, selectedTypes);
-        restoreSelection(hostFilterList, selectedHosts);
-    }
-
-    private void restoreSelection(JList<String> list, List<String> selected) {
-        ListModel<String> model = list.getModel();
-        List<Integer> indices = new ArrayList<>();
-        for (int i = 0; i < model.getSize(); i++) {
-            if (selected.contains(model.getElementAt(i))) {
-                indices.add(i);
+        // Save current selected types and hosts
+        Set<String> selectedTypes = new java.util.HashSet<>();
+        for (JCheckBox cb : typeCheckboxes) {
+            if (cb.isSelected()) {
+                selectedTypes.add(cb.getText());
             }
         }
-        if (!indices.isEmpty()) {
-            int[] indicesArray = indices.stream().mapToInt(Integer::intValue).toArray();
-            list.setSelectedIndices(indicesArray);
+        Set<String> selectedHosts = new java.util.HashSet<>();
+        for (JCheckBox cb : hostCheckboxes) {
+            if (cb.isSelected()) {
+                selectedHosts.add(cb.getText());
+            }
         }
+
+        // Update type filter checkboxes
+        typeCheckboxPanel.removeAll();
+        typeCheckboxPanel.add(typeAllCheckbox);
+        typeCheckboxes.clear();
+        for (String type : tableModel.getUniqueTypes()) {
+            JCheckBox cb = new JCheckBox(type);
+            cb.setSelected(selectedTypes.isEmpty() || selectedTypes.contains(type) || typeAllCheckbox.isSelected());
+            cb.addActionListener(e -> {
+                updateAllCheckbox(typeAllCheckbox, typeCheckboxes);
+                applyFilters();
+                updateFilterButtonText(typeFilterButton, "Type", getSelectedItems(typeCheckboxes, typeAllCheckbox));
+            });
+            typeCheckboxes.add(cb);
+            typeCheckboxPanel.add(cb);
+        }
+        typeCheckboxPanel.revalidate();
+        typeCheckboxPanel.repaint();
+
+        // Update host filter checkboxes
+        hostCheckboxPanel.removeAll();
+        hostCheckboxPanel.add(hostAllCheckbox);
+        hostCheckboxes.clear();
+        for (String host : tableModel.getUniqueHosts()) {
+            JCheckBox cb = new JCheckBox(host);
+            cb.setSelected(selectedHosts.isEmpty() || selectedHosts.contains(host) || hostAllCheckbox.isSelected());
+            cb.addActionListener(e -> {
+                updateAllCheckbox(hostAllCheckbox, hostCheckboxes);
+                applyFilters();
+                updateFilterButtonText(hostFilterButton, "Host", getSelectedItems(hostCheckboxes, hostAllCheckbox));
+            });
+            hostCheckboxes.add(cb);
+            hostCheckboxPanel.add(cb);
+        }
+        hostCheckboxPanel.revalidate();
+        hostCheckboxPanel.repaint();
     }
 
     private void applyFilters() {
         List<RowFilter<SecretsTableModel, Integer>> filters = new ArrayList<>();
 
-        // Type filter (multi-select)
-        List<String> selectedTypes = typeFilterList.getSelectedValuesList();
+        // Type filter (checkboxes) - only apply if not "All" selected
+        List<String> selectedTypes = getSelectedItems(typeCheckboxes, typeAllCheckbox);
         if (!selectedTypes.isEmpty()) {
             List<RowFilter<SecretsTableModel, Integer>> typeFilters = new ArrayList<>();
             for (String type : selectedTypes) {
@@ -334,8 +393,8 @@ public class SecretsView extends JPanel {
             filters.add(RowFilter.orFilter(typeFilters));
         }
 
-        // Host filter (multi-select)
-        List<String> selectedHosts = hostFilterList.getSelectedValuesList();
+        // Host filter (checkboxes) - only apply if not "All" selected
+        List<String> selectedHosts = getSelectedItems(hostCheckboxes, hostAllCheckbox);
         if (!selectedHosts.isEmpty()) {
             List<RowFilter<SecretsTableModel, Integer>> hostFilters = new ArrayList<>();
             for (String host : selectedHosts) {
@@ -344,22 +403,13 @@ public class SecretsView extends JPanel {
             filters.add(RowFilter.orFilter(hostFilters));
         }
 
-        // Status filter (multi-select)
-        List<String> selectedStatuses = statusFilterList.getSelectedValuesList();
+        // Status filter (checkboxes) - only apply if not "All" selected
+        List<String> selectedStatuses = getSelectedItems(statusCheckboxes, statusAllCheckbox);
         if (!selectedStatuses.isEmpty()) {
             List<RowFilter<SecretsTableModel, Integer>> statusFilters = new ArrayList<>();
             for (String status : selectedStatuses) {
-                String statusText = switch (status) {
-                    case "Not Checked" -> "-";
-                    case "Active" -> "Active";
-                    case "Inactive" -> "Inactive";
-                    case "False Positive" -> "False Positive";
-                    case "Unknown" -> "Unknown";
-                    default -> "";
-                };
-                if (!statusText.isEmpty()) {
-                    statusFilters.add(RowFilter.regexFilter("^" + Pattern.quote(statusText) + "$", 5));
-                }
+                // Status values match the column display values
+                statusFilters.add(RowFilter.regexFilter("^" + Pattern.quote(status) + "$", 5));
             }
             if (!statusFilters.isEmpty()) {
                 filters.add(RowFilter.orFilter(statusFilters));
@@ -400,12 +450,16 @@ public class SecretsView extends JPanel {
         searchField.setText("");
         regexCheckbox.setSelected(false);
         negateCheckbox.setSelected(false);
-        typeFilterList.clearSelection();
-        hostFilterList.clearSelection();
-        statusFilterList.clearSelection();
-        typeFilterButton.setText("Type \u25BC");
-        hostFilterButton.setText("Host \u25BC");
-        statusFilterButton.setText("Status \u25BC");
+        // Reset all checkboxes to selected (All)
+        typeAllCheckbox.setSelected(true);
+        for (JCheckBox cb : typeCheckboxes) cb.setSelected(true);
+        hostAllCheckbox.setSelected(true);
+        for (JCheckBox cb : hostCheckboxes) cb.setSelected(true);
+        statusAllCheckbox.setSelected(true);
+        for (JCheckBox cb : statusCheckboxes) cb.setSelected(true);
+        typeFilterButton.setText("Type");
+        hostFilterButton.setText("Host");
+        statusFilterButton.setText("Status");
         rowSorter.setRowFilter(null);
         updateStatus();
     }
@@ -434,20 +488,6 @@ public class SecretsView extends JPanel {
         JScrollPane urlsScroll = new JScrollPane(urlsArea);
         detailTabbedPane.addTab("URLs", urlsScroll);
 
-        // Request tab
-        requestPane = new JTextPane();
-        requestPane.setEditable(false);
-        requestPane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        JScrollPane requestScroll = new JScrollPane(requestPane);
-        detailTabbedPane.addTab("Request", requestScroll);
-
-        // Response tab
-        responsePane = new JTextPane();
-        responsePane.setEditable(false);
-        responsePane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        JScrollPane responseScroll = new JScrollPane(responsePane);
-        detailTabbedPane.addTab("Response", responseScroll);
-
         panel.add(detailTabbedPane, BorderLayout.CENTER);
         panel.setPreferredSize(new Dimension(800, 150));
 
@@ -463,8 +503,6 @@ public class SecretsView extends JPanel {
         if (selectedRows.length == 0) {
             detailArea.setText("");
             urlsArea.setText("");
-            requestPane.setText("");
-            responsePane.setText("");
             validateButton.setEnabled(false);
             falsePositiveButton.setEnabled(false);
             unmarkFPButton.setEnabled(false);
@@ -511,8 +549,6 @@ public class SecretsView extends JPanel {
         } else {
             detailArea.setText(modelRows.length + " secrets selected");
             urlsArea.setText("");
-            requestPane.setText("");
-            responsePane.setText("");
         }
     }
 
@@ -566,67 +602,6 @@ public class SecretsView extends JPanel {
         }
         urlsArea.setText(urlsSb.toString());
         urlsArea.setCaretPosition(0);
-
-        // Request tab - show full request with highlighted secret
-        displayContentWithHighlight(requestPane, record.requestContent, record.secretContent,
-                                   "(Request not available)");
-
-        // Response tab - show full response with highlighted secret
-        displayContentWithHighlight(responsePane, record.responseContent, record.secretContent,
-                                   "(Response not available)");
-    }
-
-    /**
-     * Display content in a JTextPane with the secret highlighted.
-     */
-    private void displayContentWithHighlight(JTextPane pane, String content, String secretContent, String fallbackMessage) {
-        pane.setText("");
-
-        if (content == null || content.isEmpty()) {
-            pane.setText(fallbackMessage);
-            return;
-        }
-
-        javax.swing.text.StyledDocument doc = pane.getStyledDocument();
-
-        // Define highlight style
-        javax.swing.text.Style highlightStyle = pane.addStyle("highlight", null);
-        javax.swing.text.StyleConstants.setBackground(highlightStyle, new Color(255, 255, 0)); // Yellow background
-        javax.swing.text.StyleConstants.setForeground(highlightStyle, Color.BLACK);
-        javax.swing.text.StyleConstants.setBold(highlightStyle, true);
-
-        // Define normal style
-        javax.swing.text.Style normalStyle = pane.addStyle("normal", null);
-        javax.swing.text.StyleConstants.setFontFamily(normalStyle, Font.MONOSPACED);
-        javax.swing.text.StyleConstants.setFontSize(normalStyle, 12);
-
-        try {
-            if (secretContent != null && !secretContent.isEmpty() && content.contains(secretContent)) {
-                // Find and highlight all occurrences
-                int lastEnd = 0;
-                int index;
-                while ((index = content.indexOf(secretContent, lastEnd)) >= 0) {
-                    // Add text before the match
-                    if (index > lastEnd) {
-                        doc.insertString(doc.getLength(), content.substring(lastEnd, index), normalStyle);
-                    }
-                    // Add highlighted match
-                    doc.insertString(doc.getLength(), secretContent, highlightStyle);
-                    lastEnd = index + secretContent.length();
-                }
-                // Add remaining text
-                if (lastEnd < content.length()) {
-                    doc.insertString(doc.getLength(), content.substring(lastEnd), normalStyle);
-                }
-            } else {
-                // No secret to highlight, just show content
-                doc.insertString(doc.getLength(), content, normalStyle);
-            }
-        } catch (javax.swing.text.BadLocationException e) {
-            pane.setText(content);
-        }
-
-        pane.setCaretPosition(0);
     }
 
     private void validateSelected() {

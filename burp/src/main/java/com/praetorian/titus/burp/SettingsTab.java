@@ -60,10 +60,9 @@ public class SettingsTab extends JPanel {
         JPanel settingsPanel = createSettingsPanel();
         tabbedPane.addTab("Settings", settingsPanel);
 
-        // Requests tab
+        // Initialize requests model (used internally for scanning, but tab hidden)
         requestsTableModel = new RequestsTableModel();
         requestsView = new RequestsView(api, requestsTableModel);
-        tabbedPane.addTab("Requests", requestsView);
 
         // Secrets tab
         secretsView = new SecretsView(api, dedupCache);

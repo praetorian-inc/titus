@@ -8,7 +8,7 @@ import java.util.*;
  */
 public class SecretsTableModel extends AbstractTableModel {
 
-    private static final String[] COLUMNS = {"#", "Type", "Secret Preview", "Host", "Count", "Validation"};
+    private static final String[] COLUMNS = {"#", "Type", "Secret Preview", "Host", "Count", "Validated", "False Positive"};
 
     private final List<DedupCache.FindingRecord> findings = new ArrayList<>();
     private final DedupCache dedupCache;
@@ -64,7 +64,14 @@ public class SecretsTableModel extends AbstractTableModel {
             case 2 -> record.secretPreview;
             case 3 -> record.primaryHost != null ? record.primaryHost : "unknown";
             case 4 -> record.occurrenceCount;
-            case 5 -> record.validationStatus.getDisplayText();
+            case 5 -> {
+                // Validated column - show validation status (excluding false positive)
+                if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+                    yield "No";
+                }
+                yield record.validationStatus.getDisplayText();
+            }
+            case 6 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
             default -> null;
         };
     }
