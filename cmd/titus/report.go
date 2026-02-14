@@ -67,11 +67,7 @@ type snippetParts struct {
 var reportCmd = &cobra.Command{
 	Use:   "report",
 	Short: "Generate a report from scan results",
-	Long: `Read findings from a datastore and output a summary report.
-
-Default format is human-readable with NoseyParker-style colored output showing
-findings, matches, file locations, and context snippets. Use --color flag to
-control color output (auto, always, never).`,
+	Long:  "Read findings from a datastore and output a summary report",
 	RunE:  runReport,
 }
 
