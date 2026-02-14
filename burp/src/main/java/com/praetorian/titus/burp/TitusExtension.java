@@ -70,6 +70,11 @@ public class TitusExtension implements BurpExtension {
             // Initialize bulk scan handler
             this.bulkScanHandler = new BulkScanHandler(api, scanQueue, fastPathFilter, dedupCache, settingsTab);
 
+            // Register custom response editor for secrets tab
+            api.userInterface().registerHttpResponseEditorProvider(
+                new SecretEditorProvider(api, processManager, dedupCache)
+            );
+
             api.logging().logToOutput("Titus Secret Scanner initialized successfully");
             api.logging().logToOutput("  - Titus version: " + processManager.getScanner().getVersion());
             api.logging().logToOutput("  - Passive scanning: ENABLED");

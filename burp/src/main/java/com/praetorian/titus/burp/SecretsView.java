@@ -34,6 +34,8 @@ public class SecretsView extends JPanel {
     private JTextArea detailArea;
     private JTextArea urlsArea;
     private JTextArea validationArea;
+    private JTextPane requestPane;
+    private JTextPane responsePane;
     private JTabbedPane detailTabbedPane;
     private JLabel statusLabel;
     private JButton validateButton;
@@ -510,6 +512,20 @@ public class SecretsView extends JPanel {
         JScrollPane validationScroll = new JScrollPane(validationArea);
         detailTabbedPane.addTab("Validation", validationScroll);
 
+        // Request tab
+        requestPane = new JTextPane();
+        requestPane.setEditable(false);
+        requestPane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        JScrollPane requestScroll = new JScrollPane(requestPane);
+        detailTabbedPane.addTab("Request", requestScroll);
+
+        // Response tab
+        responsePane = new JTextPane();
+        responsePane.setEditable(false);
+        responsePane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        JScrollPane responseScroll = new JScrollPane(responsePane);
+        detailTabbedPane.addTab("Response", responseScroll);
+
         panel.add(detailTabbedPane, BorderLayout.CENTER);
         panel.setPreferredSize(new Dimension(800, 150));
 
@@ -526,6 +542,8 @@ public class SecretsView extends JPanel {
             detailArea.setText("");
             urlsArea.setText("");
             validationArea.setText("");
+            requestPane.setText("");
+            responsePane.setText("");
             validateButton.setEnabled(false);
             falsePositiveButton.setEnabled(false);
             unmarkFPButton.setEnabled(false);
@@ -573,6 +591,8 @@ public class SecretsView extends JPanel {
             detailArea.setText(modelRows.length + " secrets selected");
             urlsArea.setText("");
             validationArea.setText("");
+            requestPane.setText("");
+            responsePane.setText("");
         }
     }
 
@@ -654,6 +674,67 @@ public class SecretsView extends JPanel {
 
         validationArea.setText(validSb.toString());
         validationArea.setCaretPosition(0);
+
+        // Request tab - show full request with highlighted secret
+        displayContentWithHighlight(requestPane, record.requestContent, record.secretContent,
+                                   "(Request not available - this finding may have been loaded from cache)");
+
+        // Response tab - show full response with highlighted secret
+        displayContentWithHighlight(responsePane, record.responseContent, record.secretContent,
+                                   "(Response not available - this finding may have been loaded from cache)");
+    }
+
+    /**
+     * Display content in a JTextPane with the secret highlighted.
+     */
+    private void displayContentWithHighlight(JTextPane pane, String content, String secretContent, String fallbackMessage) {
+        pane.setText("");
+
+        if (content == null || content.isEmpty()) {
+            pane.setText(fallbackMessage);
+            return;
+        }
+
+        javax.swing.text.StyledDocument doc = pane.getStyledDocument();
+
+        // Define highlight style
+        javax.swing.text.Style highlightStyle = pane.addStyle("highlight", null);
+        javax.swing.text.StyleConstants.setBackground(highlightStyle, new Color(255, 255, 0)); // Yellow background
+        javax.swing.text.StyleConstants.setForeground(highlightStyle, Color.BLACK);
+        javax.swing.text.StyleConstants.setBold(highlightStyle, true);
+
+        // Define normal style
+        javax.swing.text.Style normalStyle = pane.addStyle("normal", null);
+        javax.swing.text.StyleConstants.setFontFamily(normalStyle, Font.MONOSPACED);
+        javax.swing.text.StyleConstants.setFontSize(normalStyle, 12);
+
+        try {
+            if (secretContent != null && !secretContent.isEmpty() && content.contains(secretContent)) {
+                // Find and highlight all occurrences
+                int lastEnd = 0;
+                int index;
+                while ((index = content.indexOf(secretContent, lastEnd)) >= 0) {
+                    // Add text before the match
+                    if (index > lastEnd) {
+                        doc.insertString(doc.getLength(), content.substring(lastEnd, index), normalStyle);
+                    }
+                    // Add highlighted match
+                    doc.insertString(doc.getLength(), secretContent, highlightStyle);
+                    lastEnd = index + secretContent.length();
+                }
+                // Add remaining text
+                if (lastEnd < content.length()) {
+                    doc.insertString(doc.getLength(), content.substring(lastEnd), normalStyle);
+                }
+            } else {
+                // No secret to highlight, just show content
+                doc.insertString(doc.getLength(), content, normalStyle);
+            }
+        } catch (javax.swing.text.BadLocationException e) {
+            pane.setText(content);
+        }
+
+        pane.setCaretPosition(0);
     }
 
     /**
