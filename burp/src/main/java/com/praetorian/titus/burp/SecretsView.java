@@ -33,6 +33,7 @@ public class SecretsView extends JPanel {
     private TableRowSorter<SecretsTableModel> rowSorter;
     private JTextArea detailArea;
     private JTextArea urlsArea;
+    private JTextArea validationArea;
     private JTabbedPane detailTabbedPane;
     private JLabel statusLabel;
     private JButton validateButton;
@@ -144,10 +145,12 @@ public class SecretsView extends JPanel {
         secretsTable.getColumnModel().getColumn(3).setPreferredWidth(150);  // Host
         secretsTable.getColumnModel().getColumn(4).setPreferredWidth(50);   // Count
         secretsTable.getColumnModel().getColumn(4).setMaxWidth(60);
-        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(70);   // Validated
-        secretsTable.getColumnModel().getColumn(5).setMaxWidth(80);
-        secretsTable.getColumnModel().getColumn(6).setPreferredWidth(80);   // False Positive
-        secretsTable.getColumnModel().getColumn(6).setMaxWidth(100);
+        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(60);   // Checked
+        secretsTable.getColumnModel().getColumn(5).setMaxWidth(70);
+        secretsTable.getColumnModel().getColumn(6).setPreferredWidth(70);   // Result
+        secretsTable.getColumnModel().getColumn(6).setMaxWidth(80);
+        secretsTable.getColumnModel().getColumn(7).setPreferredWidth(80);   // False Positive
+        secretsTable.getColumnModel().getColumn(7).setMaxWidth(100);
     }
 
     private JPanel createToolbar() {
@@ -262,7 +265,8 @@ public class SecretsView extends JPanel {
             updateFilterButtonText(statusFilterButton, "Status", getSelectedItems(statusCheckboxes, statusAllCheckbox));
         });
         statusCheckboxPanel.add(statusAllCheckbox);
-        String[] statuses = {"No", "Active", "Inactive", "Unknown"};
+        // Status options: False Positive, True Positive (not FP), Valid (active), Invalid (inactive)
+        String[] statuses = {"False Positive", "True Positive", "Valid", "Invalid"};
         for (String status : statuses) {
             JCheckBox cb = new JCheckBox(status);
             cb.setSelected(true);
@@ -276,7 +280,7 @@ public class SecretsView extends JPanel {
         }
         statusPopup = new JPopupMenu();
         JScrollPane statusScroll = new JScrollPane(statusCheckboxPanel);
-        statusScroll.setPreferredSize(new Dimension(150, 140));
+        statusScroll.setPreferredSize(new Dimension(150, 160));
         statusPopup.add(statusScroll);
         statusFilterButton = new JButton("Status");
         statusFilterButton.addActionListener(e -> statusPopup.show(statusFilterButton, 0, statusFilterButton.getHeight()));
@@ -404,12 +408,21 @@ public class SecretsView extends JPanel {
         }
 
         // Status filter (checkboxes) - only apply if not "All" selected
+        // Options: False Positive, True Positive, Valid, Invalid
         List<String> selectedStatuses = getSelectedItems(statusCheckboxes, statusAllCheckbox);
         if (!selectedStatuses.isEmpty()) {
             List<RowFilter<SecretsTableModel, Integer>> statusFilters = new ArrayList<>();
             for (String status : selectedStatuses) {
-                // Status values match the column display values
-                statusFilters.add(RowFilter.regexFilter("^" + Pattern.quote(status) + "$", 5));
+                switch (status) {
+                    case "False Positive" -> // Column 7 (FP) = "Yes"
+                        statusFilters.add(RowFilter.regexFilter("^Yes$", 7));
+                    case "True Positive" -> // Column 7 (FP) = "No"
+                        statusFilters.add(RowFilter.regexFilter("^No$", 7));
+                    case "Valid" -> // Column 6 (Result) = "Active"
+                        statusFilters.add(RowFilter.regexFilter("^Active$", 6));
+                    case "Invalid" -> // Column 6 (Result) = "Inactive"
+                        statusFilters.add(RowFilter.regexFilter("^Inactive$", 6));
+                }
             }
             if (!statusFilters.isEmpty()) {
                 filters.add(RowFilter.orFilter(statusFilters));
@@ -488,6 +501,15 @@ public class SecretsView extends JPanel {
         JScrollPane urlsScroll = new JScrollPane(urlsArea);
         detailTabbedPane.addTab("URLs", urlsScroll);
 
+        // Validation tab
+        validationArea = new JTextArea();
+        validationArea.setEditable(false);
+        validationArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        validationArea.setLineWrap(true);
+        validationArea.setWrapStyleWord(true);
+        JScrollPane validationScroll = new JScrollPane(validationArea);
+        detailTabbedPane.addTab("Validation", validationScroll);
+
         panel.add(detailTabbedPane, BorderLayout.CENTER);
         panel.setPreferredSize(new Dimension(800, 150));
 
@@ -503,6 +525,7 @@ public class SecretsView extends JPanel {
         if (selectedRows.length == 0) {
             detailArea.setText("");
             urlsArea.setText("");
+            validationArea.setText("");
             validateButton.setEnabled(false);
             falsePositiveButton.setEnabled(false);
             unmarkFPButton.setEnabled(false);
@@ -549,6 +572,7 @@ public class SecretsView extends JPanel {
         } else {
             detailArea.setText(modelRows.length + " secrets selected");
             urlsArea.setText("");
+            validationArea.setText("");
         }
     }
 
@@ -571,22 +595,13 @@ public class SecretsView extends JPanel {
         }
         sb.append("\n");
 
-        sb.append("Validation Status: ").append(record.validationStatus.getDisplayText()).append("\n");
-        if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
-            sb.append("Validation Message: ").append(record.validationMessage).append("\n");
+        // Brief validation summary
+        boolean wasValidated = record.validatedAt != null;
+        sb.append("Validated: ").append(wasValidated ? "Yes" : "No").append("\n");
+        if (wasValidated) {
+            sb.append("Validation Result: ").append(getValidationResultDisplay(record.validationStatus)).append("\n");
         }
-        if (record.validatedAt != null) {
-            sb.append("Validated At: ").append(TIME_FORMAT.format(record.validatedAt.atZone(java.time.ZoneId.systemDefault()))).append("\n");
-        }
-        if (record.validationDetails != null && !record.validationDetails.isEmpty()) {
-            sb.append("\nValidation Details:\n");
-            for (Map.Entry<String, String> entry : record.validationDetails.entrySet()) {
-                String key = entry.getKey();
-                // Format key nicely (e.g., "user_id" -> "User ID")
-                String displayKey = key.substring(0, 1).toUpperCase() + key.substring(1).replace("_", " ");
-                sb.append("  ").append(displayKey).append(": ").append(entry.getValue()).append("\n");
-            }
-        }
+        sb.append("False Positive: ").append(record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No").append("\n");
 
         detailArea.setText(sb.toString());
         detailArea.setCaretPosition(0);
@@ -602,6 +617,57 @@ public class SecretsView extends JPanel {
         }
         urlsArea.setText(urlsSb.toString());
         urlsArea.setCaretPosition(0);
+
+        // Validation tab - detailed validation info
+        StringBuilder validSb = new StringBuilder();
+        validSb.append("=== Validation Information ===\n\n");
+
+        if (record.validatedAt == null) {
+            validSb.append("Status: Not Checked\n\n");
+            validSb.append("Click 'Validate' to check if this secret is active.\n");
+        } else {
+            // Determine meaningful status display
+            String statusDisplay = getValidationResultDisplay(record.validationStatus);
+            validSb.append("Checked: Yes\n");
+            validSb.append("Result: ").append(statusDisplay).append("\n");
+            validSb.append("Validated At: ").append(TIME_FORMAT.format(record.validatedAt.atZone(java.time.ZoneId.systemDefault()))).append("\n\n");
+
+            if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
+                validSb.append("Message: ").append(record.validationMessage).append("\n\n");
+            }
+
+            if (record.validationDetails != null && !record.validationDetails.isEmpty()) {
+                validSb.append("=== Details ===\n");
+                for (Map.Entry<String, String> entry : record.validationDetails.entrySet()) {
+                    String key = entry.getKey();
+                    // Format key nicely (e.g., "user_id" -> "User ID")
+                    String displayKey = key.substring(0, 1).toUpperCase() + key.substring(1).replace("_", " ");
+                    validSb.append(displayKey).append(": ").append(entry.getValue()).append("\n");
+                }
+            }
+        }
+
+        if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+            validSb.append("\n=== False Positive ===\n");
+            validSb.append("This finding has been marked as a false positive.\n");
+        }
+
+        validationArea.setText(validSb.toString());
+        validationArea.setCaretPosition(0);
+    }
+
+    /**
+     * Get a user-friendly display text for validation status.
+     */
+    private String getValidationResultDisplay(DedupCache.ValidationStatus status) {
+        return switch (status) {
+            case VALID -> "Valid (Active Credentials)";
+            case INVALID -> "Invalid (Inactive/Revoked)";
+            case UNDETERMINED -> "Unknown (Could not determine)";
+            case FALSE_POSITIVE -> "False Positive";
+            case VALIDATING -> "Validating...";
+            case NOT_CHECKED -> "Not Checked";
+        };
     }
 
     private void validateSelected() {
@@ -760,8 +826,8 @@ public class SecretsView extends JPanel {
                 }
             }
 
-            // Center align numeric columns
-            if (column == 0 || column == 4) {
+            // Center align small columns: #, Count, Checked, Result, False Positive
+            if (column == 0 || column == 4 || column == 5 || column == 6 || column == 7) {
                 setHorizontalAlignment(JLabel.CENTER);
             } else {
                 setHorizontalAlignment(JLabel.LEFT);

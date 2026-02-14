@@ -8,7 +8,7 @@ import java.util.*;
  */
 public class SecretsTableModel extends AbstractTableModel {
 
-    private static final String[] COLUMNS = {"#", "Type", "Secret Preview", "Host", "Count", "Validated", "False Positive"};
+    private static final String[] COLUMNS = {"#", "Type", "Secret Preview", "Host", "Count", "Checked", "Result", "False Positive"};
 
     private final List<DedupCache.FindingRecord> findings = new ArrayList<>();
     private final DedupCache dedupCache;
@@ -64,14 +64,25 @@ public class SecretsTableModel extends AbstractTableModel {
             case 2 -> record.secretPreview;
             case 3 -> record.primaryHost != null ? record.primaryHost : "unknown";
             case 4 -> record.occurrenceCount;
-            case 5 -> {
-                // Validated column - show validation status (excluding false positive)
+            case 5 -> // Checked column - was validation attempted?
+                record.validatedAt != null ? "Yes" : "No";
+            case 6 -> {
+                // Result column - show validation result
                 if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
-                    yield "No";
+                    yield "-";
                 }
-                yield record.validationStatus.getDisplayText();
+                if (record.validatedAt == null) {
+                    yield "-";
+                }
+                yield switch (record.validationStatus) {
+                    case VALID -> "Active";
+                    case INVALID -> "Inactive";
+                    case UNDETERMINED -> "Unknown";
+                    case VALIDATING -> "...";
+                    default -> "Unknown"; // Should not happen if validatedAt is set
+                };
             }
-            case 6 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
+            case 7 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
             default -> null;
         };
     }
