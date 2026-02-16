@@ -426,45 +426,60 @@ public class SecretsView extends JPanel {
     private void applyFilters() {
         List<RowFilter<SecretsTableModel, Integer>> filters = new ArrayList<>();
 
-        // Type filter (checkboxes) - only apply if not "All" selected
+        // Type filter (checkboxes)
         List<String> selectedTypes = getSelectedItems(typeCheckboxes, typeAllCheckbox);
-        if (!selectedTypes.isEmpty()) {
-            List<RowFilter<SecretsTableModel, Integer>> typeFilters = new ArrayList<>();
-            for (String type : selectedTypes) {
-                typeFilters.add(RowFilter.regexFilter("^" + Pattern.quote(type) + "$", 1));
+        if (!typeAllCheckbox.isSelected()) {
+            if (selectedTypes.isEmpty()) {
+                // Nothing selected = show nothing (filter that matches nothing)
+                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 1));
+            } else {
+                List<RowFilter<SecretsTableModel, Integer>> typeFilters = new ArrayList<>();
+                for (String type : selectedTypes) {
+                    typeFilters.add(RowFilter.regexFilter("^" + Pattern.quote(type) + "$", 1));
+                }
+                filters.add(RowFilter.orFilter(typeFilters));
             }
-            filters.add(RowFilter.orFilter(typeFilters));
         }
 
-        // Host filter (checkboxes) - only apply if not "All" selected
+        // Host filter (checkboxes)
         List<String> selectedHosts = getSelectedItems(hostCheckboxes, hostAllCheckbox);
-        if (!selectedHosts.isEmpty()) {
-            List<RowFilter<SecretsTableModel, Integer>> hostFilters = new ArrayList<>();
-            for (String host : selectedHosts) {
-                hostFilters.add(RowFilter.regexFilter("^" + Pattern.quote(host) + "$", 4));  // Host is column 4
+        if (!hostAllCheckbox.isSelected()) {
+            if (selectedHosts.isEmpty()) {
+                // Nothing selected = show nothing
+                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 4));
+            } else {
+                List<RowFilter<SecretsTableModel, Integer>> hostFilters = new ArrayList<>();
+                for (String host : selectedHosts) {
+                    hostFilters.add(RowFilter.regexFilter("^" + Pattern.quote(host) + "$", 4));  // Host is column 4
+                }
+                filters.add(RowFilter.orFilter(hostFilters));
             }
-            filters.add(RowFilter.orFilter(hostFilters));
         }
 
-        // Status filter (checkboxes) - only apply if not "All" selected
+        // Status filter (checkboxes)
         // Options: False Positive, True Positive, Valid, Invalid
         List<String> selectedStatuses = getSelectedItems(statusCheckboxes, statusAllCheckbox);
-        if (!selectedStatuses.isEmpty()) {
-            List<RowFilter<SecretsTableModel, Integer>> statusFilters = new ArrayList<>();
-            for (String status : selectedStatuses) {
-                switch (status) {
-                    case "False Positive" -> // Column 8 (FP) = "Yes"
-                        statusFilters.add(RowFilter.regexFilter("^Yes$", 8));
-                    case "True Positive" -> // Column 8 (FP) = "No"
-                        statusFilters.add(RowFilter.regexFilter("^No$", 8));
-                    case "Valid" -> // Column 7 (Result) = "Active"
-                        statusFilters.add(RowFilter.regexFilter("^Active$", 7));
-                    case "Invalid" -> // Column 7 (Result) = "Inactive"
-                        statusFilters.add(RowFilter.regexFilter("^Inactive$", 7));
+        if (!statusAllCheckbox.isSelected()) {
+            if (selectedStatuses.isEmpty()) {
+                // Nothing selected = show nothing
+                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 7));
+            } else {
+                List<RowFilter<SecretsTableModel, Integer>> statusFilters = new ArrayList<>();
+                for (String status : selectedStatuses) {
+                    switch (status) {
+                        case "False Positive" -> // Column 8 (FP) = "Yes"
+                            statusFilters.add(RowFilter.regexFilter("^Yes$", 8));
+                        case "True Positive" -> // Column 8 (FP) = "No"
+                            statusFilters.add(RowFilter.regexFilter("^No$", 8));
+                        case "Valid" -> // Column 7 (Result) = "Active"
+                            statusFilters.add(RowFilter.regexFilter("^Active$", 7));
+                        case "Invalid" -> // Column 7 (Result) = "Inactive"
+                            statusFilters.add(RowFilter.regexFilter("^Inactive$", 7));
+                    }
                 }
-            }
-            if (!statusFilters.isEmpty()) {
-                filters.add(RowFilter.orFilter(statusFilters));
+                if (!statusFilters.isEmpty()) {
+                    filters.add(RowFilter.orFilter(statusFilters));
+                }
             }
         }
 
