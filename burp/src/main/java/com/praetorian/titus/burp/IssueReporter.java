@@ -1,13 +1,10 @@
 package com.praetorian.titus.burp;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.core.Marker;
 import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.scanner.audit.issues.AuditIssue;
 import burp.api.montoya.scanner.audit.issues.AuditIssueConfidence;
 import burp.api.montoya.scanner.audit.issues.AuditIssueSeverity;
-
-import java.util.List;
 
 /**
  * Reports secret findings as Burp Scanner issues.

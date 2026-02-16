@@ -14,10 +14,11 @@ const (
 
 // ValidationResult represents the outcome of validating a secret.
 type ValidationResult struct {
-	Status      ValidationStatus `json:"status"`
-	Confidence  float64          `json:"confidence"`
-	Message     string           `json:"message"`
-	ValidatedAt time.Time        `json:"validated_at"`
+	Status      ValidationStatus  `json:"status"`
+	Confidence  float64           `json:"confidence"`
+	Message     string            `json:"message"`
+	ValidatedAt time.Time         `json:"validated_at"`
+	Details     map[string]string `json:"details,omitempty"` // Extended validation details
 }
 
 // NewValidationResult creates a result with current timestamp.
@@ -27,5 +28,6 @@ func NewValidationResult(status ValidationStatus, confidence float64, message st
 		Confidence:  confidence,
 		Message:     message,
 		ValidatedAt: time.Now(),
+		Details:     make(map[string]string),
 	}
 }

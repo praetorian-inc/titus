@@ -93,13 +93,17 @@ func (v *AWSValidator) Validate(ctx context.Context, match *types.Match) (*types
 	}
 
 	// Valid credentials
-	return types.NewValidationResult(
+	result := types.NewValidationResult(
 		types.StatusValid,
 		1.0,
 		fmt.Sprintf("valid AWS credentials for account %s, user %s",
 			aws.ToString(identity.Account),
 			aws.ToString(identity.Arn)),
-	), nil
+	)
+	result.Details["account"] = aws.ToString(identity.Account)
+	result.Details["arn"] = aws.ToString(identity.Arn)
+	result.Details["user_id"] = aws.ToString(identity.UserId)
+	return result, nil
 }
 
 // extractCredentials extracts AWS credentials from match based on rule ID.

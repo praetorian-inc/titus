@@ -48,6 +48,17 @@ public class ScanQueue implements AutoCloseable {
          * This is called on the enqueueing thread - use SwingUtilities.invokeLater for UI updates.
          */
         void onJobEnqueued(ScanJob job);
+
+        /**
+         * Called when secrets are found for a URL.
+         * This is called on the worker thread - use SwingUtilities.invokeLater for UI updates.
+         *
+         * @param url       The URL where secrets were found
+         * @param count     Number of unique secrets found
+         * @param types     Comma-separated list of secret types
+         * @param category  The primary category of secrets found
+         */
+        default void onSecretsFound(String url, int count, String types, SecretCategoryMapper.Category category) {}
     }
 
     /**
@@ -216,6 +227,15 @@ public class ScanQueue implements AutoCloseable {
 
                     log("Worker " + id + " found " + matches.size() + " matches for " + url);
 
+                    // Build request/response content for storage
+                    String requestContent = buildRequestContent(job);
+                    String responseContent = buildResponseContent(job);
+
+                    // Track unique secrets for this URL (for UI update)
+                    int secretCount = 0;
+                    java.util.Set<String> secretTypes = new java.util.HashSet<>();
+                    SecretCategoryMapper.Category primaryCategory = null;
+
                     for (TitusProcessScanner.Match match : matches) {
                         // Check dedup
                         if (!dedupCache.isNewFinding(url, match.matchedContent(), match.ruleId())) {
@@ -224,10 +244,29 @@ public class ScanQueue implements AutoCloseable {
                         }
 
                         totalMatches.incrementAndGet();
+                        secretCount++;
 
-                        // Record and report
-                        dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId());
+                        // Track types and category for UI
+                        String displayName = SecretCategoryMapper.getDisplayName(match.ruleId(), match.ruleName());
+                        secretTypes.add(displayName);
+                        SecretCategoryMapper.Category category = SecretCategoryMapper.getCategory(match.ruleId());
+                        if (primaryCategory == null || category.ordinal() < primaryCategory.ordinal()) {
+                            primaryCategory = category;
+                        }
+
+                        // Record and report with HTTP content
+                        dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId(), match.ruleName(),
+                                                   requestContent, responseContent);
                         issueReporter.reportIssue(job, match);
+                    }
+
+                    // Notify listener of secrets found (for UI update)
+                    if (secretCount > 0) {
+                        ScanQueueListener l = listener;
+                        if (l != null) {
+                            String types = String.join(", ", secretTypes);
+                            l.onSecretsFound(url, secretCount, types, primaryCategory);
+                        }
                     }
                 }
 
@@ -252,35 +291,53 @@ public class ScanQueue implements AutoCloseable {
             // Add request content if scanRequest is enabled
             if (job.scanRequest()) {
                 sb.append("=== REQUEST ===\n");
-
-                // Request line
-                sb.append(job.request().method()).append(" ");
-                sb.append(job.request().path()).append(" ");
-                sb.append(job.request().httpVersion()).append("\n");
-
-                // Request headers (may contain API keys, tokens, etc.)
-                for (HttpHeader header : job.request().headers()) {
-                    sb.append(header.name()).append(": ").append(header.value()).append("\n");
-                }
-
-                sb.append("\n");
-
-                // Request body
-                if (job.request().body() != null && job.request().body().length() > 0) {
-                    sb.append(job.request().body().toString());
-                }
-
+                sb.append(buildRequestContent(job));
                 sb.append("\n\n=== RESPONSE ===\n");
             }
 
-            // Add response headers
+            sb.append(buildResponseContent(job));
+            return sb.toString();
+        }
+
+        private String buildRequestContent(ScanJob job) {
+            StringBuilder sb = new StringBuilder();
+
+            // Request line
+            sb.append(job.request().method()).append(" ");
+            sb.append(job.request().path()).append(" ");
+            sb.append(job.request().httpVersion()).append("\n");
+
+            // Request headers
+            for (HttpHeader header : job.request().headers()) {
+                sb.append(header.name()).append(": ").append(header.value()).append("\n");
+            }
+
+            sb.append("\n");
+
+            // Request body
+            if (job.request().body() != null && job.request().body().length() > 0) {
+                sb.append(job.request().body().toString());
+            }
+
+            return sb.toString();
+        }
+
+        private String buildResponseContent(ScanJob job) {
+            StringBuilder sb = new StringBuilder();
+
+            // Response status line
+            sb.append("HTTP/").append(job.response().httpVersion()).append(" ");
+            sb.append(job.response().statusCode()).append(" ");
+            sb.append(job.response().reasonPhrase()).append("\n");
+
+            // Response headers
             for (HttpHeader header : job.response().headers()) {
                 sb.append(header.name()).append(": ").append(header.value()).append("\n");
             }
 
             sb.append("\n");
 
-            // Add response body
+            // Response body
             if (job.response().body() != null) {
                 sb.append(job.response().body().toString());
             }

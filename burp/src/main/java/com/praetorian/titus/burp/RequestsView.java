@@ -21,6 +21,7 @@ public class RequestsView extends JPanel {
     private final HttpRequestEditor requestEditor;
     private final HttpResponseEditor responseEditor;
     private final JLabel statusLabel;
+    private final RequestsFilterPanel filterPanel;
 
     public RequestsView(MontoyaApi api, RequestsTableModel tableModel) {
         this.api = api;
@@ -28,6 +29,11 @@ public class RequestsView extends JPanel {
 
         setLayout(new BorderLayout());
         setBorder(new TitledBorder("Scanned Requests"));
+
+        // Filter panel
+        filterPanel = new RequestsFilterPanel();
+        filterPanel.setFilterChangeListener(tableModel::setFilter);
+        add(filterPanel, BorderLayout.NORTH);
 
         // Create table
         requestsTable = new JTable(tableModel);
@@ -44,6 +50,9 @@ public class RequestsView extends JPanel {
         requestsTable.getColumnModel().getColumn(0).setCellRenderer(centerRenderer); // #
         requestsTable.getColumnModel().getColumn(3).setCellRenderer(centerRenderer); // Status
         requestsTable.getColumnModel().getColumn(4).setCellRenderer(centerRenderer); // Size
+
+        // Custom renderer for Secrets column
+        requestsTable.getColumnModel().getColumn(6).setCellRenderer(new SecretsCellRenderer());
 
         JScrollPane tableScroll = new JScrollPane(requestsTable);
         tableScroll.setPreferredSize(new Dimension(800, 200));
@@ -74,7 +83,10 @@ public class RequestsView extends JPanel {
         mainSplit.setResizeWeight(0.35);
         mainSplit.setOneTouchExpandable(true);
 
-        add(mainSplit, BorderLayout.CENTER);
+        // Wrap in panel for proper layout with filter
+        JPanel contentPanel = new JPanel(new BorderLayout());
+        contentPanel.add(mainSplit, BorderLayout.CENTER);
+        add(contentPanel, BorderLayout.CENTER);
 
         // Status bar
         statusLabel = new JLabel("0 requests");
@@ -87,13 +99,52 @@ public class RequestsView extends JPanel {
         requestsTable.getColumnModel().getColumn(0).setMaxWidth(60);
         requestsTable.getColumnModel().getColumn(1).setPreferredWidth(60);   // Method
         requestsTable.getColumnModel().getColumn(1).setMaxWidth(80);
-        requestsTable.getColumnModel().getColumn(2).setPreferredWidth(400);  // URL
+        requestsTable.getColumnModel().getColumn(2).setPreferredWidth(350);  // URL
         requestsTable.getColumnModel().getColumn(3).setPreferredWidth(50);   // Status
         requestsTable.getColumnModel().getColumn(3).setMaxWidth(70);
-        requestsTable.getColumnModel().getColumn(4).setPreferredWidth(70);   // Size
-        requestsTable.getColumnModel().getColumn(4).setMaxWidth(100);
-        requestsTable.getColumnModel().getColumn(5).setPreferredWidth(70);   // Time
-        requestsTable.getColumnModel().getColumn(5).setMaxWidth(100);
+        requestsTable.getColumnModel().getColumn(4).setPreferredWidth(60);   // Size
+        requestsTable.getColumnModel().getColumn(4).setMaxWidth(80);
+        requestsTable.getColumnModel().getColumn(5).setPreferredWidth(60);   // Time
+        requestsTable.getColumnModel().getColumn(5).setMaxWidth(80);
+        requestsTable.getColumnModel().getColumn(6).setPreferredWidth(70);   // Secrets
+        requestsTable.getColumnModel().getColumn(6).setMaxWidth(100);
+    }
+
+    /**
+     * Get the filter panel for external updates.
+     */
+    public RequestsFilterPanel getFilterPanel() {
+        return filterPanel;
+    }
+
+    /**
+     * Custom cell renderer for the Secrets column with color coding.
+     */
+    private class SecretsCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+            int secretCount = value != null ? (Integer) value : 0;
+            setHorizontalAlignment(JLabel.CENTER);
+
+            if (secretCount > 0) {
+                RequestsTableModel.SecretInfo info = tableModel.getSecretInfoAt(row);
+                if (!isSelected && info != null && info.primaryCategory() != null) {
+                    c.setBackground(info.primaryCategory().getLightColor());
+                }
+                setText(String.valueOf(secretCount));
+            } else {
+                if (!isSelected) {
+                    c.setBackground(table.getBackground());
+                }
+                setText("-");
+            }
+
+            return c;
+        }
     }
 
     private JPanel createEditorPanel(String title, Component editor) {

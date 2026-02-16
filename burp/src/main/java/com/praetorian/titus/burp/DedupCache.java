@@ -115,7 +115,37 @@ public class DedupCache {
      * @return The updated finding record
      */
     public FindingRecord recordOccurrence(String url, String secretContent, String ruleId) {
+        return recordOccurrence(url, secretContent, ruleId, null);
+    }
+
+    /**
+     * Record an occurrence of a finding with rule name.
+     *
+     * @param url           The URL where the secret was found
+     * @param secretContent The secret content
+     * @param ruleId        The rule that matched
+     * @param ruleName      The human-readable rule name
+     * @return The updated finding record
+     */
+    public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName) {
+        return recordOccurrence(url, secretContent, ruleId, ruleName, null, null);
+    }
+
+    /**
+     * Record an occurrence of a finding with rule name and HTTP content.
+     *
+     * @param url             The URL where the secret was found
+     * @param secretContent   The secret content
+     * @param ruleId          The rule that matched
+     * @param ruleName        The human-readable rule name
+     * @param requestContent  The full HTTP request content
+     * @param responseContent The full HTTP response content
+     * @return The updated finding record
+     */
+    public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName,
+                                          String requestContent, String responseContent) {
         String normalizedUrl = normalizeUrl(url);
+        String host = SecretCategoryMapper.extractHost(url);
         String key = computeKey(normalizedUrl, secretContent);
 
         // Evict oldest entries if at max capacity before adding new
@@ -127,14 +157,22 @@ public class DedupCache {
             if (existing == null) {
                 FindingRecord newRecord = new FindingRecord(
                     ruleId,
+                    ruleName != null ? ruleName : SecretCategoryMapper.getDisplayName(ruleId, null),
                     createPreview(secretContent),
+                    secretContent,
+                    host,
                     new HashSet<>(Set.of(normalizedUrl)),
                     1,
                     Instant.now()
                 );
+                // Store HTTP content for first occurrence only
+                if (requestContent != null || responseContent != null) {
+                    newRecord.setHttpContent(requestContent, responseContent);
+                }
                 return newRecord;
             } else {
                 existing.urls.add(normalizedUrl);
+                existing.hosts.add(host);
                 existing.occurrenceCount++;
                 return existing;
             }
@@ -175,6 +213,23 @@ public class DedupCache {
      */
     public Collection<FindingRecord> getAllFindings() {
         return Collections.unmodifiableCollection(cache.values());
+    }
+
+    /**
+     * Get all findings for a specific URL.
+     *
+     * @param url The URL to get findings for
+     * @return List of findings for this URL (may be empty)
+     */
+    public List<FindingRecord> getFindingsForUrl(String url) {
+        String normalizedUrl = normalizeUrl(url);
+        List<FindingRecord> results = new ArrayList<>();
+        for (FindingRecord record : cache.values()) {
+            if (record.urls.contains(normalizedUrl)) {
+                results.add(record);
+            }
+        }
+        return results;
     }
 
     /**
@@ -220,6 +275,23 @@ public class DedupCache {
                             String url = record.urls.iterator().next();
                             // We don't have the original secret, so use preview as approximation
                             String key = computeKey(url, record.secretPreview);
+
+                            // Fix missing host data from older cache versions
+                            if (record.primaryHost == null || record.primaryHost.isEmpty()) {
+                                record.primaryHost = SecretCategoryMapper.extractHost(url);
+                            }
+                            if (record.hosts == null) {
+                                record.hosts = new HashSet<>();
+                            }
+                            if (record.hosts.isEmpty()) {
+                                for (String u : record.urls) {
+                                    record.hosts.add(SecretCategoryMapper.extractHost(u));
+                                }
+                            }
+                            if (record.validationStatus == null) {
+                                record.validationStatus = ValidationStatus.NOT_CHECKED;
+                            }
+
                             cache.put(key, record);
                         }
                     }
@@ -275,26 +347,103 @@ public class DedupCache {
     }
 
     /**
+     * Validation status for secrets.
+     */
+    public enum ValidationStatus {
+        NOT_CHECKED("No"),
+        VALIDATING("..."),
+        VALID("Active"),
+        INVALID("Inactive"),
+        UNDETERMINED("Unknown"),
+        FALSE_POSITIVE("FP");
+
+        private final String displayText;
+
+        ValidationStatus(String displayText) {
+            this.displayText = displayText;
+        }
+
+        public String getDisplayText() {
+            return displayText;
+        }
+    }
+
+    /**
      * Record of a deduplicated finding.
      */
     public static class FindingRecord {
         public String ruleId;
+        public String ruleName;
         public String secretPreview;
+        public String secretContent;  // Full content for validation
+        public String primaryHost;    // Host where first seen
         public Set<String> urls;
+        public Set<String> hosts;     // All hosts where seen
         public int occurrenceCount;
         public Instant firstSeen;
+        public ValidationStatus validationStatus;
+        public String validationMessage;
+        public Instant validatedAt;
+        public String responseSnippet; // Snippet of response around the secret
+        public String requestContent;  // Full request content for display
+        public String responseContent; // Full response content for display
+        public Map<String, String> validationDetails;
 
         public FindingRecord() {
             this.urls = new HashSet<>();
+            this.hosts = new HashSet<>();
+            this.validationStatus = ValidationStatus.NOT_CHECKED;
+            this.validationDetails = new HashMap<>();
         }
 
-        public FindingRecord(String ruleId, String secretPreview, Set<String> urls,
+        public FindingRecord(String ruleId, String ruleName, String secretPreview,
+                           String secretContent, String primaryHost, Set<String> urls,
                            int occurrenceCount, Instant firstSeen) {
             this.ruleId = ruleId;
+            this.ruleName = ruleName;
             this.secretPreview = secretPreview;
+            this.secretContent = secretContent;
+            this.primaryHost = primaryHost;
             this.urls = urls;
+            this.hosts = new HashSet<>();
+            if (primaryHost != null && !primaryHost.isEmpty()) {
+                this.hosts.add(primaryHost);
+            }
             this.occurrenceCount = occurrenceCount;
             this.firstSeen = firstSeen;
+            this.validationStatus = ValidationStatus.NOT_CHECKED;
+            this.validationDetails = new HashMap<>();
+        }
+
+        /**
+         * Update validation status.
+         */
+        public void setValidation(ValidationStatus status, String message) {
+            this.validationStatus = status;
+            this.validationMessage = message;
+            this.validatedAt = Instant.now();
+        }
+
+        /**
+         * Set response snippet.
+         */
+        public void setResponseSnippet(String snippet) {
+            this.responseSnippet = snippet;
+        }
+
+        /**
+         * Set request and response content for display.
+         */
+        public void setHttpContent(String requestContent, String responseContent) {
+            this.requestContent = requestContent;
+            this.responseContent = responseContent;
+        }
+
+        /**
+         * Set validation details.
+         */
+        public void setValidationDetails(Map<String, String> details) {
+            this.validationDetails = details;
         }
     }
 }

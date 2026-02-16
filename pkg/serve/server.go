@@ -7,6 +7,8 @@ import (
 	"io"
 
 	"github.com/praetorian-inc/titus/pkg/scanner"
+	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/praetorian-inc/titus/pkg/validator"
 )
 
 // Version is the server protocol version
@@ -14,9 +16,10 @@ const Version = "1.0.0"
 
 // Server manages the streaming scanner
 type Server struct {
-	core    *scanner.Core
-	encoder *json.Encoder
-	decoder *json.Decoder
+	core      *scanner.Core
+	validator *validator.Engine
+	encoder   *json.Encoder
+	decoder   *json.Decoder
 }
 
 // NewServer creates a new streaming server
@@ -26,6 +29,11 @@ func NewServer(core *scanner.Core, in io.Reader, out io.Writer) *Server {
 		encoder: json.NewEncoder(out),
 		decoder: json.NewDecoder(bufio.NewReader(in)),
 	}
+}
+
+// SetValidator sets the validator engine
+func (s *Server) SetValidator(v *validator.Engine) {
+	s.validator = v
 }
 
 // Run starts the server main loop
@@ -62,7 +70,7 @@ func (s *Server) Run(ctx context.Context) error {
 			for {
 				select {
 				case req := <-reqChan:
-					if s.processRequest(req) {
+					if s.processRequest(ctx, req) {
 						return nil
 					}
 				default:
@@ -75,7 +83,7 @@ func (s *Server) Run(ctx context.Context) error {
 				}
 			}
 		case req := <-reqChan:
-			if s.processRequest(req) {
+			if s.processRequest(ctx, req) {
 				return nil
 			}
 		}
@@ -83,12 +91,14 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 // processRequest handles a single request and returns true if the server should exit
-func (s *Server) processRequest(req Request) bool {
+func (s *Server) processRequest(ctx context.Context, req Request) bool {
 	switch req.Type {
 	case "scan":
 		s.handleScan(req.Payload)
 	case "scan_batch":
 		s.handleScanBatch(req.Payload)
+	case "validate":
+		s.handleValidate(ctx, req.Payload)
 	case "close":
 		return true
 	default:
@@ -144,6 +154,58 @@ func (s *Server) handleScanBatch(payload json.RawMessage) {
 	s.encoder.Encode(Response{
 		Success: true,
 		Type:    "scan_batch",
+		Data:    data,
+	})
+}
+
+func (s *Server) handleValidate(ctx context.Context, payload json.RawMessage) {
+	var p ValidatePayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		s.sendError("validate", err.Error())
+		return
+	}
+
+	// Check if validator is available
+	if s.validator == nil {
+		s.sendError("validate", "validator not configured")
+		return
+	}
+
+	// Create a types.Match from the payload
+	match := &types.Match{
+		RuleID:      p.RuleID,
+		NamedGroups: make(map[string][]byte),
+	}
+
+	// Convert string named groups to byte slices
+	for key, value := range p.NamedGroups {
+		match.NamedGroups[key] = []byte(value)
+	}
+
+	// Add the secret to named groups if not already present
+	if _, exists := match.NamedGroups["secret"]; !exists {
+		match.NamedGroups["secret"] = []byte(p.Secret)
+	}
+
+	// Validate the match
+	validationResult, err := s.validator.ValidateMatch(ctx, match)
+	if err != nil {
+		s.sendError("validate", err.Error())
+		return
+	}
+
+	// Convert ValidationResult to ValidateResult
+	result := ValidateResult{
+		Status:     string(validationResult.Status),
+		Confidence: validationResult.Confidence,
+		Message:    validationResult.Message,
+		Details:    validationResult.Details,
+	}
+
+	data, _ := json.Marshal(result)
+	s.encoder.Encode(Response{
+		Success: true,
+		Type:    "validate",
 		Data:    data,
 	})
 }

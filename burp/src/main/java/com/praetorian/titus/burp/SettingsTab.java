@@ -26,11 +26,15 @@ public class SettingsTab extends JPanel {
 
     private JCheckBox passiveScanCheckbox;
     private JCheckBox scanRequestsCheckbox;
+    private JCheckBox validationEnabledCheckbox;
     private ScanParametersPanel parametersPanel;
     private RequestsTableModel requestsTableModel;
     private RequestsView requestsView;
+    private SecretsView secretsView;
+    private StatisticsView statisticsView;
     private MessagePersistence messagePersistence;
     private FindingsExporter findingsExporter;
+    private ValidationManager validationManager;
     private JLabel queueSizeLabel;
     private JLabel scannedCountLabel;
     private JLabel matchCountLabel;
@@ -56,10 +60,17 @@ public class SettingsTab extends JPanel {
         JPanel settingsPanel = createSettingsPanel();
         tabbedPane.addTab("Settings", settingsPanel);
 
-        // Requests tab
+        // Initialize requests model (used internally for scanning, but tab hidden)
         requestsTableModel = new RequestsTableModel();
         requestsView = new RequestsView(api, requestsTableModel);
-        tabbedPane.addTab("Requests", requestsView);
+
+        // Secrets tab
+        secretsView = new SecretsView(api, dedupCache);
+        tabbedPane.addTab("Secrets", secretsView);
+
+        // Statistics tab
+        statisticsView = new StatisticsView(api, secretsView.getTableModel());
+        tabbedPane.addTab("Statistics", statisticsView);
 
         add(tabbedPane, BorderLayout.CENTER);
 
@@ -72,12 +83,28 @@ public class SettingsTab extends JPanel {
         // Restore persisted messages
         restorePersistedMessages();
 
-        // Wire up scan queue listener to populate table
-        scanQueue.setListener(job -> {
-            SwingUtilities.invokeLater(() -> {
-                requestsTableModel.addEntry(job);
-                requestsView.updateStatus();
-            });
+        // Wire up scan queue listener to populate table and refresh secrets
+        scanQueue.setListener(new ScanQueue.ScanQueueListener() {
+            @Override
+            public void onJobEnqueued(ScanJob job) {
+                SwingUtilities.invokeLater(() -> {
+                    requestsTableModel.addEntry(job);
+                    requestsView.updateStatus();
+                    // Refresh secrets view periodically (every 5 jobs to avoid excessive updates)
+                    if (requestsTableModel.getEntryCount() % 5 == 0) {
+                        secretsView.refresh();
+                    }
+                });
+            }
+
+            @Override
+            public void onSecretsFound(String url, int count, String types, SecretCategoryMapper.Category category) {
+                SwingUtilities.invokeLater(() -> {
+                    requestsTableModel.updateSecretInfo(url, count, types, category);
+                    // Also refresh secrets view when new secrets are found
+                    secretsView.refresh();
+                });
+            }
         });
 
         // Load settings
@@ -144,6 +171,48 @@ public class SettingsTab extends JPanel {
     }
 
     /**
+     * Get the secrets view.
+     */
+    public SecretsView getSecretsView() {
+        return secretsView;
+    }
+
+    /**
+     * Set the validation manager.
+     */
+    public void setValidationManager(ValidationManager validationManager) {
+        this.validationManager = validationManager;
+        if (validationEnabledCheckbox != null) {
+            validationEnabledCheckbox.setSelected(validationManager.isValidationEnabled());
+        }
+
+        // Wire up secrets view validation listener
+        if (secretsView != null) {
+            secretsView.setValidationListener(record -> {
+                if (validationManager != null && validationManager.isValidationEnabled()) {
+                    validationManager.validateAsync(record, r -> {
+                        secretsView.refresh();
+                    });
+                }
+            });
+        }
+    }
+
+    /**
+     * Get the validation manager.
+     */
+    public ValidationManager getValidationManager() {
+        return validationManager;
+    }
+
+    /**
+     * Check if validation is enabled.
+     */
+    public boolean isValidationEnabled() {
+        return validationManager != null && validationManager.isValidationEnabled();
+    }
+
+    /**
      * Get the message persistence handler.
      */
     public MessagePersistence getMessagePersistence() {
@@ -197,7 +266,7 @@ public class SettingsTab extends JPanel {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(new TitledBorder("Scan Settings"));
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 180));
 
         passiveScanCheckbox = new JCheckBox("Enable passive scanning (scan all proxy traffic)");
         passiveScanCheckbox.setSelected(true);
@@ -207,13 +276,29 @@ public class SettingsTab extends JPanel {
         scanRequestsCheckbox.setSelected(false);
         scanRequestsCheckbox.addActionListener(e -> saveSettings());
 
+        validationEnabledCheckbox = new JCheckBox("Enable secret validation (makes outbound API requests)");
+        validationEnabledCheckbox.setSelected(false);
+        validationEnabledCheckbox.addActionListener(e -> {
+            if (validationManager != null) {
+                validationManager.setValidationEnabled(validationEnabledCheckbox.isSelected());
+            }
+        });
+
         JLabel hint = new JLabel("Tip: Right-click items in HTTP history to scan manually");
         hint.setForeground(Color.GRAY);
         hint.setFont(hint.getFont().deriveFont(Font.ITALIC, 11f));
 
+        JLabel validationWarning = new JLabel("<html>Warning: Validation may trigger alerts (e.g., AWS CloudTrail) and makes requests to external services.</html>");
+        validationWarning.setForeground(new Color(200, 100, 0));
+        validationWarning.setFont(validationWarning.getFont().deriveFont(Font.ITALIC, 10f));
+
         panel.add(passiveScanCheckbox);
         panel.add(Box.createVerticalStrut(3));
         panel.add(scanRequestsCheckbox);
+        panel.add(Box.createVerticalStrut(5));
+        panel.add(validationEnabledCheckbox);
+        panel.add(Box.createVerticalStrut(2));
+        panel.add(validationWarning);
         panel.add(Box.createVerticalStrut(5));
         panel.add(hint);
 

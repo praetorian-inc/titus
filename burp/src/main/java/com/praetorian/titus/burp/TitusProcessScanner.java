@@ -145,6 +145,18 @@ public class TitusProcessScanner implements AutoCloseable {
         return process != null && process.isAlive() && initialized.get() && !closed.get();
     }
 
+    /**
+     * Send a validation request and return the response.
+     *
+     * @param request The validation request JSON object
+     * @return The response JSON object
+     * @throws IOException If communication fails
+     */
+    public synchronized JsonObject sendValidateRequest(JsonObject request) throws IOException {
+        ensureAlive();
+        return sendRequest(request);
+    }
+
     @Override
     public synchronized void close() {
         if (closed.getAndSet(true)) {

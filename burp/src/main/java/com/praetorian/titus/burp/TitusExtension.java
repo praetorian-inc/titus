@@ -29,6 +29,7 @@ public class TitusExtension implements BurpExtension {
     private SeverityConfig severityConfig;
     private SettingsTab settingsTab;
     private BulkScanHandler bulkScanHandler;
+    private ValidationManager validationManager;
 
     @Override
     public void initialize(MontoyaApi api) {
@@ -62,8 +63,17 @@ public class TitusExtension implements BurpExtension {
             this.settingsTab = new SettingsTab(api, severityConfig, scanQueue, dedupCache);
             api.userInterface().registerSuiteTab("Titus", settingsTab);
 
+            // Initialize validation manager and wire up to settings tab
+            this.validationManager = new ValidationManager(api, processManager, dedupCache);
+            this.settingsTab.setValidationManager(validationManager);
+
             // Initialize bulk scan handler
             this.bulkScanHandler = new BulkScanHandler(api, scanQueue, fastPathFilter, dedupCache, settingsTab);
+
+            // Register custom response editor for secrets tab
+            api.userInterface().registerHttpResponseEditorProvider(
+                new SecretEditorProvider(api, processManager, dedupCache)
+            );
 
             api.logging().logToOutput("Titus Secret Scanner initialized successfully");
             api.logging().logToOutput("  - Titus version: " + processManager.getScanner().getVersion());

@@ -5,18 +5,29 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Custom TableModel for the HTTP requests table.
- * Stores scanned HTTP requests with method, URL, status, size, and time.
+ * Stores scanned HTTP requests with method, URL, status, size, time, and secrets.
  */
 public class RequestsTableModel extends AbstractTableModel {
 
-    private static final String[] COLUMNS = {"#", "Method", "URL", "Status", "Size", "Time"};
+    private static final String[] COLUMNS = {"#", "Method", "URL", "Status", "Size", "Time", "Secrets"};
     private static final int MAX_ROWS = 1000;
 
     private final List<RequestEntry> entries = new ArrayList<>();
+    private final List<RequestEntry> filteredEntries = new ArrayList<>();
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss");
+    private final Map<String, SecretInfo> secretsByUrl = new ConcurrentHashMap<>();
+    private RequestsFilterPanel.FilterCriteria currentFilter;
+    private boolean filteringEnabled = false;
+
+    /**
+     * Secret info for a URL.
+     */
+    public record SecretInfo(int count, String types, SecretCategoryMapper.Category primaryCategory) {}
 
     /**
      * Entry record for table data.
@@ -25,15 +36,17 @@ public class RequestsTableModel extends AbstractTableModel {
         int index,
         String method,
         String url,
+        String host,
         int status,
         int size,
         long timestamp,
-        ScanJob scanJob
+        ScanJob scanJob,
+        SecretInfo secretInfo
     ) {}
 
     @Override
     public int getRowCount() {
-        return entries.size();
+        return filteringEnabled ? filteredEntries.size() : entries.size();
     }
 
     @Override
@@ -49,18 +62,19 @@ public class RequestsTableModel extends AbstractTableModel {
     @Override
     public Class<?> getColumnClass(int column) {
         return switch (column) {
-            case 0, 3, 4 -> Integer.class;
+            case 0, 3, 4, 6 -> Integer.class;
             default -> String.class;
         };
     }
 
     @Override
     public Object getValueAt(int row, int column) {
-        if (row < 0 || row >= entries.size()) {
+        List<RequestEntry> source = filteringEnabled ? filteredEntries : entries;
+        if (row < 0 || row >= source.size()) {
             return null;
         }
 
-        RequestEntry entry = entries.get(row);
+        RequestEntry entry = source.get(row);
         return switch (column) {
             case 0 -> entry.index();
             case 1 -> entry.method();
@@ -68,8 +82,20 @@ public class RequestsTableModel extends AbstractTableModel {
             case 3 -> entry.status();
             case 4 -> entry.size();
             case 5 -> formatTime(entry.timestamp());
+            case 6 -> entry.secretInfo() != null ? entry.secretInfo().count() : 0;
             default -> null;
         };
+    }
+
+    /**
+     * Get the secret info for display purposes (for custom cell renderer).
+     */
+    public SecretInfo getSecretInfoAt(int row) {
+        List<RequestEntry> source = filteringEnabled ? filteredEntries : entries;
+        if (row < 0 || row >= source.size()) {
+            return null;
+        }
+        return source.get(row).secretInfo();
     }
 
     /**
@@ -80,7 +106,9 @@ public class RequestsTableModel extends AbstractTableModel {
         // Enforce max rows (FIFO - remove oldest)
         if (entries.size() >= MAX_ROWS) {
             entries.remove(0);
-            fireTableRowsDeleted(0, 0);
+            if (!filteringEnabled) {
+                fireTableRowsDeleted(0, 0);
+            }
         }
 
         int responseSize = 0;
@@ -93,29 +121,124 @@ public class RequestsTableModel extends AbstractTableModel {
             }
         }
 
+        String url = job.url();
+        String host = SecretCategoryMapper.extractHost(url);
+        SecretInfo secretInfo = secretsByUrl.get(url);
+
         RequestEntry entry = new RequestEntry(
             entries.size() + 1,
             job.request().method(),
-            job.url(),
+            url,
+            host,
             status,
             responseSize,
             job.queuedAt(),
-            job
+            job,
+            secretInfo
         );
 
         entries.add(entry);
-        int lastRow = entries.size() - 1;
-        fireTableRowsInserted(lastRow, lastRow);
+
+        if (filteringEnabled) {
+            if (matchesFilter(entry)) {
+                filteredEntries.add(entry);
+                int lastRow = filteredEntries.size() - 1;
+                fireTableRowsInserted(lastRow, lastRow);
+            }
+        } else {
+            int lastRow = entries.size() - 1;
+            fireTableRowsInserted(lastRow, lastRow);
+        }
+    }
+
+    /**
+     * Update secret info for a URL.
+     */
+    public void updateSecretInfo(String url, int count, String types, SecretCategoryMapper.Category category) {
+        secretsByUrl.put(url, new SecretInfo(count, types, category));
+        // Update any existing entries with this URL
+        for (int i = 0; i < entries.size(); i++) {
+            RequestEntry entry = entries.get(i);
+            if (url.equals(entry.url())) {
+                RequestEntry updated = new RequestEntry(
+                    entry.index(), entry.method(), entry.url(), entry.host(),
+                    entry.status(), entry.size(), entry.timestamp(),
+                    entry.scanJob(), secretsByUrl.get(url)
+                );
+                entries.set(i, updated);
+            }
+        }
+        // Reapply filter if active
+        if (filteringEnabled) {
+            applyFilter(currentFilter);
+        } else {
+            fireTableDataChanged();
+        }
+    }
+
+    /**
+     * Set filter criteria.
+     */
+    public void setFilter(RequestsFilterPanel.FilterCriteria filter) {
+        this.currentFilter = filter;
+        if (filter == null || isEmptyFilter(filter)) {
+            filteringEnabled = false;
+            filteredEntries.clear();
+        } else {
+            filteringEnabled = true;
+            applyFilter(filter);
+        }
+        fireTableDataChanged();
+    }
+
+    private boolean isEmptyFilter(RequestsFilterPanel.FilterCriteria filter) {
+        return filter.host() == null && filter.secretType() == null &&
+               filter.hasSecrets() == null && filter.method() == null &&
+               filter.status() == null &&
+               (filter.searchText() == null || filter.searchText().isEmpty());
+    }
+
+    private void applyFilter(RequestsFilterPanel.FilterCriteria filter) {
+        filteredEntries.clear();
+        for (RequestEntry entry : entries) {
+            if (matchesFilter(entry)) {
+                filteredEntries.add(entry);
+            }
+        }
+    }
+
+    private boolean matchesFilter(RequestEntry entry) {
+        if (currentFilter == null) {
+            return true;
+        }
+        int secretCount = entry.secretInfo() != null ? entry.secretInfo().count() : 0;
+        String secretTypes = entry.secretInfo() != null ? entry.secretInfo().types() : null;
+        return currentFilter.matches(
+            entry.host(), entry.method(), entry.status(),
+            entry.url(), secretCount, secretTypes
+        );
     }
 
     /**
      * Get the scan job at the specified row.
      */
     public ScanJob getJobAt(int row) {
-        if (row < 0 || row >= entries.size()) {
+        List<RequestEntry> source = filteringEnabled ? filteredEntries : entries;
+        if (row < 0 || row >= source.size()) {
             return null;
         }
-        return entries.get(row).scanJob();
+        return source.get(row).scanJob();
+    }
+
+    /**
+     * Get the entry at the specified row.
+     */
+    public RequestEntry getEntryAt(int row) {
+        List<RequestEntry> source = filteringEnabled ? filteredEntries : entries;
+        if (row < 0 || row >= source.size()) {
+            return null;
+        }
+        return source.get(row);
     }
 
     /**
