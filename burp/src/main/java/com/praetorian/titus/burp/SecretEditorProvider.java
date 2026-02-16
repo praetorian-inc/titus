@@ -205,7 +205,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
 
                 // Check validation status from cache
                 String url = currentRequest != null ? currentRequest.url() : "unknown";
-                DedupCache.FindingRecord record = dedupCache.getFinding(url, match.matchedContent());
+                DedupCache.FindingRecord record = dedupCache.getFinding(url, match.matchedContent(), match.ruleId());
                 if (record != null) {
                     sb.append("--- Validation ---\n");
                     sb.append("Checked: ").append(record.validatedAt != null ? "Yes" : "No").append("\n");

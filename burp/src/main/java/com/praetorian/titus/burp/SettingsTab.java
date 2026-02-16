@@ -189,11 +189,22 @@ public class SettingsTab extends JPanel {
         // Wire up secrets view validation listener
         if (secretsView != null) {
             secretsView.setValidationListener(record -> {
-                if (validationManager != null && validationManager.isValidationEnabled()) {
-                    validationManager.validateAsync(record, r -> {
-                        secretsView.refresh();
-                    });
+                if (validationManager == null) {
+                    api.logging().logToError("Validation manager not initialized");
+                    return;
                 }
+                if (!validationManager.isValidationEnabled()) {
+                    javax.swing.JOptionPane.showMessageDialog(
+                        secretsView,
+                        "Validation is not enabled.\n\nGo to Settings tab and check 'Enable secret validation' to use this feature.",
+                        "Validation Disabled",
+                        javax.swing.JOptionPane.WARNING_MESSAGE
+                    );
+                    return;
+                }
+                validationManager.validateAsync(record, r -> {
+                    secretsView.refresh();
+                });
             });
         }
     }

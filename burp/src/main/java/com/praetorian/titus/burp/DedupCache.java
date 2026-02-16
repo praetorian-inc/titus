@@ -102,7 +102,7 @@ public class DedupCache {
      * @return true if this is a new finding
      */
     public boolean isNewFinding(String url, String secretContent, String ruleId) {
-        String key = computeKey(normalizeUrl(url), secretContent);
+        String key = computeKey(normalizeUrl(url), secretContent, ruleId);
         return !cache.containsKey(key);
     }
 
@@ -164,7 +164,7 @@ public class DedupCache {
                                           Map<String, String> namedGroups) {
         String normalizedUrl = normalizeUrl(url);
         String host = SecretCategoryMapper.extractHost(url);
-        String key = computeKey(normalizedUrl, secretContent);
+        String key = computeKey(normalizedUrl, secretContent, ruleId);
 
         // Evict oldest entries if at max capacity before adding new
         if (!cache.containsKey(key) && cache.size() >= MAX_CACHE_SIZE) {
@@ -224,10 +224,10 @@ public class DedupCache {
     }
 
     /**
-     * Get a finding record by URL and secret.
+     * Get a finding record by URL, secret, and rule ID.
      */
-    public FindingRecord getFinding(String url, String secretContent) {
-        String key = computeKey(normalizeUrl(url), secretContent);
+    public FindingRecord getFinding(String url, String secretContent, String ruleId) {
+        String key = computeKey(normalizeUrl(url), secretContent, ruleId);
         return cache.get(key);
     }
 
@@ -297,7 +297,7 @@ public class DedupCache {
                         if (!record.urls.isEmpty()) {
                             String url = record.urls.iterator().next();
                             // We don't have the original secret, so use preview as approximation
-                            String key = computeKey(url, record.secretPreview);
+                            String key = computeKey(url, record.secretPreview, record.ruleId);
 
                             // Fix missing host data from older cache versions
                             if (record.primaryHost == null || record.primaryHost.isEmpty()) {
@@ -329,15 +329,16 @@ public class DedupCache {
         }
     }
 
-    private String computeKey(String normalizedUrl, String secretContent) {
+    private String computeKey(String normalizedUrl, String secretContent, String ruleId) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            String combined = normalizedUrl + ":" + secretContent;
+            // Include ruleId in key to distinguish findings from different rules with same first capture group
+            String combined = normalizedUrl + ":" + ruleId + ":" + secretContent;
             byte[] hash = digest.digest(combined.getBytes(StandardCharsets.UTF_8));
             return bytesToHex(hash);
         } catch (NoSuchAlgorithmException e) {
             // Fallback to simple hash
-            return String.valueOf((normalizedUrl + ":" + secretContent).hashCode());
+            return String.valueOf((normalizedUrl + ":" + ruleId + ":" + secretContent).hashCode());
         }
     }
 
