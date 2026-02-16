@@ -1,0 +1,39 @@
+rules:
+
+- name: Demandbase API Key
+  id: np.demandbase.1
+
+  # NOTE: Demandbase API keys are 40-character alphanumeric strings used for
+  #       authentication with Demandbase B2B marketing and analytics APIs.
+  #       They commonly appear in JavaScript configurations and backend code.
+  #       Negative lookahead prevents matching repeated character patterns.
+  pattern: '(?i)(?:demandbase|apikey|api.key).{0,30}(?!(.)\1{5,})(?P<key>[A-Za-z0-9]{40})(?:[^A-Za-z0-9]|$)'
+
+  categories: [api, secret]
+
+  examples:
+  - |
+      // Demandbase configuration
+      demandbase: {
+        apikey: 'EXAMPLEdemandbaseKEYXXXXXXXXXX0000000000'
+      }
+  - "  apiKey = 'TESTdemandbaseAPIXXXXXXXXXX0000000000111';"
+  - 'const demandbaseKey = "FAKEdbAPIkeyXXXXXXXXXX000000000011111111";'
+
+  negative_examples:
+  - "// Example: apikey = YOUR_DEMANDBASE_KEY_HERE"
+  - "# Set DEMANDBASE_API_KEY=EXAMPLE_KEY"
+  - "apikey: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+  - "const key = 'test123'; // Not 40 chars"
+
+  description: |
+    Demandbase API Key used for authenticating with Demandbase B2B marketing
+    and analytics platform. An attacker with this credential can access company
+    identification data, visitor intelligence, and account-based marketing
+    features. Potential impact includes unauthorized access to business intelligence
+    data, customer information, and the ability to manipulate marketing campaigns.
+
+  references:
+  - https://support.demandbase.com/hc/en-us/articles/38999526296603-Generate-and-Manage-API-Key-Sets
+  - https://support.demandbase.com/hc/en-us/articles/23789223879323-Demandbase-IP-API-v3-for-Demandbase-One-Current-Version
+  - https://support.demandbase.com/hc/en-us/sections/360011444531-API-Documentation

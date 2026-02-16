@@ -1,0 +1,13 @@
+validators:
+  - name: demandbase-api-key
+    rule_ids:
+      - np.demandbase.1
+    http:
+      method: GET
+      url: https://api.demandbase.com/api/v3/ip.json?query=8.8.8.8
+      auth:
+        type: query
+        secret_group: "key"  # Matches (?P<key>...) from rule regex
+        query_param: "key"
+      success_codes: [200]
+      failure_codes: [401, 403]
