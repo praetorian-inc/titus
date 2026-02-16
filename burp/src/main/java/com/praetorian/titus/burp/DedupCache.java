@@ -144,6 +144,24 @@ public class DedupCache {
      */
     public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName,
                                           String requestContent, String responseContent) {
+        return recordOccurrence(url, secretContent, ruleId, ruleName, requestContent, responseContent, null);
+    }
+
+    /**
+     * Record an occurrence of a finding with rule name, HTTP content, and named groups.
+     *
+     * @param url             The URL where the secret was found
+     * @param secretContent   The secret content
+     * @param ruleId          The rule that matched
+     * @param ruleName        The human-readable rule name
+     * @param requestContent  The full HTTP request content
+     * @param responseContent The full HTTP response content
+     * @param namedGroups     Named capture groups from regex match (for validation)
+     * @return The updated finding record
+     */
+    public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName,
+                                          String requestContent, String responseContent,
+                                          Map<String, String> namedGroups) {
         String normalizedUrl = normalizeUrl(url);
         String host = SecretCategoryMapper.extractHost(url);
         String key = computeKey(normalizedUrl, secretContent);
@@ -163,7 +181,8 @@ public class DedupCache {
                     host,
                     new HashSet<>(Set.of(normalizedUrl)),
                     1,
-                    Instant.now()
+                    Instant.now(),
+                    namedGroups
                 );
                 // Store HTTP content for first occurrence only
                 if (requestContent != null || responseContent != null) {
@@ -174,6 +193,10 @@ public class DedupCache {
                 existing.urls.add(normalizedUrl);
                 existing.hosts.add(host);
                 existing.occurrenceCount++;
+                // Update named groups if not set (keep first occurrence's groups)
+                if ((existing.namedGroups == null || existing.namedGroups.isEmpty()) && namedGroups != null) {
+                    existing.namedGroups = namedGroups;
+                }
                 return existing;
             }
         });
@@ -291,6 +314,9 @@ public class DedupCache {
                             if (record.validationStatus == null) {
                                 record.validationStatus = ValidationStatus.NOT_CHECKED;
                             }
+                            if (record.namedGroups == null) {
+                                record.namedGroups = new HashMap<>();
+                            }
 
                             cache.put(key, record);
                         }
@@ -388,17 +414,26 @@ public class DedupCache {
         public String requestContent;  // Full request content for display
         public String responseContent; // Full response content for display
         public Map<String, String> validationDetails;
+        public Map<String, String> namedGroups;  // Named capture groups from regex match
 
         public FindingRecord() {
             this.urls = new HashSet<>();
             this.hosts = new HashSet<>();
             this.validationStatus = ValidationStatus.NOT_CHECKED;
             this.validationDetails = new HashMap<>();
+            this.namedGroups = new HashMap<>();
         }
 
         public FindingRecord(String ruleId, String ruleName, String secretPreview,
                            String secretContent, String primaryHost, Set<String> urls,
                            int occurrenceCount, Instant firstSeen) {
+            this(ruleId, ruleName, secretPreview, secretContent, primaryHost, urls,
+                 occurrenceCount, firstSeen, new HashMap<>());
+        }
+
+        public FindingRecord(String ruleId, String ruleName, String secretPreview,
+                           String secretContent, String primaryHost, Set<String> urls,
+                           int occurrenceCount, Instant firstSeen, Map<String, String> namedGroups) {
             this.ruleId = ruleId;
             this.ruleName = ruleName;
             this.secretPreview = secretPreview;
@@ -413,6 +448,7 @@ public class DedupCache {
             this.firstSeen = firstSeen;
             this.validationStatus = ValidationStatus.NOT_CHECKED;
             this.validationDetails = new HashMap<>();
+            this.namedGroups = namedGroups != null ? namedGroups : new HashMap<>();
         }
 
         /**
@@ -444,6 +480,20 @@ public class DedupCache {
          */
         public void setValidationDetails(Map<String, String> details) {
             this.validationDetails = details;
+        }
+
+        /**
+         * Set named groups from regex match.
+         */
+        public void setNamedGroups(Map<String, String> namedGroups) {
+            this.namedGroups = namedGroups != null ? namedGroups : new HashMap<>();
+        }
+
+        /**
+         * Get named groups for validation.
+         */
+        public Map<String, String> getNamedGroups() {
+            return this.namedGroups != null ? this.namedGroups : new HashMap<>();
         }
     }
 }

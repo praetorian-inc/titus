@@ -254,9 +254,9 @@ public class ScanQueue implements AutoCloseable {
                             primaryCategory = category;
                         }
 
-                        // Record and report with HTTP content
+                        // Record and report with HTTP content and named groups
                         dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId(), match.ruleName(),
-                                                   requestContent, responseContent);
+                                                   requestContent, responseContent, match.namedGroups());
                         issueReporter.reportIssue(job, match);
                     }
 
