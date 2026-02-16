@@ -915,6 +915,9 @@ public class SecretsView extends JPanel {
                 burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity = tableModel.getSeverityAt(modelRow);
                 Color bgColor = getSeverityColor(severity);
                 c.setBackground(bgColor);
+                c.setForeground(Color.BLACK);  // Always use black text
+            } else {
+                c.setForeground(Color.WHITE);  // White text when selected
             }
 
             // Center align small columns: #, Severity, Count, Checked, Result, False Positive
