@@ -46,6 +46,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
         private HttpResponse currentResponse;
         private HttpRequest currentRequest;
         private List<TitusProcessScanner.Match> currentMatches;
+        private List<DedupCache.FindingRecord> cachedFindings;
         private boolean hasSecrets = false;
 
         // Cache for isEnabledFor to avoid double-scanning
@@ -108,10 +109,23 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
         }
 
         private void scanForSecrets() {
+            String url = currentRequest != null ? currentRequest.url() : "unknown";
+
+            // First check if we have cached findings from the DedupCache
+            List<DedupCache.FindingRecord> findings = dedupCache.getFindingsForUrl(url);
+            if (!findings.isEmpty()) {
+                this.cachedFindings = findings;
+                this.hasSecrets = true;
+                displayCachedFindings(findings);
+                statusLabel.setText(findings.size() + " secret(s) found (cached)");
+                statusLabel.setForeground(new Color(200, 50, 50));
+                return;
+            }
+
+            // No cached findings - scan the response
             try {
                 TitusProcessScanner scanner = processManager.getScanner();
                 String content = currentResponse.toString();
-                String url = currentRequest != null ? currentRequest.url() : "unknown";
 
                 List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
                 this.currentMatches = matches;
@@ -131,6 +145,41 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                 statusLabel.setText("Error");
                 statusLabel.setForeground(Color.RED);
             }
+        }
+
+        private void displayCachedFindings(List<DedupCache.FindingRecord> findings) {
+            StringBuilder sb = new StringBuilder();
+
+            for (int i = 0; i < findings.size(); i++) {
+                DedupCache.FindingRecord record = findings.get(i);
+
+                sb.append("=== Secret #").append(i + 1).append(" ===\n\n");
+                sb.append("Type: ").append(record.ruleName).append("\n");
+                sb.append("Rule ID: ").append(record.ruleId).append("\n");
+                sb.append("Category: ").append(SecretCategoryMapper.getCategory(record.ruleId).getDisplayName()).append("\n\n");
+
+                sb.append("Secret: ").append(record.secretContent).append("\n\n");
+
+                sb.append("--- Validation ---\n");
+                sb.append("Checked: ").append(record.validatedAt != null ? "Yes" : "No").append("\n");
+                if (record.validatedAt != null) {
+                    sb.append("Result: ").append(getValidationResultDisplay(record.validationStatus)).append("\n");
+                    if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
+                        sb.append("Message: ").append(record.validationMessage).append("\n");
+                    }
+                }
+                sb.append("False Positive: ").append(
+                    record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No"
+                ).append("\n");
+
+                if (i < findings.size() - 1) {
+                    sb.append("\n");
+                    sb.append("─".repeat(50)).append("\n\n");
+                }
+            }
+
+            secretsArea.setText(sb.toString());
+            secretsArea.setCaretPosition(0);
         }
 
         private void displaySecrets(List<TitusProcessScanner.Match> matches) {
@@ -202,15 +251,26 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                 return false;
             }
 
-            // Check cache to avoid re-scanning
+            // Check instance cache to avoid re-scanning
             if (requestResponse == lastCheckedRequestResponse) {
                 return lastCheckHadSecrets;
             }
 
+            String url = requestResponse.request() != null ? requestResponse.request().url() : "unknown";
+
+            // First check if we have cached findings in DedupCache
+            List<DedupCache.FindingRecord> findings = dedupCache.getFindingsForUrl(url);
+            if (!findings.isEmpty()) {
+                lastCheckedRequestResponse = requestResponse;
+                lastCheckHadSecrets = true;
+                this.cachedFindings = findings;
+                return true;
+            }
+
+            // No cached findings - scan the response
             try {
                 TitusProcessScanner scanner = processManager.getScanner();
                 String content = requestResponse.response().toString();
-                String url = requestResponse.request() != null ? requestResponse.request().url() : "unknown";
 
                 List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
 

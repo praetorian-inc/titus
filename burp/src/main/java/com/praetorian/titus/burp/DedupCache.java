@@ -216,6 +216,23 @@ public class DedupCache {
     }
 
     /**
+     * Get all findings for a specific URL.
+     *
+     * @param url The URL to get findings for
+     * @return List of findings for this URL (may be empty)
+     */
+    public List<FindingRecord> getFindingsForUrl(String url) {
+        String normalizedUrl = normalizeUrl(url);
+        List<FindingRecord> results = new ArrayList<>();
+        for (FindingRecord record : cache.values()) {
+            if (record.urls.contains(normalizedUrl)) {
+                results.add(record);
+            }
+        }
+        return results;
+    }
+
+    /**
      * Get total number of unique findings.
      */
     public int uniqueFindingsCount() {
