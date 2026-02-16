@@ -897,11 +897,9 @@ public class SecretsView extends JPanel {
      * Custom cell renderer that colors rows by severity.
      */
     private class CategoryColorRenderer extends DefaultTableCellRenderer {
-        // Severity colors - professional scheme: red (high), amber (medium), gray (low)
+        // Severity colors - only High and Medium get colors, Low/Info use default background
         private static final Color HIGH_COLOR = new Color(255, 204, 204);      // Light red
         private static final Color MEDIUM_COLOR = new Color(255, 230, 179);    // Light amber/orange
-        private static final Color LOW_COLOR = new Color(230, 230, 230);       // Light gray
-        private static final Color INFO_COLOR = new Color(240, 240, 240);      // Very light gray
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
@@ -913,7 +911,7 @@ public class SecretsView extends JPanel {
                 // Convert view row to model row for correct severity lookup
                 int modelRow = table.convertRowIndexToModel(row);
                 burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity = tableModel.getSeverityAt(modelRow);
-                Color bgColor = getSeverityColor(severity);
+                Color bgColor = getSeverityColor(severity, table.getBackground());
                 c.setBackground(bgColor);
                 c.setForeground(Color.BLACK);  // Always use black text
             } else {
@@ -930,13 +928,11 @@ public class SecretsView extends JPanel {
             return c;
         }
 
-        private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity) {
+        private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity, Color defaultBg) {
             return switch (severity) {
                 case HIGH -> HIGH_COLOR;
                 case MEDIUM -> MEDIUM_COLOR;
-                case LOW -> LOW_COLOR;
-                case INFORMATION -> INFO_COLOR;
-                case FALSE_POSITIVE -> Color.WHITE;
+                case LOW, INFORMATION, FALSE_POSITIVE -> defaultBg;  // Use default background
             };
         }
     }
