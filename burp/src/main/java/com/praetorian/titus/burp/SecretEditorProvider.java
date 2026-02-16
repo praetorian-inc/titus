@@ -113,7 +113,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                 String content = currentResponse.toString();
                 String url = currentRequest != null ? currentRequest.url() : "unknown";
 
-                List<TitusProcessScanner.Match> matches = scanner.scan(url, content);
+                List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
                 this.currentMatches = matches;
                 this.hasSecrets = !matches.isEmpty();
 
@@ -212,7 +212,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                 String content = requestResponse.response().toString();
                 String url = requestResponse.request() != null ? requestResponse.request().url() : "unknown";
 
-                List<TitusProcessScanner.Match> matches = scanner.scan(url, content);
+                List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
 
                 // Cache result
                 lastCheckedRequestResponse = requestResponse;
