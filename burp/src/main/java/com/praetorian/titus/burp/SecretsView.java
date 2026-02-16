@@ -897,11 +897,11 @@ public class SecretsView extends JPanel {
      * Custom cell renderer that colors rows by severity.
      */
     private class CategoryColorRenderer extends DefaultTableCellRenderer {
-        // Severity colors (lighter versions for row backgrounds)
-        private static final Color HIGH_COLOR = new Color(255, 200, 200);      // Light red
-        private static final Color MEDIUM_COLOR = new Color(255, 255, 200);    // Light yellow
-        private static final Color LOW_COLOR = new Color(200, 255, 200);       // Light green
-        private static final Color INFO_COLOR = new Color(200, 220, 255);      // Light blue
+        // Severity colors - professional scheme: red (high), amber (medium), gray (low)
+        private static final Color HIGH_COLOR = new Color(255, 204, 204);      // Light red
+        private static final Color MEDIUM_COLOR = new Color(255, 230, 179);    // Light amber/orange
+        private static final Color LOW_COLOR = new Color(230, 230, 230);       // Light gray
+        private static final Color INFO_COLOR = new Color(240, 240, 240);      // Very light gray
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
