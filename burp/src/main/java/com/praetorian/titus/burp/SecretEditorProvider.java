@@ -18,7 +18,8 @@ import java.awt.*;
 import java.util.List;
 
 /**
- * Provides a custom "Secrets" tab in Burp's response editor when secrets are detected.
+ * Provides a custom "Titus" tab in Burp's response editor when secrets are detected.
+ * The tab only appears if secrets are found in the response, reducing UI noise.
  */
 public class SecretEditorProvider implements HttpResponseEditorProvider {
 
@@ -46,6 +47,10 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
         private HttpRequest currentRequest;
         private List<TitusProcessScanner.Match> currentMatches;
         private boolean hasSecrets = false;
+
+        // Cache for isEnabledFor to avoid double-scanning
+        private HttpRequestResponse lastCheckedRequestResponse;
+        private boolean lastCheckHadSecrets = false;
 
         SecretResponseEditor(EditorCreationContext creationContext) {
             panel = new JPanel(new BorderLayout());
@@ -80,17 +85,26 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
         public void setRequestResponse(HttpRequestResponse requestResponse) {
             this.currentRequest = requestResponse.request();
             this.currentResponse = requestResponse.response();
-            this.hasSecrets = false;
-            this.currentMatches = null;
 
             if (currentResponse == null) {
                 secretsArea.setText("No response available");
                 statusLabel.setText("");
+                this.hasSecrets = false;
                 return;
             }
 
-            // Scan for secrets
-            scanForSecrets();
+            // Check if we already have cached matches from isEnabledFor
+            if (requestResponse == lastCheckedRequestResponse && currentMatches != null && !currentMatches.isEmpty()) {
+                this.hasSecrets = true;
+                displaySecrets(currentMatches);
+                statusLabel.setText(currentMatches.size() + " secret(s) found");
+                statusLabel.setForeground(new Color(200, 50, 50));
+            } else {
+                // Scan for secrets (fallback if cache miss)
+                this.hasSecrets = false;
+                this.currentMatches = null;
+                scanForSecrets();
+            }
         }
 
         private void scanForSecrets() {
@@ -183,13 +197,42 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
 
         @Override
         public boolean isEnabledFor(HttpRequestResponse requestResponse) {
-            // Always show the tab - it will indicate if no secrets found
-            return true;
+            // Only show tab if secrets are found
+            if (requestResponse == null || requestResponse.response() == null) {
+                return false;
+            }
+
+            // Check cache to avoid re-scanning
+            if (requestResponse == lastCheckedRequestResponse) {
+                return lastCheckHadSecrets;
+            }
+
+            try {
+                TitusProcessScanner scanner = processManager.getScanner();
+                String content = requestResponse.response().toString();
+                String url = requestResponse.request() != null ? requestResponse.request().url() : "unknown";
+
+                List<TitusProcessScanner.Match> matches = scanner.scan(url, content);
+
+                // Cache result
+                lastCheckedRequestResponse = requestResponse;
+                lastCheckHadSecrets = !matches.isEmpty();
+
+                // Also cache matches for setRequestResponse to reuse
+                if (lastCheckHadSecrets) {
+                    this.currentMatches = matches;
+                }
+
+                return lastCheckHadSecrets;
+            } catch (Exception e) {
+                api.logging().logToError("Error checking for secrets: " + e.getMessage());
+                return false;
+            }
         }
 
         @Override
         public String caption() {
-            return "Secrets";
+            return "Titus";
         }
 
         @Override
