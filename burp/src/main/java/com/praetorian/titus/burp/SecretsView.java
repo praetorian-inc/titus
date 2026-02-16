@@ -93,6 +93,14 @@ public class SecretsView extends JPanel {
         secretsTable = new JTable(tableModel);
         rowSorter = new TableRowSorter<>(tableModel);
         secretsTable.setRowSorter(rowSorter);
+
+        // Custom comparator for Severity column (column 2) to sort by severity order: Info < Low < Medium < High
+        rowSorter.setComparator(2, (o1, o2) -> {
+            int rank1 = getSeverityRank((String) o1);
+            int rank2 = getSeverityRank((String) o2);
+            return Integer.compare(rank1, rank2);
+        });
+
         secretsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         secretsTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
         secretsTable.getTableHeader().setReorderingAllowed(true);
@@ -891,6 +899,21 @@ public class SecretsView extends JPanel {
      */
     public SecretsTableModel getTableModel() {
         return tableModel;
+    }
+
+    /**
+     * Get numeric rank for severity string for sorting.
+     * Lower values sort first: Info(0) < Low(1) < Medium(2) < High(3)
+     */
+    private static int getSeverityRank(String severity) {
+        if (severity == null) return 1;
+        return switch (severity) {
+            case "Info", "FP" -> 0;
+            case "Low" -> 1;
+            case "Medium" -> 2;
+            case "High" -> 3;
+            default -> 1;
+        };
     }
 
     /**
