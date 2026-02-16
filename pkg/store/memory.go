@@ -52,6 +52,12 @@ func (m *MemoryStore) AddBlob(id types.BlobID, size int64) error {
 	return nil
 }
 
+// AddRule stores a detection rule.
+// Memory store doesn\'t enforce foreign key constraints, so this is a no-op.
+func (m *MemoryStore) AddRule(r *types.Rule) error {
+	return nil
+}
+
 // AddMatch stores a match record.
 func (m *MemoryStore) AddMatch(match *types.Match) error {
 	m.mu.Lock()

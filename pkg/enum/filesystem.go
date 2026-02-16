@@ -23,6 +23,7 @@ func NewFilesystemEnumerator(config Config) *FilesystemEnumerator {
 	return &FilesystemEnumerator{config: config}
 }
 
+
 // Enumerate walks the filesystem and yields file blobs.
 func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	// Load .gitignore patterns if present
@@ -85,8 +86,35 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 			return fmt.Errorf("failed to read file %s: %w", path, err)
 		}
 
-		// Skip binary files
-		if isBinary(content) {
+		// Check if binary
+		binary := isBinary(content)
+
+		// Handle binary files with extraction enabled
+		if binary && e.config.ExtractArchives != "" {
+			ext := getExtension(path)
+			if shouldExtract(e.config, ext) {
+				// Try to extract text from binary file
+				extracted, err := ExtractText(path, content, e.config.ExtractLimits)
+				if err == nil && len(extracted) > 0 {
+					// Yield each extracted piece of content
+					for _, ec := range extracted {
+						blobID := types.ComputeBlobID(ec.Content)
+						prov := types.ArchiveProvenance{
+							ArchivePath: path,
+							MemberPath:  ec.Name,
+						}
+						if err := callback(ec.Content, blobID, prov); err != nil {
+							return err
+						}
+					}
+				}
+				// Skip the binary file itself (extracted or not)
+				return nil
+			}
+		}
+
+		// Skip binary files (not extracted or extraction disabled)
+		if binary {
 			return nil
 		}
 
@@ -101,6 +129,23 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 		// Yield to callback
 		return callback(content, blobID, prov)
 	})
+}
+
+// shouldExtract checks if a file type should be extracted based on config.
+func shouldExtract(config Config, ext string) bool {
+	if config.ExtractArchives == "" {
+		return false
+	}
+	if config.ExtractArchives == "all" {
+		return true
+	}
+	types := strings.Split(strings.ToLower(config.ExtractArchives), ",")
+	for _, t := range types {
+		if strings.TrimSpace(t) == strings.TrimPrefix(ext, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 // isHidden checks if a filename is hidden (starts with .).

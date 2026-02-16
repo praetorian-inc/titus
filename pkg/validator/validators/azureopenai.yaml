@@ -5,6 +5,7 @@ validators:
   - name: azureopenai-api-key
     rule_ids:
       - kingfisher.azureopenai.1
+      - kingfisher.azureopenai.2
     depends_on:
       - rule_id: kingfisher.azureopenai.host.1
         secret_group: "host"

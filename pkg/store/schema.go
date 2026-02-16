@@ -103,7 +103,12 @@ func createMatchesTable(db *sql.DB) error {
 			validation_status TEXT,
 			validation_confidence REAL,
 			validation_message TEXT,
-			validation_timestamp TEXT
+			validation_timestamp TEXT,
+			finding_id INTEGER,
+			start_line INTEGER,
+			start_column INTEGER,
+			end_line INTEGER,
+			end_column INTEGER
 		)
 	`)
 	return err
