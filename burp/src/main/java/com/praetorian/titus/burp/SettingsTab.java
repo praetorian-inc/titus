@@ -84,15 +84,27 @@ public class SettingsTab extends JPanel {
         restorePersistedMessages();
 
         // Wire up scan queue listener to populate table and refresh secrets
-        scanQueue.setListener(job -> {
-            SwingUtilities.invokeLater(() -> {
-                requestsTableModel.addEntry(job);
-                requestsView.updateStatus();
-                // Refresh secrets view periodically (every 5 jobs to avoid excessive updates)
-                if (requestsTableModel.getEntryCount() % 5 == 0) {
+        scanQueue.setListener(new ScanQueue.ScanQueueListener() {
+            @Override
+            public void onJobEnqueued(ScanJob job) {
+                SwingUtilities.invokeLater(() -> {
+                    requestsTableModel.addEntry(job);
+                    requestsView.updateStatus();
+                    // Refresh secrets view periodically (every 5 jobs to avoid excessive updates)
+                    if (requestsTableModel.getEntryCount() % 5 == 0) {
+                        secretsView.refresh();
+                    }
+                });
+            }
+
+            @Override
+            public void onSecretsFound(String url, int count, String types, SecretCategoryMapper.Category category) {
+                SwingUtilities.invokeLater(() -> {
+                    requestsTableModel.updateSecretInfo(url, count, types, category);
+                    // Also refresh secrets view when new secrets are found
                     secretsView.refresh();
-                }
-            });
+                });
+            }
         });
 
         // Load settings
