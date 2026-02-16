@@ -6,14 +6,34 @@ rules:
   pattern: |
     (?x)
     \b
-    (sk-[a-zA-Z0-9]{48})
+    (?P<key>
+      sk-[a-zA-Z0-9]{48}                     # Legacy format: sk-{48 alphanumeric chars}
+      |
+      sk-proj-[a-zA-Z0-9_]{95,120}           # Project format: sk-proj-{95-120 chars including underscores}
+    )
     \b
 
   categories: [api, secret]
 
   examples:
+  # Legacy format example
   - |
-      curl https://api.openai.com/v1/images/generations  -H 'Content-Type: application/json'  -H "Authorization: Bearer sk-mxIt5s1tyfCJyIKHwrqOT4BlbkFJT3VVmv6VdSwB7XXIq1TO"
+      curl https://api.openai.com/v1/images/generations \
+        -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer sk-mxIt5s1tyfCJyIKHwrqOT4BlbkFJT3VVmv6VdSwB7XXIq1TO"
+
+  # Project-scoped format example
+  - |
+      curl https://api.openai.com/v1/chat/completions \
+        -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer sk-proj-TESTkey1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_EXAMPLE1234567890abcdefXYZ"
+
+  negative_examples:
+  # Placeholder values should not match
+  - "Authorization: Bearer sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+  - "Authorization: Bearer sk-proj-YOUR_API_KEY_HERE"
+  - "OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  - "OPENAI_API_KEY=sk-proj-REPLACE_WITH_YOUR_KEY"
 
   references:
   - https://platform.openai.com/docs/api-reference
