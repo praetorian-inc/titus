@@ -48,6 +48,17 @@ public class ScanQueue implements AutoCloseable {
          * This is called on the enqueueing thread - use SwingUtilities.invokeLater for UI updates.
          */
         void onJobEnqueued(ScanJob job);
+
+        /**
+         * Called when secrets are found for a URL.
+         * This is called on the worker thread - use SwingUtilities.invokeLater for UI updates.
+         *
+         * @param url       The URL where secrets were found
+         * @param count     Number of unique secrets found
+         * @param types     Comma-separated list of secret types
+         * @param category  The primary category of secrets found
+         */
+        default void onSecretsFound(String url, int count, String types, SecretCategoryMapper.Category category) {}
     }
 
     /**
@@ -220,6 +231,11 @@ public class ScanQueue implements AutoCloseable {
                     String requestContent = buildRequestContent(job);
                     String responseContent = buildResponseContent(job);
 
+                    // Track unique secrets for this URL (for UI update)
+                    int secretCount = 0;
+                    java.util.Set<String> secretTypes = new java.util.HashSet<>();
+                    SecretCategoryMapper.Category primaryCategory = null;
+
                     for (TitusProcessScanner.Match match : matches) {
                         // Check dedup
                         if (!dedupCache.isNewFinding(url, match.matchedContent(), match.ruleId())) {
@@ -228,11 +244,29 @@ public class ScanQueue implements AutoCloseable {
                         }
 
                         totalMatches.incrementAndGet();
+                        secretCount++;
+
+                        // Track types and category for UI
+                        String displayName = SecretCategoryMapper.getDisplayName(match.ruleId(), match.ruleName());
+                        secretTypes.add(displayName);
+                        SecretCategoryMapper.Category category = SecretCategoryMapper.getCategory(match.ruleId());
+                        if (primaryCategory == null || category.ordinal() < primaryCategory.ordinal()) {
+                            primaryCategory = category;
+                        }
 
                         // Record and report with HTTP content
                         dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId(), match.ruleName(),
                                                    requestContent, responseContent);
                         issueReporter.reportIssue(job, match);
+                    }
+
+                    // Notify listener of secrets found (for UI update)
+                    if (secretCount > 0) {
+                        ScanQueueListener l = listener;
+                        if (l != null) {
+                            String types = String.join(", ", secretTypes);
+                            l.onSecretsFound(url, secretCount, types, primaryCategory);
+                        }
                     }
                 }
 
