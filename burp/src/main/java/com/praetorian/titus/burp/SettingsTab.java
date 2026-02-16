@@ -66,6 +66,7 @@ public class SettingsTab extends JPanel {
 
         // Secrets tab
         secretsView = new SecretsView(api, dedupCache);
+        secretsView.setSeverityConfig(severityConfig);
         tabbedPane.addTab("Secrets", secretsView);
 
         // Statistics tab

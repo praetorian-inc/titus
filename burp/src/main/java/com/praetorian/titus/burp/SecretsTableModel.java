@@ -1,5 +1,6 @@
 package com.praetorian.titus.burp;
 
+import burp.api.montoya.scanner.audit.issues.AuditIssueSeverity;
 import javax.swing.table.AbstractTableModel;
 import java.util.*;
 
@@ -8,13 +9,21 @@ import java.util.*;
  */
 public class SecretsTableModel extends AbstractTableModel {
 
-    private static final String[] COLUMNS = {"#", "Type", "Secret Preview", "Host", "Count", "Checked", "Result", "False Positive"};
+    private static final String[] COLUMNS = {"#", "Type", "Severity", "Secret Preview", "Host", "Count", "Checked", "Result", "False Positive"};
 
     private final List<DedupCache.FindingRecord> findings = new ArrayList<>();
     private final DedupCache dedupCache;
+    private SeverityConfig severityConfig;
 
     public SecretsTableModel(DedupCache dedupCache) {
         this.dedupCache = dedupCache;
+    }
+
+    /**
+     * Set the severity config for determining finding severity.
+     */
+    public void setSeverityConfig(SeverityConfig config) {
+        this.severityConfig = config;
     }
 
     /**
@@ -46,7 +55,7 @@ public class SecretsTableModel extends AbstractTableModel {
     @Override
     public Class<?> getColumnClass(int column) {
         return switch (column) {
-            case 0, 4 -> Integer.class;
+            case 0, 5 -> Integer.class;  // # and Count columns
             default -> String.class;
         };
     }
@@ -61,12 +70,13 @@ public class SecretsTableModel extends AbstractTableModel {
         return switch (column) {
             case 0 -> row + 1;
             case 1 -> record.ruleName != null ? record.ruleName : SecretCategoryMapper.getDisplayName(record.ruleId, null);
-            case 2 -> record.secretPreview;
-            case 3 -> record.primaryHost != null ? record.primaryHost : "unknown";
-            case 4 -> record.occurrenceCount;
-            case 5 -> // Checked column - was validation attempted?
+            case 2 -> getSeverityDisplay(record.ruleId);  // Severity column
+            case 3 -> record.secretPreview;
+            case 4 -> record.primaryHost != null ? record.primaryHost : "unknown";
+            case 5 -> record.occurrenceCount;
+            case 6 -> // Checked column - was validation attempted?
                 record.validatedAt != null ? "Yes" : "No";
-            case 6 -> {
+            case 7 -> {
                 // Result column - show validation result
                 if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
                     yield "-";
@@ -82,9 +92,36 @@ public class SecretsTableModel extends AbstractTableModel {
                     default -> "Unknown"; // Should not happen if validatedAt is set
                 };
             }
-            case 7 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
+            case 8 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
             default -> null;
         };
+    }
+
+    /**
+     * Get severity display text for a rule ID.
+     */
+    private String getSeverityDisplay(String ruleId) {
+        if (severityConfig == null) {
+            return "Medium";
+        }
+        AuditIssueSeverity severity = severityConfig.getSeverity(ruleId);
+        return switch (severity) {
+            case HIGH -> "High";
+            case MEDIUM -> "Medium";
+            case LOW -> "Low";
+            case INFORMATION -> "Info";
+            case FALSE_POSITIVE -> "FP";
+        };
+    }
+
+    /**
+     * Get severity for a rule ID.
+     */
+    public AuditIssueSeverity getSeverityAt(int row) {
+        if (row < 0 || row >= findings.size() || severityConfig == null) {
+            return AuditIssueSeverity.MEDIUM;
+        }
+        return severityConfig.getSeverity(findings.get(row).ruleId);
     }
 
     /**
