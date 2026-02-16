@@ -231,3 +231,42 @@ rules:
     permissions granted. Note: Azure APIM subscription keys are instance-specific
     and validate against the specific APIM gateway URL. There is no universal
     validation endpoint.
+
+
+- name: Azure Cognitive Services Host
+  id: np.azure.6
+
+  pattern: |
+    (?xi)
+    \b
+    (?P<host>
+      [a-z0-9-]{3,40}
+      \.cognitiveservices\.azure\.com
+    )
+    \b
+
+  min_entropy: 2.0
+  confidence: medium
+
+  categories:
+  - api
+  - cloud
+
+  examples:
+  - my-ai-service.cognitiveservices.azure.com
+  - contoso-doc-intel.cognitiveservices.azure.com
+  - mycompany-vision-eastus.cognitiveservices.azure.com
+
+  negative_examples:
+  - example.cognitiveservices.azure.com
+  - test.cognitiveservices.azure.com
+
+  references:
+  - https://learn.microsoft.com/en-us/azure/ai-services/
+  - https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/
+
+  description: >
+    Azure Cognitive Services endpoint hostname was found. This indicates usage of
+    Azure AI services such as Document Intelligence, Computer Vision, Speech, or
+    Language services. The endpoint alone is not a credential but can be combined
+    with API keys for unauthorized access to AI services.
