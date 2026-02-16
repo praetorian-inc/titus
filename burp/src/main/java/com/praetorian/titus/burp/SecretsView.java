@@ -897,9 +897,9 @@ public class SecretsView extends JPanel {
      * Custom cell renderer that colors rows by severity.
      */
     private class CategoryColorRenderer extends DefaultTableCellRenderer {
-        // Severity colors - only High and Medium get colors, Low/Info use default background
-        private static final Color HIGH_COLOR = new Color(255, 204, 204);      // Light red
-        private static final Color MEDIUM_COLOR = new Color(255, 230, 179);    // Light amber/orange
+        // Severity colors - darker muted tones for dark theme
+        private static final Color HIGH_COLOR = new Color(140, 70, 70);        // Dark maroon/burgundy
+        private static final Color MEDIUM_COLOR = new Color(140, 130, 60);     // Dark olive/amber
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
@@ -911,11 +911,25 @@ public class SecretsView extends JPanel {
                 // Convert view row to model row for correct severity lookup
                 int modelRow = table.convertRowIndexToModel(row);
                 burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity = tableModel.getSeverityAt(modelRow);
-                Color bgColor = getSeverityColor(severity, table.getBackground());
-                c.setBackground(bgColor);
-                c.setForeground(Color.BLACK);  // Always use black text
-            } else {
-                c.setForeground(Color.WHITE);  // White text when selected
+
+                // Only set background for HIGH and MEDIUM
+                Color bgColor = getSeverityColor(severity);
+                if (bgColor != null) {
+                    c.setBackground(bgColor);
+                    c.setForeground(Color.WHITE);  // White text on dark colored backgrounds
+                } else {
+                    // Use UIManager's default colors for consistent appearance
+                    Color defaultBg = UIManager.getColor("Table.background");
+                    if (defaultBg == null) {
+                        defaultBg = Color.WHITE;
+                    }
+                    c.setBackground(defaultBg);
+                    Color defaultFg = UIManager.getColor("Table.foreground");
+                    if (defaultFg == null) {
+                        defaultFg = Color.BLACK;
+                    }
+                    c.setForeground(defaultFg);
+                }
             }
 
             // Center align small columns: #, Severity, Count, Checked, Result, False Positive
@@ -928,11 +942,14 @@ public class SecretsView extends JPanel {
             return c;
         }
 
-        private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity, Color defaultBg) {
+        /**
+         * Get color for severity. Returns null for Low/Info/FP (use default).
+         */
+        private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity) {
             return switch (severity) {
                 case HIGH -> HIGH_COLOR;
                 case MEDIUM -> MEDIUM_COLOR;
-                case LOW, INFORMATION, FALSE_POSITIVE -> defaultBg;  // Use default background
+                case LOW, INFORMATION, FALSE_POSITIVE -> null;  // No custom color
             };
         }
     }
