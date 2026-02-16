@@ -87,6 +87,13 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	}
 	defer s.Close()
 
+	// Store rules for foreign key constraints
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return fmt.Errorf("storing rule: %w", err)
+		}
+	}
+
 	// Create GitLab enumerator
 	enumerator, err := enum.NewGitLabEnumerator(enum.GitLabConfig{
 		Token:   token,
@@ -122,6 +129,16 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		matches, err := m.MatchWithBlobID(content, blobID)
 		if err != nil {
 			return fmt.Errorf("matching content: %w", err)
+		}
+
+		// Compute line/column for each match
+		for _, match := range matches {
+			startLine, startCol := types.ComputeLineColumn(content, int(match.Location.Offset.Start))
+			endLine, endCol := types.ComputeLineColumn(content, int(match.Location.Offset.End))
+			match.Location.Source.Start.Line = startLine
+			match.Location.Source.Start.Column = startCol
+			match.Location.Source.End.Line = endLine
+			match.Location.Source.End.Column = endCol
 		}
 
 		// Store matches and findings

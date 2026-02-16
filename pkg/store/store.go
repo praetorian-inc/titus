@@ -11,6 +11,9 @@ type Store interface {
 	// AddBlob stores a blob record.
 	AddBlob(id types.BlobID, size int64) error
 
+	// AddRule stores a detection rule.
+	AddRule(r *types.Rule) error
+
 	// AddMatch stores a match record.
 	AddMatch(m *types.Match) error
 

@@ -13,9 +13,7 @@ var rootCmd = &cobra.Command{
 	Use:   "titus",
 	Short: "Titus - Go port of NoseyParker secrets scanner",
 	Long: `Titus is a fast secrets scanner that finds credentials in code, files, and git history.
-It uses regex-based detection rules to identify sensitive data like API keys, passwords, and tokens.
-
-This is a Go port of the original NoseyParker tool.`,
+It uses regex-based detection rules to identify sensitive data like API keys, passwords, and tokens.`,
 }
 
 func init() {

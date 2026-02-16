@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
@@ -15,6 +16,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/praetorian-inc/titus/pkg/validator"
+	"github.com/praetorian-inc/titus/pkg/datastore"
 	"github.com/spf13/cobra"
 )
 
@@ -47,6 +49,7 @@ var (
 	scanIncremental         bool
 	scanValidate            bool
 	scanValidateWorkers     int
+	scanStoreBlobs          bool
 	scanExtractArchivesFlag extensionsValue
 	extractMaxSize          string
 	extractMaxTotal         string
@@ -65,7 +68,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory")
 	scanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	scanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
-	scanCmd.Flags().StringVar(&scanOutputPath, "output", ":memory:", "Output store path (:memory: for in-memory, or a file path if SQLite is available)")
+	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.ds", "Output datastore path (use :memory: for in-memory only)")
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
@@ -74,12 +77,12 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
+	scanCmd.Flags().BoolVar(&scanStoreBlobs, "store-blobs", false, "Store file contents in blobs/ directory")
 	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract", "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')")
 	scanCmd.Flags().StringVar(&extractMaxSize, "extract-max-size", "10MB", "Max uncompressed size per extracted file")
 	scanCmd.Flags().StringVar(&extractMaxTotal, "extract-max-total", "100MB", "Max total bytes to extract from one archive")
 	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
 }
-
 func runScan(cmd *cobra.Command, args []string) error {
 	target := args[0]
 
@@ -110,14 +113,36 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 	defer m.Close()
 
-	// Create store
-	s, err := store.New(store.Config{
-		Path: scanOutputPath,
-	})
-	if err != nil {
-		return fmt.Errorf("creating store: %w", err)
+	// Create store (memory or datastore)
+	var s store.Store
+	var ds *datastore.Datastore
+	if scanOutputPath == ":memory:" {
+		// In-memory store for ephemeral scans
+		var err error
+		s, err = store.New(store.Config{Path: ":memory:"})
+		if err != nil {
+			return fmt.Errorf("creating store: %w", err)
+		}
+		defer s.Close()
+	} else {
+		// Directory-based datastore
+		var err error
+		ds, err = datastore.Open(scanOutputPath, datastore.Options{
+			StoreBlobs: scanStoreBlobs,
+		})
+		if err != nil {
+			return fmt.Errorf("creating datastore: %w", err)
+		}
+		defer ds.Close()
+		s = ds.Store
 	}
-	defer s.Close()
+
+	// Store rules for foreign key constraints
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return fmt.Errorf("storing rule: %w", err)
+		}
+	}
 
 	// Initialize validation engine (nil if validation disabled)
 	validationEngine := initValidationEngine()
@@ -133,8 +158,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 	matchCount := 0
 	findingCount := 0
 	skippedCount := 0
+	startTime := time.Now()
+	totalBytes := int64(0)
+	blobCount := 0
 
 	err = enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		// Track statistics
+		totalBytes += int64(len(content))
+		blobCount++
+
 		// Check for incremental scanning
 		if scanIncremental {
 			exists, err := s.BlobExists(blobID)
@@ -152,6 +184,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("storing blob: %w", err)
 		}
 
+		// Store blob content if enabled
+		if ds != nil && ds.BlobStore != nil {
+			if _, err := ds.BlobStore.Store(content); err != nil {
+				return fmt.Errorf("storing blob content: %w", err)
+			}
+		}
+
 		// Store provenance
 		if err := s.AddProvenance(blobID, prov); err != nil {
 			return fmt.Errorf("storing provenance: %w", err)
@@ -161,6 +200,16 @@ func runScan(cmd *cobra.Command, args []string) error {
 		matches, err := m.MatchWithBlobID(content, blobID)
 		if err != nil {
 			return fmt.Errorf("matching content: %w", err)
+		}
+
+		// Compute line/column for each match
+		for _, match := range matches {
+			startLine, startCol := types.ComputeLineColumn(content, int(match.Location.Offset.Start))
+			endLine, endCol := types.ComputeLineColumn(content, int(match.Location.Offset.End))
+			match.Location.Source.Start.Line = startLine
+			match.Location.Source.Start.Column = startCol
+			match.Location.Source.End.Line = endLine
+			match.Location.Source.End.Column = endCol
 		}
 
 		// Validate matches if enabled
@@ -207,21 +256,23 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
-// Output results (to stderr when using json/sarif format to keep stdout pure JSON)
+	// Calculate scan statistics
+	duration := time.Since(startTime)
+	speed := float64(totalBytes) / duration.Seconds()
+
+	// Output statistics line
+	newMatches := matchCount - skippedCount
+	statsLine := fmt.Sprintf("Scanned %d B from %d blobs in %d second (%.0f B/s); %d/%d new matches\n",
+		totalBytes, blobCount, int(duration.Seconds()), speed, newMatches, matchCount)
+
 	if scanOutputFormat == "json" || scanOutputFormat == "sarif" {
-		if scanIncremental {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
-		} else {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
+		fmt.Fprint(cmd.ErrOrStderr(), statsLine)
+		if scanOutputPath != ":memory:" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s/datastore.db\n\n", scanOutputPath)
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s\n", scanOutputPath)
 	} else {
-		if scanIncremental {
-			fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings (%d blobs skipped)\n", matchCount, findingCount, skippedCount)
-		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "Scan complete: %d matches, %d findings\n", matchCount, findingCount)
-		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
+		fmt.Fprint(cmd.OutOrStdout(), statsLine)
+		fmt.Fprintf(cmd.OutOrStdout(), "\n")
 	}
 
 	// Get results for output
@@ -243,7 +294,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return outputSARIF(cmd, s, rules, matches)
 	}
 
-	// Human format outputs findings (deduplicated)
+	// Human format outputs findings in noseyparker table format
 	findings, err := s.GetFindings()
 	if err != nil {
 		return fmt.Errorf("retrieving findings: %w", err)
@@ -272,7 +323,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		f.Matches = findingMatches[f.ID]
 	}
 
-	return outputFindings(cmd, findings)
+	return outputNoseyParkerSummary(cmd, findings, ruleMap)
 }
 
 // =============================================================================
@@ -377,6 +428,62 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	}
 
 	return enum.NewFilesystemEnumerator(config), nil
+}
+
+// outputNoseyParkerSummary outputs findings in noseyparker table format
+func outputNoseyParkerSummary(cmd *cobra.Command, findings []*types.Finding, ruleMap map[string]*types.Rule) error {
+	if len(findings) == 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "No findings.\n")
+		return nil
+	}
+
+	// Build aggregation by rule
+	type ruleStats struct {
+		name     string
+		findings int
+		matches  int
+	}
+	statsMap := make(map[string]*ruleStats)
+
+	for _, f := range findings {
+		rule, ok := ruleMap[f.RuleID]
+		if !ok {
+			continue
+		}
+
+		if _, exists := statsMap[f.RuleID]; !exists {
+			statsMap[f.RuleID] = &ruleStats{name: rule.Name}
+		}
+
+		statsMap[f.RuleID].findings++
+		statsMap[f.RuleID].matches += len(f.Matches)
+	}
+
+	// Find longest rule name for column width
+	maxNameLen := len("Rule")
+	for _, stats := range statsMap {
+		if len(stats.name) > maxNameLen {
+			maxNameLen = len(stats.name)
+		}
+	}
+
+	// Print header
+	fmt.Fprintf(cmd.OutOrStdout(), " %-*s   Findings   Matches \n", maxNameLen, "Rule")
+
+	// Print separator line using box-drawing character
+	separatorLen := maxNameLen + 3 + 10 + 3 + 8
+	fmt.Fprintf(cmd.OutOrStdout(), "%s\n", strings.Repeat("─", separatorLen))
+
+	// Print data rows
+	for _, stats := range statsMap {
+		fmt.Fprintf(cmd.OutOrStdout(), " %-*s   %8d   %7d \n",
+			maxNameLen, stats.name, stats.findings, stats.matches)
+	}
+
+	// Print footer
+	fmt.Fprintf(cmd.OutOrStdout(), "\nRun the `report` command next to show finding details.\n")
+
+	return nil
 }
 
 func outputMatches(cmd *cobra.Command, matches []*types.Match) error {
