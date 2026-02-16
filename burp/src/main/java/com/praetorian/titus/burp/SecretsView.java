@@ -131,9 +131,10 @@ public class SecretsView extends JPanel {
 
         add(splitPane, BorderLayout.CENTER);
 
-        // Top panel with toolbar and filters
+        // Top panel with header, toolbar and filters
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+        topPanel.add(createHeaderPanel());
         topPanel.add(createToolbar());
         topPanel.add(createFilterPanel());
         add(topPanel, BorderLayout.NORTH);
@@ -170,6 +171,25 @@ public class SecretsView extends JPanel {
      */
     public void setSeverityConfig(SeverityConfig config) {
         tableModel.setSeverityConfig(config);
+    }
+
+    private JPanel createHeaderPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 10, 5));
+
+        JLabel titleLabel = new JLabel("Titus Secret Scanner");
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 18f));
+
+        JLabel descLabel = new JLabel("Scans HTTP responses for secrets using NoseyParker rules");
+        descLabel.setForeground(Color.GRAY);
+
+        JPanel textPanel = new JPanel();
+        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
+        textPanel.add(titleLabel);
+        textPanel.add(descLabel);
+
+        panel.add(textPanel, BorderLayout.WEST);
+        return panel;
     }
 
     private JPanel createToolbar() {
