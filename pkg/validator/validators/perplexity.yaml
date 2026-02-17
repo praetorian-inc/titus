@@ -1,0 +1,17 @@
+validators:
+
+- name: perplexity-api-key
+  rule_ids:
+    - kingfisher.perplexity.1
+
+  http:
+    method: GET
+    url: "https://api.perplexity.ai/chat/completions"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      Content-Type: "application/json"
+
+    success_codes: [200, 400, 422]
+    failure_codes: [401, 403]

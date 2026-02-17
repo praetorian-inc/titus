@@ -1,0 +1,15 @@
+validators:
+
+- name: huggingface-access-token
+  rule_ids:
+    - np.huggingface.1
+
+  http:
+    method: GET
+    url: "https://huggingface.co/api/whoami-v2"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

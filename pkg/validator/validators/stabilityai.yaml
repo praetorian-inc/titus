@@ -1,0 +1,17 @@
+validators:
+
+- name: stabilityai-api-key
+  rule_ids:
+    - kingfisher.stabilityai.1
+
+  http:
+    method: GET
+    url: "https://api.stability.ai/v1/user/account"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      Accept: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

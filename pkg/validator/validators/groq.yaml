@@ -1,0 +1,15 @@
+validators:
+
+- name: groq-api-key
+  rule_ids:
+    - np.groq.1
+
+  http:
+    method: GET
+    url: "https://api.groq.com/openai/v1/models"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
