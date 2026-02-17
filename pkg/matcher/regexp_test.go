@@ -115,6 +115,38 @@ func TestMatchParallel_vs_Sequential_Equivalence(t *testing.T) {
 	}
 }
 
+// TestMatch_FindingID_Populated verifies that FindingID is set on all returned matches
+func TestMatch_FindingID_Populated(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:           "np.aws.1",
+			Name:         "AWS API Key",
+			Pattern:      `(AKIA[0-9A-Z]{16})`,
+			StructuralID: "1e4113c48323df7405840eede9a2be89a9797520",
+		},
+	}
+
+	content := []byte("aws_access_key=AKIAZ52KNG5GARBXTEST\n")
+
+	matcher, err := NewPortableRegexp(rules, 0)
+	require.NoError(t, err)
+
+	matches, err := matcher.Match(content)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+
+	match := matches[0]
+	assert.NotEmpty(t, match.FindingID, "FindingID should be populated")
+	assert.Len(t, match.FindingID, 40, "FindingID should be 40-char SHA-1 hex")
+
+	// Verify it matches the expected NoseyParker-compatible value
+	expectedFindingID := types.ComputeFindingID(rules[0].StructuralID, match.Groups)
+	assert.Equal(t, expectedFindingID, match.FindingID)
+
+	// NoseyParker v0.24.0 produces this finding_id for np.aws.1 + "AKIAZ52KNG5GARBXTEST"
+	assert.Equal(t, "59141806118796593f3d14bae57834b794d3421b", match.FindingID)
+}
+
 // TestMatchParallel_RaceDetector explicitly exercises parallel path with race detector
 func TestMatchParallel_RaceDetector(t *testing.T) {
 	rules := []*types.Rule{

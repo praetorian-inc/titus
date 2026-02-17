@@ -74,5 +74,8 @@ func buildMatchResult(
 	// Compute structural ID for deduplication
 	result.StructuralID = result.ComputeStructuralID(rule.StructuralID)
 
+	// Compute finding ID for content-based deduplication (NoseyParker-compatible)
+	result.FindingID = types.ComputeFindingID(rule.StructuralID, groups)
+
 	return result
 }

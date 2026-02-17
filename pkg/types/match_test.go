@@ -80,6 +80,24 @@ func TestMatch_ComputeStructuralID(t *testing.T) {
 	assert.NotEqual(t, structuralID, structuralID3)
 }
 
+func TestMatch_FindingID_Populated(t *testing.T) {
+	// FindingID should be the same as ComputeFindingID(ruleStructuralID, groups)
+	ruleStructuralID := "1e4113c48323df7405840eede9a2be89a9797520"
+	groups := [][]byte{[]byte("AKIAZ52KNG5GARBXTEST")}
+
+	expectedFindingID := ComputeFindingID(ruleStructuralID, groups)
+
+	match := Match{
+		FindingID: expectedFindingID,
+		Groups:    groups,
+	}
+
+	assert.NotEmpty(t, match.FindingID)
+	assert.Len(t, match.FindingID, 40) // SHA-1 hex is 40 chars
+	// NoseyParker v0.24.0 produces this finding_id for np.aws.1 + "AKIAZ52KNG5GARBXTEST"
+	assert.Equal(t, "59141806118796593f3d14bae57834b794d3421b", match.FindingID)
+}
+
 func TestMatch_EmptyGroups(t *testing.T) {
 	blobID := ComputeBlobID([]byte("test"))
 

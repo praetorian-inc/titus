@@ -485,6 +485,9 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 			// Compute structural ID for deduplication
 			match.StructuralID = match.ComputeStructuralID(rule.StructuralID)
 
+			// Compute finding ID for content-based deduplication (NoseyParker-compatible)
+			match.FindingID = types.ComputeFindingID(rule.StructuralID, groups)
+
 			// Deduplicate
 			if !m.dedup.IsDuplicate(match) {
 				m.dedup.Add(match)
@@ -753,6 +756,7 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 				},
 			}
 			m.StructuralID = m.ComputeStructuralID(rule.StructuralID)
+			m.FindingID = types.ComputeFindingID(rule.StructuralID, groups)
 			matches = append(matches, m)
 
 			match, err = re.FindNextMatch(match)
