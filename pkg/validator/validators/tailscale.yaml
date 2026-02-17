@@ -1,0 +1,17 @@
+validators:
+
+- name: tailscale-api-key
+  rule_ids:
+    - kingfisher.tailscale.1
+
+  http:
+    method: GET
+    url: "https://api.tailscale.com/api/v2/tailnet/-/devices"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      Accept: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
