@@ -12,7 +12,8 @@ validators:
       secret_group: "1"
       header_name: "Authorization"
     headers:
-      Content-Type: "application/json"
+      - name: "Content-Type"
+        value: "application/json"
     body: '{"query": "{ viewer { id } }"}'
 
     success_codes: [200]

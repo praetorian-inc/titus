@@ -12,7 +12,8 @@ validators:
       secret_group: "token"
       header_name: "Circle-Token"
     headers:
-      Accept: "application/json"
+      - name: "Accept"
+        value: "application/json"
 
     success_codes: [200]
     failure_codes: [401, 403]
@@ -29,7 +30,8 @@ validators:
       secret_group: "token"
       header_name: "Circle-Token"
     headers:
-      Accept: "application/json"
+      - name: "Accept"
+        value: "application/json"
 
     success_codes: [200]
     failure_codes: [401, 403]
