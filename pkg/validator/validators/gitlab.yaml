@@ -1,0 +1,23 @@
+# pkg/validator/validators/gitlab.yaml
+# GitLab Personal Access Token Validator
+# Validates glpat-* tokens against GitLab.com API
+
+validators:
+
+- name: gitlab-personal-access-token
+  rule_ids:
+    - np.gitlab.2
+
+  http:
+    method: GET
+    url: "https://gitlab.com/api/v4/user"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "PRIVATE-TOKEN"
+
+    # Success codes indicate valid token
+    success_codes: [200]
+
+    # Failure codes indicate invalid or unauthorized token
+    failure_codes: [401, 403]
