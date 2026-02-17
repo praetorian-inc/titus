@@ -13,8 +13,10 @@ validators:
       header_name: "Authorization"
       header_prefix: "token "
     headers:
-      Accept: "application/vnd.pulumi+8"
-      Content-Type: "application/json"
+      - name: "Accept"
+        value: "application/vnd.pulumi+8"
+      - name: "Content-Type"
+        value: "application/json"
 
     success_codes: [200]
     failure_codes: [401, 403]

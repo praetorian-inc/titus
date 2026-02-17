@@ -12,7 +12,8 @@ validators:
       type: bearer
       secret_group: "1"
     headers:
-      Notion-Version: "2022-06-28"
+      - name: "Notion-Version"
+        value: "2022-06-28"
 
     success_codes: [200]
     failure_codes: [401, 403]
