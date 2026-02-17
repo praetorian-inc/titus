@@ -1,0 +1,19 @@
+validators:
+
+- name: postmark-api-token
+  rule_ids:
+    - np.postmark.1
+
+  http:
+    method: GET
+    url: "https://api.postmarkapp.com/server"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "X-Postmark-Server-Token"
+    headers:
+      - name: "Accept"
+        value: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

@@ -1,0 +1,16 @@
+validators:
+
+- name: figma-personal-access-token
+  rule_ids:
+    - np.figma.1
+
+  http:
+    method: GET
+    url: "https://api.figma.com/v1/me"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "X-Figma-Token"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
