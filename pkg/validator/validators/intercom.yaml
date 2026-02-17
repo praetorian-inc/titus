@@ -1,0 +1,17 @@
+validators:
+
+- name: intercom-api-token
+  rule_ids:
+    - kingfisher.intercom.1
+
+  http:
+    method: GET
+    url: "https://api.intercom.io/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      Accept: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
