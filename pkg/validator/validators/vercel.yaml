@@ -1,0 +1,15 @@
+validators:
+
+- name: vercel-api-token
+  rule_ids:
+    - kingfisher.vercel.1
+
+  http:
+    method: GET
+    url: "https://api.vercel.com/v2/user"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

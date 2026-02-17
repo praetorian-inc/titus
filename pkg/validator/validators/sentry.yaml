@@ -1,0 +1,19 @@
+validators:
+
+- name: sentry-access-token
+  rule_ids:
+    - kingfisher.sentry.1
+    - kingfisher.sentry.2
+    - kingfisher.sentry.3
+
+  http:
+    method: GET
+    url: "https://sentry.io/api/0/projects/"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      Accept: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

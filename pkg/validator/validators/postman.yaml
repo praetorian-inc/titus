@@ -1,0 +1,16 @@
+validators:
+
+- name: postman-api-key
+  rule_ids:
+    - np.postman.1
+
+  http:
+    method: GET
+    url: "https://api.getpostman.com/me"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "X-Api-Key"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
