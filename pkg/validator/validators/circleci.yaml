@@ -1,0 +1,35 @@
+validators:
+
+- name: circleci-personal-access-token
+  rule_ids:
+    - kingfisher.circleci.1
+
+  http:
+    method: GET
+    url: "https://circleci.com/api/v2/me"
+    auth:
+      type: header
+      secret_group: "token"
+      header_name: "Circle-Token"
+    headers:
+      Accept: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: circleci-project-token
+  rule_ids:
+    - kingfisher.circleci.2
+
+  http:
+    method: GET
+    url: "https://circleci.com/api/v1.1/projects"
+    auth:
+      type: header
+      secret_group: "token"
+      header_name: "Circle-Token"
+    headers:
+      Accept: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
