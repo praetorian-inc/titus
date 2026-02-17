@@ -2,7 +2,7 @@
 # Static binary verification test for Titus
 # Verifies the binary is truly statically linked and runs in minimal containers
 
-set -e
+set -Eeuo pipefail
 
 # Configuration
 TITUS_STATIC="${TITUS_STATIC:-./titus-static}"

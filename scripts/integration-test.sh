@@ -2,7 +2,7 @@
 # Integration tests for Titus secrets scanner
 # Runs scans against test fixtures and validates output
 
-set -e  # Exit on error
+set -Eeuo pipefail
 
 # Configuration
 TITUS="${TITUS:-./titus}"
