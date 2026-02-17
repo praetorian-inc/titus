@@ -1,0 +1,22 @@
+# pkg/validator/validators/openai.yaml
+# OpenAI API Key Validator
+# Validates both legacy (sk-*) and project-scoped (sk-proj-*) API keys
+
+validators:
+
+- name: openai-api-key
+  rule_ids:
+    - np.openai.1
+
+  http:
+    method: GET
+    url: "https://api.openai.com/v1/models"
+    auth:
+      type: bearer
+      secret_group: "key"
+
+    # Success codes indicate valid API key
+    success_codes: [200]
+
+    # Failure codes indicate invalid or unauthorized key
+    failure_codes: [401, 403]
