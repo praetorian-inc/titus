@@ -9,6 +9,7 @@ validators:
     rule_ids:
       - np.youtube.1
       - np.google.5
+      - np.google.8
     http:
       method: GET
       url: https://www.googleapis.com/youtube/v3/videos?part=id&id=dQw4w9WgXcQ
