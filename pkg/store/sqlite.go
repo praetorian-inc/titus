@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -10,11 +11,38 @@ import (
 	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
-	_ "modernc.org/sqlite"
+	sqlite "modernc.org/sqlite"
 )
 
+// dbLike abstracts *sql.DB and *sql.Tx so store methods work in both contexts.
+type dbLike interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
 type SQLiteStore struct {
-	db *sql.DB
+	db *sql.DB // root connection (nil for tx-scoped stores)
+	e  dbLike  // active execer: db or tx
+}
+
+func init() {
+	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
+		ctx := context.Background()
+		if _, err := conn.ExecContext(ctx, "PRAGMA journal_mode=WAL", nil); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "PRAGMA busy_timeout=5000", nil); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "PRAGMA synchronous=OFF", nil); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=ON", nil); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func NewSQLite(path string) (*SQLiteStore, error) {
@@ -22,35 +50,28 @@ func NewSQLite(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enabling WAL mode: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enabling foreign keys: %w", err)
-	}
+	db.SetMaxOpenConns(1)
 	if err := CreateSchema(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("creating schema: %w", err)
 	}
-	return &SQLiteStore{db: db}, nil
+	return &SQLiteStore{db: db, e: db}, nil
 }
 
 func (s *SQLiteStore) AddBlob(id types.BlobID, size int64) error {
-	_, err := s.db.Exec("INSERT OR IGNORE INTO blobs (id, size) VALUES (?, ?)", id.Hex(), size)
+	_, err := s.e.Exec("INSERT OR IGNORE INTO blobs (id, size) VALUES (?, ?)", id.Hex(), size)
 	return err
 }
 
 func (s *SQLiteStore) AddRule(r *types.Rule) error {
-	_, err := s.db.Exec("INSERT OR IGNORE INTO rules (id, name, pattern, structural_id) VALUES (?, ?, ?, ?)",
+	_, err := s.e.Exec("INSERT OR IGNORE INTO rules (id, name, pattern, structural_id) VALUES (?, ?, ?, ?)",
 		r.ID, r.Name, r.Pattern, r.StructuralID)
 	return err
 }
 
 func (s *SQLiteStore) BlobExists(id types.BlobID) (bool, error) {
 	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM blobs WHERE id = ?", id.Hex()).Scan(&count)
+	err := s.e.QueryRow("SELECT COUNT(*) FROM blobs WHERE id = ?", id.Hex()).Scan(&count)
 	return count > 0, err
 }
 
@@ -86,7 +107,7 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 	// finding_id is null for now
 	var findingID sql.NullInt64
 
-	_, err = s.db.Exec(`INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err = s.e.Exec(`INSERT OR IGNORE INTO matches (blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		m.BlobID.Hex(), m.RuleID, m.StructuralID, m.Location.Offset.Start, m.Location.Offset.End,
 		m.Snippet.Before, m.Snippet.Matching, m.Snippet.After, groupsJSON,
 		validationStatus, validationConfidence, validationMessage, validationTimestamp,
@@ -95,7 +116,7 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 }
 
 func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
-	rows, err := s.db.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches WHERE blob_id = ?`, blobID.Hex())
+	rows, err := s.e.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches WHERE blob_id = ?`, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +125,7 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 }
 
 func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
-	rows, err := s.db.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches`)
+	rows, err := s.e.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches`)
 	if err != nil {
 		return nil, err
 	}
@@ -117,12 +138,12 @@ func (s *SQLiteStore) AddFinding(f *types.Finding) error {
 	if err != nil {
 		return fmt.Errorf("serializing groups: %w", err)
 	}
-	_, err = s.db.Exec("INSERT OR IGNORE INTO findings (structural_id, rule_id, groups_json) VALUES (?, ?, ?)", f.ID, f.RuleID, groupsJSON)
+	_, err = s.e.Exec("INSERT OR IGNORE INTO findings (structural_id, rule_id, groups_json) VALUES (?, ?, ?)", f.ID, f.RuleID, groupsJSON)
 	return err
 }
 
 func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
-	rows, err := s.db.Query("SELECT structural_id, rule_id, groups_json FROM findings")
+	rows, err := s.e.Query("SELECT structural_id, rule_id, groups_json FROM findings")
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +168,7 @@ func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
 
 func (s *SQLiteStore) FindingExists(structuralID string) (bool, error) {
 	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM findings WHERE structural_id = ?", structuralID).Scan(&count)
+	err := s.e.QueryRow("SELECT COUNT(*) FROM findings WHERE structural_id = ?", structuralID).Scan(&count)
 	return count > 0, err
 }
 
@@ -168,12 +189,12 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	default:
 		return fmt.Errorf("unknown provenance type: %T", prov)
 	}
-	_, err := s.db.Exec("INSERT OR IGNORE INTO provenance (blob_id, type, path, repo_path, commit_hash) VALUES (?, ?, ?, ?, ?)", blobID.Hex(), provType, path, repoPath, commitHash)
+	_, err := s.e.Exec("INSERT OR IGNORE INTO provenance (blob_id, type, path, repo_path, commit_hash) VALUES (?, ?, ?, ?, ?)", blobID.Hex(), provType, path, repoPath, commitHash)
 	return err
 }
 
 func (s *SQLiteStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance, error) {
-	rows, err := s.db.Query("SELECT type, path, repo_path, commit_hash FROM provenance WHERE blob_id = ?", blobID.Hex())
+	rows, err := s.e.Query("SELECT type, path, repo_path, commit_hash FROM provenance WHERE blob_id = ?", blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +238,19 @@ func (s *SQLiteStore) GetProvenance(blobID types.BlobID) (types.Provenance, erro
 		return nil, fmt.Errorf("no provenance found for blob %s", blobID.Hex())
 	}
 	return provs[0], nil
+}
+
+func (s *SQLiteStore) ExecBatch(fn func(Store) error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	txStore := &SQLiteStore{e: tx} // db is nil; ExecBatch on txStore would panic, which is correct
+	if err := fn(txStore); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) Close() error {

@@ -44,6 +44,10 @@ type Store interface {
 	// GetProvenance retrieves provenance for a blob.
 	GetProvenance(blobID types.BlobID) (types.Provenance, error)
 
+	// ExecBatch executes fn within a database transaction for batched writes.
+	// The Store passed to fn uses the transaction; the outer Store is unchanged.
+	ExecBatch(fn func(Store) error) error
+
 	// Close closes the database connection.
 	Close() error
 }
