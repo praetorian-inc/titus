@@ -145,6 +145,40 @@ func runReport(cmd *cobra.Command, args []string) error {
 // HELPERS
 // =============================================================================
 
+// buildFindingMatchMap groups matches by finding ID using content-based computation.
+// It uses structural ID matching with a fallback to RuleID + Groups matching.
+func buildFindingMatchMap(findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) map[string][]*types.Match {
+	matchesByFinding := make(map[string][]*types.Match)
+	for _, m := range matches {
+		r, ok := ruleMap[m.RuleID]
+		if ok {
+			findingID := types.ComputeFindingID(r.StructuralID, m.Groups)
+			matchesByFinding[findingID] = append(matchesByFinding[findingID], m)
+		}
+	}
+
+	// Fallback for rules not in builtin rules
+	for _, f := range findings {
+		if _, exists := matchesByFinding[f.ID]; !exists {
+			for _, m := range matches {
+				if m.RuleID == f.RuleID && len(m.Groups) == len(f.Groups) {
+					groupsMatch := true
+					for i := range m.Groups {
+						if string(m.Groups[i]) != string(f.Groups[i]) {
+							groupsMatch = false
+							break
+						}
+					}
+					if groupsMatch {
+						matchesByFinding[f.ID] = append(matchesByFinding[f.ID], m)
+					}
+				}
+			}
+		}
+	}
+
+	return matchesByFinding
+}
 
 // formatSnippet combines before/matching/after and truncates to maxLen chars,
 // centering the window around the matched text.
@@ -282,37 +316,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 
 func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
 	// Group matches by finding ID using content-based computation
-	matchesByFinding := make(map[string][]*types.Match)
-	for _, m := range matches {
-		// Compute content-based finding ID (same as scan.go)
-		r, ok := ruleMap[m.RuleID]
-		if ok {
-			findingID := types.ComputeFindingID(r.StructuralID, m.Groups)
-			matchesByFinding[findingID] = append(matchesByFinding[findingID], m)
-		}
-	}
-
-	// Fallback: if no rule found, try to match findings and matches by RuleID and Groups
-	for _, f := range findings {
-		if _, exists := matchesByFinding[f.ID]; !exists {
-			// No matches found yet for this finding, try RuleID + Groups match
-			for _, m := range matches {
-				if m.RuleID == f.RuleID && len(m.Groups) == len(f.Groups) {
-					// Check if groups match
-					groupsMatch := true
-					for i := range m.Groups {
-						if string(m.Groups[i]) != string(f.Groups[i]) {
-							groupsMatch = false
-							break
-						}
-					}
-					if groupsMatch {
-						matchesByFinding[f.ID] = append(matchesByFinding[f.ID], m)
-					}
-				}
-			}
-		}
-	}
+	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 
 	// Attach matches to their findings
 	for _, f := range findings {
@@ -357,34 +361,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 	defer store.Close()
 
 	// Build content-based finding-to-match map
-	matchesByFinding := make(map[string][]*types.Match)
-	for _, m := range matches {
-		r, ok := ruleMap[m.RuleID]
-		if ok {
-			findingID := types.ComputeFindingID(r.StructuralID, m.Groups)
-			matchesByFinding[findingID] = append(matchesByFinding[findingID], m)
-		}
-	}
-
-	// Fallback for rules not in builtin rules
-	for _, f := range findings {
-		if _, exists := matchesByFinding[f.ID]; !exists {
-			for _, m := range matches {
-				if m.RuleID == f.RuleID && len(m.Groups) == len(f.Groups) {
-					groupsMatch := true
-					for i := range m.Groups {
-						if string(m.Groups[i]) != string(f.Groups[i]) {
-							groupsMatch = false
-							break
-						}
-					}
-					if groupsMatch {
-						matchesByFinding[f.ID] = append(matchesByFinding[f.ID], m)
-					}
-				}
-			}
-		}
-	}
+	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 
 	totalFindings := len(findings)
 

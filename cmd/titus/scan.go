@@ -127,27 +127,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	defer m.Close()
 
 	// Create store (memory or datastore)
-	var s store.Store
-	var ds *datastore.Datastore
-	if scanOutputPath == ":memory:" {
-		// In-memory store for ephemeral scans
-		var err error
-		s, err = store.New(store.Config{Path: ":memory:"})
-		if err != nil {
-			return fmt.Errorf("creating store: %w", err)
-		}
-		defer s.Close()
-	} else {
-		// Directory-based datastore
-		var err error
-		ds, err = datastore.Open(scanOutputPath, datastore.Options{
-			StoreBlobs: scanStoreBlobs,
-		})
-		if err != nil {
-			return fmt.Errorf("creating datastore: %w", err)
-		}
+	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
+	if err != nil {
+		return err
+	}
+	if ds != nil {
 		defer ds.Close()
-		s = ds.Store
+	} else {
+		defer s.Close()
 	}
 
 	// Store rules for foreign key constraints
@@ -304,78 +291,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
-	// Calculate scan statistics
 	duration := time.Since(startTime)
-	totalBytesVal := totalBytes.Load()
-	blobCountVal := blobCount.Load()
-	matchCountVal := matchCount.Load()
-	skippedCountVal := skippedCount.Load()
-	speed := float64(totalBytesVal) / duration.Seconds()
+	printScanStats(cmd, scanOutputFormat, scanOutputPath,
+		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
 
-	// Output statistics line
-	newMatches := matchCountVal - skippedCountVal
-	statsLine := fmt.Sprintf("Scanned %d B from %d blobs in %d second (%.0f B/s); %d/%d new matches\n",
-		totalBytesVal, blobCountVal, int(duration.Seconds()), speed, newMatches, matchCountVal)
-
-	if scanOutputFormat == "json" || scanOutputFormat == "sarif" {
-		fmt.Fprint(cmd.ErrOrStderr(), statsLine)
-		if scanOutputPath != ":memory:" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s/datastore.db\n\n", scanOutputPath)
-		}
-	} else {
-		fmt.Fprint(cmd.OutOrStdout(), statsLine)
-		fmt.Fprintf(cmd.OutOrStdout(), "\n")
-	}
-
-	// Get results for output
-	if scanOutputFormat == "json" {
-		// JSON format outputs matches with full snippet data
-		matches, err := s.GetAllMatches()
-		if err != nil {
-			return fmt.Errorf("retrieving matches: %w", err)
-		}
-		return outputMatches(cmd, matches)
-	}
-
-	if scanOutputFormat == "sarif" {
-		// SARIF format outputs matches with rules
-		matches, err := s.GetAllMatches()
-		if err != nil {
-			return fmt.Errorf("retrieving matches: %w", err)
-		}
-		return outputSARIF(cmd, s, rules, matches)
-	}
-
-	// Human format outputs findings in noseyparker table format
-	findings, err := s.GetFindings()
-	if err != nil {
-		return fmt.Errorf("retrieving findings: %w", err)
-	}
-
-	// Get all matches to attach validation results to findings
-	allMatches, err := s.GetAllMatches()
-	if err != nil {
-		return fmt.Errorf("retrieving matches: %w", err)
-	}
-
-	// Build map of finding ID to matches
-	findingMatches := make(map[string][]*types.Match)
-	for _, m := range allMatches {
-		// Compute content-based finding ID same way as during scan
-		rule, ok := ruleMap[m.RuleID]
-		if !ok {
-			return fmt.Errorf("rule not found: %s", m.RuleID)
-		}
-		findingID := types.ComputeFindingID(rule.StructuralID, m.Groups)
-		findingMatches[findingID] = append(findingMatches[findingID], m)
-	}
-
-	// Attach matches to findings
-	for _, f := range findings {
-		f.Matches = findingMatches[f.ID]
-	}
-
-	return outputNoseyParkerSummary(cmd, findings, ruleMap)
+	return outputScanResults(cmd, s, rules, ruleMap)
 }
 
 // =============================================================================
@@ -416,6 +336,89 @@ func loadRules(path, include, exclude string) ([]*types.Rule, error) {
 	}
 
 	return rules, nil
+}
+
+// openScanStore creates the store backend based on the output path configuration.
+func openScanStore(outputPath string, storeBlobs bool) (store.Store, *datastore.Datastore, error) {
+	if outputPath == ":memory:" {
+		s, err := store.New(store.Config{Path: ":memory:"})
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating store: %w", err)
+		}
+		return s, nil, nil
+	}
+
+	ds, err := datastore.Open(outputPath, datastore.Options{
+		StoreBlobs: storeBlobs,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating datastore: %w", err)
+	}
+	return ds.Store, ds, nil
+}
+
+// printScanStats formats and prints scan statistics.
+func printScanStats(cmd *cobra.Command, format, outputPath string, totalBytes, blobCount, matchCount, skippedCount int64, duration time.Duration) {
+	speed := float64(totalBytes) / duration.Seconds()
+	newMatches := matchCount - skippedCount
+	statsLine := fmt.Sprintf("Scanned %d B from %d blobs in %d second (%.0f B/s); %d/%d new matches\n",
+		totalBytes, blobCount, int(duration.Seconds()), speed, newMatches, matchCount)
+
+	if format == "json" || format == "sarif" {
+		fmt.Fprint(cmd.ErrOrStderr(), statsLine)
+		if outputPath != ":memory:" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s/datastore.db\n\n", outputPath)
+		}
+	} else {
+		fmt.Fprint(cmd.OutOrStdout(), statsLine)
+		fmt.Fprintf(cmd.OutOrStdout(), "\n")
+	}
+}
+
+// outputScanResults routes scan output to the appropriate formatter based on scanOutputFormat.
+func outputScanResults(cmd *cobra.Command, s store.Store, rules []*types.Rule, ruleMap map[string]*types.Rule) error {
+	if scanOutputFormat == "json" {
+		matches, err := s.GetAllMatches()
+		if err != nil {
+			return fmt.Errorf("retrieving matches: %w", err)
+		}
+		return outputMatches(cmd, matches)
+	}
+
+	if scanOutputFormat == "sarif" {
+		matches, err := s.GetAllMatches()
+		if err != nil {
+			return fmt.Errorf("retrieving matches: %w", err)
+		}
+		return outputSARIF(cmd, s, rules, matches)
+	}
+
+	// Human format outputs findings in noseyparker table format
+	findings, err := s.GetFindings()
+	if err != nil {
+		return fmt.Errorf("retrieving findings: %w", err)
+	}
+
+	allMatches, err := s.GetAllMatches()
+	if err != nil {
+		return fmt.Errorf("retrieving matches: %w", err)
+	}
+
+	findingMatches := make(map[string][]*types.Match)
+	for _, m := range allMatches {
+		rule, ok := ruleMap[m.RuleID]
+		if !ok {
+			return fmt.Errorf("rule not found: %s", m.RuleID)
+		}
+		findingID := types.ComputeFindingID(rule.StructuralID, m.Groups)
+		findingMatches[findingID] = append(findingMatches[findingID], m)
+	}
+
+	for _, f := range findings {
+		f.Matches = findingMatches[f.ID]
+	}
+
+	return outputNoseyParkerSummary(cmd, findings, ruleMap)
 }
 
 // parseSize converts size strings like "10MB" to bytes.
