@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/praetorian-inc/titus/pkg/datastore"
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
@@ -16,8 +19,8 @@ import (
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/praetorian-inc/titus/pkg/validator"
-	"github.com/praetorian-inc/titus/pkg/datastore"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 // extensionsValue is a custom flag type that displays as "extensions" in help
@@ -54,6 +57,7 @@ var (
 	extractMaxSize          string
 	extractMaxTotal         string
 	extractMaxDepth         int
+	scanWorkers             int
 )
 
 var scanCmd = &cobra.Command{
@@ -82,7 +86,16 @@ func init() {
 	scanCmd.Flags().StringVar(&extractMaxSize, "extract-max-size", "10MB", "Max uncompressed size per extracted file")
 	scanCmd.Flags().StringVar(&extractMaxTotal, "extract-max-total", "100MB", "Max total bytes to extract from one archive")
 	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
+	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
 }
+
+// blobJob represents a unit of work for the worker pool.
+type blobJob struct {
+	content []byte
+	blobID  types.BlobID
+	prov    types.Provenance
+}
+
 func runScan(cmd *cobra.Command, args []string) error {
 	target := args[0]
 
@@ -153,117 +166,156 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating enumerator: %w", err)
 	}
 
-	// Scan
+	// Scan with parallel workers
 	ctx := context.Background()
-	matchCount := 0
-	findingCount := 0
-	skippedCount := 0
+	var matchCount atomic.Int64
+	var findingCount atomic.Int64
+	var skippedCount atomic.Int64
+	var totalBytes atomic.Int64
+	var blobCount atomic.Int64
 	startTime := time.Now()
-	totalBytes := int64(0)
-	blobCount := 0
 
-	err = enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		// Track statistics
-		totalBytes += int64(len(content))
-		blobCount++
+	numWorkers := scanWorkers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	jobs := make(chan blobJob, 2*numWorkers)
 
-		// Check for incremental scanning
-		if scanIncremental {
-			exists, err := s.BlobExists(blobID)
-			if err != nil {
-				return fmt.Errorf("checking blob: %w", err)
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Producer: enumerate blobs and send to workers (NO DB writes)
+	g.Go(func() error {
+		defer close(jobs)
+		return enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			totalBytes.Add(int64(len(content)))
+			blobCount.Add(1)
+
+			// Check for incremental scanning
+			if scanIncremental {
+				exists, err := s.BlobExists(blobID)
+				if err != nil {
+					return fmt.Errorf("checking blob: %w", err)
+				}
+				if exists {
+					skippedCount.Add(1)
+					return nil
+				}
 			}
-			if exists {
-				skippedCount++
+
+			select {
+			case jobs <- blobJob{content: content, blobID: blobID, prov: prov}:
 				return nil
+			case <-ctx.Done():
+				return ctx.Err()
 			}
-		}
-
-		// Store blob
-		if err := s.AddBlob(blobID, int64(len(content))); err != nil {
-			return fmt.Errorf("storing blob: %w", err)
-		}
-
-		// Store blob content if enabled
-		if ds != nil && ds.BlobStore != nil {
-			if _, err := ds.BlobStore.Store(content); err != nil {
-				return fmt.Errorf("storing blob content: %w", err)
-			}
-		}
-
-		// Store provenance
-		if err := s.AddProvenance(blobID, prov); err != nil {
-			return fmt.Errorf("storing provenance: %w", err)
-		}
-
-		// Match content
-		matches, err := m.MatchWithBlobID(content, blobID)
-		if err != nil {
-			return fmt.Errorf("matching content: %w", err)
-		}
-
-		// Compute line/column for each match
-		for _, match := range matches {
-			startLine, startCol := types.ComputeLineColumn(content, int(match.Location.Offset.Start))
-			endLine, endCol := types.ComputeLineColumn(content, int(match.Location.Offset.End))
-			match.Location.Source.Start.Line = startLine
-			match.Location.Source.Start.Column = startCol
-			match.Location.Source.End.Line = endLine
-			match.Location.Source.End.Column = endCol
-		}
-
-		// Validate matches if enabled
-		validateMatches(ctx, validationEngine, matches, verbose)
-
-		// Store matches and findings
-		for _, match := range matches {
-			matchCount++
-
-			if err := s.AddMatch(match); err != nil {
-				return fmt.Errorf("storing match: %w", err)
-			}
-
-			// Create finding (deduplicated by finding ID)
-			// Finding ID is computed from rule structural ID + groups (content-based)
-			rule, ok := ruleMap[match.RuleID]
-			if !ok {
-				return fmt.Errorf("rule not found: %s", match.RuleID)
-			}
-
-			findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
-			exists, err := s.FindingExists(findingID)
-			if err != nil {
-				return fmt.Errorf("checking finding: %w", err)
-			}
-
-			if !exists {
-				findingCount++
-				finding := &types.Finding{
-					ID:     findingID,
-					RuleID: match.RuleID,
-					Groups: match.Groups,
-				}
-				if err := s.AddFinding(finding); err != nil {
-					return fmt.Errorf("storing finding: %w", err)
-				}
-			}
-		}
-
-		return nil
+		})
 	})
 
-	if err != nil {
+	// Consumer workers: match, compute line/col, validate, write to DB in batches
+	const batchSize = 64
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			type batchItem struct {
+				blobID  types.BlobID
+				prov    types.Provenance
+				size    int64
+				matches []*types.Match
+			}
+			var batch []batchItem
+
+			flush := func() error {
+				if len(batch) == 0 {
+					return nil
+				}
+				err := s.ExecBatch(func(tx store.Store) error {
+					for _, item := range batch {
+						if err := tx.AddBlob(item.blobID, item.size); err != nil {
+							return fmt.Errorf("storing blob: %w", err)
+						}
+						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
+							return fmt.Errorf("storing provenance: %w", err)
+						}
+						for _, match := range item.matches {
+							if err := tx.AddMatch(match); err != nil {
+								return fmt.Errorf("storing match: %w", err)
+							}
+							rule, ok := ruleMap[match.RuleID]
+							if !ok {
+								return fmt.Errorf("rule not found: %s", match.RuleID)
+							}
+							findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+							exists, err := tx.FindingExists(findingID)
+							if err != nil {
+								return fmt.Errorf("checking finding: %w", err)
+							}
+							if !exists {
+								findingCount.Add(1)
+								if err := tx.AddFinding(&types.Finding{
+									ID:     findingID,
+									RuleID: match.RuleID,
+									Groups: match.Groups,
+								}); err != nil {
+									return fmt.Errorf("storing finding: %w", err)
+								}
+							}
+						}
+					}
+					return nil
+				})
+				batch = batch[:0]
+				return err
+			}
+
+			for job := range jobs {
+				matches, err := m.MatchWithBlobID(job.content, job.blobID)
+				if err != nil {
+					return fmt.Errorf("matching content: %w", err)
+				}
+
+				for _, match := range matches {
+					startLine, startCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.Start))
+					endLine, endCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.End))
+					match.Location.Source.Start.Line = startLine
+					match.Location.Source.Start.Column = startCol
+					match.Location.Source.End.Line = endLine
+					match.Location.Source.End.Column = endCol
+				}
+
+				validateMatches(ctx, validationEngine, matches, verbose)
+				matchCount.Add(int64(len(matches)))
+
+				batch = append(batch, batchItem{
+					blobID:  job.blobID,
+					prov:    job.prov,
+					size:    int64(len(job.content)),
+					matches: matches,
+				})
+				if len(batch) >= batchSize {
+					if err := flush(); err != nil {
+						return err
+					}
+				}
+			}
+			return flush()
+		})
+	}
+
+	if err := g.Wait(); err != nil {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
 	// Calculate scan statistics
 	duration := time.Since(startTime)
-	speed := float64(totalBytes) / duration.Seconds()
+	totalBytesVal := totalBytes.Load()
+	blobCountVal := blobCount.Load()
+	matchCountVal := matchCount.Load()
+	skippedCountVal := skippedCount.Load()
+	speed := float64(totalBytesVal) / duration.Seconds()
 
 	// Output statistics line
-	newMatches := matchCount - skippedCount
+	newMatches := matchCountVal - skippedCountVal
 	statsLine := fmt.Sprintf("Scanned %d B from %d blobs in %d second (%.0f B/s); %d/%d new matches\n",
-		totalBytes, blobCount, int(duration.Seconds()), speed, newMatches, matchCount)
+		totalBytesVal, blobCountVal, int(duration.Seconds()), speed, newMatches, matchCountVal)
 
 	if scanOutputFormat == "json" || scanOutputFormat == "sarif" {
 		fmt.Fprint(cmd.ErrOrStderr(), statsLine)

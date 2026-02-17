@@ -194,6 +194,10 @@ func (m *MemoryStore) GetProvenance(blobID types.BlobID) (types.Provenance, erro
 	return provs[0], nil
 }
 
+func (s *MemoryStore) ExecBatch(fn func(Store) error) error {
+	return fn(s)
+}
+
 // Close closes the database connection.
 // For in-memory store, this is a no-op.
 func (m *MemoryStore) Close() error {

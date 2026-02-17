@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -42,8 +44,11 @@ func TestFilesystemEnumerator(t *testing.T) {
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
+	var mu sync.Mutex
 	var foundFiles []string
 	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
 		foundFiles = append(foundFiles, prov.Path())
 		// Verify blob ID is computed correctly
 		expectedID := types.ComputeBlobID(content)
@@ -88,8 +93,11 @@ func TestFilesystemEnumerator_HiddenFiles(t *testing.T) {
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
+	var mu sync.Mutex
 	var foundFiles []string
 	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
 		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
 		return nil
 	})
@@ -109,8 +117,11 @@ func TestFilesystemEnumerator_HiddenFiles(t *testing.T) {
 	config.IncludeHidden = true
 	enumerator = NewFilesystemEnumerator(config)
 
+	var mu2 sync.Mutex
 	foundFiles = nil
 	err = enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu2.Lock()
+		defer mu2.Unlock()
 		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
 		return nil
 	})
@@ -145,8 +156,11 @@ func TestFilesystemEnumerator_MaxFileSize(t *testing.T) {
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
+	var mu sync.Mutex
 	var foundFiles []string
 	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
 		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
 		return nil
 	})
@@ -186,8 +200,11 @@ func TestFilesystemEnumerator_BinaryFiles(t *testing.T) {
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
+	var mu sync.Mutex
 	var foundFiles []string
 	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
 		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
 		return nil
 	})
@@ -238,8 +255,11 @@ func TestFilesystemEnumerator_Gitignore(t *testing.T) {
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
+	var mu sync.Mutex
 	var foundFiles []string
 	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
 		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
 		return nil
 	})
@@ -301,8 +321,11 @@ func TestFilesystemEnumerator_CurrentDirectory(t *testing.T) {
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
+	var mu sync.Mutex
 	var foundFiles []string
 	err = enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
 		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
 		return nil
 	})
@@ -362,10 +385,10 @@ func TestFilesystemEnumerator_ContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var count int
+	var count atomic.Int32
 	err := enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		count++
-		if count == 3 {
+		n := count.Add(1)
+		if n == 3 {
 			cancel() // Cancel after processing 3 files
 		}
 		return nil

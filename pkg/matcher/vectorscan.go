@@ -35,7 +35,6 @@ type VectorscanMatcher struct {
 	scratch      *hyperscan.Scratch
 	scratchPool  sync.Pool
 	prefilter    *prefilter.Prefilter
-	dedup        *Deduplicator
 	contextLines int
 
 	// Pattern ID to rule mapping (Hyperscan uses integer IDs)
@@ -82,7 +81,6 @@ func NewVectorscan(rules []*types.Rule, contextLines int) (*VectorscanMatcher, e
 		patternToRule:  make(map[uint]*types.Rule),
 		regexCache:     make(map[string]*regexp2.Regexp),
 		groupNameCache: make(map[string][]string),
-		dedup:          NewDeduplicator(),
 		prefilter:      prefilter.New(rules),
 	}
 
@@ -421,7 +419,7 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 	// Process matches and extract captures
 	matches := make([]*types.Match, 0, len(locations))
 	ruleStats := make(map[string]RuleStat)
-	m.dedup.Reset()
+	dedup := NewDeduplicator()
 
 	// Group locations by rule for stats tracking
 	ruleLocations := make(map[uint][]matchLocation)
@@ -486,8 +484,8 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 			match.StructuralID = match.ComputeStructuralID(rule.StructuralID)
 
 			// Deduplicate
-			if !m.dedup.IsDuplicate(match) {
-				m.dedup.Add(match)
+			if !dedup.IsDuplicate(match) {
+				dedup.Add(match)
 				matches = append(matches, match)
 				stat.Matches++
 			}
@@ -501,8 +499,8 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 	if len(m.fallbackRules) > 0 {
 		fallbackMatches := m.matchFallbackRules(content, blobID)
 		for _, match := range fallbackMatches {
-			if !m.dedup.IsDuplicate(match) {
-				m.dedup.Add(match)
+			if !dedup.IsDuplicate(match) {
+				dedup.Add(match)
 				matches = append(matches, match)
 			}
 		}
