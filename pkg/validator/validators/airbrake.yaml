@@ -1,0 +1,21 @@
+# pkg/validator/validators/airbrake.yaml
+# Airbrake User Key validation
+# Validates against Airbrake API v4 projects endpoint
+# Reference: https://docs.airbrake.io/docs/devops-tools/api/#list-projects-v4
+validators:
+  - name: airbrake-user-key
+    rule_ids:
+      - kingfisher.airbrake.1
+    http:
+      method: GET
+      url: https://api.airbrake.io/api/v4/projects
+      auth:
+        type: query_param
+        param_name: key
+        secret_group: "token"  # Matches (?P<token>...) in rule regex
+      success_codes: [200]
+      failure_codes: [401, 403]
+      response_matchers:
+        - type: json_field
+          field: id
+          description: "Valid response contains project ID"

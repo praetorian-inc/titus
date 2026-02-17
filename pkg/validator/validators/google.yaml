@@ -1,0 +1,20 @@
+# pkg/validator/validators/google.yaml
+# Google API keys use query parameter authentication
+# Validation endpoint: YouTube Data API v3 (most commonly enabled API)
+# Returns 200 for valid keys, 400/403 for invalid/restricted keys
+# Note: Google API keys may be restricted to specific APIs, so a 403
+# means the key is valid but not authorized for this particular API
+validators:
+  - name: google-api-key
+    rule_ids:
+      - np.youtube.1
+      - np.google.5
+    http:
+      method: GET
+      url: https://www.googleapis.com/youtube/v3/videos?part=id&id=dQw4w9WgXcQ
+      auth:
+        type: query
+        secret_group: "key"  # Matches (?P<key>...) in rule regex
+        query_param: "key"
+      success_codes: [200]
+      failure_codes: [400, 403]

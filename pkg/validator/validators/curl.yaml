@@ -1,0 +1,48 @@
+validators:
+  # Generic validator for curl basic authentication
+  - name: Curl Basic Authentication
+    rule_id: kingfisher.curl.1
+    secret_group: TOKEN
+    http:
+      # This is a generic validation template. In practice, you would need
+      # to extract the URL from the curl command and make a request to it.
+      # Since curl commands can target any endpoint, this validator would
+      # need to be customized per use case or parse the full curl command.
+      method: GET
+      url: "" # Would need to be extracted from curl command context
+      auth:
+        type: basic
+        credentials: "{{.secret}}"
+      success:
+        status_code: [200, 201, 204, 401] # 401 means server is reachable
+      failure:
+        status_code: [403, 404, 500]
+
+  # Generic validator for curl header authentication
+  - name: Curl Header Authentication
+    rule_id: kingfisher.curl.2
+    secret_group: TOKEN
+    http:
+      # This is a generic validation template. Like above, the actual URL
+      # would need to be extracted from the curl command being analyzed.
+      method: GET
+      url: "" # Would need to be extracted from curl command context
+      headers:
+        - name: Authorization
+          value: "{{.secret}}"
+      success:
+        status_code: [200, 201, 204, 401] # 401 means auth header was processed
+      failure:
+        status_code: [403, 404, 500]
+
+# NOTE: These validators are generic templates. Curl commands can target any
+# endpoint, so proper validation would require:
+# 1. Parsing the full curl command to extract the target URL
+# 2. Making the request with the captured credentials
+# 3. Interpreting the response based on the target service
+#
+# For production use, consider:
+# - Extending the rule pattern to capture both URL and credentials
+# - Creating service-specific validators when the target service is known
+# - Adding logic to detect the target service from the URL and route to
+#   appropriate validator (e.g., if URL contains github.com, use github validator)

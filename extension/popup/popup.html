@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Titus</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-icon">🔓</div>
+            <div class="header-text">
+                <h1>Titus</h1>
+                <div class="subtitle">Secret Scanner</div>
+            </div>
+        </header>
+
+        <!-- Stats Section -->
+        <div class="stats-section">
+            <div class="stat-box">
+                <span id="total-count" class="stat-value">0</span>
+                <span class="stat-label">Secrets Found</span>
+            </div>
+            <div class="stat-box">
+                <span id="site-count" class="stat-value">0</span>
+                <span class="stat-label">Sites Scanned</span>
+            </div>
+        </div>
+
+        <!-- Queue Status Section -->
+        <div id="queue-status" class="queue-status hidden">
+            <div class="queue-header">
+                <span class="queue-icon">⏳</span>
+                <span class="queue-title">Scan Queue</span>
+                <span id="queue-count" class="queue-count">0</span>
+            </div>
+            <div id="queue-details" class="queue-details">
+                <!-- Dynamic queue items -->
+            </div>
+        </div>
+
+        <!-- Actions Section -->
+        <div class="actions-section">
+            <button class="btn btn-primary" id="open-dashboard">
+                <span>📊</span>
+                <span>Open Dashboard</span>
+            </button>
+        </div>
+
+        <!-- Settings Section -->
+        <div class="settings-section">
+            <div class="setting-row">
+                <span class="setting-label">Toast Style</span>
+                <div class="style-toggle">
+                    <button id="style-modern" class="active">Xbox One</button>
+                    <button id="style-classic">Xbox 360</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <span class="footer-text">Red Team Secret Detection</span>
+        </div>
+    </div>
+
+    <script src="popup.js" type="module"></script>
+</body>
+</html>

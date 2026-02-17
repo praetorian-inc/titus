@@ -1,0 +1,43 @@
+rules:
+  - name: Resend API Key
+    id: kingfisher.resend.api_key.1
+    pattern: |
+      (?x)
+      \b
+      (
+        re_
+        [A-Za-z0-9]{8}
+        _
+        [A-Za-z0-9]{24}
+      )
+      \b
+    min_entropy: 3.2
+    confidence: high
+    categories:
+      - api
+      - secret
+    examples:
+      - 'RESEND_API_KEY="re_EbtXGAbq_2E1LZ8WYqYsrrDfjEHf6DxEK"'
+      - "Authorization: Bearer re_jZmz3GSH_MqwC1vjBjZpQH88W4dLsTPpu"
+    references:
+      - https://resend.com/docs/api-reference/introduction
+      - https://resend.com/docs/api-reference/domains/list-domains
+      - https://resend.com/docs/api-reference/errors
+      - https://resend.com/docs/knowledge-base/how-to-handle-api-keys
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: https://api.resend.com/domains
+          headers:
+            Authorization: "Bearer {{ TOKEN }}"
+            Accept: "application/json"
+          response_matcher:
+            - report_response: true
+            # Valid keys:
+            # - 200 => full_access works for /domains
+            # - 401 => restricted_api_key (sending-only), still a real key
+            - type: StatusMatch
+              status: [200, 401]
+            - type: JsonValid

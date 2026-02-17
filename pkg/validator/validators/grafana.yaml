@@ -1,0 +1,58 @@
+# pkg/validator/validators/grafana.yaml
+#
+# Grafana Credential Validators
+#
+# NOTE: Grafana has three credential types with different validation characteristics:
+#
+# 1. np.grafana.1 (API Token - eyJrIjoi...):
+#    - Used with SELF-HOSTED Grafana instances
+#    - No fixed validation URL - varies per installation
+#    - CANNOT be validated automatically without knowing the Grafana server URL
+#    - Manual validation: curl -H "Authorization: Bearer <token>" https://<grafana-server>/api/user
+#
+# 2. np.grafana.2 (Cloud Token - glc_...):
+#    - Used with GRAFANA CLOUD services (metrics, logs, traces)
+#    - Validates against grafana.com/api
+#    - Endpoint requires organization context
+#    - CAN be validated with the endpoint below
+#
+# 3. np.grafana.3 (Service Account Token - glsa_...):
+#    - Used with SELF-HOSTED Grafana instances
+#    - No fixed validation URL - varies per installation
+#    - CANNOT be validated automatically without knowing the Grafana server URL
+#    - Manual validation: curl -H "Authorization: Bearer <token>" https://<grafana-server>/api/user
+#
+# References:
+# - https://grafana.com/docs/grafana/latest/developers/http_api/auth/
+# - https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api/
+# - https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/
+
+validators:
+
+# Grafana Cloud API Token (glc_) - validates against Grafana Cloud API
+# Note: This endpoint lists stack regions and requires a valid Cloud Access Policy token
+- name: grafana-cloud-token
+  rule_ids:
+    - np.grafana.2
+  http:
+    method: GET
+    # Using the stack-regions endpoint which is accessible with valid Cloud Access Policy tokens
+    # Returns list of available Grafana Cloud regions
+    url: https://grafana.com/api/stack-regions
+    auth:
+      type: bearer
+      secret_group: token  # Matches (?P<token>glc_...) in rule regex
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+# NOTE: np.grafana.1 (API Token) and np.grafana.3 (Service Account Token) validators
+# cannot be implemented as YAML HTTPValidators because:
+#
+# 1. These tokens are for SELF-HOSTED Grafana installations
+# 2. The validation endpoint URL (e.g., https://my-grafana.company.com/api/user) is not known
+# 3. Each organization has their own Grafana server URL
+#
+# Future enhancement: A Go-based validator could:
+# - Parse the base64 token to extract server hints
+# - Use DNS/connection testing to find the Grafana server
+# - Or document as "requires manual validation" with example curl command

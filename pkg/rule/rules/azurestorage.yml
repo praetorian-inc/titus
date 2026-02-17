@@ -1,0 +1,72 @@
+rules:
+  - name: Azure Storage Account Name (Connection String)
+    id: kingfisher.azurestorage.1a
+    pattern: |
+      (?xi)
+      (?i:AccountName)\s*=\s*(?P<account_name>[a-z0-9]{3,24})(?:\b|[^a-z0-9])
+    min_entropy: 2.0
+    visible: false
+    confidence: medium
+    examples:
+      - AccountName=mystorageaccount
+
+  - name: Azure Storage Account Name (Blob Endpoint)
+    id: kingfisher.azurestorage.1b
+    pattern: |
+      (?xi)
+      (?P<account_name>[a-z0-9]{3,24})\.blob\.core\.windows\.net\b
+    min_entropy: 2.0
+    visible: false
+    confidence: medium
+    examples:
+      - mystorageaccount.blob.core.windows.net
+
+  - name: Azure Storage Account Name (Label)
+    id: kingfisher.azurestorage.1c
+    pattern: |
+      (?xi)
+      \bazure(?:[_\s-]*)(?:storage|account)(?:[_\s-]*)(?:name)\b
+      [\s:=\"']{0,6}
+      (?P<account_name>[a-z0-9]{3,24})
+    min_entropy: 2.0
+    visible: false
+    confidence: medium
+    examples:
+      - azure_storage_name="prodblob2024"
+
+  - name: Azure Storage Account Key
+    id: kingfisher.azurestorage.2
+    pattern: |
+      (?xi)
+      azure
+      (?:.|[\n\r]){0,128}?
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
+      (?:.|[\n\r]){0,128}?
+      ["':\s=}\]\)]
+      (?P<account_key>
+          (?:
+              [A-Z0-9+\\/-]{86,88}={1,2}
+          )
+          |
+          (?:
+              [A-Z0-9+\\/-]{86,88}\b
+          )
+      )
+    pattern_requirements:
+      min_digits: 2
+      min_uppercase: 2
+      min_lowercase: 2
+    min_entropy: 4.0
+    confidence: medium
+    examples:
+      - Azure AccountKey=Xy9aB8cD7eF6gH5iJ4kL3mN2oP1qR0sT9uV8wX7yZ6aB5cD4eF3gH2iJ1kL0mN9oP8qR7sT6uV5wX4yZ3aB2cD1q
+      - Azure AccountKey=Ky7aC1cD7eF6gH5iJ4kL3mN2oP1qR0sT9uV8wX7yZ6aB5cD4eF3gH2iJ1kL0mN9oP8qR7sT6uV5wX4yZ3aB2cD1g==\
+    validation:
+      type: AzureStorage
+    depends_on_rule:
+      - rule_id: kingfisher.azurestorage.1a
+        variable: AZURENAME
+      - rule_id: kingfisher.azurestorage.1b
+        variable: AZURENAME
+      - rule_id: kingfisher.azurestorage.1c
+        variable: AZURENAME

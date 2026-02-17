@@ -1,0 +1,272 @@
+rules:
+
+- name: Azure Connection String
+  id: np.azure.1
+
+  # XXX There are a bunch of other keys that seem to have secret content assigned to them:
+  #
+  #   - SharedAccessSignature
+  #   - Authorization
+  #   - UserToken
+  #   - ApplicationToken
+  #
+  # Maybe we can generalize this rule one day.
+  pattern: |
+    (?x)
+    (?i)
+    (?: AccountName | SharedAccessKeyName | SharedSecretIssuer) \s*=\s* (?P<account_name>[^${;<\[.\s*"'\#] [^.;\n"'\#]{2,80}) \s*;\s*
+    .{0,10}\s*  (?# possible extra stuff, e.g., string concatenation)
+    (?: AccountKey | SharedAccessKey | SharedSecretValue) \s*=\s* (?P<account_key>[a-zA-Z0-9/+]{20,100}[=]{0,3})
+    (?: [^a-zA-Z0-9/+=] | $ )
+
+  references:
+  - https://azure.microsoft.com/en-us/blog/windows-azure-web-sites-how-application-strings-and-connection-strings-work/
+  - https://docs.microsoft.com/en-us/azure/storage/common/storage-configure-connection-string
+  - https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-sas#best-practices-when-using-sas
+
+  categories:
+  - api
+  - fuzzy
+  - secret
+
+  description: >
+    Credentials in an Azure connection string were found.
+    Depending on assigned privileges, these may allow an attacker read or write access to Azure storage.
+
+  examples:
+  - |
+      # Azure Storage Connection String
+      AzureWebJobsStorage=DefaultEndpointsProtocol=https;AccountName=hanatour9833;AccountKey=6jqh42QQjWWBwoPGGR/Jr0PZjhBMZVbHm/gkhEfHvOj8aV6+oI8ed6ZAAwB5a6993WqyQDiuJJB0QpseJwqYxw==;EndpointSuffix=core.windows.net
+  - |
+      DefaultEndpointsProtocol=http;AccountName=testacc1;
+      AccountKey=1gy3lpE7Du1j5ljKiupgKzywSw2isjsa69sfsdfsdsgfsgfdgfdgfd/YThisv/OVVLfIOv9kQ==;
+      BlobEndpoint=http://127.0.0.1:8440/testacc1;
+      TableEndpoint=http://127.0.0.1:8440/testacc1;
+      QueueEndpoint=http://127.0.0.1:8440/testacc1;
+
+  - |
+      "IOTHUB_CONNECTION_STRING": {
+        "value": "HostName=d1-vi-ioth521.azure-devices.net;SharedAccessKeyName=registryReadWrite;SharedAccessKey=S8ii67l3Gd1Ba69az78iP9UksewzhjvUfh1DIuDs30w="
+      }
+
+  - |
+      "AZURE_STORAGE_CONNECTION_STRING": {
+        "value": "DefaultEndpointsProtocol=https;AccountName=d1biblobstor521;AccountKey=NjEwGHd9+piK+iCi2C2XURWPmeDDjif9UKN1HAszYptL4iQ+yD7/dgjLMZc3VOpURsa53aJ4HZfbVWzL429C5g==;EndpointSuffix=core.windows.net"
+      }
+
+  negative_examples:
+  # https://docs.microsoft.com/en-us/azure/azure-monitor/app/sdk-connection-string
+  - 'InstrumentationKey=00000000-0000-0000-0000-000000000000;EndpointSuffix=ai.contoso.com;'
+  - 'InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://custom.com:111/;LiveEndpoint=https://custom.com:222/;ProfilerEndpoint=https://custom.com:333/;SnapshotEndpoint=https://custom.com:444/;'
+  - |
+      let accountName = "";
+      let accountKey = Buffer.from("accountKey", "base64");
+  - |
+      let accountName = $accountName;
+      let accountKey = $accountKey;
+  - |
+      AccountName=<YOUR_ACCOUNT_NAME>;
+      AccountKey=<YOUR_ACCOUNT_KEY>;
+  - |
+      AccountName=X;AccountKey=X;
+  - |
+      AccountName={2};AccountKey={3};
+  - |
+      SharedAccessKeyName=[Shared Access Key Name goes here];SharedAccessKey=[Shared Access key goes here];
+
+
+- name: Azure App Configuration Connection String
+  id: np.azure.2
+
+  pattern: |
+    (?x)
+    (?P<endpoint>https://[a-zA-Z0-9-]+\.azconfig\.io);
+    Id=(?P<id>.{4}-.{2}-.{2}:[a-zA-Z0-9+/]{18,22});
+    Secret=(?P<secret>[a-zA-Z0-9+/]{36,50}=)
+
+  categories:
+  - api
+  - fuzzy
+  - secret
+
+  examples:
+  - 'Endpoint=https://foo-nonprod-appconfig.azconfig.io;Id=ABCD-E6-s0:tl6ABcdefGHi7kLMno/p;Secret=abCD1EF+GHIJxLMnOPqRSa53VWX05zaBCdE/fg9hi4k='
+  - 'https://foo-nonprod-appconfig.azconfig.io;Id=ABCD-E6-s0:tl6ABcdefGHi7kLMno/p;Secret=abCD1EF+GHIJxLMnOA53ST8uVWX05zaBCdE/fg9hi4k='
+  - 'Endpoint=https://appconfig-test01.azconfig.io;Id=09pv-l0-s0:opFCQMC6+9485xJgN5Ws;Secret=GcoEA53t7GLRNJ910M46IrbHO/Vg0tt4HujRdsaCoTY='
+  - '        private static string appConfigurationConnectionString = "Endpoint=https://appcs-fg-pwc.azconfig.io;Id=pi5x-l9-s0:SZLlhHA53Nz2MpAl04cU;Secret=CQ+mlfQqkzfZv4XA53gigJ/seeXMKwNsqW/rM3wmtuE=";'
+
+  negative_examples:
+  - |
+          text:
+            az appconfig feature delete --connection-string Endpoint=https://contoso.azconfig.io;Id=xxx;Secret=xxx --feature color --label MyLabel
+
+  references:
+  - https://docs.microsoft.com/en-us/azure/azure-app-configuration/
+  - https://docs.microsoft.com/en-us/azure/azure-app-configuration/howto-best-practices
+  - https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/appconfiguration/azure-appconfiguration/azure/appconfiguration/_utils.py
+
+
+# This detects various hardcoded PATs that come from Microsoft example documentation
+- name: Azure DevOps Personal Access Token
+  id: np.azure.3
+
+  pattern: |
+    (?x)
+    (?i: ADO_PAT | pat_token | personal_?access_?token | \$token )
+    \s* = \s*
+    ["']
+    (?P<token>[a-z0-9]{52})
+    ["']
+
+  examples:
+  - |
+      var personalAccessToken = "zpczok4kqgnw5prpfy3ehiylbqvgbjfkdiqkejsxqamy7qbkep7q";  // Provide a value or retrieve it from configuration
+  - |
+      $token = "58oo4mvqr2tpw7b4w3loeckwfu5o6nw3sihfckvlwoxgqimlddza"
+  - |
+      if __name__ == "__main__":
+          ado_pat =  "iyfmob6xjrfmit67anxbot64umfx2clwx7dz5ynxi4q2z3uqegvq"
+
+  references:
+  - https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate
+
+  categories:
+  - api
+  - fuzzy
+  - secret
+
+  description: >
+    An Azure DevOps Personal Access Token was found.
+    Azure DevOps is a code hosting, testing, and deployment platform.
+    Depending on the privileges granted to the token, an attacker may be able to use it to access source code, secrets, and build resources, enabling a supply chain attack.
+
+
+- name: Azure DevOps Personal Access Token
+  id: np.azure.4
+
+  pattern: '\b(?P<token>[a-zA-Z0-9]{76}AZDO[a-zA-Z0-9]{4})\b'
+
+  references:
+  - https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate
+  - https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows#changes-to-format
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - '6RtqHqPc66Y6DYbkydbrrFJTYnRoA7r40ts7LWS2SkINSFsRABxhJQQJ99BFACAAAAALGcqjAAASAZDO3eqU'
+  - 'aQwErTy123456789AbCdEf0123456789AbCdEf0123456789AbCdEf0123456789AbCdEf012345AZDOabc1'
+  - |
+      team = 'ChickenBone Team'
+      token = '23IcywOgHQTktCPK7D1r1zLjJkRiDu9m1udhpuOnl9XKhUzybqlMJQQJ98BAACAAAAATbLuLAAASAZDOWP7X'
+  - |
+      # Use your real DevOps org & PAT
+      azure_devops_url             = "https://dev.azure.com/Example-Team-DevSecOps/"
+      azure_devops_pat             = "GBVknRcxXb9mv097EZvvmJhvdKEjmmllsz8puwgJHpnA8rAd912ZJQQJ96BBACAAAAAP0mgpAAASAZDO4Ssi"
+      azure_devops_agent_pool_name = "Default"
+
+  negative_examples:
+  - 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V2w3X4y5Z6a7B8c9D0e1F2g3H4i5J6k7L8m9AZDOn0p1Q'
+  - 'X9y8Z7a6B5c4D3e2F1g0H9i8J7k6L5m4N3o2P1q0R9s8T7u6V5w4X3y2Z1a0B9c8D7e6F5g4H3i2J1k0AZDOl9M8n'
+  - '6RtqHqPc66Y6DYbkydbrrFJTYnRoA7r40ts7LWS2SkINSFsRABxhJQQJ99BFACAAAAALGcqjAAASAZDO3eq'
+  - 'zpczok4kqgnw5prpfy3ehiylbqvgbjfkdiqkejsxqamy7qbkep7q'
+  - 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V2w3X4y5Z6a7B8c9D0e1F2g3H4i5J6k7L8m9XXXX12345'
+
+  description: >
+    An Azure DevOps Personal Access Token was found.
+    Azure DevOps is a code hosting, testing, and deployment platform.
+    Depending on the privileges granted to the token, an attacker may be able to use it to access source code, secrets, and build resources, enabling a supply chain attack.
+
+
+- name: Azure API Management Subscription Key
+  id: np.azure.5
+
+  # Hyperscan-compatible pattern (no lookbehind/lookahead)
+  # Comment filtering and all-zeros/all-f rejection moved to ignore_if_contains
+  pattern: |
+    (?ix)
+    (?:["']?Ocp-Apim-Subscription-Key["']?|subscription[-_]key)  (?# Header name with optional quotes )
+    \s*[:=]\s*                                                   (?# Separator )
+    ['"]?                                                        (?# Optional quote )
+    (?P<key>[0-9a-f]{32})                                        (?# 32 hex characters )
+    ['"]?                                                        (?# Optional closing quote )
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "00000000000000000000000000000000"
+      - "ffffffffffffffffffffffffffffffff"
+      - "// "
+      - "# "
+
+  references:
+  - https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions
+  - https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-create-subscriptions
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'Ocp-Apim-Subscription-Key: 1df236930c4f41d4a6ea8a5696d318a2'
+  - '"Ocp-Apim-Subscription-Key": "b2c3d4e5f67890a1b2c3d4e5f6789012"'
+  - 'subscription_key = "abcd1234ef567890abcd1234ef567890"'
+  - 'headers = {"Ocp-Apim-Subscription-Key": "a1b2c3d4e5f67890a1b2c3d4e5f67890"}'
+  - 'subscription-key=1234567890abcdef1234567890abcdef'
+
+  negative_examples:
+  - 'Ocp-Apim-Subscription-Key: YOUR_SUBSCRIPTION_KEY'
+  - 'Ocp-Apim-Subscription-Key: EXAMPLE_KEY_HERE'
+  - 'subscription_key = "SUBSCRIPTION_KEY"'
+  - '// Set: Ocp-Apim-Subscription-Key: abcd1234'
+  - 'Ocp-Apim-Subscription-Key: 00000000000000000000000000000000'
+  - 'Ocp-Apim-Subscription-Key: ffffffffffffffffffffffffffffffff'
+
+  description: >
+    Azure API Management subscription key used for authenticating API requests
+    to Azure APIM gateway endpoints. An attacker with this credential can access
+    APIs protected by the APIM gateway, potentially leading to unauthorized
+    data access, API abuse, or rate limit circumvention. Impact depends on the
+    scope of the subscription (all APIs, product, or single API) and the
+    permissions granted. Note: Azure APIM subscription keys are instance-specific
+    and validate against the specific APIM gateway URL. There is no universal
+    validation endpoint.
+
+
+- name: Azure Cognitive Services Host
+  id: np.azure.6
+
+  pattern: |
+    (?xi)
+    \b
+    (?P<host>
+      [a-z0-9-]{3,40}
+      \.cognitiveservices\.azure\.com
+    )
+    \b
+
+  min_entropy: 2.0
+  confidence: medium
+
+  categories:
+  - api
+  - cloud
+
+  examples:
+  - my-ai-service.cognitiveservices.azure.com
+  - contoso-doc-intel.cognitiveservices.azure.com
+  - mycompany-vision-eastus.cognitiveservices.azure.com
+
+  negative_examples:
+  - example.cognitiveservices.azure.com
+  - test.cognitiveservices.azure.com
+
+  references:
+  - https://learn.microsoft.com/en-us/azure/ai-services/
+  - https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/
+
+  description: >
+    Azure Cognitive Services endpoint hostname was found. This indicates usage of
+    Azure AI services such as Document Intelligence, Computer Vision, Speech, or
+    Language services. The endpoint alone is not a credential but can be combined
+    with API keys for unauthorized access to AI services.

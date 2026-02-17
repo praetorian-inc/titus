@@ -1,0 +1,18 @@
+rules:
+
+- name: crates.io API Key
+  id: np.cratesio.1
+
+  # It's a 32-character alphanumeric identifier prefixed by `cio`
+  pattern: '\b(?P<token>cio[a-zA-Z0-9]{32})\b'
+
+  categories: [api, secret]
+
+  validator: cratesio
+
+  references:
+  - https://crates.io/data-access
+  - https://github.com/rust-lang/crates.io/blob/master/src/util/token.rs
+
+  examples:
+  - 'Bearer: ciotgp8BGZBlX192iExSQPm0SrUlBunG8zd'

@@ -1,0 +1,20 @@
+validators:
+
+- name: asana-personal-access-token
+  rule_ids:
+    - kingfisher.asana.3
+
+  http:
+    method: GET
+    url: "https://app.asana.com/api/1.0/users/me"
+    auth:
+      type: header
+      secret_group: "token"
+      header_name: "Authorization"
+      header_value_template: "Bearer {SECRET}"
+
+    # Success codes indicate valid token
+    success_codes: [200]
+
+    # Failure codes indicate invalid or unauthorized token
+    failure_codes: [401, 403]

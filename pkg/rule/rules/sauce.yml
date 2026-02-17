@@ -1,0 +1,26 @@
+rules:
+
+- name: Sauce Token
+  id: np.sauce.1
+
+  pattern: |
+    (?x)(?i)
+    sauce .{0,50}
+    \b
+    (?P<access_key>[a-f0-9-]{36})
+    (?: [^a-f0-9-] | $ )
+
+  categories: [api, fuzzy, secret]
+
+  examples:
+  - |
+      - SAUCE_USERNAME=vitess
+      - SAUCE_ACCESS_KEY=2397f603-c2c4-4897-a8ca-587ace5dc8dd
+      - SAUCE_ACCESS_KEY=2397f603-c2c4-4897-a8ca-587ace5dc8d-
+
+  references:
+  - https://docs.saucelabs.com/dev/api/
+  - https://docs.saucelabs.com/dev/api/#authentication
+
+  # Validation requires both username and access_key (basic auth).
+  # Validator extracts username from snippet context (SAUCE_USERNAME=...).

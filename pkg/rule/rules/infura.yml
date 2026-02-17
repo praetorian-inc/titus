@@ -1,0 +1,15 @@
+rules:
+  - name: Infura API Key
+    id: kingfisher.infura.1
+    pattern: '(?i)\binfura(?:.|[\n\r]){0,32}?\b(?P<token>[0-9a-z]{32})\b'
+
+    categories: [api, secret, blockchain]
+
+    references:
+      - https://www.infura.io/docs
+      - https://docs.metamask.io/services/reference/ethereum/json-rpc-methods/
+
+    examples:
+      - 'https://mainnet.infura.io/v3/05c12b07721045d2824c506f3aef90c2'
+      - 'INFURA_API_KEY=7238211010344719ad14a89db874158c'
+      - 'infura_key: 90f210707d3c450f847659dc9a3436ea'

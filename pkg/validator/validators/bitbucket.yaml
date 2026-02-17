@@ -1,0 +1,49 @@
+# pkg/validator/validators/bitbucket.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "token" (e.g., pattern: (?P<token>ATBB[a-zA-Z0-9]{32}))
+#
+# DEPRECATION NOTICE:
+# Bitbucket app passwords are deprecated and will stop working on June 9, 2026.
+# After September 9, 2025, new app passwords cannot be created.
+# This validator is still useful for detecting exposed legacy credentials.
+#
+# VALIDATION LIMITATION:
+# Bitbucket app password validation requires both username and app password.
+# The current rule only detects the app password token (pattern: ATBB[a-zA-Z0-9]{32}).
+# Without the corresponding Bitbucket username, we cannot validate against the API.
+#
+# Bitbucket API endpoint for testing credentials: https://api.bitbucket.org/2.0/user
+# Required: Basic auth with username:app_password
+#
+# Example validation using curl:
+#   curl --request GET \
+#     --url 'https://api.bitbucket.org/2.0/user' \
+#     --user '{username}:{app_password}' \
+#     --header 'Accept: application/json'
+#
+# To enable validation, the rule would need to:
+# 1. Capture both username and app_password in proximity (from git URLs or env vars)
+# 2. Use a custom Go validator to extract both values and make the API request
+#
+# For now, this validator is a placeholder documenting the validation requirement.
+# HTTP validation is disabled until username extraction is implemented.
+#
+# References:
+# - https://support.atlassian.com/bitbucket-cloud/docs/app-passwords/
+# - https://support.atlassian.com/bitbucket-cloud/docs/using-app-passwords/
+# - https://www.atlassian.com/blog/bitbucket/bitbucket-cloud-transitions-to-api-tokens-enhancing-security-with-app-password-deprecation
+
+# validators:
+#   - name: bitbucket-app-password
+#     rule_ids:
+#       - np.bitbucket.1
+#     http:
+#       method: GET
+#       url: https://api.bitbucket.org/2.0/user
+#       auth:
+#         type: basic
+#         # Would require: username and app_password (token)
+#         # username: (needs extraction from context)
+#         # password: {SECRET} (the app password token)
+#       success_codes: [200]
+#       failure_codes: [401, 403]

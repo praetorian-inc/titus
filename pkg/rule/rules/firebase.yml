@@ -1,0 +1,74 @@
+# Firebase Cloud Messaging (FCM) credential detection rules
+# Ported from NoseyParker rules with named capture groups for Titus validation
+
+rules:
+
+- name: Firebase Cloud Messaging Server Key
+  id: np.firebase.1
+
+  pattern: |
+    (?x)
+    \b
+    (?P<server_key>AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140})
+    (?:[^A-Za-z0-9_-]|$)
+
+  categories: [api, secret]
+
+  description: |
+    Firebase Cloud Messaging (FCM) server key used for sending push notifications
+    to Android, iOS, and web applications. An attacker with this key can send
+    unauthorized push notifications to all devices registered with the Firebase
+    project, potentially enabling phishing attacks, spam campaigns, or social
+    engineering. The key grants full authority over FCM messaging for the project.
+
+  references:
+    - https://firebase.google.com/docs/cloud-messaging/server
+    - https://firebase.google.com/docs/cloud-messaging/auth-server
+    - https://abss0x7tbh.github.io/posts/fcm-takeover/
+
+  examples:
+    - "AAAA-ExTest:APA91bEXAMPLE_TEST_KEY_000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    - 'FCM_SERVER_KEY="AAAADem0Key:APA91bTESTDEMOKEY000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"'
+    - 'const serverKey = "AAAATe5tKey:APA91bSAMPLEDATAKEY0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";'
+
+  negative_examples:
+    - "AAAA"
+    - "AAAA:short"
+    - "AAAAtooShrt:APA91b"
+    - "# Example FCM key format: AAAA[7chars]:[140chars]"
+    - "TEST_AAAA_NOT_FCM_KEY"
+
+
+- name: Firebase Cloud Messaging Device Token
+  id: np.firebase.2
+
+  pattern: |
+    (?x)
+    \b
+    (?P<device_token>[A-Za-z0-9_-]{22}:APA91b[A-Za-z0-9_-]{134})
+    (?:[^A-Za-z0-9_-]|$)
+
+  categories: [api, identifier]
+
+  description: |
+    Firebase Cloud Messaging (FCM) registration token (device token) used to identify
+    a specific app instance on a device for receiving push notifications. While not
+    a server credential, leaked device tokens can be exploited to send unauthorized
+    push notifications to specific users, enabling targeted phishing or spam attacks.
+    The 22-character prefix is the Firebase Instance ID.
+
+  references:
+    - https://firebase.google.com/docs/cloud-messaging/manage-tokens
+    - https://firebase.blog/posts/2023/04/managing-cloud-messaging-tokens/
+    - https://developers.google.com/instance-id/reference/server
+
+  examples:
+    - "EXAMPLE_TEST_DEVICE_01:APA91bTEST_EXAMPLE_DATA_00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    - 'fcmToken = "Demo_Device_Token_Test:APA91bDEMO_SAMPLE_DATA_000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"'
+    - "TEST_FCM_DEVICE_TOKEN1:APA91bSAMPLE_DATA_TEST_000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+
+  negative_examples:
+    - "short:APA91b"
+    - "APA91b_without_prefix"
+    - "AAAA1234567:APA91b"
+    - "# Device token format: [22chars]:APA91b[134chars]"

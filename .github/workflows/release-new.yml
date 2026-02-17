@@ -1,0 +1,457 @@
+# Titus Release Workflow - Creates binaries for all platforms
+#
+# Builds with Hyperscan/Vectorscan for high-performance SIMD-accelerated regex matching.
+# All binaries are statically linked - no runtime dependencies required.
+#
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.1.1)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ inputs.version || github.ref_name }}
+
+jobs:
+  # Build Linux amd64 with Intel hyperscan (static)
+  build-linux-amd64:
+    name: Build Linux amd64
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - name: Set up Go
+      uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ragel pkg-config libboost-dev
+
+    - name: Build hyperscan static library
+      run: |
+        git clone --depth 1 --branch v5.4.2 https://github.com/intel/hyperscan.git /tmp/hyperscan
+        cd /tmp/hyperscan
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+        make -j$(nproc)
+        sudo make install
+        ls -la /usr/local/lib/libhs*.a
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+        CGO_CFLAGS: "-I/usr/local/include"
+        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
+      run: |
+        mkdir -p dist
+        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-linux-amd64 ./cmd/titus
+        chmod +x dist/titus-linux-amd64
+        file dist/titus-linux-amd64
+        ldd dist/titus-linux-amd64
+
+    - name: Verify binary runs
+      run: dist/titus-linux-amd64 version
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: titus-linux-amd64
+        path: dist/titus-linux-amd64
+
+  # Build Linux arm64 with vectorscan (ARM port of hyperscan)
+  build-linux-arm64:
+    name: Build Linux arm64
+    runs-on: ubuntu-22.04-arm
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - name: Set up Go
+      uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ragel pkg-config libboost-dev
+
+    - name: Build vectorscan static library
+      run: |
+        git clone --depth 1 --branch vectorscan/5.4.11 https://github.com/VectorCamp/vectorscan.git /tmp/vectorscan
+        cd /tmp/vectorscan
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_INSTALL_PREFIX=/usr/local
+        make -j$(nproc)
+        sudo make install
+        ls -la /usr/local/lib/libhs*.a
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+        CGO_CFLAGS: "-I/usr/local/include"
+        CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
+      run: |
+        mkdir -p dist
+        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-linux-arm64 ./cmd/titus
+        chmod +x dist/titus-linux-arm64
+        file dist/titus-linux-arm64
+        ldd dist/titus-linux-arm64
+
+    - name: Verify binary runs
+      run: dist/titus-linux-arm64 version
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: titus-linux-arm64
+        path: dist/titus-linux-arm64
+
+  # Build macOS binaries
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+            hs_package: vectorscan
+          - arch: amd64
+            runner: macos-15-intel
+            hs_package: hyperscan
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - name: Set up Go
+      uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Install dependencies
+      run: |
+        brew install ${{ matrix.hs_package }} pkg-config
+        HS_PREFIX=$(brew --prefix ${{ matrix.hs_package }})
+        echo "HS_PREFIX=${HS_PREFIX}" >> $GITHUB_ENV
+        ls -la ${HS_PREFIX}/lib/
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+      run: |
+        export CGO_CFLAGS="-I${HS_PREFIX}/include/hs"
+        export CGO_LDFLAGS="-L${HS_PREFIX}/lib -lhs -lc++"
+
+        mkdir -p dist
+        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
+        chmod +x dist/titus-darwin-${{ matrix.arch }}
+        file dist/titus-darwin-${{ matrix.arch }}
+        otool -L dist/titus-darwin-${{ matrix.arch }}
+
+    - name: Verify binary runs
+      run: |
+        dist/titus-darwin-${{ matrix.arch }} version
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: titus-darwin-${{ matrix.arch }}
+        path: dist/titus-darwin-${{ matrix.arch }}
+
+  # Build Windows binary using MSYS2/MinGW (compatible with Go CGO)
+  build-windows:
+    name: Build Windows amd64
+    runs-on: windows-2022
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@c52d1fa9c7492275e60fe763540fb601f5f232a1 # v2.25.0
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-boost
+          mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-ragel
+          git
+          make
+
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - name: Set up Go
+      uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Build vectorscan static library with MinGW
+      run: |
+        git clone --depth 1 --branch vectorscan/5.4.11 https://github.com/VectorCamp/vectorscan.git /tmp/vectorscan
+        cd /tmp/vectorscan
+        mkdir build && cd build
+        cmake .. \
+          -G "MinGW Makefiles" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_C_COMPILER=gcc \
+          -DCMAKE_CXX_COMPILER=g++ \
+          -DCMAKE_INSTALL_PREFIX=/mingw64
+        mingw32-make -j$(nproc)
+        mingw32-make install
+        ls -la /mingw64/lib/libhs*.a
+        ls -la /mingw64/include/hs/ || ls -la /mingw64/include/
+
+    - name: Create pkg-config file for vectorscan
+      run: |
+        # Find where headers are installed
+        echo "=== Checking header locations ==="
+        find /mingw64/include -name "hs.h" 2>/dev/null || echo "hs.h not found in /mingw64/include"
+        ls -la /mingw64/include/hs/ 2>/dev/null || echo "No /mingw64/include/hs/ directory"
+
+        # Determine include path (vectorscan may install to include/hs/ or include/)
+        if [ -f /mingw64/include/hs/hs.h ]; then
+          HS_INCLUDE="/mingw64/include/hs"
+        else
+          HS_INCLUDE="/mingw64/include"
+        fi
+        echo "Using include path: $HS_INCLUDE"
+
+        # Create libhs.pc for pkg-config discovery (no leading whitespace!)
+        printf '%s\n' \
+          "prefix=/mingw64" \
+          "exec_prefix=\${prefix}" \
+          "libdir=\${prefix}/lib" \
+          "includedir=$HS_INCLUDE" \
+          "" \
+          "Name: libhs" \
+          "Description: Vectorscan regex library (Hyperscan fork)" \
+          "Version: 5.4.11" \
+          "Libs: -L\${libdir} -lhs" \
+          "Cflags: -I\${includedir}" \
+          > /mingw64/lib/pkgconfig/libhs.pc
+
+        echo "=== libhs.pc contents ==="
+        cat /mingw64/lib/pkgconfig/libhs.pc
+
+        echo "=== pkg-config test ==="
+        pkg-config --cflags libhs
+        pkg-config --libs libhs
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+        PKG_CONFIG_PATH: "/mingw64/lib/pkgconfig"
+      run: |
+        # Get Go binary from actions/setup-go (Windows native path)
+        export PATH="$(cygpath -u "$GOROOT_1_25_X64/bin"):$PATH"
+        export GOWORK=off
+
+        # Verify pkg-config can find libhs
+        echo "=== Final pkg-config verification ==="
+        pkg-config --cflags --libs libhs
+
+        mkdir -p dist
+        go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-windows-amd64.exe ./cmd/titus
+        ls -la dist/
+
+    - name: Verify binary runs
+      run: |
+        ./dist/titus-windows-amd64.exe version
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: titus-windows-amd64
+        path: dist/titus-windows-amd64.exe
+
+  # Build Burp extension JAR
+  build-burp:
+    name: Build Burp Extension
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - name: Set up Java
+      uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Build JAR
+      working-directory: burp
+      run: ./gradlew shadowJar
+
+    - name: Rename JAR with version
+      run: |
+        mkdir -p dist
+        cp burp/build/libs/titus-burp-*-all.jar dist/titus-burp-${VERSION}.jar
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: titus-burp-extension
+        path: dist/titus-burp-*.jar
+
+  # Build browser extension zip
+  build-extension:
+    name: Build Browser Extension
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - name: Set up Go
+      uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Build WASM
+      env:
+        CGO_ENABLED: "0"
+      run: |
+        GOWORK=off GOOS=js GOARCH=wasm go build -o extension/lib/titus.wasm ./wasm
+
+    - name: Create extension zip
+      run: |
+        cd extension
+        zip -r ../titus-browser-extension-${VERSION}.zip . -x "*.DS_Store" -x "*/.git/*" -x "test/*" -x ".feature-development/*"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: titus-browser-extension
+        path: titus-browser-extension-*.zip
+
+  # Create GitHub release with all artifacts
+  release:
+    name: Create Release
+    needs: [build-linux-amd64, build-linux-arm64, build-macos, build-windows, build-burp, build-extension]
+    runs-on: ubuntu-22.04
+    environment: release
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+      with:
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release
+
+        # Move binaries
+        mv artifacts/titus-linux-amd64/titus-linux-amd64 release/
+        mv artifacts/titus-linux-arm64/titus-linux-arm64 release/ || true
+        mv artifacts/titus-darwin-arm64/titus-darwin-arm64 release/
+        mv artifacts/titus-darwin-amd64/titus-darwin-amd64 release/
+        mv artifacts/titus-windows-amd64/titus-windows-amd64.exe release/
+
+        # Move JAR and extension
+        mv artifacts/titus-burp-extension/*.jar release/
+        mv artifacts/titus-browser-extension/*.zip release/
+
+        # Create checksums
+        cd release
+        sha256sum * > checksums.txt
+
+        ls -la
+
+    - name: Generate release notes
+      run: |
+        cat > release_notes.md << 'NOTES_EOF'
+        ## Titus Secret Scanner
+
+        All binaries include high-performance Hyperscan/Vectorscan regex matching.
+        No runtime dependencies required - Hyperscan is statically linked.
+
+        ### Downloads
+
+        | Platform | Architecture | File |
+        |----------|-------------|------|
+        | Linux | x64 | `titus-linux-amd64` |
+        | Linux | arm64 | `titus-linux-arm64` |
+        | macOS | Apple Silicon | `titus-darwin-arm64` |
+        | macOS | Intel | `titus-darwin-amd64` |
+        | Windows | x64 | `titus-windows-amd64.exe` |
+
+        ### Extensions
+
+        | Extension | File | Notes |
+        |-----------|------|-------|
+        | Burp Suite | `titus-burp.jar` | Load in Extensions → Add |
+        | Chrome/Firefox | `titus-browser-extension.zip` | Load as unpacked extension |
+
+        ### Installation
+
+        Download the appropriate binary for your platform from the assets below.
+
+        **Linux/macOS:**
+        ```bash
+        chmod +x titus-*
+        sudo mv titus-* /usr/local/bin/titus
+        ```
+
+        **Windows:** Run the .exe directly or add to PATH.
+
+        ### Checksums
+
+        See `checksums.txt` for SHA256 checksums of all files.
+        NOTES_EOF
+        sed 's/^        //' release_notes.md > release_notes_clean.md && mv release_notes_clean.md release_notes.md
+
+    - name: Create Release
+      uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+      with:
+        tag_name: ${{ env.VERSION }}
+        body_path: release_notes.md
+        files: release/*
+        draft: false
+        prerelease: ${{ contains(env.VERSION, '-alpha') || contains(env.VERSION, '-beta') || contains(env.VERSION, '-rc') }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

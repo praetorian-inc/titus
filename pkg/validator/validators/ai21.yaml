@@ -1,0 +1,15 @@
+# pkg/validator/validators/ai21.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "token" (e.g., pattern: (?P<token>[0-9a-f]{8}-[0-9a-f]{4}-...))
+validators:
+  - name: ai21-api-key
+    rule_ids:
+      - kingfisher.ai21studio.1
+    http:
+      method: GET
+      url: https://api.ai21.com/studio/v1/library/files
+      auth:
+        type: bearer
+        secret_group: "token"  # Named capture group from regex pattern
+      success_codes: [200]
+      failure_codes: [401, 403]

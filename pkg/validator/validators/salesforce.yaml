@@ -1,0 +1,36 @@
+# pkg/validator/validators/salesforce.yaml
+#
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "token" (e.g., pattern: (?P<token>00[a-zA-Z0-9]{13}![a-zA-Z0-9._]{96}))
+#
+# Salesforce access tokens have the format: {orgId}!{opaqueToken}
+# Example: 00DE0X0A0M0PeLE!AQcAQH0dMHEXAMPLEzmpkb58urFRkgeBGsxL_QJWwYMfAbUeeG7c1EXAMPLEDUkWe6H34r1AAwOR8B8fLEz6nEXAMPLEAAAA
+#
+# VALIDATION APPROACH:
+# Using login.salesforce.com as the default instance. This works for most production orgs.
+# Sandbox tokens (test.salesforce.com) or custom My Domain instances may return false negatives.
+#
+# Validation endpoint: /services/data/v20.0/ (REST API version endpoint)
+# - Returns available API resources if token is valid (200)
+# - Returns 401 Unauthorized if token is invalid/expired
+#
+# LIMITATIONS:
+# - May return false negatives for sandbox orgs (need test.salesforce.com)
+# - May return false negatives for custom My Domain instances
+# - A Go validator could improve accuracy by trying multiple endpoints or parsing context
+#
+# Reference: https://keyhacks.sh (Salesforce validation method)
+# Reference: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/quickstart_oauth.htm
+#
+validators:
+  - name: salesforce-access-token
+    rule_ids:
+      - np.salesforce.1
+    http:
+      method: GET
+      url: https://login.salesforce.com/services/data/v20.0/
+      auth:
+        type: bearer
+        secret_group: token
+      success_codes: [200]
+      failure_codes: [400, 401, 403]

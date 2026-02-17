@@ -1,0 +1,467 @@
+package com.praetorian.titus.burp;
+
+import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.scanner.audit.issues.AuditIssueSeverity;
+
+import javax.swing.*;
+import javax.swing.border.TitledBorder;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+
+/**
+ * Settings tab UI for the Titus extension.
+ */
+public class SettingsTab extends JPanel {
+
+    private static final String SETTINGS_PASSIVE_ENABLED = "titus.passive_enabled";
+    private static final String SETTINGS_SCAN_REQUESTS = "titus.scan_requests";
+
+    private final MontoyaApi api;
+    private final SeverityConfig severityConfig;
+    private final ScanQueue scanQueue;
+    private final DedupCache dedupCache;
+
+    private JCheckBox passiveScanCheckbox;
+    private JCheckBox scanRequestsCheckbox;
+    private JCheckBox validationEnabledCheckbox;
+    private ScanParametersPanel parametersPanel;
+    private RequestsTableModel requestsTableModel;
+    private RequestsView requestsView;
+    private SecretsView secretsView;
+    private StatisticsView statisticsView;
+    private MessagePersistence messagePersistence;
+    private FindingsExporter findingsExporter;
+    private ValidationManager validationManager;
+    private JTable severityTable;
+    private DefaultTableModel severityTableModel;
+
+    private Timer statsTimer;
+
+    public SettingsTab(MontoyaApi api, SeverityConfig severityConfig,
+                       ScanQueue scanQueue, DedupCache dedupCache) {
+        this.api = api;
+        this.severityConfig = severityConfig;
+        this.scanQueue = scanQueue;
+        this.dedupCache = dedupCache;
+
+        setLayout(new BorderLayout());
+
+        // Create tabbed pane
+        JTabbedPane tabbedPane = new JTabbedPane();
+
+        // Initialize requests model (used internally for scanning, but tab hidden)
+        requestsTableModel = new RequestsTableModel();
+        requestsView = new RequestsView(api, requestsTableModel);
+
+        // Secrets tab (first)
+        secretsView = new SecretsView(api, dedupCache);
+        secretsView.setSeverityConfig(severityConfig);
+        tabbedPane.addTab("Secrets", secretsView);
+
+        // Statistics tab (second)
+        statisticsView = new StatisticsView(api, secretsView.getTableModel());
+        tabbedPane.addTab("Statistics", statisticsView);
+
+        // Settings tab (last)
+        JPanel settingsPanel = createSettingsPanel();
+        tabbedPane.addTab("Settings", settingsPanel);
+
+        add(tabbedPane, BorderLayout.CENTER);
+
+        // Initialize message persistence
+        messagePersistence = new MessagePersistence(api);
+
+        // Initialize findings exporter
+        findingsExporter = new FindingsExporter(api);
+
+        // Restore persisted messages
+        restorePersistedMessages();
+
+        // Wire up scan queue listener to populate table and refresh secrets
+        scanQueue.setListener(new ScanQueue.ScanQueueListener() {
+            @Override
+            public void onJobEnqueued(ScanJob job) {
+                SwingUtilities.invokeLater(() -> {
+                    requestsTableModel.addEntry(job);
+                    requestsView.updateStatus();
+                    // Refresh secrets view periodically (every 5 jobs to avoid excessive updates)
+                    if (requestsTableModel.getEntryCount() % 5 == 0) {
+                        secretsView.refresh();
+                    }
+                });
+            }
+
+            @Override
+            public void onSecretsFound(String url, int count, String types, SecretCategoryMapper.Category category) {
+                SwingUtilities.invokeLater(() -> {
+                    requestsTableModel.updateSecretInfo(url, count, types, category);
+                    // Also refresh secrets view when new secrets are found
+                    secretsView.refresh();
+                });
+            }
+        });
+
+        // Load settings
+        loadSettings();
+
+        // Start stats update timer
+        startStatsTimer();
+    }
+
+    private JPanel createSettingsPanel() {
+        JPanel mainPanel = new JPanel();
+        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        // Top row: Scan Settings (left) and Scan Parameters (right) side by side
+        JPanel topRow = new JPanel(new GridLayout(1, 2, 10, 0));
+        topRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200));
+
+        JPanel scanSettingsPanel = createScanSettingsPanel();
+        parametersPanel = new ScanParametersPanel(api);
+
+        topRow.add(scanSettingsPanel);
+        topRow.add(parametersPanel);
+
+        mainPanel.add(topRow);
+        mainPanel.add(Box.createVerticalStrut(10));
+        mainPanel.add(createSeverityPanel());
+        mainPanel.add(Box.createVerticalStrut(10));
+        mainPanel.add(createActionsPanel());
+
+        // Wrap in scroll pane
+        JScrollPane scrollPane = new JScrollPane(mainPanel);
+        scrollPane.setBorder(null);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(scrollPane, BorderLayout.CENTER);
+        return panel;
+    }
+
+    public boolean isPassiveScanEnabled() {
+        return passiveScanCheckbox != null && passiveScanCheckbox.isSelected();
+    }
+
+    public boolean isRequestScanEnabled() {
+        return scanRequestsCheckbox != null && scanRequestsCheckbox.isSelected();
+    }
+
+    /**
+     * Get the scan parameters panel for accessing current settings.
+     */
+    public ScanParametersPanel getParametersPanel() {
+        return parametersPanel;
+    }
+
+    /**
+     * Get the requests table model.
+     */
+    public RequestsTableModel getRequestsTableModel() {
+        return requestsTableModel;
+    }
+
+    /**
+     * Get the requests view.
+     */
+    public RequestsView getRequestsView() {
+        return requestsView;
+    }
+
+    /**
+     * Get the secrets view.
+     */
+    public SecretsView getSecretsView() {
+        return secretsView;
+    }
+
+    /**
+     * Set the validation manager.
+     */
+    public void setValidationManager(ValidationManager validationManager) {
+        this.validationManager = validationManager;
+        if (validationEnabledCheckbox != null) {
+            validationEnabledCheckbox.setSelected(validationManager.isValidationEnabled());
+        }
+
+        // Wire up secrets view validation listener
+        if (secretsView != null) {
+            secretsView.setValidationListener(record -> {
+                if (validationManager == null) {
+                    api.logging().logToError("Validation manager not initialized");
+                    return;
+                }
+                if (!validationManager.isValidationEnabled()) {
+                    javax.swing.JOptionPane.showMessageDialog(
+                        secretsView,
+                        "Validation is not enabled.\n\nGo to Settings tab and check 'Enable secret validation' to use this feature.",
+                        "Validation Disabled",
+                        javax.swing.JOptionPane.WARNING_MESSAGE
+                    );
+                    return;
+                }
+                validationManager.validateAsync(record, r -> {
+                    secretsView.refresh();
+                });
+            });
+        }
+    }
+
+    /**
+     * Get the validation manager.
+     */
+    public ValidationManager getValidationManager() {
+        return validationManager;
+    }
+
+    /**
+     * Check if validation is enabled.
+     */
+    public boolean isValidationEnabled() {
+        return validationManager != null && validationManager.isValidationEnabled();
+    }
+
+    /**
+     * Get the message persistence handler.
+     */
+    public MessagePersistence getMessagePersistence() {
+        return messagePersistence;
+    }
+
+    /**
+     * Save current messages to persistence.
+     */
+    public void saveMessages() {
+        if (messagePersistence != null && requestsTableModel != null) {
+            messagePersistence.persistMessages(requestsTableModel.getEntries());
+        }
+    }
+
+    /**
+     * Restore messages from persistence to table.
+     */
+    private void restorePersistedMessages() {
+        if (messagePersistence == null || requestsTableModel == null) {
+            return;
+        }
+
+        java.util.List<ScanJob> jobs = messagePersistence.restoreMessages();
+        for (ScanJob job : jobs) {
+            requestsTableModel.addEntry(job);
+        }
+        requestsView.updateStatus();
+    }
+
+    private JPanel createScanSettingsPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(new TitledBorder("Scan Settings"));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 180));
+
+        passiveScanCheckbox = new JCheckBox("Enable passive scanning (scan all proxy traffic)");
+        passiveScanCheckbox.setSelected(true);
+        passiveScanCheckbox.addActionListener(e -> saveSettings());
+
+        scanRequestsCheckbox = new JCheckBox("Scan request bodies (in addition to responses)");
+        scanRequestsCheckbox.setSelected(false);
+        scanRequestsCheckbox.addActionListener(e -> saveSettings());
+
+        validationEnabledCheckbox = new JCheckBox("Enable secret validation (makes outbound API requests)");
+        validationEnabledCheckbox.setSelected(false);
+        validationEnabledCheckbox.addActionListener(e -> {
+            if (validationManager != null) {
+                validationManager.setValidationEnabled(validationEnabledCheckbox.isSelected());
+            }
+        });
+
+        JLabel hint = new JLabel("Tip: Right-click items in HTTP history to scan manually");
+        hint.setForeground(Color.GRAY);
+        hint.setFont(hint.getFont().deriveFont(Font.ITALIC, 11f));
+
+        JLabel validationWarning = new JLabel("<html>Warning: Validation may trigger alerts (e.g., AWS CloudTrail) and makes requests to external services.</html>");
+        validationWarning.setForeground(new Color(200, 100, 0));
+        validationWarning.setFont(validationWarning.getFont().deriveFont(Font.ITALIC, 10f));
+
+        panel.add(passiveScanCheckbox);
+        panel.add(Box.createVerticalStrut(3));
+        panel.add(scanRequestsCheckbox);
+        panel.add(Box.createVerticalStrut(5));
+        panel.add(validationEnabledCheckbox);
+        panel.add(Box.createVerticalStrut(2));
+        panel.add(validationWarning);
+        panel.add(Box.createVerticalStrut(5));
+        panel.add(hint);
+
+        return panel;
+    }
+
+    private JPanel createSeverityPanel() {
+        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        panel.setBorder(new TitledBorder("Severity Configuration"));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 250));
+
+        // Create table
+        String[] columns = {"Category", "Severity"};
+        severityTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 1; // Only severity column is editable
+            }
+        };
+
+        severityTable = new JTable(severityTableModel);
+        severityTable.getColumnModel().getColumn(1).setCellEditor(
+            new DefaultCellEditor(new JComboBox<>(AuditIssueSeverity.values()))
+        );
+
+        // Populate table
+        populateSeverityTable();
+
+        // Add listener for changes
+        severityTableModel.addTableModelListener(e -> {
+            if (e.getColumn() == 1) {
+                int row = e.getFirstRow();
+                String category = (String) severityTableModel.getValueAt(row, 0);
+                Object value = severityTableModel.getValueAt(row, 1);
+                AuditIssueSeverity severity = value instanceof AuditIssueSeverity
+                    ? (AuditIssueSeverity) value
+                    : AuditIssueSeverity.valueOf(value.toString());
+                severityConfig.setCategorySeverity(category, severity);
+            }
+        });
+
+        JScrollPane tableScroll = new JScrollPane(severityTable);
+        panel.add(tableScroll, BorderLayout.CENTER);
+
+        JLabel hint = new JLabel("Edit severity levels by clicking the Severity column");
+        hint.setForeground(Color.GRAY);
+        hint.setFont(hint.getFont().deriveFont(Font.ITALIC, 11f));
+        panel.add(hint, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private JPanel createActionsPanel() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        panel.setBorder(new TitledBorder("Actions"));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+
+        JButton clearCacheButton = new JButton("Clear Finding Cache");
+        clearCacheButton.addActionListener(e -> {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                "Clear all cached findings? This will allow duplicate issues to be reported again.",
+                "Clear Cache",
+                JOptionPane.YES_NO_OPTION
+            );
+            if (result == JOptionPane.YES_OPTION) {
+                dedupCache.clear();
+                api.logging().logToOutput("Finding cache cleared");
+                updateStats();
+            }
+        });
+
+        JButton resetSeverityButton = new JButton("Reset Severities to Defaults");
+        resetSeverityButton.addActionListener(e -> {
+            severityConfig.resetToDefaults();
+            populateSeverityTable();
+            api.logging().logToOutput("Severity configuration reset to defaults");
+        });
+
+        JButton saveMessagesButton = new JButton("Save Requests");
+        saveMessagesButton.addActionListener(e -> {
+            saveMessages();
+            JOptionPane.showMessageDialog(
+                this,
+                "Requests saved. They will be restored when the extension reloads.",
+                "Requests Saved",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+        });
+
+        JButton clearRequestsButton = new JButton("Clear Requests");
+        clearRequestsButton.addActionListener(e -> {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                "Clear all requests from the table?",
+                "Clear Requests",
+                JOptionPane.YES_NO_OPTION
+            );
+            if (result == JOptionPane.YES_OPTION) {
+                requestsView.clear();
+                messagePersistence.clear();
+                api.logging().logToOutput("Requests cleared");
+            }
+        });
+
+        JButton exportButton = new JButton("Export Findings to JSON");
+        exportButton.addActionListener(e -> findingsExporter.exportFindings(dedupCache, this));
+
+        panel.add(clearCacheButton);
+        panel.add(resetSeverityButton);
+        panel.add(saveMessagesButton);
+        panel.add(clearRequestsButton);
+        panel.add(exportButton);
+
+        return panel;
+    }
+
+    private void populateSeverityTable() {
+        severityTableModel.setRowCount(0);
+
+        Map<String, AuditIssueSeverity> defaults = severityConfig.getCategoryDefaults();
+        for (Map.Entry<String, AuditIssueSeverity> entry : defaults.entrySet()) {
+            severityTableModel.addRow(new Object[]{entry.getKey(), entry.getValue()});
+        }
+    }
+
+    private void loadSettings() {
+        try {
+            String enabled = api.persistence().extensionData().getString(SETTINGS_PASSIVE_ENABLED);
+            if (enabled != null) {
+                passiveScanCheckbox.setSelected(Boolean.parseBoolean(enabled));
+            }
+
+            String scanRequests = api.persistence().extensionData().getString(SETTINGS_SCAN_REQUESTS);
+            if (scanRequests != null) {
+                scanRequestsCheckbox.setSelected(Boolean.parseBoolean(scanRequests));
+            }
+        } catch (Exception e) {
+            api.logging().logToError("Failed to load settings: " + e.getMessage());
+        }
+    }
+
+    private void saveSettings() {
+        try {
+            api.persistence().extensionData().setString(
+                SETTINGS_PASSIVE_ENABLED,
+                String.valueOf(passiveScanCheckbox.isSelected())
+            );
+            api.persistence().extensionData().setString(
+                SETTINGS_SCAN_REQUESTS,
+                String.valueOf(scanRequestsCheckbox.isSelected())
+            );
+        } catch (Exception e) {
+            api.logging().logToError("Failed to save settings: " + e.getMessage());
+        }
+    }
+
+    private void startStatsTimer() {
+        statsTimer = new Timer("titus-stats", true);
+        statsTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                SwingUtilities.invokeLater(() -> updateStats());
+            }
+        }, 1000, 1000); // Update every second
+    }
+
+    private void updateStats() {
+        // Stats are now shown in the Statistics tab, refresh it periodically
+        if (statisticsView != null) {
+            statisticsView.refresh();
+        }
+    }
+}

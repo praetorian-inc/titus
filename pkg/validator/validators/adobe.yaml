@@ -1,0 +1,33 @@
+# pkg/validator/validators/adobe.yaml
+# NOTE: Rules using this validator must define named capture groups in their regex patterns.
+# Expected named group: "secret" (e.g., pattern: (?P<secret>p8e-[a-z0-9-]{32}))
+#
+# VALIDATION LIMITATION:
+# Adobe OAuth requires both client_id and client_secret for validation.
+# The current rule only detects client_secret (pattern: p8e-[a-z0-9-]{32}).
+# Without the corresponding client_id, we cannot validate the secret against Adobe's API.
+#
+# Adobe token endpoint: https://ims-na1.adobelogin.com/ims/token/v3
+# Required parameters: client_id, client_secret, grant_type=client_credentials, scope
+#
+# To enable validation, the rule would need to:
+# 1. Capture both client_id and client_secret in proximity
+# 2. Use a custom Go validator to extract both values and make the token request
+#
+# For now, this validator is a placeholder documenting the validation requirement.
+# HTTP validation is disabled until client_id extraction is implemented.
+
+# validators:
+#   - name: adobe-oauth
+#     rule_ids:
+#       - np.adobe.1
+#     http:
+#       method: POST
+#       url: https://ims-na1.adobelogin.com/ims/token/v3
+#       auth:
+#         type: custom
+#         # Would require: client_id and client_secret as form data
+#         # grant_type: client_credentials
+#         # scope: (varies by integration)
+#       success_codes: [200]
+#       failure_codes: [400, 401, 403]

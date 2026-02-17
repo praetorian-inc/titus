@@ -1,0 +1,72 @@
+rules:
+
+- name: Facebook Secret Key
+  id: np.facebook.1
+
+  pattern: |
+    (?x)(?i)
+    \b (?: facebook | fb )
+    .?
+    (?: api | app | application | client | consumer | customer | secret | key )
+    .?
+    (?: key | oauth | sec | secret )?
+    .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}  (?# string terminators, whitespace, binding operators, etc )
+    \b (?P<token>[a-z0-9]{32}) \b
+
+  references:
+  - https://developers.facebook.com/docs/facebook-login/access-tokens/
+
+  categories: [api, fuzzy, secret]
+
+  examples:
+  - '   # config.facebook.key = "34cebc81c056a21bc66e212f947d73ec"'
+  - "    var fbApiKey = '0278fc1adf6dc1d82a156f306ce2c5cc';"
+  - '     fbApiKey:            "171e84fd57f430fc59afa8fad3dbda2a",'
+
+  negative_examples:
+  # XXX would be nice if the following matched
+  - '\"fbconnectkey\";s:32:\"8f52d1586bd18a18e152289b00ed7d29\";'
+
+
+- name: Facebook Access Token
+  id: np.facebook.2
+
+  pattern: '\b(?P<token>EAACEdEose0cBA[a-zA-Z0-9]+)\b'
+
+  categories: [api, secret]
+
+  references:
+  - https://developers.facebook.com/docs/facebook-login/access-tokens/
+
+  examples:
+  - "url = 'https://graph.facebook.com/me/friends?access_token=EAACEdEose0cBAD5XZCz5JXYvqyeJzcSvFZC42toHiWyfjhcZCMZBZCpE3uRJnEBsrhUEMRK1wWs6SsdiDCaCI1mYwyoNuMix2XZCpvsKbZB9TumtZBlcLeIpl4pa931Ce9rTinEAhtyVVZAAZAX4NmfpBUqWtzCRC0fX5GZBn7ZC28mPKAZDZD'"
+
+
+- name: Facebook App Credentials
+  id: np.facebook.3
+
+  pattern: |
+    (?x)(?i)
+    (?:facebook|fb) .{0,50}?
+    (?:app_id|client_id) ["'\s:=]+ (?P<app_id>[0-9]{10,19}) ["'\s,}\]]+
+    .{0,100}?
+    (?:app_secret|client_secret) ["'\s:=]+ (?P<secret>[a-zA-Z0-9]{32,64})
+
+  references:
+  - https://developers.facebook.com/docs/facebook-login/access-tokens/
+  - https://developers.facebook.com/docs/graph-api/reference/debug_token
+
+  # Note: HTTPValidator validates app_secret format only. Full paired validation
+  # (app_id|app_secret) would require a custom Go validator due to the Facebook
+  # Graph API's token format requirements.
+
+  categories: [api, secret]
+
+  examples:
+  - '{"facebook": {"app_id": "1241440636013546", "app_secret": "c0acf898d0cf77b57dfae30210d6acf9"}}'
+  - '"facebook": {"client_id":"675602312638739","client_secret":"912251e0d28f315451baa7ab63427c57"}'
+  - 'FACEBOOK = {"app_id": "884621454736122", "app_secret": "fd67f5083bc4791b06eccf6b08ccf437"}'
+
+  negative_examples:
+  - '{"facebook": {"app_id": "123", "app_secret": "short"}}'  # Too short
+  - '{"google": {"client_id": "12345", "client_secret": "abc123"}}'  # Not Facebook

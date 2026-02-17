@@ -1,0 +1,49 @@
+rules:
+  - name: Contentful Delivery API Token
+    id: kingfisher.contentful.1
+    pattern: |
+      (?xi)
+      \b
+      contentful
+      (?:.|[\n\r]){0,32}?
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (?P<token>
+        [A-Z0-9_-]{43,45}
+      )
+      \b
+
+    categories: [api, secret]
+
+    references:
+      - https://www.contentful.com/developers/docs/references/content-delivery-api/
+
+    examples:
+      - "contentful_delivery_token = wJz-g_tqZ-8n_abcdefghijklmnopqrstuvwxyz12345"
+      - "CONTENTFUL_ACCESS_TOKEN=wJalrXUtnFEMI_K7MDENG-bPxRfiCYEXAMPLEKEY12"
+      - "contentful_token: 'abcdefghij1234567890ABCDEFGHIJ1234567890-_a'"
+
+    negative_examples:
+      - "contentful_access_token = placeholder"
+      - "CONTENTFUL_KEY=your-token-here"
+
+  - name: Contentful Personal Access Token
+    id: kingfisher.contentful.2
+    pattern: '\b(?P<token>CFPAT-[A-Za-z0-9_-]{43})\b'
+
+    categories: [api, secret]
+
+    references:
+      - https://www.contentful.com/developers/docs/references/content-management-api/#/reference/users/user
+
+    examples:
+      - "CFPAT-Cq3AarsJCDvdG9PYAJ3Y00crCG5nEPAAfVZ2LAldCsQ"
+      - "CFPAT-WFWEK_dWYIW0-uamOjhUBAJJ9NqQisr1x_ylb4z1vcQ"
+      - "CFPAT-lkITY2pqeiE0_p9TxUZrGAhfHJIiwYtbtr769y4_AYY"
+      - "export CONTENTFUL_PAT=CFPAT-0JsT8FnP_qGlX2kRxYZabcDEFghijKLMNopqRSTuvW"
+
+    negative_examples:
+      - "CFPAT-short"
+      - "CFPAT-"
+      - "cfpat_not_a_token"

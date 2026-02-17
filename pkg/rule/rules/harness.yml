@@ -1,0 +1,37 @@
+rules:
+  - name: Harness Personal Access Token (PAT)
+    id: kingfisher.harness.pat.1
+    pattern: |
+      (?xi)
+      \b
+      (
+        pat\.
+        [A-Z0-9]{22}
+        \.
+        [0-9a-f]{24}
+        \.
+        [A-Z0-9]{20}
+      )
+      \b
+    min_entropy: 3.4
+    confidence: medium
+    examples:
+      - 'HARNESS_TOKEN="pat.AbCdEfGhIjKlMnOpQrStUv.0123abcd4567ef890123abcd.ZyXwVuTsRqPoNmLkJiHg"'
+    references:
+      - https://developer.harness.io/docs/platform/automation/api/api-quickstart/
+      - https://apidocs.harness.io/
+    validation:
+      type: Http
+      content:
+        request:
+          method: GET
+          url: https://app.harness.io/ng/api/apikey/aggregate
+          headers:
+            Accept: application/json
+            x-api-key: "{{ TOKEN }}"
+          response_matcher:
+            # Valid token + authorized OR valid token but missing params/perms
+            - type: StatusMatch
+              status: [200, 400, 403]
+              negative: true
+            - type: JsonValid
