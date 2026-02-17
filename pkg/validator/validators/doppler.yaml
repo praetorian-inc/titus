@@ -1,0 +1,85 @@
+validators:
+
+- name: doppler-cli-token
+  rule_ids:
+    - np.doppler.1
+
+  http:
+    method: GET
+    url: "https://api.doppler.com/v3/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: doppler-personal-token
+  rule_ids:
+    - np.doppler.2
+
+  http:
+    method: GET
+    url: "https://api.doppler.com/v3/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: doppler-service-token
+  rule_ids:
+    - np.doppler.3
+
+  http:
+    method: GET
+    url: "https://api.doppler.com/v3/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: doppler-service-account-token
+  rule_ids:
+    - np.doppler.4
+
+  http:
+    method: GET
+    url: "https://api.doppler.com/v3/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: doppler-scim-token
+  rule_ids:
+    - np.doppler.5
+
+  http:
+    method: GET
+    url: "https://api.doppler.com/v3/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: doppler-audit-token
+  rule_ids:
+    - np.doppler.6
+
+  http:
+    method: GET
+    url: "https://api.doppler.com/v3/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

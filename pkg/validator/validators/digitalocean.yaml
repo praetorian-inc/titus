@@ -1,0 +1,43 @@
+validators:
+
+- name: digitalocean-application-token
+  rule_ids:
+    - np.digitalocean.1
+
+  http:
+    method: GET
+    url: "https://api.digitalocean.com/v2/account"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: digitalocean-personal-token
+  rule_ids:
+    - np.digitalocean.2
+
+  http:
+    method: GET
+    url: "https://api.digitalocean.com/v2/account"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: digitalocean-refresh-token
+  rule_ids:
+    - np.digitalocean.3
+
+  http:
+    method: GET
+    url: "https://api.digitalocean.com/v2/account"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
