@@ -1,0 +1,19 @@
+validators:
+
+- name: launchdarkly-access-token
+  rule_ids:
+    - kingfisher.launchdarkly.1
+
+  http:
+    method: GET
+    url: "https://app.launchdarkly.com/api/v2/members"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "Authorization"
+    headers:
+      - name: "Accept"
+        value: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

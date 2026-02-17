@@ -1,0 +1,15 @@
+validators:
+
+- name: voyageai-api-key
+  rule_ids:
+    - kingfisher.voyageai.api_key
+
+  http:
+    method: GET
+    url: "https://api.voyageai.com/v1/files"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
