@@ -1,0 +1,15 @@
+validators:
+
+- name: replicate-api-token
+  rule_ids:
+    - kingfisher.replicate.1
+
+  http:
+    method: GET
+    url: "https://api.replicate.com/v1/account"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

@@ -1,0 +1,16 @@
+validators:
+
+- name: elevenlabs-api-key
+  rule_ids:
+    - kingfisher.elevenlabs.1
+
+  http:
+    method: GET
+    url: "https://api.elevenlabs.io/v1/user/subscription"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "xi-api-key"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

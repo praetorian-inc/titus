@@ -1,0 +1,17 @@
+validators:
+
+- name: mistral-api-key
+  rule_ids:
+    - kingfisher.mistral.1
+
+  http:
+    method: GET
+    url: "https://api.mistral.ai/v1/models"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      Accept: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
