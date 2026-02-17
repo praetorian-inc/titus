@@ -1,0 +1,19 @@
+validators:
+
+- name: flyio-api-token
+  rule_ids:
+    - kingfisher.flyio.1
+
+  http:
+    method: POST
+    url: "https://api.fly.io/graphql"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      - name: "Content-Type"
+        value: "application/json"
+    body: '{"query": "{ viewer { id } }"}'
+
+    success_codes: [200]
+    failure_codes: [401, 403]
