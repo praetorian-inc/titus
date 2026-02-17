@@ -154,6 +154,10 @@ make build-extension
 - Optional network response capture
 - Results displayed in popup and dashboard
 
+### Security Notice
+
+**CSP Bypass:** The browser extension removes Content Security Policy headers from visited pages in order to scan external script and stylesheet resources. This is necessary for comprehensive secret detection but weakens the security posture of websites you visit while the extension is active. **Only enable this extension during active security testing and disable it for normal browsing.**
+
 ## Testing
 
 ```bash
@@ -207,4 +211,6 @@ titus/
 
 ## License
 
-Proprietary - Praetorian Inc.
+Apache License 2.0 - See [LICENSE](LICENSE) for details.
+
+Detection rules derived from [NoseyParker](https://github.com/praetorian-inc/noseyparker) are also licensed under Apache 2.0. See [NOTICE](NOTICE) for attribution.
