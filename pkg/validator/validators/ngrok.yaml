@@ -1,0 +1,18 @@
+validators:
+
+- name: ngrok-api-key
+  rule_ids:
+    - kingfisher.ngrok.1
+
+  http:
+    method: GET
+    url: "https://api.ngrok.com/endpoints"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      - name: "ngrok-version"
+        value: "2"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

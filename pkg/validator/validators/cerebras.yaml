@@ -1,0 +1,15 @@
+validators:
+
+- name: cerebras-api-key
+  rule_ids:
+    - kingfisher.cerebras.1
+
+  http:
+    method: GET
+    url: "https://api.cerebras.ai/v1/models"
+    auth:
+      type: bearer
+      secret_group: "token"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

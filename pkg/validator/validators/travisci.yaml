@@ -1,0 +1,22 @@
+validators:
+
+- name: travisci-token
+  rule_ids:
+    - kingfisher.travisci.1
+
+  http:
+    method: GET
+    url: "https://api.travis-ci.com/repos?limit=1"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "Authorization"
+      header_prefix: "token "
+    headers:
+      - name: "Accept"
+        value: "application/vnd.travis-ci.3+json"
+      - name: "Travis-API-Version"
+        value: "3"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

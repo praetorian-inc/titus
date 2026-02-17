@@ -1,0 +1,16 @@
+validators:
+
+- name: assemblyai-api-key
+  rule_ids:
+    - kingfisher.assemblyai.1
+
+  http:
+    method: GET
+    url: "https://api.assemblyai.com/v2/transcript?limit=1"
+    auth:
+      type: header
+      secret_group: "token"
+      header_name: "Authorization"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
