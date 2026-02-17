@@ -10,6 +10,7 @@ import (
 type Match struct {
 	BlobID           BlobID
 	StructuralID     string // SHA-1(rule_structural_id + '\0' + blob_id + '\0' + start + '\0' + end)
+	FindingID        string // SHA-1(rule_structural_id + '\0' + json(groups)) — content-based dedup ID
 	RuleID           string // e.g., "np.aws.1"
 	RuleName         string // e.g., "AWS API Key"
 	Location         Location

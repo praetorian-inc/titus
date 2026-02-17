@@ -133,6 +133,9 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 			// Compute structural ID for deduplication
 			result.StructuralID = result.ComputeStructuralID(rule.StructuralID)
 
+			// Compute finding ID for content-based deduplication (NoseyParker-compatible)
+			result.FindingID = types.ComputeFindingID(rule.StructuralID, groups)
+
 			// Deduplicate
 			if !dedup.IsDuplicate(result) {
 				dedup.Add(result)

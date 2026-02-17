@@ -81,6 +81,22 @@ func TestRule_MinimalFields(t *testing.T) {
 	assert.Nil(t, rule.Categories)
 }
 
+func TestRule_ComputeStructuralID_NormalizesNamedGroups(t *testing.T) {
+	// Named groups should be normalized to unnamed for NoseyParker compatibility.
+	unnamed := Rule{Pattern: `\b((?:A3T[A-Z0-9]|AKIA)[A-Z0-9]{16})\b`}
+	named := Rule{Pattern: `\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA)[A-Z0-9]{16})\b`}
+
+	assert.Equal(t, unnamed.ComputeStructuralID(), named.ComputeStructuralID(),
+		"named and unnamed capture groups should produce the same structural ID")
+}
+
+func TestRule_ComputeStructuralID_MultipleNamedGroups(t *testing.T) {
+	unnamed := Rule{Pattern: `([a-z]+):([0-9]+)`}
+	named := Rule{Pattern: `(?P<user>[a-z]+):(?P<pass>[0-9]+)`}
+
+	assert.Equal(t, unnamed.ComputeStructuralID(), named.ComputeStructuralID())
+}
+
 func TestRuleset(t *testing.T) {
 	ruleset := Ruleset{
 		ID:          "aws-secrets",

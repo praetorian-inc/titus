@@ -3,6 +3,7 @@ package types
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"regexp"
 )
 
 // Rule is a detection rule with pattern and metadata.
@@ -19,10 +20,16 @@ type Rule struct {
 	Keywords         []string // keywords for Aho-Corasick prefiltering
 }
 
-// ComputeStructuralID computes SHA-1 of pattern.
+// namedGroupRe matches named capture groups like (?P<name>...) and replaces
+// them with plain unnamed groups (...) for NoseyParker-compatible hashing.
+var namedGroupRe = regexp.MustCompile(`\(\?P<[^>]+>`)
+
+// ComputeStructuralID computes SHA-1 of pattern, normalizing named capture
+// groups to unnamed groups for compatibility with NoseyParker's structural IDs.
 func (r *Rule) ComputeStructuralID() string {
+	normalized := namedGroupRe.ReplaceAllString(r.Pattern, "(")
 	h := sha1.New()
-	h.Write([]byte(r.Pattern))
+	h.Write([]byte(normalized))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
