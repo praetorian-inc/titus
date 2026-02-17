@@ -297,6 +297,22 @@ public class TitusProcessScanner implements AutoCloseable {
             matchedContent = snippet;
         }
 
+        // Extract NamedGroups (base64 encoded values)
+        Map<String, String> namedGroups = new HashMap<>();
+        if (m.has("NamedGroups") && !m.get("NamedGroups").isJsonNull()) {
+            JsonObject namedGroupsObj = m.getAsJsonObject("NamedGroups");
+            for (String key : namedGroupsObj.keySet()) {
+                try {
+                    String base64Value = namedGroupsObj.get(key).getAsString();
+                    byte[] decoded = java.util.Base64.getDecoder().decode(base64Value);
+                    namedGroups.put(key, new String(decoded, StandardCharsets.UTF_8));
+                } catch (Exception e) {
+                    // If decoding fails, use as-is
+                    namedGroups.put(key, namedGroupsObj.get(key).getAsString());
+                }
+            }
+        }
+
         int startOffset = 0, endOffset = 0, line = 0, column = 0;
         if (m.has("Location") && !m.get("Location").isJsonNull()) {
             JsonObject loc = m.getAsJsonObject("Location");
@@ -316,7 +332,7 @@ public class TitusProcessScanner implements AutoCloseable {
         }
 
         return new Match(ruleId, ruleName, structuralId, matchedContent, snippet,
-                         startOffset, endOffset, line, column);
+                         startOffset, endOffset, line, column, namedGroups);
     }
 
     public record ContentItem(String source, String content) {}
@@ -324,7 +340,8 @@ public class TitusProcessScanner implements AutoCloseable {
     public record Match(
         String ruleId, String ruleName, String structuralId,
         String matchedContent, String snippet,
-        int startOffset, int endOffset, int line, int column
+        int startOffset, int endOffset, int line, int column,
+        Map<String, String> namedGroups
     ) {
         /**
          * Returns the full secret content.

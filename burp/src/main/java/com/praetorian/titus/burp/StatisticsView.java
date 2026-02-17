@@ -116,10 +116,9 @@ public class StatisticsView extends JPanel {
 
     /**
      * Refresh statistics from the secrets model.
+     * Note: Does NOT call secretsModel.refresh() to avoid clearing table selection in SecretsView.
      */
     public void refresh() {
-        secretsModel.refresh(); // Ensure data is current
-
         // Update host table
         hostTableModel.setRowCount(0);
         Map<String, Integer> hostCounts = secretsModel.getCountByHost();

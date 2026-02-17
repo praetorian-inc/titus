@@ -14,6 +14,8 @@ import burp.api.montoya.ui.editor.extension.HttpResponseEditorProvider;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.util.List;
 
@@ -41,8 +43,10 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
     private class SecretResponseEditor implements ExtensionProvidedHttpResponseEditor {
 
         private final JPanel panel;
-        private final JTextArea secretsArea;
         private final JLabel statusLabel;
+        private final JTable secretsTable;
+        private final DefaultTableModel tableModel;
+        private final JTextArea detailsArea;
         private HttpResponse currentResponse;
         private HttpRequest currentRequest;
         private List<TitusProcessScanner.Match> currentMatches;
@@ -55,10 +59,11 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
 
         SecretResponseEditor(EditorCreationContext creationContext) {
             panel = new JPanel(new BorderLayout());
-            panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+            panel.setBorder(new EmptyBorder(5, 5, 5, 5));
 
             // Header panel
             JPanel headerPanel = new JPanel(new BorderLayout());
+            headerPanel.setBorder(new EmptyBorder(0, 0, 5, 0));
             JLabel titleLabel = new JLabel("Titus Secret Scanner");
             titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 14f));
             statusLabel = new JLabel("");
@@ -67,14 +72,109 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
             headerPanel.add(statusLabel, BorderLayout.EAST);
             panel.add(headerPanel, BorderLayout.NORTH);
 
-            // Secrets display area
-            secretsArea = new JTextArea();
-            secretsArea.setEditable(false);
-            secretsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-            secretsArea.setLineWrap(true);
-            secretsArea.setWrapStyleWord(true);
-            JScrollPane scrollPane = new JScrollPane(secretsArea);
-            panel.add(scrollPane, BorderLayout.CENTER);
+            // Create table for secrets list
+            String[] columns = {"#", "Type", "Category", "Secret Preview", "Validated", "Status"};
+            tableModel = new DefaultTableModel(columns, 0) {
+                @Override
+                public boolean isCellEditable(int row, int column) {
+                    return false;
+                }
+            };
+            secretsTable = new JTable(tableModel);
+            secretsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            secretsTable.getColumnModel().getColumn(0).setPreferredWidth(30);
+            secretsTable.getColumnModel().getColumn(0).setMaxWidth(40);
+            secretsTable.getColumnModel().getColumn(1).setPreferredWidth(150);
+            secretsTable.getColumnModel().getColumn(2).setPreferredWidth(120);
+            secretsTable.getColumnModel().getColumn(3).setPreferredWidth(200);
+            secretsTable.getColumnModel().getColumn(4).setPreferredWidth(70);
+            secretsTable.getColumnModel().getColumn(4).setMaxWidth(80);
+            secretsTable.getColumnModel().getColumn(5).setPreferredWidth(100);
+
+            // Selection listener for details
+            secretsTable.getSelectionModel().addListSelectionListener(e -> {
+                if (!e.getValueIsAdjusting()) {
+                    showSelectedSecretDetails();
+                }
+            });
+
+            JScrollPane tableScroll = new JScrollPane(secretsTable);
+            tableScroll.setPreferredSize(new Dimension(600, 150));
+
+            // Details area
+            detailsArea = new JTextArea();
+            detailsArea.setEditable(false);
+            detailsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+            detailsArea.setLineWrap(true);
+            detailsArea.setWrapStyleWord(true);
+            JScrollPane detailsScroll = new JScrollPane(detailsArea);
+            detailsScroll.setBorder(new TitledBorder("Secret Details"));
+
+            // Split pane: table above, details below
+            JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tableScroll, detailsScroll);
+            splitPane.setResizeWeight(0.4);
+            splitPane.setOneTouchExpandable(true);
+
+            panel.add(splitPane, BorderLayout.CENTER);
+        }
+
+        private void showSelectedSecretDetails() {
+            int selectedRow = secretsTable.getSelectedRow();
+            if (selectedRow < 0) {
+                detailsArea.setText("Select a secret to view details.");
+                return;
+            }
+
+            StringBuilder sb = new StringBuilder();
+
+            if (cachedFindings != null && selectedRow < cachedFindings.size()) {
+                DedupCache.FindingRecord record = cachedFindings.get(selectedRow);
+                sb.append("Type: ").append(record.ruleName).append("\n");
+                sb.append("Rule ID: ").append(record.ruleId).append("\n");
+                sb.append("Category: ").append(SecretCategoryMapper.getCategory(record.ruleId).getDisplayName()).append("\n\n");
+                sb.append("Full Secret:\n").append(record.secretContent).append("\n\n");
+                sb.append("--- Validation ---\n");
+                sb.append("Checked: ").append(record.validatedAt != null ? "Yes" : "No").append("\n");
+                if (record.validatedAt != null) {
+                    sb.append("Result: ").append(getValidationResultDisplay(record.validationStatus)).append("\n");
+                    if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
+                        sb.append("Message: ").append(record.validationMessage).append("\n");
+                    }
+                }
+                sb.append("False Positive: ").append(
+                    record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No"
+                ).append("\n");
+            } else if (currentMatches != null && selectedRow < currentMatches.size()) {
+                TitusProcessScanner.Match match = currentMatches.get(selectedRow);
+                sb.append("Type: ").append(match.ruleName()).append("\n");
+                sb.append("Rule ID: ").append(match.ruleId()).append("\n");
+                sb.append("Category: ").append(SecretCategoryMapper.getCategory(match.ruleId()).getDisplayName()).append("\n\n");
+                sb.append("Full Secret:\n").append(match.matchedContent()).append("\n\n");
+                if (match.line() > 0) {
+                    sb.append("Location: Line ").append(match.line());
+                    if (match.column() > 0) {
+                        sb.append(", Column ").append(match.column());
+                    }
+                    sb.append("\n\n");
+                }
+
+                // Check validation status from cache
+                String url = currentRequest != null ? currentRequest.url() : "unknown";
+                DedupCache.FindingRecord record = dedupCache.getFinding(url, match.matchedContent(), match.ruleId());
+                if (record != null) {
+                    sb.append("--- Validation ---\n");
+                    sb.append("Checked: ").append(record.validatedAt != null ? "Yes" : "No").append("\n");
+                    if (record.validatedAt != null) {
+                        sb.append("Result: ").append(getValidationResultDisplay(record.validationStatus)).append("\n");
+                    }
+                    sb.append("False Positive: ").append(
+                        record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No"
+                    ).append("\n");
+                }
+            }
+
+            detailsArea.setText(sb.toString());
+            detailsArea.setCaretPosition(0);
         }
 
         @Override
@@ -88,7 +188,8 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
             this.currentResponse = requestResponse.response();
 
             if (currentResponse == null) {
-                secretsArea.setText("No response available");
+                tableModel.setRowCount(0);
+                detailsArea.setText("No response available");
                 statusLabel.setText("");
                 this.hasSecrets = false;
                 return;
@@ -97,6 +198,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
             // Check if we already have cached matches from isEnabledFor
             if (requestResponse == lastCheckedRequestResponse && currentMatches != null && !currentMatches.isEmpty()) {
                 this.hasSecrets = true;
+                this.cachedFindings = null;
                 displaySecrets(currentMatches);
                 statusLabel.setText(currentMatches.size() + " secret(s) found");
                 statusLabel.setForeground(new Color(200, 50, 50));
@@ -104,6 +206,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                 // Scan for secrets (fallback if cache miss)
                 this.hasSecrets = false;
                 this.currentMatches = null;
+                this.cachedFindings = null;
                 scanForSecrets();
             }
         }
@@ -115,6 +218,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
             List<DedupCache.FindingRecord> findings = dedupCache.getFindingsForUrl(url);
             if (!findings.isEmpty()) {
                 this.cachedFindings = findings;
+                this.currentMatches = null;
                 this.hasSecrets = true;
                 displayCachedFindings(findings);
                 statusLabel.setText(findings.size() + " secret(s) found (cached)");
@@ -129,6 +233,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
 
                 List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
                 this.currentMatches = matches;
+                this.cachedFindings = null;
                 this.hasSecrets = !matches.isEmpty();
 
                 if (hasSecrets) {
@@ -136,101 +241,93 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                     statusLabel.setText(matches.size() + " secret(s) found");
                     statusLabel.setForeground(new Color(200, 50, 50));
                 } else {
-                    secretsArea.setText("No secrets detected in this response.");
+                    tableModel.setRowCount(0);
+                    detailsArea.setText("No secrets detected in this response.");
                     statusLabel.setText("Clean");
                     statusLabel.setForeground(new Color(50, 150, 50));
                 }
             } catch (Exception e) {
-                secretsArea.setText("Error scanning for secrets: " + e.getMessage());
+                tableModel.setRowCount(0);
+                detailsArea.setText("Error scanning for secrets: " + e.getMessage());
                 statusLabel.setText("Error");
                 statusLabel.setForeground(Color.RED);
             }
         }
 
         private void displayCachedFindings(List<DedupCache.FindingRecord> findings) {
-            StringBuilder sb = new StringBuilder();
+            tableModel.setRowCount(0);
 
             for (int i = 0; i < findings.size(); i++) {
                 DedupCache.FindingRecord record = findings.get(i);
+                String preview = record.secretContent != null && record.secretContent.length() > 30
+                    ? record.secretContent.substring(0, 30) + "..."
+                    : record.secretContent;
+                String validated = record.validatedAt != null ? "Yes" : "No";
+                String status = getStatusDisplay(record);
 
-                sb.append("=== Secret #").append(i + 1).append(" ===\n\n");
-                sb.append("Type: ").append(record.ruleName).append("\n");
-                sb.append("Rule ID: ").append(record.ruleId).append("\n");
-                sb.append("Category: ").append(SecretCategoryMapper.getCategory(record.ruleId).getDisplayName()).append("\n\n");
-
-                sb.append("Secret: ").append(record.secretContent).append("\n\n");
-
-                sb.append("--- Validation ---\n");
-                sb.append("Checked: ").append(record.validatedAt != null ? "Yes" : "No").append("\n");
-                if (record.validatedAt != null) {
-                    sb.append("Result: ").append(getValidationResultDisplay(record.validationStatus)).append("\n");
-                    if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
-                        sb.append("Message: ").append(record.validationMessage).append("\n");
-                    }
-                }
-                sb.append("False Positive: ").append(
-                    record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No"
-                ).append("\n");
-
-                if (i < findings.size() - 1) {
-                    sb.append("\n");
-                    sb.append("─".repeat(50)).append("\n\n");
-                }
+                tableModel.addRow(new Object[]{
+                    i + 1,
+                    record.ruleName,
+                    SecretCategoryMapper.getCategory(record.ruleId).getDisplayName(),
+                    preview,
+                    validated,
+                    status
+                });
             }
 
-            secretsArea.setText(sb.toString());
-            secretsArea.setCaretPosition(0);
+            // Select first row if available
+            if (tableModel.getRowCount() > 0) {
+                secretsTable.setRowSelectionInterval(0, 0);
+            }
+            detailsArea.setText("Select a secret to view details.");
         }
 
         private void displaySecrets(List<TitusProcessScanner.Match> matches) {
-            StringBuilder sb = new StringBuilder();
+            tableModel.setRowCount(0);
 
             for (int i = 0; i < matches.size(); i++) {
                 TitusProcessScanner.Match match = matches.get(i);
-
-                sb.append("=== Secret #").append(i + 1).append(" ===\n\n");
-                sb.append("Type: ").append(match.ruleName()).append("\n");
-                sb.append("Rule ID: ").append(match.ruleId()).append("\n");
-                sb.append("Category: ").append(SecretCategoryMapper.getCategory(match.ruleId()).getDisplayName()).append("\n\n");
-
-                sb.append("Secret: ").append(match.matchedContent()).append("\n\n");
-
-                if (match.line() > 0) {
-                    sb.append("Location: Line ").append(match.line());
-                    if (match.column() > 0) {
-                        sb.append(", Column ").append(match.column());
-                    }
-                    sb.append("\n\n");
-                }
+                String preview = match.matchedContent() != null && match.matchedContent().length() > 30
+                    ? match.matchedContent().substring(0, 30) + "..."
+                    : match.matchedContent();
 
                 // Check validation status from cache
                 String url = currentRequest != null ? currentRequest.url() : "unknown";
-                DedupCache.FindingRecord record = dedupCache.getFinding(url, match.matchedContent());
-                if (record != null) {
-                    sb.append("--- Validation ---\n");
-                    sb.append("Checked: ").append(record.validatedAt != null ? "Yes" : "No").append("\n");
-                    if (record.validatedAt != null) {
-                        sb.append("Result: ").append(getValidationResultDisplay(record.validationStatus)).append("\n");
-                        if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
-                            sb.append("Message: ").append(record.validationMessage).append("\n");
-                        }
-                    }
-                    sb.append("False Positive: ").append(
-                        record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No"
-                    ).append("\n");
-                } else {
-                    sb.append("--- Validation ---\n");
-                    sb.append("Not yet recorded in Titus cache.\n");
-                }
+                DedupCache.FindingRecord record = dedupCache.getFinding(url, match.matchedContent(), match.ruleId());
+                String validated = record != null && record.validatedAt != null ? "Yes" : "No";
+                String status = record != null ? getStatusDisplay(record) : "-";
 
-                if (i < matches.size() - 1) {
-                    sb.append("\n");
-                    sb.append("─".repeat(50)).append("\n\n");
-                }
+                tableModel.addRow(new Object[]{
+                    i + 1,
+                    match.ruleName(),
+                    SecretCategoryMapper.getCategory(match.ruleId()).getDisplayName(),
+                    preview,
+                    validated,
+                    status
+                });
             }
 
-            secretsArea.setText(sb.toString());
-            secretsArea.setCaretPosition(0);
+            // Select first row if available
+            if (tableModel.getRowCount() > 0) {
+                secretsTable.setRowSelectionInterval(0, 0);
+            }
+            detailsArea.setText("Select a secret to view details.");
+        }
+
+        private String getStatusDisplay(DedupCache.FindingRecord record) {
+            if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+                return "FP";
+            }
+            if (record.validatedAt == null) {
+                return "-";
+            }
+            return switch (record.validationStatus) {
+                case VALID -> "Active";
+                case INVALID -> "Inactive";
+                case UNDETERMINED -> "Unknown";
+                case VALIDATING -> "...";
+                default -> "-";
+            };
         }
 
         private String getValidationResultDisplay(DedupCache.ValidationStatus status) {

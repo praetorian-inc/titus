@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/praetorian-inc/titus/pkg/scanner"
 	"github.com/praetorian-inc/titus/pkg/serve"
+	"github.com/praetorian-inc/titus/pkg/validator"
 	"github.com/spf13/cobra"
 )
 
@@ -49,5 +51,27 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Create and run server
 	srv := serve.NewServer(core, cmd.InOrStdin(), cmd.OutOrStdout())
+	srv.SetValidator(initServeValidators())
 	return srv.Run(ctx)
+}
+
+func initServeValidators() *validator.Engine {
+	var validators []validator.Validator
+
+	// Add Go validators
+	validators = append(validators, validator.NewAWSValidator())
+	validators = append(validators, validator.NewSauceLabsValidator())
+	validators = append(validators, validator.NewTwilioValidator())
+	validators = append(validators, validator.NewAzureStorageValidator())
+	validators = append(validators, validator.NewPostgresValidator())
+
+	// Add embedded YAML validators
+	embedded, err := validator.LoadEmbeddedValidators()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to load embedded validators: %v\n", err)
+	} else {
+		validators = append(validators, embedded...)
+	}
+
+	return validator.NewEngine(4, validators...)
 }

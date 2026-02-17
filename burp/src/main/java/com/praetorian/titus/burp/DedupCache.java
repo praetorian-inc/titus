@@ -102,7 +102,7 @@ public class DedupCache {
      * @return true if this is a new finding
      */
     public boolean isNewFinding(String url, String secretContent, String ruleId) {
-        String key = computeKey(normalizeUrl(url), secretContent);
+        String key = computeKey(normalizeUrl(url), secretContent, ruleId);
         return !cache.containsKey(key);
     }
 
@@ -144,9 +144,27 @@ public class DedupCache {
      */
     public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName,
                                           String requestContent, String responseContent) {
+        return recordOccurrence(url, secretContent, ruleId, ruleName, requestContent, responseContent, null);
+    }
+
+    /**
+     * Record an occurrence of a finding with rule name, HTTP content, and named groups.
+     *
+     * @param url             The URL where the secret was found
+     * @param secretContent   The secret content
+     * @param ruleId          The rule that matched
+     * @param ruleName        The human-readable rule name
+     * @param requestContent  The full HTTP request content
+     * @param responseContent The full HTTP response content
+     * @param namedGroups     Named capture groups from regex match (for validation)
+     * @return The updated finding record
+     */
+    public FindingRecord recordOccurrence(String url, String secretContent, String ruleId, String ruleName,
+                                          String requestContent, String responseContent,
+                                          Map<String, String> namedGroups) {
         String normalizedUrl = normalizeUrl(url);
         String host = SecretCategoryMapper.extractHost(url);
-        String key = computeKey(normalizedUrl, secretContent);
+        String key = computeKey(normalizedUrl, secretContent, ruleId);
 
         // Evict oldest entries if at max capacity before adding new
         if (!cache.containsKey(key) && cache.size() >= MAX_CACHE_SIZE) {
@@ -163,7 +181,8 @@ public class DedupCache {
                     host,
                     new HashSet<>(Set.of(normalizedUrl)),
                     1,
-                    Instant.now()
+                    Instant.now(),
+                    namedGroups
                 );
                 // Store HTTP content for first occurrence only
                 if (requestContent != null || responseContent != null) {
@@ -174,6 +193,10 @@ public class DedupCache {
                 existing.urls.add(normalizedUrl);
                 existing.hosts.add(host);
                 existing.occurrenceCount++;
+                // Update named groups if not set (keep first occurrence's groups)
+                if ((existing.namedGroups == null || existing.namedGroups.isEmpty()) && namedGroups != null) {
+                    existing.namedGroups = namedGroups;
+                }
                 return existing;
             }
         });
@@ -201,10 +224,10 @@ public class DedupCache {
     }
 
     /**
-     * Get a finding record by URL and secret.
+     * Get a finding record by URL, secret, and rule ID.
      */
-    public FindingRecord getFinding(String url, String secretContent) {
-        String key = computeKey(normalizeUrl(url), secretContent);
+    public FindingRecord getFinding(String url, String secretContent, String ruleId) {
+        String key = computeKey(normalizeUrl(url), secretContent, ruleId);
         return cache.get(key);
     }
 
@@ -274,7 +297,7 @@ public class DedupCache {
                         if (!record.urls.isEmpty()) {
                             String url = record.urls.iterator().next();
                             // We don't have the original secret, so use preview as approximation
-                            String key = computeKey(url, record.secretPreview);
+                            String key = computeKey(url, record.secretPreview, record.ruleId);
 
                             // Fix missing host data from older cache versions
                             if (record.primaryHost == null || record.primaryHost.isEmpty()) {
@@ -291,6 +314,9 @@ public class DedupCache {
                             if (record.validationStatus == null) {
                                 record.validationStatus = ValidationStatus.NOT_CHECKED;
                             }
+                            if (record.namedGroups == null) {
+                                record.namedGroups = new HashMap<>();
+                            }
 
                             cache.put(key, record);
                         }
@@ -303,15 +329,16 @@ public class DedupCache {
         }
     }
 
-    private String computeKey(String normalizedUrl, String secretContent) {
+    private String computeKey(String normalizedUrl, String secretContent, String ruleId) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            String combined = normalizedUrl + ":" + secretContent;
+            // Include ruleId in key to distinguish findings from different rules with same first capture group
+            String combined = normalizedUrl + ":" + ruleId + ":" + secretContent;
             byte[] hash = digest.digest(combined.getBytes(StandardCharsets.UTF_8));
             return bytesToHex(hash);
         } catch (NoSuchAlgorithmException e) {
             // Fallback to simple hash
-            return String.valueOf((normalizedUrl + ":" + secretContent).hashCode());
+            return String.valueOf((normalizedUrl + ":" + ruleId + ":" + secretContent).hashCode());
         }
     }
 
@@ -388,17 +415,26 @@ public class DedupCache {
         public String requestContent;  // Full request content for display
         public String responseContent; // Full response content for display
         public Map<String, String> validationDetails;
+        public Map<String, String> namedGroups;  // Named capture groups from regex match
 
         public FindingRecord() {
             this.urls = new HashSet<>();
             this.hosts = new HashSet<>();
             this.validationStatus = ValidationStatus.NOT_CHECKED;
             this.validationDetails = new HashMap<>();
+            this.namedGroups = new HashMap<>();
         }
 
         public FindingRecord(String ruleId, String ruleName, String secretPreview,
                            String secretContent, String primaryHost, Set<String> urls,
                            int occurrenceCount, Instant firstSeen) {
+            this(ruleId, ruleName, secretPreview, secretContent, primaryHost, urls,
+                 occurrenceCount, firstSeen, new HashMap<>());
+        }
+
+        public FindingRecord(String ruleId, String ruleName, String secretPreview,
+                           String secretContent, String primaryHost, Set<String> urls,
+                           int occurrenceCount, Instant firstSeen, Map<String, String> namedGroups) {
             this.ruleId = ruleId;
             this.ruleName = ruleName;
             this.secretPreview = secretPreview;
@@ -413,6 +449,7 @@ public class DedupCache {
             this.firstSeen = firstSeen;
             this.validationStatus = ValidationStatus.NOT_CHECKED;
             this.validationDetails = new HashMap<>();
+            this.namedGroups = namedGroups != null ? namedGroups : new HashMap<>();
         }
 
         /**
@@ -444,6 +481,20 @@ public class DedupCache {
          */
         public void setValidationDetails(Map<String, String> details) {
             this.validationDetails = details;
+        }
+
+        /**
+         * Set named groups from regex match.
+         */
+        public void setNamedGroups(Map<String, String> namedGroups) {
+            this.namedGroups = namedGroups != null ? namedGroups : new HashMap<>();
+        }
+
+        /**
+         * Get named groups for validation.
+         */
+        public Map<String, String> getNamedGroups() {
+            return this.namedGroups != null ? this.namedGroups : new HashMap<>();
         }
     }
 }

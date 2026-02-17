@@ -93,6 +93,14 @@ public class SecretsView extends JPanel {
         secretsTable = new JTable(tableModel);
         rowSorter = new TableRowSorter<>(tableModel);
         secretsTable.setRowSorter(rowSorter);
+
+        // Custom comparator for Severity column (column 2) to sort by severity order: Info < Low < Medium < High
+        rowSorter.setComparator(2, (o1, o2) -> {
+            int rank1 = getSeverityRank((String) o1);
+            int rank2 = getSeverityRank((String) o2);
+            return Integer.compare(rank1, rank2);
+        });
+
         secretsTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         secretsTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
         secretsTable.getTableHeader().setReorderingAllowed(true);
@@ -123,9 +131,10 @@ public class SecretsView extends JPanel {
 
         add(splitPane, BorderLayout.CENTER);
 
-        // Top panel with toolbar and filters
+        // Top panel with header, toolbar and filters
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+        topPanel.add(createHeaderPanel());
         topPanel.add(createToolbar());
         topPanel.add(createFilterPanel());
         add(topPanel, BorderLayout.NORTH);
@@ -143,16 +152,44 @@ public class SecretsView extends JPanel {
         secretsTable.getColumnModel().getColumn(0).setPreferredWidth(40);   // #
         secretsTable.getColumnModel().getColumn(0).setMaxWidth(50);
         secretsTable.getColumnModel().getColumn(1).setPreferredWidth(150);  // Type
-        secretsTable.getColumnModel().getColumn(2).setPreferredWidth(200);  // Preview
-        secretsTable.getColumnModel().getColumn(3).setPreferredWidth(150);  // Host
-        secretsTable.getColumnModel().getColumn(4).setPreferredWidth(50);   // Count
-        secretsTable.getColumnModel().getColumn(4).setMaxWidth(60);
-        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(60);   // Checked
-        secretsTable.getColumnModel().getColumn(5).setMaxWidth(70);
-        secretsTable.getColumnModel().getColumn(6).setPreferredWidth(70);   // Result
-        secretsTable.getColumnModel().getColumn(6).setMaxWidth(80);
-        secretsTable.getColumnModel().getColumn(7).setPreferredWidth(80);   // False Positive
-        secretsTable.getColumnModel().getColumn(7).setMaxWidth(100);
+        secretsTable.getColumnModel().getColumn(2).setPreferredWidth(60);   // Severity
+        secretsTable.getColumnModel().getColumn(2).setMaxWidth(70);
+        secretsTable.getColumnModel().getColumn(3).setPreferredWidth(200);  // Preview
+        secretsTable.getColumnModel().getColumn(4).setPreferredWidth(150);  // Host
+        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(50);   // Count
+        secretsTable.getColumnModel().getColumn(5).setMaxWidth(60);
+        secretsTable.getColumnModel().getColumn(6).setPreferredWidth(60);   // Checked
+        secretsTable.getColumnModel().getColumn(6).setMaxWidth(70);
+        secretsTable.getColumnModel().getColumn(7).setPreferredWidth(70);   // Result
+        secretsTable.getColumnModel().getColumn(7).setMaxWidth(80);
+        secretsTable.getColumnModel().getColumn(8).setPreferredWidth(80);   // False Positive
+        secretsTable.getColumnModel().getColumn(8).setMaxWidth(100);
+    }
+
+    /**
+     * Set the severity config for the table model.
+     */
+    public void setSeverityConfig(SeverityConfig config) {
+        tableModel.setSeverityConfig(config);
+    }
+
+    private JPanel createHeaderPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 10, 5));
+
+        JLabel titleLabel = new JLabel("Titus Secret Scanner");
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 18f));
+
+        JLabel descLabel = new JLabel("Scans HTTP responses for secrets using NoseyParker rules");
+        descLabel.setForeground(Color.GRAY);
+
+        JPanel textPanel = new JPanel();
+        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
+        textPanel.add(titleLabel);
+        textPanel.add(descLabel);
+
+        panel.add(textPanel, BorderLayout.WEST);
+        return panel;
     }
 
     private JPanel createToolbar() {
@@ -389,45 +426,60 @@ public class SecretsView extends JPanel {
     private void applyFilters() {
         List<RowFilter<SecretsTableModel, Integer>> filters = new ArrayList<>();
 
-        // Type filter (checkboxes) - only apply if not "All" selected
+        // Type filter (checkboxes)
         List<String> selectedTypes = getSelectedItems(typeCheckboxes, typeAllCheckbox);
-        if (!selectedTypes.isEmpty()) {
-            List<RowFilter<SecretsTableModel, Integer>> typeFilters = new ArrayList<>();
-            for (String type : selectedTypes) {
-                typeFilters.add(RowFilter.regexFilter("^" + Pattern.quote(type) + "$", 1));
+        if (!typeAllCheckbox.isSelected()) {
+            if (selectedTypes.isEmpty()) {
+                // Nothing selected = show nothing (filter that matches nothing)
+                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 1));
+            } else {
+                List<RowFilter<SecretsTableModel, Integer>> typeFilters = new ArrayList<>();
+                for (String type : selectedTypes) {
+                    typeFilters.add(RowFilter.regexFilter("^" + Pattern.quote(type) + "$", 1));
+                }
+                filters.add(RowFilter.orFilter(typeFilters));
             }
-            filters.add(RowFilter.orFilter(typeFilters));
         }
 
-        // Host filter (checkboxes) - only apply if not "All" selected
+        // Host filter (checkboxes)
         List<String> selectedHosts = getSelectedItems(hostCheckboxes, hostAllCheckbox);
-        if (!selectedHosts.isEmpty()) {
-            List<RowFilter<SecretsTableModel, Integer>> hostFilters = new ArrayList<>();
-            for (String host : selectedHosts) {
-                hostFilters.add(RowFilter.regexFilter("^" + Pattern.quote(host) + "$", 3));
+        if (!hostAllCheckbox.isSelected()) {
+            if (selectedHosts.isEmpty()) {
+                // Nothing selected = show nothing
+                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 4));
+            } else {
+                List<RowFilter<SecretsTableModel, Integer>> hostFilters = new ArrayList<>();
+                for (String host : selectedHosts) {
+                    hostFilters.add(RowFilter.regexFilter("^" + Pattern.quote(host) + "$", 4));  // Host is column 4
+                }
+                filters.add(RowFilter.orFilter(hostFilters));
             }
-            filters.add(RowFilter.orFilter(hostFilters));
         }
 
-        // Status filter (checkboxes) - only apply if not "All" selected
+        // Status filter (checkboxes)
         // Options: False Positive, True Positive, Valid, Invalid
         List<String> selectedStatuses = getSelectedItems(statusCheckboxes, statusAllCheckbox);
-        if (!selectedStatuses.isEmpty()) {
-            List<RowFilter<SecretsTableModel, Integer>> statusFilters = new ArrayList<>();
-            for (String status : selectedStatuses) {
-                switch (status) {
-                    case "False Positive" -> // Column 7 (FP) = "Yes"
-                        statusFilters.add(RowFilter.regexFilter("^Yes$", 7));
-                    case "True Positive" -> // Column 7 (FP) = "No"
-                        statusFilters.add(RowFilter.regexFilter("^No$", 7));
-                    case "Valid" -> // Column 6 (Result) = "Active"
-                        statusFilters.add(RowFilter.regexFilter("^Active$", 6));
-                    case "Invalid" -> // Column 6 (Result) = "Inactive"
-                        statusFilters.add(RowFilter.regexFilter("^Inactive$", 6));
+        if (!statusAllCheckbox.isSelected()) {
+            if (selectedStatuses.isEmpty()) {
+                // Nothing selected = show nothing
+                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 7));
+            } else {
+                List<RowFilter<SecretsTableModel, Integer>> statusFilters = new ArrayList<>();
+                for (String status : selectedStatuses) {
+                    switch (status) {
+                        case "False Positive" -> // Column 8 (FP) = "Yes"
+                            statusFilters.add(RowFilter.regexFilter("^Yes$", 8));
+                        case "True Positive" -> // Column 8 (FP) = "No"
+                            statusFilters.add(RowFilter.regexFilter("^No$", 8));
+                        case "Valid" -> // Column 7 (Result) = "Active"
+                            statusFilters.add(RowFilter.regexFilter("^Active$", 7));
+                        case "Invalid" -> // Column 7 (Result) = "Inactive"
+                            statusFilters.add(RowFilter.regexFilter("^Inactive$", 7));
+                    }
                 }
-            }
-            if (!statusFilters.isEmpty()) {
-                filters.add(RowFilter.orFilter(statusFilters));
+                if (!statusFilters.isEmpty()) {
+                    filters.add(RowFilter.orFilter(statusFilters));
+                }
             }
         }
 
@@ -885,9 +937,28 @@ public class SecretsView extends JPanel {
     }
 
     /**
-     * Custom cell renderer that colors rows by category.
+     * Get numeric rank for severity string for sorting.
+     * Lower values sort first: Info(0) < Low(1) < Medium(2) < High(3)
+     */
+    private static int getSeverityRank(String severity) {
+        if (severity == null) return 1;
+        return switch (severity) {
+            case "Info", "FP" -> 0;
+            case "Low" -> 1;
+            case "Medium" -> 2;
+            case "High" -> 3;
+            default -> 1;
+        };
+    }
+
+    /**
+     * Custom cell renderer that colors rows by severity.
      */
     private class CategoryColorRenderer extends DefaultTableCellRenderer {
+        // Severity colors - darker muted tones for dark theme
+        private static final Color HIGH_COLOR = new Color(140, 70, 70);        // Dark maroon/burgundy
+        private static final Color MEDIUM_COLOR = new Color(140, 130, 60);     // Dark olive/amber
+
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
@@ -895,26 +966,49 @@ public class SecretsView extends JPanel {
             Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
             if (!isSelected) {
-                // Convert view row to model row for correct category lookup
+                // Convert view row to model row for correct severity lookup
                 int modelRow = table.convertRowIndexToModel(row);
-                SecretCategoryMapper.Category category = tableModel.getCategoryAt(modelRow);
-                Color bgColor = category.getLightColor();
+                burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity = tableModel.getSeverityAt(modelRow);
+
+                // Only set background for HIGH and MEDIUM
+                Color bgColor = getSeverityColor(severity);
                 if (bgColor != null) {
                     c.setBackground(bgColor);
+                    c.setForeground(Color.WHITE);  // White text on dark colored backgrounds
                 } else {
-                    // Use default table background
-                    c.setBackground(table.getBackground());
+                    // Use UIManager's default colors for consistent appearance
+                    Color defaultBg = UIManager.getColor("Table.background");
+                    if (defaultBg == null) {
+                        defaultBg = Color.WHITE;
+                    }
+                    c.setBackground(defaultBg);
+                    Color defaultFg = UIManager.getColor("Table.foreground");
+                    if (defaultFg == null) {
+                        defaultFg = Color.BLACK;
+                    }
+                    c.setForeground(defaultFg);
                 }
             }
 
-            // Center align small columns: #, Count, Checked, Result, False Positive
-            if (column == 0 || column == 4 || column == 5 || column == 6 || column == 7) {
+            // Center align small columns: #, Severity, Count, Checked, Result, False Positive
+            if (column == 0 || column == 2 || column == 5 || column == 6 || column == 7 || column == 8) {
                 setHorizontalAlignment(JLabel.CENTER);
             } else {
                 setHorizontalAlignment(JLabel.LEFT);
             }
 
             return c;
+        }
+
+        /**
+         * Get color for severity. Returns null for Low/Info/FP (use default).
+         */
+        private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity) {
+            return switch (severity) {
+                case HIGH -> HIGH_COLOR;
+                case MEDIUM -> MEDIUM_COLOR;
+                case LOW, INFORMATION, FALSE_POSITIVE -> null;  // No custom color
+            };
         }
     }
 }

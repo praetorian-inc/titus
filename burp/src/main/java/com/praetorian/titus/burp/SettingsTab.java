@@ -35,10 +35,6 @@ public class SettingsTab extends JPanel {
     private MessagePersistence messagePersistence;
     private FindingsExporter findingsExporter;
     private ValidationManager validationManager;
-    private JLabel queueSizeLabel;
-    private JLabel scannedCountLabel;
-    private JLabel matchCountLabel;
-    private JLabel findingsCountLabel;
     private JTable severityTable;
     private DefaultTableModel severityTableModel;
 
@@ -56,21 +52,22 @@ public class SettingsTab extends JPanel {
         // Create tabbed pane
         JTabbedPane tabbedPane = new JTabbedPane();
 
-        // Settings tab
-        JPanel settingsPanel = createSettingsPanel();
-        tabbedPane.addTab("Settings", settingsPanel);
-
         // Initialize requests model (used internally for scanning, but tab hidden)
         requestsTableModel = new RequestsTableModel();
         requestsView = new RequestsView(api, requestsTableModel);
 
-        // Secrets tab
+        // Secrets tab (first)
         secretsView = new SecretsView(api, dedupCache);
+        secretsView.setSeverityConfig(severityConfig);
         tabbedPane.addTab("Secrets", secretsView);
 
-        // Statistics tab
+        // Statistics tab (second)
         statisticsView = new StatisticsView(api, secretsView.getTableModel());
         tabbedPane.addTab("Statistics", statisticsView);
+
+        // Settings tab (last)
+        JPanel settingsPanel = createSettingsPanel();
+        tabbedPane.addTab("Settings", settingsPanel);
 
         add(tabbedPane, BorderLayout.CENTER);
 
@@ -119,14 +116,17 @@ public class SettingsTab extends JPanel {
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        mainPanel.add(createHeaderPanel());
-        mainPanel.add(Box.createVerticalStrut(10));
-        mainPanel.add(createScanSettingsPanel());
-        mainPanel.add(Box.createVerticalStrut(10));
+        // Top row: Scan Settings (left) and Scan Parameters (right) side by side
+        JPanel topRow = new JPanel(new GridLayout(1, 2, 10, 0));
+        topRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200));
+
+        JPanel scanSettingsPanel = createScanSettingsPanel();
         parametersPanel = new ScanParametersPanel(api);
-        mainPanel.add(parametersPanel);
-        mainPanel.add(Box.createVerticalStrut(10));
-        mainPanel.add(createStatsPanel());
+
+        topRow.add(scanSettingsPanel);
+        topRow.add(parametersPanel);
+
+        mainPanel.add(topRow);
         mainPanel.add(Box.createVerticalStrut(10));
         mainPanel.add(createSeverityPanel());
         mainPanel.add(Box.createVerticalStrut(10));
@@ -189,11 +189,22 @@ public class SettingsTab extends JPanel {
         // Wire up secrets view validation listener
         if (secretsView != null) {
             secretsView.setValidationListener(record -> {
-                if (validationManager != null && validationManager.isValidationEnabled()) {
-                    validationManager.validateAsync(record, r -> {
-                        secretsView.refresh();
-                    });
+                if (validationManager == null) {
+                    api.logging().logToError("Validation manager not initialized");
+                    return;
                 }
+                if (!validationManager.isValidationEnabled()) {
+                    javax.swing.JOptionPane.showMessageDialog(
+                        secretsView,
+                        "Validation is not enabled.\n\nGo to Settings tab and check 'Enable secret validation' to use this feature.",
+                        "Validation Disabled",
+                        javax.swing.JOptionPane.WARNING_MESSAGE
+                    );
+                    return;
+                }
+                validationManager.validateAsync(record, r -> {
+                    secretsView.refresh();
+                });
             });
         }
     }
@@ -243,25 +254,6 @@ public class SettingsTab extends JPanel {
         requestsView.updateStatus();
     }
 
-    private JPanel createHeaderPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
-
-        JLabel titleLabel = new JLabel("Titus Secret Scanner");
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 18f));
-
-        JLabel descLabel = new JLabel("Scans HTTP responses for secrets using NoseyParker rules");
-        descLabel.setForeground(Color.GRAY);
-
-        JPanel textPanel = new JPanel();
-        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
-        textPanel.add(titleLabel);
-        textPanel.add(descLabel);
-
-        panel.add(textPanel, BorderLayout.WEST);
-        return panel;
-    }
-
     private JPanel createScanSettingsPanel() {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -301,34 +293,6 @@ public class SettingsTab extends JPanel {
         panel.add(validationWarning);
         panel.add(Box.createVerticalStrut(5));
         panel.add(hint);
-
-        return panel;
-    }
-
-    private JPanel createStatsPanel() {
-        JPanel panel = new JPanel(new GridLayout(2, 4, 10, 5));
-        panel.setBorder(new TitledBorder("Statistics"));
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
-
-        panel.add(new JLabel("Queue Size:"));
-        queueSizeLabel = new JLabel("0");
-        queueSizeLabel.setFont(queueSizeLabel.getFont().deriveFont(Font.BOLD));
-        panel.add(queueSizeLabel);
-
-        panel.add(new JLabel("Items Scanned:"));
-        scannedCountLabel = new JLabel("0");
-        scannedCountLabel.setFont(scannedCountLabel.getFont().deriveFont(Font.BOLD));
-        panel.add(scannedCountLabel);
-
-        panel.add(new JLabel("Matches Found:"));
-        matchCountLabel = new JLabel("0");
-        matchCountLabel.setFont(matchCountLabel.getFont().deriveFont(Font.BOLD));
-        panel.add(matchCountLabel);
-
-        panel.add(new JLabel("Unique Findings:"));
-        findingsCountLabel = new JLabel("0");
-        findingsCountLabel.setFont(findingsCountLabel.getFont().deriveFont(Font.BOLD));
-        panel.add(findingsCountLabel);
 
         return panel;
     }
@@ -495,13 +459,9 @@ public class SettingsTab extends JPanel {
     }
 
     private void updateStats() {
-        if (scanQueue != null) {
-            queueSizeLabel.setText(String.valueOf(scanQueue.queueSize()));
-            scannedCountLabel.setText(String.valueOf(scanQueue.totalScanned()));
-            matchCountLabel.setText(String.valueOf(scanQueue.totalMatches()));
-        }
-        if (dedupCache != null) {
-            findingsCountLabel.setText(String.valueOf(dedupCache.uniqueFindingsCount()));
+        // Stats are now shown in the Statistics tab, refresh it periodically
+        if (statisticsView != null) {
+            statisticsView.refresh();
         }
     }
 }

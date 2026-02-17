@@ -82,7 +82,7 @@ public class ValidationManager {
         // Perform validation in background
         new Thread(() -> {
             try {
-                ValidationResult result = validate(record.ruleId, record.secretContent);
+                ValidationResult result = validate(record.ruleId, record.secretContent, record.getNamedGroups());
 
                 DedupCache.ValidationStatus status = switch (result.status()) {
                     case "valid" -> DedupCache.ValidationStatus.VALID;
@@ -108,7 +108,7 @@ public class ValidationManager {
     /**
      * Perform synchronous validation.
      */
-    private ValidationResult validate(String ruleId, String secret) throws IOException {
+    private ValidationResult validate(String ruleId, String secret, Map<String, String> namedGroupsMap) throws IOException {
         TitusProcessScanner scanner = processManager.getScanner();
 
         // Build validation request
@@ -116,8 +116,16 @@ public class ValidationManager {
         payload.addProperty("rule_id", ruleId);
         payload.addProperty("secret", secret);
 
+        // Use actual named groups from the match, or fall back to generic "secret" group
         JsonObject namedGroups = new JsonObject();
-        namedGroups.addProperty("secret", secret);
+        if (namedGroupsMap != null && !namedGroupsMap.isEmpty()) {
+            for (Map.Entry<String, String> entry : namedGroupsMap.entrySet()) {
+                namedGroups.addProperty(entry.getKey(), entry.getValue());
+            }
+        } else {
+            // Fallback for older findings without named groups
+            namedGroups.addProperty("secret", secret);
+        }
         payload.add("named_groups", namedGroups);
 
         JsonObject request = new JsonObject();
@@ -133,7 +141,7 @@ public class ValidationManager {
         }
 
         JsonObject data = response.getAsJsonObject("data");
-        
+
         // Extract details
         Map<String, String> details = new HashMap<>();
         if (data.has("details") && !data.get("details").isJsonNull()) {
@@ -142,7 +150,7 @@ public class ValidationManager {
                 details.put(key, detailsObj.get(key).getAsString());
             }
         }
-        
+
         return new ValidationResult(
             data.has("status") ? data.get("status").getAsString() : "undetermined",
             data.has("confidence") ? data.get("confidence").getAsDouble() : 0,
