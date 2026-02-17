@@ -11,7 +11,8 @@ validators:
       type: bearer
       secret_group: "1"
     headers:
-      Accept: "application/vnd.heroku+json; version=3"
+      - name: "Accept"
+        value: "application/vnd.heroku+json; version=3"
 
     success_codes: [200]
     failure_codes: [401, 403]
