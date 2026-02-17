@@ -63,7 +63,7 @@ jobs:
         CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
       run: |
         mkdir -p dist
-        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w' -o dist/titus-linux-amd64 ./cmd/titus
+        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-linux-amd64 ./cmd/titus
         chmod +x dist/titus-linux-amd64
         file dist/titus-linux-amd64
         ldd dist/titus-linux-amd64
@@ -117,7 +117,7 @@ jobs:
         CGO_LDFLAGS: "-L/usr/local/lib -lhs -lstdc++ -lm"
       run: |
         mkdir -p dist
-        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w' -o dist/titus-linux-arm64 ./cmd/titus
+        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-linux-arm64 ./cmd/titus
         chmod +x dist/titus-linux-arm64
         file dist/titus-linux-arm64
         ldd dist/titus-linux-arm64
@@ -171,7 +171,7 @@ jobs:
         export CGO_LDFLAGS="-L${HS_PREFIX}/lib -lhs -lc++"
 
         mkdir -p dist
-        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w' -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
+        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
         chmod +x dist/titus-darwin-${{ matrix.arch }}
         file dist/titus-darwin-${{ matrix.arch }}
         otool -L dist/titus-darwin-${{ matrix.arch }}
@@ -286,7 +286,7 @@ jobs:
         pkg-config --cflags --libs libhs
 
         mkdir -p dist
-        go build -tags "cgo vectorscan" -ldflags '-s -w' -o dist/titus-windows-amd64.exe ./cmd/titus
+        go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-windows-amd64.exe ./cmd/titus
         ls -la dist/
 
     - name: Verify binary runs

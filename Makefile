@@ -3,19 +3,22 @@
 
 .PHONY: all build build-static build-wasm build-extension test vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension
 
+VERSION ?= dev
+LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
+
 # Default target
 all: build test vet
 
 # Build the project (pure Go, no CGO)
 build:
 	@mkdir -p dist
-	GOWORK=off CGO_ENABLED=0 go build -o dist/titus ./cmd/titus
+	GOWORK=off CGO_ENABLED=0 go build $(LDFLAGS) -o dist/titus ./cmd/titus
 
 # Build statically linked binary (pure Go, no CGO required)
 build-static:
 	@mkdir -p dist
 	GOWORK=off CGO_ENABLED=0 go build \
-		-ldflags '-s -w' \
+		$(LDFLAGS) \
 		-o dist/titus-static ./cmd/titus
 
 # Build WASM binary for browser extension

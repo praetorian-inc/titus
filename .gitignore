@@ -23,6 +23,10 @@ coverage.out
 .idea/
 .vscode/
 
+# Environment
+.env
+.env.*
+
 # OS
 .DS_Store
 

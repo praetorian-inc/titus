@@ -637,6 +637,7 @@ func extractSQLite(content []byte) ([]ExtractedContent, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var tables []string
 	for rows.Next() {
@@ -646,7 +647,6 @@ func extractSQLite(content []byte) ([]ExtractedContent, error) {
 		}
 		tables = append(tables, name)
 	}
-	rows.Close()
 
 	// Extract text from each table (limit rows to prevent huge output)
 	for _, table := range tables {
