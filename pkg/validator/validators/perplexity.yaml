@@ -11,7 +11,8 @@ validators:
       type: bearer
       secret_group: "1"
     headers:
-      Content-Type: "application/json"
+      - name: "Content-Type"
+        value: "application/json"
 
     success_codes: [200, 400, 422]
     failure_codes: [401, 403]
