@@ -17,6 +17,6 @@ var versionCmd = &cobra.Command{
 }
 
 func runVersion(cmd *cobra.Command, args []string) error {
-	fmt.Fprintf(cmd.OutOrStdout(), "Titus v%s (Go port of NoseyParker)\n", version)
+	fmt.Fprintf(cmd.OutOrStdout(), "Titus %s (Go port of NoseyParker)\n", version)
 	return nil
 }
