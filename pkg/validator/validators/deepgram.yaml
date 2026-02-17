@@ -1,0 +1,17 @@
+validators:
+
+- name: deepgram-api-key
+  rule_ids:
+    - kingfisher.deepgram.1
+
+  http:
+    method: GET
+    url: "https://api.deepgram.com/v1/projects"
+    auth:
+      type: header
+      secret_group: "token"
+      header_name: "Authorization"
+      header_prefix: "Token "
+
+    success_codes: [200]
+    failure_codes: [401, 403]
