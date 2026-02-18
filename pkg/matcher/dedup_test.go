@@ -191,3 +191,44 @@ func TestDeduplicator_ContentMode_UsesGroups(t *testing.T) {
 	// even though Snippet.Matching differs (different context)
 	assert.True(t, d.IsDuplicate(m2), "Same secret value in Groups should be duplicate in content mode")
 }
+
+func TestDeduplicator_ConcurrentAccess(t *testing.T) {
+	// This test reproduces the concurrent map writes crash
+	// that occurs when multiple goroutines call IsDuplicate/Add
+	d := NewDeduplicator()
+
+	const numWorkers = 10
+	const numMatches = 100
+
+	// Channel to synchronize goroutines
+	done := make(chan bool, numWorkers)
+
+	// Spawn multiple workers that concurrently access the deduplicator
+	for i := 0; i < numWorkers; i++ {
+		go func(workerID int) {
+			defer func() { done <- true }()
+
+			for j := 0; j < numMatches; j++ {
+				m := &types.Match{
+					StructuralID: "match-" + string(rune('0'+workerID)) + "-" + string(rune('0'+j%10)),
+				}
+
+				// Concurrent read
+				_ = d.IsDuplicate(m)
+
+				// Concurrent write
+				d.Add(m)
+
+				// Another concurrent read
+				_ = d.IsDuplicate(m)
+			}
+		}(i)
+	}
+
+	// Wait for all workers to complete
+	for i := 0; i < numWorkers; i++ {
+		<-done
+	}
+
+	// Test passes if no panic occurred (no "fatal error: concurrent map writes")
+}

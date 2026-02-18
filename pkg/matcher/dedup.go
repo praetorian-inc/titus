@@ -3,6 +3,7 @@ package matcher
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"sync"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -23,6 +24,7 @@ const (
 
 // Deduplicator removes duplicate matches based on configurable criteria.
 type Deduplicator struct {
+	mu   sync.Mutex
 	seen map[string]bool
 	mode DedupeMode
 }
@@ -52,17 +54,23 @@ func (d *Deduplicator) SetMode(mode DedupeMode) {
 // IsDuplicate returns true if match was already seen.
 func (d *Deduplicator) IsDuplicate(m *types.Match) bool {
 	key := d.computeKey(m)
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.seen[key]
 }
 
 // Add marks a match as seen.
 func (d *Deduplicator) Add(m *types.Match) {
 	key := d.computeKey(m)
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.seen[key] = true
 }
 
 // Reset clears the deduplicator for reuse.
 func (d *Deduplicator) Reset() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	clear(d.seen)
 }
 
