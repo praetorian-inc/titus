@@ -1,0 +1,36 @@
+validators:
+
+- name: cloudflare-api-token
+  rule_ids:
+    - kingfisher.cloudflare.1
+
+  http:
+    method: GET
+    url: "https://api.cloudflare.com/client/v4/user/tokens/verify"
+    auth:
+      type: bearer
+      secret_group: "token"
+    headers:
+      - name: "Accept"
+        value: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
+
+- name: cloudflare-ca-key
+  rule_ids:
+    - kingfisher.cloudflare.2
+
+  http:
+    method: GET
+    url: "https://api.cloudflare.com/client/v4/certificates?per_page=1"
+    auth:
+      type: header
+      secret_group: "token"
+      header_name: "X-Auth-User-Service-Key"
+    headers:
+      - name: "Content-Type"
+        value: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

@@ -1,0 +1,15 @@
+validators:
+
+- name: buildkite-api-key
+  rule_ids:
+    - kingfisher.buildkite.1
+
+  http:
+    method: GET
+    url: "https://api.buildkite.com/v2/access-token"
+    auth:
+      type: bearer
+      secret_group: "token"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

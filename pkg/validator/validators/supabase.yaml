@@ -1,0 +1,15 @@
+validators:
+
+- name: supabase-management-token
+  rule_ids:
+    - kingfisher.supabase.1
+
+  http:
+    method: GET
+    url: "https://api.supabase.com/v1/organizations"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

@@ -1,0 +1,16 @@
+validators:
+
+- name: fastly-api-token
+  rule_ids:
+    - kingfisher.fastly.1
+
+  http:
+    method: GET
+    url: "https://api.fastly.com/current_user"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "Fastly-Key"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

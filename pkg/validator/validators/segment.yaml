@@ -1,0 +1,18 @@
+validators:
+
+- name: segment-public-api-token
+  rule_ids:
+    - np.segment.1
+
+  http:
+    method: GET
+    url: "https://api.segmentapis.com/sources"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      - name: "Accept"
+        value: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

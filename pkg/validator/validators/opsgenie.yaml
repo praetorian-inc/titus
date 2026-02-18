@@ -1,0 +1,17 @@
+validators:
+
+- name: opsgenie-api-key
+  rule_ids:
+    - kingfisher.opsgenie.1
+
+  http:
+    method: GET
+    url: "https://api.opsgenie.com/v2/alerts"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "Authorization"
+      key_prefix: "GenieKey "
+
+    success_codes: [200]
+    failure_codes: [401, 403]
