@@ -1,0 +1,16 @@
+validators:
+
+- name: netlify-api-key
+  rule_ids:
+    - kingfisher.netlify.1
+    - kingfisher.netlify.2
+
+  http:
+    method: GET
+    url: "https://api.netlify.com/api/v1/user"
+    auth:
+      type: bearer
+      secret_group: "1"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

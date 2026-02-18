@@ -1,0 +1,19 @@
+validators:
+
+- name: notion-api-token
+  rule_ids:
+    - kingfisher.notion.1
+    - kingfisher.notion.2
+
+  http:
+    method: GET
+    url: "https://api.notion.com/v1/users/me"
+    auth:
+      type: bearer
+      secret_group: "1"
+    headers:
+      - name: "Notion-Version"
+        value: "2022-06-28"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

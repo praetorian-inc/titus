@@ -1,0 +1,22 @@
+validators:
+
+- name: pulumi-api-key
+  rule_ids:
+    - kingfisher.pulumi.1
+
+  http:
+    method: GET
+    url: "https://api.pulumi.com/api/user"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "Authorization"
+      header_prefix: "token "
+    headers:
+      - name: "Accept"
+        value: "application/vnd.pulumi+8"
+      - name: "Content-Type"
+        value: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

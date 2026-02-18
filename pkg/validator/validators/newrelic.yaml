@@ -1,0 +1,18 @@
+validators:
+
+- name: newrelic-api-key
+  rule_ids:
+    - np.newrelic.3
+    - np.newrelic.4
+    - np.newrelic.7
+
+  http:
+    method: GET
+    url: "https://api.newrelic.com/v2/users.json"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "Api-Key"
+
+    success_codes: [200]
+    failure_codes: [401, 403]
