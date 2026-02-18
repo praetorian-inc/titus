@@ -608,6 +608,7 @@ func (m *VectorscanMatcher) extractCaptures(content []byte, rule *types.Rule, st
 
 	region := string(content[contextStart:contextEnd])
 	relativeStart := start - contextStart
+	relativeEnd := end - contextStart
 
 	// Find match in region
 	match, err := re.FindStringMatch(region)
@@ -615,38 +616,26 @@ func (m *VectorscanMatcher) extractCaptures(content []byte, rule *types.Rule, st
 		return nil, nil
 	}
 
-	// Find the match that corresponds to our Hyperscan location
+	// Find the match that corresponds to our Hyperscan location.
+	// With SomLeftMost enabled, Hyperscan reports accurate start offsets
+	// and the strict containment check works. As a fallback (e.g. when
+	// SOM is unavailable and from=0), we accept the first regexp2 match
+	// whose end aligns with the Hyperscan end offset.
+	var bestMatch *regexp2.Match
 	for match != nil {
 		matchStart := match.Index
 		matchEnd := matchStart + match.Length
 
-		// Check if this match corresponds to our Hyperscan location
-		if matchStart <= relativeStart && matchEnd >= (end-contextStart) {
-			// Extract positional capture groups
-			var groups [][]byte
-			matchGroups := match.Groups()
-			for i := 1; i < len(matchGroups); i++ {
-				group := matchGroups[i]
-				if len(group.Captures) > 0 {
-					capture := group.Captures[0]
-					groups = append(groups, []byte(capture.String()))
-				}
-			}
+		// Strict containment: regexp2 match spans the Hyperscan region
+		if matchStart <= relativeStart && matchEnd >= relativeEnd {
+			bestMatch = match
+			break
+		}
 
-			// Extract named capture groups
-			namedGroups := make(map[string][]byte)
-			groupNames := m.groupNameCache[rule.Pattern]
-			for _, name := range groupNames {
-				if name == "" || (len(name) > 0 && name[0] >= '0' && name[0] <= '9') {
-					continue
-				}
-				group := match.GroupByName(name)
-				if group != nil && len(group.Captures) > 0 {
-					namedGroups[name] = []byte(group.Captures[0].String())
-				}
-			}
-
-			return groups, namedGroups
+		// Fallback: regexp2 match end aligns with Hyperscan end
+		// (handles from=0 when SOM is not available)
+		if bestMatch == nil && matchEnd >= relativeEnd {
+			bestMatch = match
 		}
 
 		match, err = re.FindNextMatch(match)
@@ -655,7 +644,40 @@ func (m *VectorscanMatcher) extractCaptures(content []byte, rule *types.Rule, st
 		}
 	}
 
-	return nil, nil
+	if bestMatch == nil {
+		return nil, nil
+	}
+
+	return m.extractGroupsFromMatch(bestMatch, rule)
+}
+
+// extractGroupsFromMatch extracts positional and named capture groups from a regexp2 match.
+func (m *VectorscanMatcher) extractGroupsFromMatch(match *regexp2.Match, rule *types.Rule) ([][]byte, map[string][]byte) {
+	// Extract positional capture groups
+	var groups [][]byte
+	matchGroups := match.Groups()
+	for i := 1; i < len(matchGroups); i++ {
+		group := matchGroups[i]
+		if len(group.Captures) > 0 {
+			capture := group.Captures[0]
+			groups = append(groups, []byte(capture.String()))
+		}
+	}
+
+	// Extract named capture groups
+	namedGroups := make(map[string][]byte)
+	groupNames := m.groupNameCache[rule.Pattern]
+	for _, name := range groupNames {
+		if name == "" || (len(name) > 0 && name[0] >= '0' && name[0] <= '9') {
+			continue
+		}
+		group := match.GroupByName(name)
+		if group != nil && len(group.Captures) > 0 {
+			namedGroups[name] = []byte(group.Captures[0].String())
+		}
+	}
+
+	return groups, namedGroups
 }
 
 // matchFallbackRules uses regexp2 to match patterns that are incompatible with Hyperscan.
