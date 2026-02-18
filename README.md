@@ -95,6 +95,28 @@ titus scan path/to/code --rules-exclude "kingfisher.generic"
 titus scan path/to/code --rules path/to/custom-rules.yaml
 ```
 
+### Extracting from Binary Files
+
+Titus can extract text from binary file formats and scan the contents for secrets:
+
+```bash
+# Extract and scan all supported formats
+titus scan path/to/files --extract=all
+
+# Target specific formats
+titus scan path/to/files --extract=xlsx,docx,pdf,zip
+```
+
+Supported formats include Office documents (xlsx, docx, pptx, odp, ods, odt), PDFs, Jupyter notebooks, SQLite databases, email (eml, rtf), and archives (zip, tar, tar.gz, jar, war, ear, apk, ipa, crx, xpi, 7z). Archives are recursively extracted up to configurable depth and size limits.
+
+```bash
+# Tune extraction limits
+titus scan path/to/files --extract=all \
+  --extract-max-size 10MB \
+  --extract-max-total 100MB \
+  --extract-max-depth 5
+```
+
 ## Go Library
 
 Titus can be imported as a Go library to add secrets detection to your own tools.
