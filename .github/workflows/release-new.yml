@@ -164,7 +164,7 @@ jobs:
 
     - name: Install build dependencies
       run: |
-        brew install cmake ragel pkg-config boost
+        brew install cmake ragel pkg-config boost pcre
 
     - name: Build hyperscan/vectorscan static library
       run: |
