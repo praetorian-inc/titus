@@ -198,3 +198,72 @@ rules:
         client_secret: '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',
         redirect_uri: `http://localhost:${Config.OAUTH_HTTP_PORT}/oauth2callback`
       };
+
+
+- name: Google API Key (Base64 Encoded)
+  id: np.google.7
+
+  pattern: |
+    (?x)
+    (?P<key>QUl6YVN[A-Za-z0-9+/]{45}={0,2})
+    (?:[^A-Za-z0-9+/=]|$)
+
+  categories: [api, secret, encoded]
+
+  examples:
+  - '"googleMapsApiKey":"QUl6YVN5RHhZMXRlZjNWUHRfMTVtTzhKWnZiNzBSQVlIZlVLZW9z"'
+  - 'API_KEY=QUl6YVN5QjRzVWFDZXM1YlJfODdxTmI3ZVVWUU43Ml92djhtcGJV'
+  - 'config.apiKey = "QUl6YVN5QktxUGFDZXNpZ3Z2Tk5jUnRfZ0wwQTZjZ3gzWkIta3VR"'
+
+  negative_examples:
+  - 'QUl6YVN5-short'
+  - 'not_base64_QUl6YVN5'
+
+  description: |
+    Base64-encoded Google API key. The original key uses the AIza prefix
+    (39 characters total), which encodes to a 52-character base64 string
+    starting with QUl6YVN. Applications sometimes encode API keys to
+    obfuscate them or for transport encoding. An attacker can decode the
+    key and use it to access Google Cloud APIs the key is authorized for.
+
+  references:
+  - https://cloud.google.com/docs/authentication/api-keys
+
+
+- name: Google Maps API Key
+  id: np.google.8
+
+  pattern: |
+    (?xi)
+    (?:google|gmap|gmaps|maps)
+    (?:.|[\n\r]){0,30}?
+    (?:api)?
+    (?:.|[\n\r]){0,10}?
+    (?:key|token|secret)
+    (?:.|[\n\r]){0,20}?
+    (?P<key>AIza[0-9A-Za-z_-]{35})
+    (?:[^0-9A-Za-z_-]|$)
+
+  categories: [api, secret]
+
+  examples:
+  - 'googleMapsApiKey = "AIzaSyDxY1tef3VPt_15mO8JZvb70RAYHfUKeos"'
+  - 'GOOGLE_MAPS_KEY=AIzaSyB4sUaCes5bR_87qNb7eUVQN72_vv8mpbU'
+  - 'gmaps_api_key: AIzaSyAKqPaCesigvvNNcRt_gL0A6cgx3ZB-kuQ'
+  - 'GMAP_KEY="AIzaSyBnAoaCesVUco4MXf4enYCVBg6ZnpY49N-"'
+
+  negative_examples:
+  - 'AIzaSyEXAMPLE_KEY_REPLACE_ME_1234567'
+  - 'GOOGLE_MAPS_KEY=your-api-key-here'
+
+  description: |
+    Google Maps API key identified by context (variable names containing
+    'google', 'gmap', 'gmaps', or 'maps' near 'key' or 'token'). These keys
+    use the standard Google API format (AIza prefix, 39 characters) and can
+    access Maps JavaScript API, Geocoding, Places, Directions, and other
+    Maps Platform services. Exposed keys can lead to quota theft and billing
+    charges on the key owner's Google Cloud account.
+
+  references:
+  - https://developers.google.com/maps/documentation/javascript/get-api-key
+  - https://cloud.google.com/docs/authentication/api-keys
