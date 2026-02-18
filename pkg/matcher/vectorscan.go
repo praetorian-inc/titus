@@ -143,10 +143,8 @@ func (m *VectorscanMatcher) compilePatterns() error {
 		// Preprocess pattern for Hyperscan compatibility
 		pattern := preprocessPatternForHyperscan(rule.Pattern)
 
-		// Determine Hyperscan flags based on pattern content.
-		// SomLeftMost enables start-of-match reporting so the callback receives
-		// accurate `from` offsets (without it, `from` is always 0).
-		var flags hyperscan.CompileFlag = hyperscan.SomLeftMost
+		// Determine Hyperscan flags based on pattern content
+		var flags hyperscan.CompileFlag = 0
 		if hasCaseInsensitive(rule.Pattern) {
 			flags |= hyperscan.Caseless
 		}
