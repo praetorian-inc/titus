@@ -135,7 +135,7 @@ jobs:
         name: titus-linux-arm64
         path: dist/titus-linux-arm64
 
-  # Build macOS binaries
+  # Build macOS binaries (static vectorscan/hyperscan linked in)
   build-macos:
     name: Build macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -145,10 +145,12 @@ jobs:
         include:
           - arch: arm64
             runner: macos-14
-            hs_package: vectorscan
+            hs_repo: https://github.com/VectorCamp/vectorscan.git
+            hs_branch: vectorscan/5.4.11
           - arch: amd64
             runner: macos-15-intel
-            hs_package: hyperscan
+            hs_repo: https://github.com/intel/hyperscan.git
+            hs_branch: v5.4.2
 
     steps:
     - name: Checkout code
@@ -160,19 +162,37 @@ jobs:
         go-version-file: 'go.mod'
         cache: true
 
-    - name: Install dependencies
+    - name: Install build dependencies
       run: |
-        brew install ${{ matrix.hs_package }} pkg-config
-        HS_PREFIX=$(brew --prefix ${{ matrix.hs_package }})
-        echo "HS_PREFIX=${HS_PREFIX}" >> $GITHUB_ENV
-        ls -la ${HS_PREFIX}/lib/
+        brew install cmake ragel pkg-config boost
+
+    - name: Build hyperscan/vectorscan static library
+      run: |
+        git clone --depth 1 --branch ${{ matrix.hs_branch }} ${{ matrix.hs_repo }} /tmp/hs-src
+        cd /tmp/hs-src
+        mkdir build && cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_INSTALL_PREFIX=/tmp/hs-install
+        make -j$(sysctl -n hw.ncpu)
+        make install
+        ls -la /tmp/hs-install/lib/libhs*.a
+        find /tmp/hs-install/include -name "hs.h"
 
     - name: Build binary
       env:
         CGO_ENABLED: "1"
       run: |
-        export CGO_CFLAGS="-I${HS_PREFIX}/include/hs"
-        export CGO_LDFLAGS="-L${HS_PREFIX}/lib -lhs -lc++"
+        # Determine where hs.h was installed
+        if [ -f /tmp/hs-install/include/hs/hs.h ]; then
+          HS_INCLUDE="/tmp/hs-install/include/hs"
+        else
+          HS_INCLUDE="/tmp/hs-install/include"
+        fi
+
+        export CGO_CFLAGS="-I${HS_INCLUDE}"
+        export CGO_LDFLAGS="/tmp/hs-install/lib/libhs.a -lc++"
 
         mkdir -p dist
         GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
