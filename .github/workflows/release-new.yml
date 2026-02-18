@@ -182,9 +182,7 @@ jobs:
         ls -la /tmp/hs-install/lib/libhs*.a
         find /tmp/hs-install/include -name "hs.h"
 
-    - name: Build binary
-      env:
-        CGO_ENABLED: "1"
+    - name: Create pkg-config file
       run: |
         # Determine where hs.h was installed
         if [ -f /tmp/hs-install/include/hs/hs.h ]; then
@@ -193,7 +191,29 @@ jobs:
           HS_INCLUDE="/tmp/hs-install/include"
         fi
 
-        export CGO_CFLAGS="-I${HS_INCLUDE}"
+        mkdir -p /tmp/hs-install/lib/pkgconfig
+        cat > /tmp/hs-install/lib/pkgconfig/libhs.pc << PKGEOF
+        prefix=/tmp/hs-install
+        libdir=\${prefix}/lib
+        includedir=${HS_INCLUDE}
+
+        Name: libhs
+        Description: Hyperscan/Vectorscan regex library
+        Version: 5.4
+        Libs: -L\${libdir} -lhs
+        Cflags: -I\${includedir}
+        PKGEOF
+        sed -i '' 's/^        //' /tmp/hs-install/lib/pkgconfig/libhs.pc
+
+        echo "=== libhs.pc ==="
+        cat /tmp/hs-install/lib/pkgconfig/libhs.pc
+        PKG_CONFIG_PATH=/tmp/hs-install/lib/pkgconfig pkg-config --cflags --libs libhs
+
+    - name: Build binary
+      env:
+        CGO_ENABLED: "1"
+        PKG_CONFIG_PATH: "/tmp/hs-install/lib/pkgconfig"
+      run: |
         export CGO_LDFLAGS="/tmp/hs-install/lib/libhs.a -lc++"
 
         mkdir -p dist
