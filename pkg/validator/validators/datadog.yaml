@@ -1,0 +1,19 @@
+validators:
+
+- name: datadog-api-key
+  rule_ids:
+    - kingfisher.datadog.2
+
+  http:
+    method: GET
+    url: "https://api.datadoghq.com/api/v1/validate"
+    auth:
+      type: header
+      secret_group: "api_key"
+      header_name: "DD-API-KEY"
+    headers:
+      - name: "Accept"
+        value: "application/json"
+
+    success_codes: [200]
+    failure_codes: [401, 403]

@@ -1,0 +1,20 @@
+validators:
+
+- name: linear-api-key
+  rule_ids:
+    - kingfisher.linear.1
+
+  http:
+    method: POST
+    url: "https://api.linear.app/graphql"
+    auth:
+      type: header
+      secret_group: "1"
+      header_name: "Authorization"
+    headers:
+      - name: "Content-Type"
+        value: "application/json"
+    body: '{"query": "{ viewer { id } }"}'
+
+    success_codes: [200]
+    failure_codes: [401, 403]
