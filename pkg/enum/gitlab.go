@@ -11,12 +11,12 @@ import (
 
 // GitLabConfig for GitLab API enumeration.
 type GitLabConfig struct {
-	Token    string
-	BaseURL  string // Optional, defaults to gitlab.com
-	Project  string // Single project path (namespace/project)
-	Group    string // Group name (optional)
-	User     string // User name (optional)
-	Config          // Embedded base Config
+	Token   string
+	BaseURL string // Optional, defaults to gitlab.com
+	Project string // Single project path (namespace/project)
+	Group   string // Group name (optional)
+	User    string // User name (optional)
+	Config         // Embedded base Config
 }
 
 // GitLabEnumerator enumerates blobs from GitLab projects via API.
@@ -52,7 +52,7 @@ func NewGitLabEnumerator(cfg GitLabConfig) (*GitLabEnumerator, error) {
 
 // Enumerate walks GitLab projects and yields unique blobs.
 func (e *GitLabEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	projects, err := e.listProjects()
+	projects, err := e.listProjects(ctx)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func (e *GitLabEnumerator) Enumerate(ctx context.Context, callback func(content 
 }
 
 // listProjects returns the list of projects to enumerate.
-func (e *GitLabEnumerator) listProjects() ([]*gitlab.Project, error) {
+func (e *GitLabEnumerator) listProjects(ctx context.Context) ([]*gitlab.Project, error) {
 	// If single project specified
 	if e.config.Project != "" {
 		project, _, err := e.client.Projects.GetProject(e.config.Project, nil)
@@ -89,6 +89,11 @@ func (e *GitLabEnumerator) listProjects() ([]*gitlab.Project, error) {
 		}
 		var allProjects []*gitlab.Project
 		for {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 			projects, resp, err := e.client.Groups.ListGroupProjects(e.config.Group, opts)
 			if err != nil {
 				return nil, fmt.Errorf("listing group projects: %w", err)
@@ -110,6 +115,11 @@ func (e *GitLabEnumerator) listProjects() ([]*gitlab.Project, error) {
 		}
 		var allProjects []*gitlab.Project
 		for {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 			projects, resp, err := e.client.Projects.ListUserProjects(e.config.User, opts)
 			if err != nil {
 				return nil, fmt.Errorf("listing user projects: %w", err)
@@ -130,7 +140,7 @@ func (e *GitLabEnumerator) listProjects() ([]*gitlab.Project, error) {
 func (e *GitLabEnumerator) enumerateProject(ctx context.Context, project *gitlab.Project, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	// Get repository tree recursively
 	opts := &gitlab.ListTreeOptions{
-		Recursive: gitlab.Ptr(true),
+		Recursive:   gitlab.Ptr(true),
 		ListOptions: gitlab.ListOptions{PerPage: 100},
 	}
 

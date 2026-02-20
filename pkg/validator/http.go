@@ -53,15 +53,12 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	}
 
 	// Substitute URL templates with named capture group values
-	url := v.def.HTTP.URL
-	for name, value := range match.NamedGroups {
-		url = strings.ReplaceAll(url, "{{"+name+"}}", string(value))
-	}
+	url := substituteTemplateVars(v.def.HTTP.URL, match.NamedGroups)
 
-	// Build request with optional body
+	// Build request with optional body (also substitute template vars)
 	var body io.Reader
 	if v.def.HTTP.Body != "" {
-		body = strings.NewReader(v.def.HTTP.Body)
+		body = strings.NewReader(substituteTemplateVars(v.def.HTTP.Body, match.NamedGroups))
 	}
 	req, err := http.NewRequestWithContext(ctx, v.def.HTTP.Method, url, body)
 	if err != nil {
@@ -73,9 +70,9 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 		return types.NewValidationResult(types.StatusUndetermined, 0, err.Error()), nil
 	}
 
-	// Apply custom headers
+	// Apply custom headers (with template substitution)
 	for _, h := range v.def.HTTP.Headers {
-		req.Header.Set(h.Name, h.Value)
+		req.Header.Set(h.Name, substituteTemplateVars(h.Value, match.NamedGroups))
 	}
 
 	// Execute request
@@ -83,7 +80,7 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("request failed: %v", err)), nil
 	}
-	defer resp.Body.Close()
+	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	// Check response code
 	return v.evaluateResponse(resp.StatusCode), nil
@@ -178,4 +175,17 @@ func (v *HTTPValidator) evaluateResponse(statusCode int) *types.ValidationResult
 
 	// Unknown status code
 	return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("HTTP %d - unexpected status code", statusCode))
+}
+
+// substituteTemplateVars replaces template variables in s using named capture groups.
+// Handles all common template syntaxes: {{name}}, {{ name }}, {{.name}}, {{ .name }}
+func substituteTemplateVars(s string, groups map[string][]byte) string {
+	for name, value := range groups {
+		val := string(value)
+		s = strings.ReplaceAll(s, "{{"+name+"}}", val)
+		s = strings.ReplaceAll(s, "{{ "+name+" }}", val)
+		s = strings.ReplaceAll(s, "{{."+name+"}}", val)
+		s = strings.ReplaceAll(s, "{{ ."+name+" }}", val)
+	}
+	return s
 }

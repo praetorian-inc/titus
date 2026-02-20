@@ -107,7 +107,7 @@ func TestLoadRuleset_Valid(t *testing.T) {
   - id: rs.aws
     name: AWS Rules
     description: Rules for AWS credential detection
-    rule_ids:
+    include_rule_ids:
       - np.aws.1
       - np.aws.2
 `

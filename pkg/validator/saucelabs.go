@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
+
+// Pre-compiled pattern for extracting SauceLabs username from snippet context.
+var sauceUsernamePattern = regexp.MustCompile(`(?i)SAUCE_USERNAME\s*[=:]\s*["']?([a-zA-Z0-9_-]+)["']?`)
 
 // SauceLabsValidator validates SauceLabs credentials using the team management API.
 type SauceLabsValidator struct {
@@ -73,7 +77,7 @@ func (v *SauceLabsValidator) Validate(ctx context.Context, match *types.Match) (
 			fmt.Sprintf("request failed: %v", err),
 		), nil
 	}
-	defer resp.Body.Close()
+	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	// Evaluate response
 	switch resp.StatusCode {
@@ -113,7 +117,7 @@ func (v *SauceLabsValidator) extractCredentials(match *types.Match) (username, a
 	accessKey = string(accessKeyBytes)
 
 	// Search for SAUCE_USERNAME in snippet context
-	usernamePattern := regexp.MustCompile(`(?i)SAUCE_USERNAME\s*[=:]\s*["']?([a-zA-Z0-9_-]+)["']?`)
+	usernamePattern := sauceUsernamePattern
 
 	// Check snippet.Before
 	if matches := usernamePattern.FindSubmatch(match.Snippet.Before); len(matches) >= 2 {

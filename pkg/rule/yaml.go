@@ -24,7 +24,7 @@ type yamlRuleset struct {
 	ID          string   `yaml:"id"`
 	Name        string   `yaml:"name"`
 	Description string   `yaml:"description,omitempty"`
-	RuleIDs     []string `yaml:"rule_ids"`
+	RuleIDs     []string `yaml:"include_rule_ids"`
 }
 
 // yamlRulesetsFile represents the top-level structure of a rulesets YAML file.

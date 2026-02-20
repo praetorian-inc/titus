@@ -73,6 +73,12 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading rules: %w", err)
 	}
 
+	// Create rule map for finding ID computation
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
 	// Create matcher
 	m, err := matcher.New(matcher.Config{Rules: rules})
 	if err != nil {
@@ -150,7 +156,12 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 			}
 
 			// Create finding (deduplicated by finding ID)
-			exists, err := s.FindingExists(match.StructuralID)
+			rule, ok := ruleMap[match.RuleID]
+			if !ok {
+				return fmt.Errorf("rule not found: %s", match.RuleID)
+			}
+			findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+			exists, err := s.FindingExists(findingID)
 			if err != nil {
 				return fmt.Errorf("checking finding: %w", err)
 			}
@@ -158,7 +169,7 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 			if !exists {
 				findingCount++
 				finding := &types.Finding{
-					ID:     match.StructuralID,
+					ID:     findingID,
 					RuleID: match.RuleID,
 					Groups: match.Groups,
 				}

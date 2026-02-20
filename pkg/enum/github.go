@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
@@ -13,12 +14,12 @@ import (
 
 // GitHubConfig configures GitHub API enumeration.
 type GitHubConfig struct {
-	Token string // GitHub API token (required)
-	Owner string // Repository owner (for single repo)
-	Repo  string // Repository name (for single repo)
-	Org   string // Organization name (list all org repos)
-	User  string // User name (list all user repos)
-	Config       // Embedded base config
+	Token  string // GitHub API token (required)
+	Owner  string // Repository owner (for single repo)
+	Repo   string // Repository name (for single repo)
+	Org    string // Organization name (list all org repos)
+	User   string // User name (list all user repos)
+	Config        // Embedded base config
 }
 
 // GitHubEnumerator enumerates blobs from GitHub via API.
@@ -152,6 +153,11 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 		return fmt.Errorf("getting tree: %w", err)
 	}
 
+	// Warn if tree is truncated (>100K files) - secrets beyond limit will be missed
+	if tree.GetTruncated() {
+		return fmt.Errorf("repository tree for %s is truncated (>100K files); clone locally and use 'titus scan' for complete coverage", repo.GetFullName())
+	}
+
 	// Process each entry in the tree
 	for _, entry := range tree.Entries {
 		select {
@@ -182,7 +188,7 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 		}
 
 		// Decode base64 content
-		data, err := base64.StdEncoding.DecodeString(*content.Content)
+		data, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(*content.Content, "\n", ""))
 		if err != nil {
 			continue
 		}
