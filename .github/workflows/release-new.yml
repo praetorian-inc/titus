@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   VERSION: ${{ inputs.version || github.ref_name }}
@@ -413,6 +413,8 @@ jobs:
     needs: [build-linux-amd64, build-linux-arm64, build-macos, build-windows, build-burp, build-extension]
     runs-on: ubuntu-22.04
     environment: release
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
