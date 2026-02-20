@@ -254,6 +254,9 @@ func (s *SQLiteStore) ExecBatch(fn func(Store) error) error {
 }
 
 func (s *SQLiteStore) Close() error {
+	if s.db == nil {
+		return nil
+	}
 	return s.db.Close()
 }
 

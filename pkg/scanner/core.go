@@ -101,11 +101,6 @@ func (c *Core) Scan(content, source string) (*ScanResult, error) {
 		return nil, err
 	}
 
-	// Store matches
-	for _, match := range matches {
-		c.store.AddMatch(match)
-	}
-
 	return &ScanResult{
 		Source:  source,
 		Matches: matches,
@@ -122,11 +117,6 @@ func (c *Core) ScanBatch(items []ContentItem) (*BatchScanResult, error) {
 		if err != nil {
 			// Skip items that fail to scan
 			continue
-		}
-
-		// Store matches
-		for _, match := range matches {
-			c.store.AddMatch(match)
 		}
 
 		results = append(results, ScanResult{

@@ -11,7 +11,7 @@ import (
 // and has the correct structure for detecting Contentful Delivery API tokens
 func TestContentfulDeliveryToken_RuleExists(t *testing.T) {
 	// Load the contentful.yml file
-	data, err := builtinRulesFS.ReadFile("rules/contentful.yml")
+	data, err := builtinFS.ReadFile("rules/contentful.yml")
 	if err != nil {
 		t.Fatalf("Failed to read contentful.yml: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestContentfulDeliveryToken_RuleExists(t *testing.T) {
 // TestContentfulPersonalAccessToken_RuleExists verifies the kingfisher.contentful.2 rule exists
 func TestContentfulPersonalAccessToken_RuleExists(t *testing.T) {
 	// Load the contentful.yml file
-	data, err := builtinRulesFS.ReadFile("rules/contentful.yml")
+	data, err := builtinFS.ReadFile("rules/contentful.yml")
 	if err != nil {
 		t.Fatalf("Failed to read contentful.yml: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestContentfulPersonalAccessToken_RuleExists(t *testing.T) {
 // TestContentfulDeliveryToken_HasNamedCaptureGroup verifies the pattern has named capture group
 func TestContentfulDeliveryToken_HasNamedCaptureGroup(t *testing.T) {
 	// Load the contentful.yml file
-	data, err := builtinRulesFS.ReadFile("rules/contentful.yml")
+	data, err := builtinFS.ReadFile("rules/contentful.yml")
 	if err != nil {
 		t.Fatalf("Failed to read contentful.yml: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestContentfulDeliveryToken_HasNamedCaptureGroup(t *testing.T) {
 // TestContentfulPersonalAccessToken_HasNamedCaptureGroup verifies the pattern has named capture group
 func TestContentfulPersonalAccessToken_HasNamedCaptureGroup(t *testing.T) {
 	// Load the contentful.yml file
-	data, err := builtinRulesFS.ReadFile("rules/contentful.yml")
+	data, err := builtinFS.ReadFile("rules/contentful.yml")
 	if err != nil {
 		t.Fatalf("Failed to read contentful.yml: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestContentfulPersonalAccessToken_HasNamedCaptureGroup(t *testing.T) {
 // TestContentfulDeliveryToken_PatternHasExamples verifies the delivery rule has examples
 func TestContentfulDeliveryToken_PatternHasExamples(t *testing.T) {
 	// Load the contentful.yml file
-	data, err := builtinRulesFS.ReadFile("rules/contentful.yml")
+	data, err := builtinFS.ReadFile("rules/contentful.yml")
 	if err != nil {
 		t.Fatalf("Failed to read contentful.yml: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestContentfulDeliveryToken_PatternHasExamples(t *testing.T) {
 // TestContentfulPersonalAccessToken_PatternHasExamples verifies the PAT rule has examples
 func TestContentfulPersonalAccessToken_PatternHasExamples(t *testing.T) {
 	// Load the contentful.yml file
-	data, err := builtinRulesFS.ReadFile("rules/contentful.yml")
+	data, err := builtinFS.ReadFile("rules/contentful.yml")
 	if err != nil {
 		t.Fatalf("Failed to read contentful.yml: %v", err)
 	}

@@ -18,7 +18,7 @@ type Loader struct {
 // NewLoader creates a loader with built-in rules from embedded filesystem.
 func NewLoader() *Loader {
 	return &Loader{
-		fs: builtinRulesFS,
+		fs: builtinFS,
 	}
 }
 

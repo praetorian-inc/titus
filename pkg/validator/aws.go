@@ -13,6 +13,12 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
+// Pre-compiled patterns for extracting AWS credentials from snippet context.
+var (
+	awsSecretKeyPattern    = regexp.MustCompile(`AWS_SECRET_ACCESS_KEY[=:"\s]+([A-Za-z0-9/+=]{40})`)
+	awsSessionTokenPattern = regexp.MustCompile(`AWS_SESSION_TOKEN[=:"\s]+([A-Za-z0-9/+=]+)`)
+)
+
 // STSClient interface for STS operations (allows mocking in tests).
 type STSClient interface {
 	GetCallerIdentity(ctx context.Context, params *sts.GetCallerIdentityInput, optFns ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error)
@@ -148,8 +154,7 @@ func (v *AWSValidator) extractCredentials(match *types.Match) (keyID, secret, se
 		keyID = string(keyIDBytes)
 
 		// Look for AWS_SECRET_ACCESS_KEY in snippet.After
-		secretPattern := regexp.MustCompile(`AWS_SECRET_ACCESS_KEY[=:"\s]+([A-Za-z0-9/+=]{40})`)
-		secretMatches := secretPattern.FindSubmatch(match.Snippet.After)
+		secretMatches := awsSecretKeyPattern.FindSubmatch(match.Snippet.After)
 		if len(secretMatches) < 2 {
 			// Secret not found in snippet
 			return "", "", "", fmt.Errorf("partial credentials: np.aws.1 only contains access key ID")
@@ -157,8 +162,7 @@ func (v *AWSValidator) extractCredentials(match *types.Match) (keyID, secret, se
 		secret = string(secretMatches[1])
 
 		// Look for AWS_SESSION_TOKEN in snippet.After (optional)
-		tokenPattern := regexp.MustCompile(`AWS_SESSION_TOKEN[=:"\s]+([A-Za-z0-9/+=]+)`)
-		tokenMatches := tokenPattern.FindSubmatch(match.Snippet.After)
+		tokenMatches := awsSessionTokenPattern.FindSubmatch(match.Snippet.After)
 		if len(tokenMatches) >= 2 {
 			sessionToken = string(tokenMatches[1])
 		}

@@ -5,10 +5,23 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 
 	"github.com/praetorian-inc/titus/pkg/types"
+)
+
+// Pre-compiled patterns for extracting Twilio secrets from snippet context.
+var (
+	twilioSecretPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)TWILIO_API_SECRET\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
+		regexp.MustCompile(`(?i)TWILIO_AUTH_TOKEN\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
+		regexp.MustCompile(`(?i)API_KEY_SECRET\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
+		regexp.MustCompile(`(?i)twilio.?Api.?Key.?Secret\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
+		regexp.MustCompile(`(?i)secret\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
+		regexp.MustCompile(`(?i)auth.?token\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
+	}
 )
 
 // TwilioValidator validates Twilio API Key credentials using the Accounts API.
@@ -75,7 +88,7 @@ func (v *TwilioValidator) Validate(ctx context.Context, match *types.Match) (*ty
 			fmt.Sprintf("request failed: %v", err),
 		), nil
 	}
-	defer resp.Body.Close()
+	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	// Evaluate response
 	switch resp.StatusCode {
@@ -117,20 +130,7 @@ func (v *TwilioValidator) extractCredentials(match *types.Match) (keySID, keySec
 	// Search for API Key Secret in snippet context
 	// Twilio API Key Secrets are 32 alphanumeric characters
 	// Common patterns: TWILIO_API_SECRET, API_SECRET, auth_token, etc.
-	secretPatterns := []*regexp.Regexp{
-		// TWILIO_API_SECRET = "secret"
-		regexp.MustCompile(`(?i)TWILIO_API_SECRET\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
-		// TWILIO_AUTH_TOKEN = "secret"
-		regexp.MustCompile(`(?i)TWILIO_AUTH_TOKEN\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
-		// API_KEY_SECRET = "secret" (generic)
-		regexp.MustCompile(`(?i)API_KEY_SECRET\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
-		// twilioApiKeySecret = "secret" (camelCase)
-		regexp.MustCompile(`(?i)twilio.?Api.?Key.?Secret\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
-		// secret = "value" after key_sid on same line or nearby
-		regexp.MustCompile(`(?i)secret\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
-		// auth_token = "value"
-		regexp.MustCompile(`(?i)auth.?token\s*[=:]\s*["']?([a-zA-Z0-9]{32})["']?`),
-	}
+	secretPatterns := twilioSecretPatterns
 
 	// Check all snippet locations (Snippet is a value type, not a pointer)
 	snippetParts := [][]byte{

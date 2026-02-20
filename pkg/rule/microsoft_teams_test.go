@@ -15,7 +15,7 @@ import (
 // and has the correct structure
 func TestMicrosoftTeamsWebhook_RuleExists(t *testing.T) {
 	// Load the microsoft_teams.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoft_teams.yml")
+	data, err := builtinFS.ReadFile("rules/microsoft_teams.yml")
 	require.NoError(t, err, "Failed to read microsoft_teams.yml")
 
 	// Parse the YAML to get all rules
@@ -60,7 +60,7 @@ func TestMicrosoftTeamsWebhook_RuleExists(t *testing.T) {
 // TestMicrosoftTeamsWebhook_PatternMatches tests that positive examples match
 func TestMicrosoftTeamsWebhook_PatternMatches(t *testing.T) {
 	// Load the microsoft_teams.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoft_teams.yml")
+	data, err := builtinFS.ReadFile("rules/microsoft_teams.yml")
 	require.NoError(t, err, "Failed to read microsoft_teams.yml")
 
 	// Parse the YAML
@@ -137,7 +137,7 @@ func TestMicrosoftTeamsWebhook_PatternMatches(t *testing.T) {
 // TestMicrosoftTeamsWebhook_NamedCaptureGroup verifies the webhook capture group extracts full URL
 func TestMicrosoftTeamsWebhook_NamedCaptureGroup(t *testing.T) {
 	// Load the microsoft_teams.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoft_teams.yml")
+	data, err := builtinFS.ReadFile("rules/microsoft_teams.yml")
 	require.NoError(t, err, "Failed to read microsoft_teams.yml")
 
 	// Parse the YAML
@@ -197,7 +197,7 @@ func TestMicrosoftTeamsWebhook_NamedCaptureGroup(t *testing.T) {
 // TestKingfisherMicrosoftTeamsWebhook_RuleExists verifies the kingfisher.microsoftteamswebhook.1 rule exists
 func TestKingfisherMicrosoftTeamsWebhook_RuleExists(t *testing.T) {
 	// Load the microsoftteamswebhook.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoftteamswebhook.yml")
+	data, err := builtinFS.ReadFile("rules/microsoftteamswebhook.yml")
 	require.NoError(t, err, "Failed to read microsoftteamswebhook.yml")
 
 	// Parse the YAML
@@ -232,7 +232,7 @@ func TestKingfisherMicrosoftTeamsWebhook_RuleExists(t *testing.T) {
 // TestKingfisherMicrosoftTeamsWebhook_PatternMatches tests pattern matching for kingfisher rule
 func TestKingfisherMicrosoftTeamsWebhook_PatternMatches(t *testing.T) {
 	// Load the microsoftteamswebhook.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoftteamswebhook.yml")
+	data, err := builtinFS.ReadFile("rules/microsoftteamswebhook.yml")
 	require.NoError(t, err, "Failed to read microsoftteamswebhook.yml")
 
 	// Parse the YAML
@@ -297,7 +297,7 @@ func TestKingfisherMicrosoftTeamsWebhook_PatternMatches(t *testing.T) {
 // TestKingfisherMicrosoftTeamsWebhook_NamedCaptureGroup verifies webhook capture group extracts full URL
 func TestKingfisherMicrosoftTeamsWebhook_NamedCaptureGroup(t *testing.T) {
 	// Load the microsoftteamswebhook.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoftteamswebhook.yml")
+	data, err := builtinFS.ReadFile("rules/microsoftteamswebhook.yml")
 	require.NoError(t, err, "Failed to read microsoftteamswebhook.yml")
 
 	// Parse the YAML
@@ -357,7 +357,7 @@ func TestKingfisherMicrosoftTeamsWebhook_NamedCaptureGroup(t *testing.T) {
 // TestMicrosoftTeamsWebhook_ValidationBlock verifies validation YAML structure for np.msteams.1
 func TestMicrosoftTeamsWebhook_ValidationBlock(t *testing.T) {
 	// Load the microsoft_teams.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoft_teams.yml")
+	data, err := builtinFS.ReadFile("rules/microsoft_teams.yml")
 	require.NoError(t, err, "Failed to read microsoft_teams.yml")
 
 	// Parse the raw YAML to access validation structure
@@ -449,7 +449,7 @@ func TestMicrosoftTeamsWebhook_ValidationBlock(t *testing.T) {
 // TestKingfisherMicrosoftTeamsWebhook_ValidationBlock verifies validation YAML structure
 func TestKingfisherMicrosoftTeamsWebhook_ValidationBlock(t *testing.T) {
 	// Load the microsoftteamswebhook.yml file
-	data, err := builtinRulesFS.ReadFile("rules/microsoftteamswebhook.yml")
+	data, err := builtinFS.ReadFile("rules/microsoftteamswebhook.yml")
 	require.NoError(t, err, "Failed to read microsoftteamswebhook.yml")
 
 	// Parse the raw YAML to access validation structure

@@ -11,7 +11,7 @@ import (
 // and has the correct structure for detecting paired Facebook app credentials
 func TestFacebookAppCredentials_RuleExists(t *testing.T) {
 	// Load the facebook.yml file containing all Facebook rules
-	data, err := builtinRulesFS.ReadFile("rules/facebook.yml")
+	data, err := builtinFS.ReadFile("rules/facebook.yml")
 	if err != nil {
 		t.Fatalf("Failed to read facebook.yml: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestFacebookAppCredentials_RuleExists(t *testing.T) {
 // TestFacebookAppCredentials_ExamplesIncluded tests that positive and negative examples are included
 func TestFacebookAppCredentials_ExamplesIncluded(t *testing.T) {
 	// Load the facebook.yml file
-	data, err := builtinRulesFS.ReadFile("rules/facebook.yml")
+	data, err := builtinFS.ReadFile("rules/facebook.yml")
 	if err != nil {
 		t.Fatalf("Failed to read facebook.yml: %v", err)
 	}
