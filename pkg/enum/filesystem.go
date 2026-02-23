@@ -45,7 +45,8 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 	var files []fileEntry
 	err := filepath.Walk(e.config.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			return nil
 		}
 
 		select {
@@ -146,7 +147,8 @@ func (e *FilesystemEnumerator) processFile(ctx context.Context, path string, cal
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", path, err)
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		return nil
 	}
 
 	binary := isBinary(content)
