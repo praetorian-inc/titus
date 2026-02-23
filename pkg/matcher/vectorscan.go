@@ -475,7 +475,7 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 				NamedGroups: namedGroups,
 				Snippet: types.Snippet{
 					Before:   before,
-					Matching: content[start:end],
+					Matching: append([]byte{}, content[start:end]...),
 					After:    after,
 				},
 			}
@@ -771,7 +771,7 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 				NamedGroups: namedGroups,
 				Snippet: types.Snippet{
 					Before:   before,
-					Matching: content[start:end],
+					Matching: append([]byte{}, content[start:end]...),
 					After:    after,
 				},
 			}

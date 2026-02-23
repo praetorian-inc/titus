@@ -1,17 +1,15 @@
 package matcher
 
 // ExtractContext extracts N lines before and after a match.
-// Returns before, after byte slices.
+// Returns before, after byte slices that are independent copies (not sub-slices
+// of content), so storing them will not pin the original content in memory.
 // Handles file boundaries gracefully (returns empty if at start/end).
 // Context starts immediately before the start offset and ends immediately after the end offset.
 // The matched content itself (between start and end) is not duplicated in the context.
 func ExtractContext(content []byte, start, end int, lines int) (before, after []byte) {
-	// No context requested or negative lines
 	if lines <= 0 {
 		return nil, nil
 	}
-
-	// Validate bounds
 	if start < 0 || start > len(content) {
 		return nil, nil
 	}
@@ -22,11 +20,15 @@ func ExtractContext(content []byte, start, end int, lines int) (before, after []
 		return nil, nil
 	}
 
-	// Extract before context
-	before = extractBefore(content, start, lines)
-
-	// Extract after context
-	after = extractAfter(content, end, lines)
+	// Copy sub-slices to decouple from the original content backing array.
+	// Without this, storing a small context snippet keeps the entire
+	// file content pinned in memory via the shared underlying array.
+	if b := extractBefore(content, start, lines); len(b) > 0 {
+		before = append([]byte{}, b...)
+	}
+	if a := extractAfter(content, end, lines); len(a) > 0 {
+		after = append([]byte{}, a...)
+	}
 
 	return before, after
 }

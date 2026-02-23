@@ -125,7 +125,7 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 				NamedGroups: namedGroups,
 				Snippet: types.Snippet{
 					Before:   before,
-					Matching: content[start:end],
+					Matching: append([]byte{}, content[start:end]...),
 					After:    after,
 				},
 			}

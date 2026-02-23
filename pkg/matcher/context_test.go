@@ -241,3 +241,33 @@ line3`,
 		})
 	}
 }
+
+func TestExtractContext_ReturnsIndependentCopies(t *testing.T) {
+	// Build a content buffer with multiple lines and a match in the middle.
+	content := []byte("line1\nline2\nline3\nMATCH\nline5\nline6\nline7\n")
+
+	start := 18 // Start of "MATCH"
+	end := 23   // End of "MATCH"
+
+	before, after := ExtractContext(content, start, end, 2)
+
+	// Sanity-check that we actually got context back.
+	assert.Equal(t, "line2\nline3\n", string(before), "before context should contain 2 lines before the match")
+	assert.Equal(t, "line5\nline6\n", string(after), "after context should contain 2 lines after the match")
+
+	// Save expected values before we destroy the original buffer.
+	expectedBefore := string(before)
+	expectedAfter := string(after)
+
+	// Zero out the entire original content buffer.
+	for i := range content {
+		content[i] = 0
+	}
+
+	// If before/after were sub-slices of content (sharing the same backing
+	// array), they would now be corrupted. Independent copies survive.
+	assert.Equal(t, expectedBefore, string(before),
+		"before context was corrupted after zeroing content — it shares the original backing array instead of being an independent copy")
+	assert.Equal(t, expectedAfter, string(after),
+		"after context was corrupted after zeroing content — it shares the original backing array instead of being an independent copy")
+}
