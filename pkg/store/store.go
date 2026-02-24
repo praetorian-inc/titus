@@ -48,6 +48,12 @@ type Store interface {
 	// The Store passed to fn uses the transaction; the outer Store is unchanged.
 	ExecBatch(fn func(Store) error) error
 
+	// GetAnnotation retrieves an annotation for a target.
+	GetAnnotation(targetType, targetID string) (status string, comment string, err error)
+
+	// SetAnnotation creates or updates an annotation.
+	SetAnnotation(targetType, targetID, status, comment string) error
+
 	// Close closes the database connection.
 	Close() error
 }

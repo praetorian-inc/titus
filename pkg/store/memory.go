@@ -198,6 +198,16 @@ func (s *MemoryStore) ExecBatch(fn func(Store) error) error {
 	return fn(s)
 }
 
+// GetAnnotation is a no-op for in-memory store.
+func (m *MemoryStore) GetAnnotation(targetType, targetID string) (string, string, error) {
+	return "", "", nil
+}
+
+// SetAnnotation is a no-op for in-memory store.
+func (m *MemoryStore) SetAnnotation(targetType, targetID, status, comment string) error {
+	return nil
+}
+
 // Close closes the database connection.
 // For in-memory store, this is a no-op.
 func (m *MemoryStore) Close() error {
