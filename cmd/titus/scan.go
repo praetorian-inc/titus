@@ -479,7 +479,10 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	}
 
 	if useGit {
-		return enum.NewGitEnumerator(config), nil
+		gitEnum := enum.NewGitEnumerator(config)
+		gitEnum.WalkAll = true
+		fsEnum := enum.NewFilesystemEnumerator(config)
+		return enum.NewCombinedEnumerator(gitEnum, fsEnum), nil
 	}
 
 	return enum.NewFilesystemEnumerator(config), nil
