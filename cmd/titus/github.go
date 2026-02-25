@@ -18,57 +18,69 @@ var (
 	githubUser         string
 	githubOutputPath   string
 	githubOutputFormat string
+	githubNoClone      bool
+	githubGit          bool
 )
 
 var githubCmd = &cobra.Command{
 	Use:   "github [owner/repo]",
-	Short: "Scan GitHub repositories via API",
-	Long:  "Scan GitHub repositories via API without cloning locally",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runGitHubScan,
+	Short: "Scan GitHub repositories",
+	Long: `Scan GitHub repositories by cloning and scanning locally.
+No API token needed for public repositories.
+Use --token or GITHUB_TOKEN for private repos and higher rate limits.
+Use --git to scan full git history (slower but finds deleted secrets).`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runGitHubScan,
 }
 
 var githubScanCmd = &cobra.Command{
 	Use:   "scan [owner/repo]",
 	Short: "Scan GitHub repository or organization",
-	Long:  "Scan a single repo (owner/repo), all repos in an org (--org), or all repos for a user (--user)",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runGitHubScan,
+	Long: `Scan a single repo (owner/repo), all repos in an org (--org), or all repos for a user (--user).
+Repositories are cloned and scanned for current files by default.
+No API token needed for public repositories.
+Use --git to also scan full git history.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runGitHubScan,
 }
 
 func init() {
-	// Add flags to github scan command
-	githubScanCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or use GITHUB_TOKEN env)")
+	githubScanCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
 	githubScanCmd.Flags().StringVar(&githubOrg, "org", "", "Scan all repositories in organization")
 	githubScanCmd.Flags().StringVar(&githubUser, "user", "", "Scan all repositories for user")
 	githubScanCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path")
 	githubScanCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
+	githubScanCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
+	githubScanCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
 
-	// Add flags to root github command (for backward compatibility)
-	githubCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or use GITHUB_TOKEN env)")
+	githubCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
 	githubCmd.Flags().StringVar(&githubOrg, "org", "", "Scan all repositories in organization")
 	githubCmd.Flags().StringVar(&githubUser, "user", "", "Scan all repositories for user")
 	githubCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path")
 	githubCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
+	githubCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
+	githubCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
 
-	// Add scan as subcommand
 	githubCmd.AddCommand(githubScanCmd)
 }
 
 func runGitHubScan(cmd *cobra.Command, args []string) error {
-	// Get token from flag or environment
 	token := githubToken
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
-	if token == "" {
-		return fmt.Errorf("GitHub API token required: use --token flag or GITHUB_TOKEN environment variable")
+
+	if githubNoClone && token == "" {
+		return fmt.Errorf("--no-clone requires a GitHub API token: use --token or GITHUB_TOKEN")
 	}
 
-	// Parse owner/repo if provided
+	if token == "" {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Note: No GitHub token provided. Using unauthenticated access (60 requests/hour, public repos only).\n")
+		fmt.Fprintf(cmd.ErrOrStderr(), "Set GITHUB_TOKEN or use --token for higher rate limits and private repo access.\n\n")
+	}
+
 	var owner, repo string
 	if len(args) > 0 {
-		// Parse "owner/repo" format
 		parts := splitOwnerRepo(args[0])
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid repository format, expected owner/repo (e.g., praetorian-inc/titus)")
@@ -76,51 +88,11 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		owner, repo = parts[0], parts[1]
 	}
 
-	// Validate that at least one target is specified
 	if repo == "" && githubOrg == "" && githubUser == "" {
 		return fmt.Errorf("must specify owner/repo, --org, or --user")
 	}
 
-	// Load rules
-	rules, err := loadRules("", "", "")
-	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
-	}
-
-	// Create rule map for finding ID computation
-	ruleMap := make(map[string]*types.Rule)
-	for _, r := range rules {
-		ruleMap[r.ID] = r
-	}
-
-	// Create matcher
-	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: 3,
-	})
-	if err != nil {
-		return fmt.Errorf("creating matcher: %w", err)
-	}
-	defer m.Close()
-
-	// Create store
-	s, err := store.New(store.Config{
-		Path: githubOutputPath,
-	})
-	if err != nil {
-		return fmt.Errorf("creating store: %w", err)
-	}
-	defer s.Close()
-
-	// Store rules for foreign key constraints
-	for _, r := range rules {
-		if err := s.AddRule(r); err != nil {
-			return fmt.Errorf("storing rule: %w", err)
-		}
-	}
-
-	// Create GitHub enumerator
-	enumerator, err := enum.NewGitHubEnumerator(enum.GitHubConfig{
+	ghEnum, err := enum.NewGitHubEnumerator(enum.GitHubConfig{
 		Token: token,
 		Owner: owner,
 		Repo:  repo,
@@ -131,32 +103,80 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("creating GitHub enumerator: %w", err)
+		return fmt.Errorf("creating GitHub client: %w", err)
 	}
 
-	// Scan
+	rules, err := loadRules("", "", "")
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
+	m, err := matcher.New(matcher.Config{
+		Rules:        rules,
+		ContextLines: 3,
+	})
+	if err != nil {
+		return fmt.Errorf("creating matcher: %w", err)
+	}
+	defer m.Close()
+
+	s, err := store.New(store.Config{
+		Path: githubOutputPath,
+	})
+	if err != nil {
+		return fmt.Errorf("creating store: %w", err)
+	}
+	defer s.Close()
+
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return fmt.Errorf("storing rule: %w", err)
+		}
+	}
+
 	ctx := context.Background()
+	var enumerator enum.Enumerator
+
+	if githubNoClone {
+		enumerator = ghEnum
+	} else {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Enumerating repositories...\n")
+		repos, err := ghEnum.ListRepoURLs(ctx)
+		if err != nil {
+			return fmt.Errorf("listing repositories: %w", err)
+		}
+
+		fmt.Fprintf(cmd.ErrOrStderr(), "Found %d repositories to scan\n\n", len(repos))
+
+		cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
+			MaxFileSize: 10 * 1024 * 1024,
+		})
+		cloneEnum.Git = githubGit
+		enumerator = cloneEnum
+	}
+
 	matchCount := 0
 	findingCount := 0
 
 	err = enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		// Store blob
 		if err := s.AddBlob(blobID, int64(len(content))); err != nil {
 			return fmt.Errorf("storing blob: %w", err)
 		}
 
-		// Store provenance
 		if err := s.AddProvenance(blobID, prov); err != nil {
 			return fmt.Errorf("storing provenance: %w", err)
 		}
 
-		// Match content
 		matches, err := m.MatchWithBlobID(content, blobID)
 		if err != nil {
 			return fmt.Errorf("matching content: %w", err)
 		}
 
-		// Compute line/column for each match
 		for _, match := range matches {
 			startLine, startCol := types.ComputeLineColumn(content, int(match.Location.Offset.Start))
 			endLine, endCol := types.ComputeLineColumn(content, int(match.Location.Offset.End))
@@ -166,7 +186,6 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 			match.Location.Source.End.Column = endCol
 		}
 
-		// Store matches and findings
 		for _, match := range matches {
 			matchCount++
 
@@ -174,7 +193,6 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("storing match: %w", err)
 			}
 
-			// Create finding (deduplicated by finding ID)
 			rule, ok := ruleMap[match.RuleID]
 			if !ok {
 				return fmt.Errorf("rule not found: %s", match.RuleID)
@@ -205,11 +223,9 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning GitHub: %w", err)
 	}
 
-	// Output results
 	fmt.Fprintf(cmd.OutOrStdout(), "GitHub scan complete: %d matches, %d findings\n", matchCount, findingCount)
 	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", githubOutputPath)
 
-	// Get results for output
 	if githubOutputFormat == "json" {
 		matches, err := s.GetAllMatches()
 		if err != nil {
@@ -218,7 +234,6 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		return outputMatches(cmd, matches)
 	}
 
-	// Human format outputs findings
 	findings, err := s.GetFindings()
 	if err != nil {
 		return fmt.Errorf("retrieving findings: %w", err)

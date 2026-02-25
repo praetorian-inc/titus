@@ -63,7 +63,7 @@ var (
 var scanCmd = &cobra.Command{
 	Use:   "scan <target>",
 	Short: "Scan a target for secrets",
-	Long:  "Scan a file, directory, or git repository for secrets using detection rules",
+	Long:  "Scan a file, directory, git repository, or remote GitHub/GitLab repository for secrets using detection rules.\nSupports github.com/org/repo and gitlab.com/namespace/project URLs for direct remote scanning.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runScan,
 }
@@ -99,7 +99,12 @@ type blobJob struct {
 func runScan(cmd *cobra.Command, args []string) error {
 	target := args[0]
 
-	// Validate target exists
+	// Check if target is a GitHub or GitLab URL
+	if repoTarget, ok := parseRepoURL(target); ok {
+		return runRepoScan(cmd, repoTarget)
+	}
+
+	// Validate target exists (filesystem path)
 	if _, err := os.Stat(target); err != nil {
 		return fmt.Errorf("target does not exist: %s", target)
 	}
@@ -483,6 +488,273 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	}
 
 	return enum.NewFilesystemEnumerator(config), nil
+}
+
+// repoTarget holds parsed repository URL information.
+type repoTarget struct {
+	Platform string // "github" or "gitlab"
+	Owner    string // org/user
+	Repo     string // repository/project name
+	FullPath string // "owner/repo"
+}
+
+// parseRepoURL detects if a target string is a GitHub or GitLab repository reference.
+// Supports formats:
+//   - github.com/owner/repo
+//   - https://github.com/owner/repo
+//   - https://github.com/owner/repo.git
+//   - gitlab.com/namespace/project
+//   - https://gitlab.com/namespace/project
+func parseRepoURL(target string) (repoTarget, bool) {
+	// Strip common URL prefixes
+	cleaned := target
+	cleaned = strings.TrimPrefix(cleaned, "https://")
+	cleaned = strings.TrimPrefix(cleaned, "http://")
+	cleaned = strings.TrimSuffix(cleaned, ".git")
+	cleaned = strings.TrimSuffix(cleaned, "/")
+
+	parts := strings.SplitN(cleaned, "/", 4) // host/owner/repo[/extra]
+	if len(parts) < 3 {
+		return repoTarget{}, false
+	}
+
+	host := strings.ToLower(parts[0])
+	owner := parts[1]
+	repo := parts[2]
+
+	var platform string
+	switch host {
+	case "github.com":
+		platform = "github"
+	case "gitlab.com":
+		platform = "gitlab"
+	default:
+		return repoTarget{}, false
+	}
+
+	return repoTarget{
+		Platform: platform,
+		Owner:    owner,
+		Repo:     repo,
+		FullPath: owner + "/" + repo,
+	}, true
+}
+
+// runRepoScan handles scanning of GitHub/GitLab repositories detected from URL-like targets.
+func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
+	// Resolve token from environment
+	var token string
+	switch rt.Platform {
+	case "github":
+		token = os.Getenv("GITHUB_TOKEN")
+	case "gitlab":
+		token = os.Getenv("GITLAB_TOKEN")
+	}
+
+	if token == "" {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Note: No %s token provided. Using unauthenticated access (public repos only).\n\n", rt.Platform)
+	}
+
+	// Build clone URL
+	var cloneURL string
+	switch rt.Platform {
+	case "github":
+		cloneURL = "https://github.com/" + rt.FullPath + ".git"
+	case "gitlab":
+		cloneURL = "https://gitlab.com/" + rt.FullPath + ".git"
+	}
+
+	repos := []enum.RepoInfo{{
+		Name:     rt.FullPath,
+		CloneURL: cloneURL,
+	}}
+
+	cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
+		MaxFileSize: scanMaxFileSize,
+	})
+	cloneEnum.Git = scanGit
+
+	// Load rules
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude)
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
+	// Create matcher
+	m, err := matcher.New(matcher.Config{
+		Rules:        rules,
+		ContextLines: scanContextLines,
+	})
+	if err != nil {
+		return fmt.Errorf("creating matcher: %w", err)
+	}
+	defer m.Close()
+
+	// Create store
+	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
+	if err != nil {
+		return err
+	}
+	if ds != nil {
+		defer ds.Close()
+	} else {
+		defer s.Close()
+	}
+
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return fmt.Errorf("storing rule: %w", err)
+		}
+	}
+
+	validationEngine := initValidationEngine()
+
+	ctx := context.Background()
+	var matchCount atomic.Int64
+	var findingCount atomic.Int64
+	var skippedCount atomic.Int64
+	var totalBytes atomic.Int64
+	var blobCount atomic.Int64
+	startTime := time.Now()
+
+	numWorkers := scanWorkers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	jobs := make(chan blobJob, 2*numWorkers)
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Producer
+	g.Go(func() error {
+		defer close(jobs)
+		return cloneEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			totalBytes.Add(int64(len(content)))
+			blobCount.Add(1)
+
+			if scanIncremental {
+				exists, err := s.BlobExists(blobID)
+				if err != nil {
+					return fmt.Errorf("checking blob: %w", err)
+				}
+				if exists {
+					skippedCount.Add(1)
+					return nil
+				}
+			}
+
+			select {
+			case jobs <- blobJob{content: content, blobID: blobID, prov: prov}:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	})
+
+	// Consumer workers (same as runScan)
+	const batchSize = 64
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			type batchItem struct {
+				blobID  types.BlobID
+				prov    types.Provenance
+				size    int64
+				matches []*types.Match
+			}
+			var batch []batchItem
+
+			flush := func() error {
+				if len(batch) == 0 {
+					return nil
+				}
+				err := s.ExecBatch(func(tx store.Store) error {
+					for _, item := range batch {
+						if err := tx.AddBlob(item.blobID, item.size); err != nil {
+							return fmt.Errorf("storing blob: %w", err)
+						}
+						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
+							return fmt.Errorf("storing provenance: %w", err)
+						}
+						for _, match := range item.matches {
+							if err := tx.AddMatch(match); err != nil {
+								return fmt.Errorf("storing match: %w", err)
+							}
+							rule, ok := ruleMap[match.RuleID]
+							if !ok {
+								return fmt.Errorf("rule not found: %s", match.RuleID)
+							}
+							findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+							exists, err := tx.FindingExists(findingID)
+							if err != nil {
+								return fmt.Errorf("checking finding: %w", err)
+							}
+							if !exists {
+								findingCount.Add(1)
+								if err := tx.AddFinding(&types.Finding{
+									ID:     findingID,
+									RuleID: match.RuleID,
+									Groups: match.Groups,
+								}); err != nil {
+									return fmt.Errorf("storing finding: %w", err)
+								}
+							}
+						}
+					}
+					return nil
+				})
+				batch = batch[:0]
+				return err
+			}
+
+			for job := range jobs {
+				matches, err := m.MatchWithBlobID(job.content, job.blobID)
+				if err != nil {
+					return fmt.Errorf("matching content: %w", err)
+				}
+
+				for _, match := range matches {
+					startLine, startCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.Start))
+					endLine, endCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.End))
+					match.Location.Source.Start.Line = startLine
+					match.Location.Source.Start.Column = startCol
+					match.Location.Source.End.Line = endLine
+					match.Location.Source.End.Column = endCol
+				}
+
+				validateMatches(ctx, validationEngine, matches, verbose)
+				matchCount.Add(int64(len(matches)))
+
+				batch = append(batch, batchItem{
+					blobID:  job.blobID,
+					prov:    job.prov,
+					size:    int64(len(job.content)),
+					matches: matches,
+				})
+				if len(batch) >= batchSize {
+					if err := flush(); err != nil {
+						return err
+					}
+				}
+			}
+			return flush()
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("scanning: %w", err)
+	}
+
+	duration := time.Since(startTime)
+	printScanStats(cmd, scanOutputFormat, scanOutputPath,
+		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
+
+	return outputScanResults(cmd, s, rules, ruleMap)
 }
 
 // outputNoseyParkerSummary outputs findings in noseyparker table format
