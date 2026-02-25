@@ -1,0 +1,39 @@
+rules:
+  - name: Delighted API Key
+    id: np.delighted.1
+    pattern: |
+      (?xi)
+      \b(?:delighted)
+      (?:.|[\n\r]){0,64}?
+      (?:api[_-]?key|secret|key|token)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (?P<key>
+        [a-zA-Z0-9]{20,40}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 2
+    min_entropy: 3.3
+    confidence: medium
+    categories:
+    - api
+    - secret
+
+    examples:
+    - 'DELIGHTED_API_KEY=dELi1a2B3c4D5e6F7g8H9i0JkLm1N2o3P'
+    - 'delighted_api_key: Rq4s5T6u7V8w9X0yZ1a2B3c4D5e6F7'
+
+    negative_examples:
+    - "DELIGHTED_API_KEY=test"
+    - "DELIGHTED_API_KEY=your-api-key-here"
+    - "DELIGHTED_API_KEY=xxxxxxxxxxxxxxxxxxxx"
+
+    description: |
+      Delighted API Key used for customer feedback and NPS survey APIs.
+      An attacker with this credential can access survey responses,
+      NPS scores, customer feedback data, and manage survey campaigns
+      via the Delighted API.
+
+    references:
+    - https://app.delighted.com/docs/api

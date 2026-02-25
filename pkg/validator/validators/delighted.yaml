@@ -1,0 +1,15 @@
+# pkg/validator/validators/delighted.yaml
+# Delighted uses HTTP Basic auth with the API key as username and empty password
+# Validation endpoint returns NPS metrics
+validators:
+  - name: delighted-api-key
+    rule_ids:
+      - np.delighted.1
+    http:
+      method: GET
+      url: https://api.delighted.com/v1/metrics.json
+      auth:
+        type: basic
+        secret_group: "key"
+      success_codes: [200]
+      failure_codes: [401]

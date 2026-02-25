@@ -1,0 +1,50 @@
+rules:
+
+- name: Razorpay API Key
+  id: np.razorpay.1
+
+  pattern: '(?i)\b(?P<key>rzp_live_[A-Za-z0-9]{14})\b'
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'RAZORPAY_KEY_ID=rzp_live_dK4mHQs3eAHUtq'
+  - 'razorpay_key: rzp_live_Nf2tP7xB5qWvYd'
+  - 'var razorpay = new Razorpay("rzp_live_8mQ2kLpV3xRbYe", secret);'
+
+  negative_examples:
+  - "rzp_live_short"
+  - "rzp_live_xxxxxxxxxx"
+  - "RAZORPAY_KEY_ID=your-key-here"
+
+  description: |
+    Razorpay Live API Key used for payment processing in production.
+    An attacker with this credential and the corresponding key secret can
+    process payments, issue refunds, access transaction history, and
+    retrieve customer payment information via the Razorpay API.
+
+  references:
+  - https://razorpay.com/docs/api/
+
+- name: Razorpay Test API Key
+  id: np.razorpay.2
+
+  pattern: '(?i)\b(?P<key>rzp_test_[A-Za-z0-9]{14})\b'
+
+  categories:
+  - api
+  - secret
+  - test
+
+  examples:
+  - 'RAZORPAY_KEY_ID=rzp_test_7mHnQ3pL9xKvYw'
+  - 'razorpay_key: rzp_test_Bf5tR8xC2qEvMd'
+
+  negative_examples:
+  - "rzp_test_short"
+  - "rzp_test_xxxxxxxxxxxx"
+
+  references:
+  - https://razorpay.com/docs/api/

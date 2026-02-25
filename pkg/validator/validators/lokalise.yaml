@@ -1,0 +1,13 @@
+validators:
+  - name: lokalise-api-token
+    rule_ids:
+      - np.lokalise.1
+    http:
+      method: GET
+      url: "https://api.lokalise.com/api2/projects/"
+      auth:
+        type: header
+        secret_group: "token"
+        header_name: "x-api-token"
+      success_codes: [200]
+      failure_codes: [401, 403]

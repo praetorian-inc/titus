@@ -1,0 +1,15 @@
+# pkg/validator/validators/spotify.yaml
+# Spotify uses Bearer token authentication
+# Validation uses the /me endpoint which returns current user profile
+validators:
+  - name: spotify-access-token
+    rule_ids:
+      - np.spotify.1
+    http:
+      method: GET
+      url: https://api.spotify.com/v1/me
+      auth:
+        type: bearer
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [401]

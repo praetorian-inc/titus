@@ -1,0 +1,38 @@
+rules:
+  - name: BrowserStack Access Key
+    id: np.browserstack.1
+    pattern: |
+      (?xi)
+      \b(?:browserstack|BROWSERSTACK)
+      (?:.|[\n\r]){0,64}?
+      (?:access[_-]?key|key|secret|token)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (?P<access_key>
+        [a-zA-Z0-9]{20}
+      )
+      \b
+    categories:
+    - api
+    - secret
+
+    examples:
+    - 'BROWSERSTACK_ACCESS_KEY=qA1bC2dE3fG4hI5jK6lM'
+    - 'browserstack.access_key = "rN7oP8qR9sT0uV1wX2yZ"'
+
+    negative_examples:
+    - "BROWSERSTACK_ACCESS_KEY=test"
+    - "BROWSERSTACK_ACCESS_KEY=your-access-key"
+    - "BROWSERSTACK_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxx"
+
+    description: |
+      BrowserStack Access Key used for automated browser testing APIs.
+      An attacker with this credential, combined with a username, can
+      run automated tests, access test results and screenshots, and
+      consume testing minutes via the BrowserStack Automate API.
+
+    references:
+    - https://www.browserstack.com/docs/automate/api-reference/selenium/introduction
+
+    # Validation requires both username and access_key (basic auth).
+    # Validator extracts username from snippet context (BROWSERSTACK_USERNAME=...).

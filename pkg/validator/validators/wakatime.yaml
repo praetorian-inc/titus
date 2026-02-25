@@ -1,0 +1,17 @@
+# pkg/validator/validators/wakatime.yaml
+# WakaTime uses query parameter api_key for authentication
+# Validation uses the /users/current endpoint
+validators:
+  - name: wakatime-api-key
+    rule_ids:
+      - np.wakatime.1
+      - np.wakatime.2
+    http:
+      method: GET
+      url: "https://wakatime.com/api/v1/users/current"
+      auth:
+        type: query
+        query_param: api_key
+        secret_group: "key"
+      success_codes: [200]
+      failure_codes: [401]

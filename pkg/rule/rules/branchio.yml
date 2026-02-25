@@ -1,0 +1,55 @@
+rules:
+
+- name: Branch.io Live Key
+  id: np.branchio.1
+
+  pattern: '(?i)\b(?P<key>key_live_[a-zA-Z0-9]{16,40})\b'
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'BRANCH_KEY=key_live_kaFuWw8WvY7yn1d9yYiP8gokwqjV0Swt'
+  - 'branch.init("key_live_hcnegO5R0SbbpAe1M4rjvgckbFMeQB2N");'
+
+  negative_examples:
+  - "key_live_short"
+  - "key_live_xxxxxxxxxxxxxxxxxxxx"
+  - "BRANCH_KEY=your-key-here"
+
+  description: |
+    Branch.io Live API Key used for deep linking and attribution APIs.
+    An attacker with this credential, combined with the branch secret,
+    can access link data, modify deep linking configurations, and
+    retrieve analytics data via the Branch API.
+
+  references:
+  - https://help.branch.io/developers-hub/docs/deep-linking-api
+
+- name: Branch.io Test Key
+  id: np.branchio.2
+
+  pattern: '(?i)\b(?P<key>key_test_[a-zA-Z0-9]{16,40})\b'
+
+  categories:
+  - api
+  - secret
+  - test
+
+  examples:
+  - 'BRANCH_KEY=key_test_jfdwlg5PtY8mDoR3fGpv4hkesztiqEWZ'
+  - 'branch.init("key_test_plqYW3Aq9Xija1cobGMieipndBzO5y7J");'
+
+  negative_examples:
+  - "key_test_short"
+  - "key_test_xxxxxxxxxxxxxxxxxxxx"
+  - "BRANCH_KEY=test-key-here"
+
+  description: |
+    Branch.io Test API Key used for testing deep linking and attribution APIs.
+    While test keys have limited scope, an attacker could use this to
+    understand app configurations and deep linking setups.
+
+  references:
+  - https://help.branch.io/developers-hub/docs/deep-linking-api

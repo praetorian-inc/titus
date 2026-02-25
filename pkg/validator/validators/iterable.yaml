@@ -1,0 +1,16 @@
+# pkg/validator/validators/iterable.yaml
+# Iterable uses a custom header Api_Key for authentication
+# Validation uses the export endpoint with minimal data to confirm key validity
+validators:
+  - name: iterable-api-key
+    rule_ids:
+      - np.iterable.1
+    http:
+      method: GET
+      url: "https://api.iterable.com/api/export/data.json?dataTypeName=emailSend&range=Today&onlyFields=List.empty"
+      auth:
+        type: header
+        secret_group: "key"
+        header_name: "Api_Key"
+      success_codes: [200]
+      failure_codes: [401]

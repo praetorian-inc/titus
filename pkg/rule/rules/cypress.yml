@@ -1,0 +1,38 @@
+rules:
+
+- name: Cypress Record Key
+  id: np.cypress.1
+
+  pattern: |
+    (?xi)
+    (?:cypress|CYPRESS_RECORD_KEY|record_key|recordKey)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<key>
+      [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+    )
+    \b
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "CYPRESS_RECORD_KEY=a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  - 'cypress_record_key: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"'
+  - '--record --key a9b8c7d6-e5f4-3210-abcd-ef9876543210'
+
+  negative_examples:
+  - "CYPRESS_RECORD_KEY=not-a-uuid"
+  - "CYPRESS_RECORD_KEY=your-record-key-here"
+  - "cypress_record_key=00000000-0000-0000-0000-000000000000"
+
+  description: |
+    Cypress Record Key used to record test runs to the Cypress Dashboard.
+    An attacker with this credential can upload test results and recordings
+    to the associated Cypress project, potentially polluting test data or
+    consuming usage quota on the Cypress Dashboard service.
+
+  references:
+  - https://docs.cypress.io/guides/guides/command-line#cypress-run
+  - https://docs.cypress.io/guides/cloud/account-management/projects#Record-key

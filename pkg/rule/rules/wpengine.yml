@@ -1,0 +1,39 @@
+rules:
+
+- name: WPEngine API Key
+  id: np.wpengine.1
+
+  pattern: |
+    (?xi)
+    (?:wpengine|wpe)
+    (?:.|[\n\r]){0,32}?
+    (?:API|KEY|SECRET|TOKEN)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<key>
+      [A-Za-z0-9]{24,64}
+    )
+    \b
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "WPE_APIKEY=a3b8f29e4d1c6a0578e23d9f41b6"
+  - 'wpengine_api_key: "9f4b2d7e1a3c8056d2e7f1b94a6c3d80"'
+  - "export WPENGINE_API_KEY=d4e8f2a7b1c39605d2e7f1b94a6c3d80"
+
+  negative_examples:
+  - "WPE_APIKEY=short"
+  - "wpengine_api_key=your-key-here"
+  - "WPE_APIKEY=test1234"
+
+  description: |
+    WPEngine API Key used to access WordPress hosting management.
+    An attacker with this credential can manage hosted WordPress
+    sites, access site configurations, perform backups, and
+    potentially modify site content and settings.
+
+  references:
+  - https://wpengineapi.com/

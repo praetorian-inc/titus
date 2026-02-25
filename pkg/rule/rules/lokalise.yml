@@ -1,0 +1,44 @@
+rules:
+
+- name: Lokalise API Token
+  id: np.lokalise.1
+
+  pattern: |
+    (?xi)
+    (?:lokalise)
+    (?:.|[\n\r]){0,32}?
+    (?:API|TOKEN|KEY|SECRET)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<token>
+      [a-f0-9]{40}
+    )
+    \b
+
+  pattern_requirements:
+    min_digits: 3
+  min_entropy: 3.0
+  confidence: medium
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "LOKALISE_API_TOKEN=a3b8f29e4d1c6a0578e23d9f41b6c8e201234567"
+  - 'lokalise_token: "9f4b2d7e1a3c8056d2e7f1b94a6c3d8001234567"'
+  - "export LOKALISE_API_KEY=d4e8f2a7b1c39605d2e7f1b94a6c3d8001234567"
+
+  negative_examples:
+  - "LOKALISE_API_TOKEN=abcdef1234"
+  - "lokalise_token=your-token-here"
+  - "LOKALISE_API_TOKEN=0000000000000000000000000000000000000000"
+
+  description: |
+    Lokalise API Token used to access translation management data.
+    An attacker with this credential can read and modify translation
+    projects, download language files, manage contributors, and
+    export all localization data from the account.
+
+  references:
+  - https://developers.lokalise.com/reference/api-authentication
