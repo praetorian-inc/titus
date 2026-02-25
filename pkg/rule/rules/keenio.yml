@@ -1,0 +1,39 @@
+rules:
+
+- name: Keen.io API Key
+  id: np.keenio.1
+
+  pattern: |
+    (?xi)
+    (?:keen)
+    (?:.|[\n\r]){0,32}?
+    (?:API|READ|WRITE|MASTER|KEY|SECRET|TOKEN)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<key>
+      [A-Fa-f0-9]{64}
+    )
+    \b
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "KEEN_READ_KEY=a3b8f29e4d1c6a0578e23d9f41b6c8e2f7d2a1b849c3b05d6e81f2a794c3d5b0"
+  - 'keen_write_key: "9f4b2d7e1a3c8056d2e7f1b94a6c3d80e7d2a1f849c3b05d6e81f2a794c3d5b0"'
+  - "export KEEN_API_KEY=d4e8f2a7b1c39605d2e7f1b94a6c3d80a3b8f29e4d1c6a0578e23d9f41b6c8e2"
+
+  negative_examples:
+  - "KEEN_READ_KEY=abcdef1234"
+  - "keen_api_key=your-key-here"
+  - "KEEN_READ_KEY=0000000000000000000000000000000000000000000000000000000000000000"
+
+  description: |
+    Keen.io API Key used to access analytics and event data.
+    An attacker with this credential can read event collections,
+    run queries on analytics data, and depending on key type (read/write/master),
+    may be able to write events or manage project settings.
+
+  references:
+  - https://keen.io/docs/api/

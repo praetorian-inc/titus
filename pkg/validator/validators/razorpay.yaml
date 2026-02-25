@@ -1,0 +1,16 @@
+# pkg/validator/validators/razorpay.yaml
+# Razorpay uses Basic Auth with key_id as username and key_secret as password
+# Validation uses the payments endpoint which is read-only
+validators:
+  - name: razorpay-api-key
+    rule_ids:
+      - np.razorpay.1
+      - np.razorpay.2
+    http:
+      method: GET
+      url: https://api.razorpay.com/v1/payments
+      auth:
+        type: basic
+        secret_group: "key"
+      success_codes: [200]
+      failure_codes: [401]

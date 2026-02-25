@@ -1,0 +1,38 @@
+rules:
+  - name: Amplitude API Key
+    id: np.amplitude.1
+    pattern: |
+      (?xi)
+      \b(?:amplitude)
+      (?:.|[\n\r]){0,64}?
+      (?:api[_-]?key|secret[_-]?key|key|token)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (?P<api_key>
+        [a-f0-9]{32}
+      )
+      \b
+    categories:
+    - api
+    - secret
+
+    examples:
+    - 'AMPLITUDE_API_KEY=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
+    - 'amplitude.init("e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9");'
+
+    negative_examples:
+    - "AMPLITUDE_API_KEY=test"
+    - "AMPLITUDE_API_KEY=0000000000000000000000000000000g"
+    - "AMPLITUDE_API_KEY=your-api-key-here"
+
+    description: |
+      Amplitude API Key used for product analytics and event tracking.
+      An attacker with this credential, combined with the secret key,
+      can export analytics data, user event streams, and behavioral
+      data via the Amplitude Export API.
+
+    references:
+    - https://www.docs.developers.amplitude.com/analytics/apis/export-api/
+
+    # Validation requires both api_key and secret_key (basic auth).
+    # Validator extracts secret_key from snippet context (AMPLITUDE_SECRET_KEY=...).

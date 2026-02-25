@@ -1,0 +1,39 @@
+rules:
+  - name: DeviantArt Access Token
+    id: np.deviantart.1
+    pattern: |
+      (?xi)
+      \b(?:deviantart|deviant_art)
+      (?:.|[\n\r]){0,64}?
+      (?:access[_-]?token|token|secret|key)
+      (?:.|[\n\r]){0,32}?
+      \b
+      (?P<token>
+        [a-zA-Z0-9]{40,80}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 3
+    min_entropy: 3.5
+    confidence: medium
+    categories:
+    - api
+    - secret
+
+    examples:
+    - 'DEVIANTART_ACCESS_TOKEN=aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5a'
+    - 'deviantart_token: "kM2nO3pQ4rS5tU6vW7xY8zA9bC0dE1fG2hI3jK4l"'
+
+    negative_examples:
+    - "DEVIANTART_ACCESS_TOKEN=test"
+    - "DEVIANTART_TOKEN=your-token-here"
+    - "DEVIANTART_ACCESS_TOKEN=short"
+
+    description: |
+      DeviantArt OAuth Access Token used for the DeviantArt API.
+      An attacker with this credential can access user profiles, browse
+      and manage deviations (artwork), post comments, and perform actions
+      on behalf of the token owner via the DeviantArt OAuth2 API.
+
+    references:
+    - https://www.deviantart.com/developers/http/v1/20210526

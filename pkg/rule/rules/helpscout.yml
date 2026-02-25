@@ -1,0 +1,39 @@
+rules:
+
+- name: Help Scout OAuth Client Secret
+  id: np.helpscout.1
+
+  pattern: |
+    (?xi)
+    (?:help[_-]?scout|helpscout)
+    (?:.|[\n\r]){0,32}?
+    (?:SECRET|KEY|TOKEN|CLIENT)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<secret>
+      [A-Za-z0-9]{20,64}
+    )
+    \b
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "HELPSCOUT_CLIENT_SECRET=a3B8f29E4d1C6a0578e23D9f41b6C8e2"
+  - 'helpscout_secret: "E7d2A1f849c3B05d6e81F2a794c3D5b0"'
+  - "export HELP_SCOUT_CLIENT_SECRET=9f4B2d7E1a3c8056d2E7f1b94A6c3d80"
+
+  negative_examples:
+  - "HELPSCOUT_CLIENT_SECRET=abcdef"
+  - "helpscout_secret=your-secret-here"
+  - "HELPSCOUT_CLIENT_SECRET=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+  description: |
+    Help Scout OAuth Client Secret used with client_credentials flow.
+    An attacker with this credential and the client ID can obtain
+    OAuth access tokens to read and modify mailboxes, conversations,
+    customer profiles, and team data via the Help Scout Mailbox API.
+
+  references:
+  - https://developer.helpscout.com/mailbox-api/

@@ -1,0 +1,19 @@
+# pkg/validator/validators/pendo.yaml
+# Pendo uses a custom header x-pendo-integration-key for authentication
+# Validation uses the /feature endpoint which lists features
+validators:
+  - name: pendo-integration-key
+    rule_ids:
+      - np.pendo.1
+    http:
+      method: GET
+      url: "https://app.pendo.io/api/v1/feature"
+      auth:
+        type: header
+        secret_group: "key"
+        header_name: "x-pendo-integration-key"
+      headers:
+        - name: "Content-Type"
+          value: "application/json"
+      success_codes: [200]
+      failure_codes: [401, 403]

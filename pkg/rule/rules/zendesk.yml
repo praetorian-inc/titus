@@ -1,0 +1,39 @@
+rules:
+
+- name: Zendesk API Token
+  id: np.zendesk.1
+
+  pattern: |
+    (?xi)
+    (?:zendesk|zd)
+    (?:.|[\n\r]){0,32}?
+    (?:TOKEN|KEY|SECRET|API)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<token>
+      [A-Za-z0-9]{40}
+    )
+    \b
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"
+  - 'zendesk_token: "E7d2A1f849c3B05d6e81F2a794c3D5b0pQ8wX1zK"'
+  - "export ZENDESK_TOKEN=9f4B2d7E1a3c8056d2E7f1b94A6c3d80mN5vL2jH"
+
+  negative_examples:
+  - "ZENDESK_API_TOKEN=abcdef1234"
+  - "zendesk_token=your-token-here"
+  - "ZENDESK_API_TOKEN=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+  description: |
+    Zendesk API Token used for customer support platform access.
+    An attacker with this credential and the associated email can
+    read and modify support tickets, access customer data, manage
+    user accounts, and export help desk content via the Zendesk API.
+
+  references:
+  - https://developer.zendesk.com/api-reference/

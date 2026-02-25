@@ -1,0 +1,44 @@
+rules:
+
+- name: Iterable API Key
+  id: np.iterable.1
+
+  pattern: |
+    (?xi)
+    (?:iterable)
+    (?:.|[\n\r]){0,32}?
+    (?:KEY|TOKEN|SECRET|API)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<key>
+      [A-Za-z0-9]{32,64}
+    )
+    \b
+
+  pattern_requirements:
+    min_digits: 3
+  min_entropy: 3.5
+  confidence: medium
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "ITERABLE_API_KEY=a3B8f29E4d1C6a0578e23D9f41b6C8e2"
+  - 'iterable_api_key: "E7d2A1f849c3B05d6e81F2a794c3D5b09f4B2d7E"'
+  - "export ITERABLE_KEY=9f4B2d7E1a3c8056d2E7f1b94A6c3d80"
+
+  negative_examples:
+  - "ITERABLE_API_KEY=abcdef1234"
+  - "iterable_api_key=your-key-here"
+  - "ITERABLE_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+  description: |
+    Iterable API Key used for marketing automation platform access.
+    An attacker with this credential can send emails and push notifications,
+    access user profile data, manage campaigns and workflows, export
+    subscriber lists, and modify audience segments via the Iterable API.
+
+  references:
+  - https://api.iterable.com/api/docs

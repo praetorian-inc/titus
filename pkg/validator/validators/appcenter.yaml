@@ -1,0 +1,16 @@
+validators:
+  - name: appcenter-api-token
+    rule_ids:
+      - np.appcenter.1
+    http:
+      method: GET
+      url: "https://api.appcenter.ms/v0.1/apps"
+      auth:
+        type: header
+        secret_group: "token"
+        header_name: "X-Api-Token"
+      headers:
+        - name: "Content-Type"
+          value: "application/json"
+      success_codes: [200]
+      failure_codes: [401]

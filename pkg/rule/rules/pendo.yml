@@ -1,0 +1,44 @@
+rules:
+
+- name: Pendo Integration Key
+  id: np.pendo.1
+
+  pattern: |
+    (?xi)
+    (?:pendo)
+    (?:.|[\n\r]){0,32}?
+    (?:KEY|TOKEN|SECRET|INTEGRATION)
+    (?:.|[\n\r]){0,16}?
+    \b
+    (?P<key>
+      [A-Za-z0-9]{32,64}
+    )
+    \b
+
+  pattern_requirements:
+    min_digits: 3
+  min_entropy: 3.5
+  confidence: medium
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "PENDO_INTEGRATION_KEY=a3B8f29E4d1C6a0578e23D9f41b6C8e2"
+  - 'pendo_key: "E7d2A1f849c3B05d6e81F2a794c3D5b09f4B2d7E"'
+  - "export PENDO_API_KEY=9f4B2d7E1a3c8056d2E7f1b94A6c3d80"
+
+  negative_examples:
+  - "PENDO_INTEGRATION_KEY=abcdef1234"
+  - "pendo_key=your-key-here"
+  - "PENDO_INTEGRATION_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+  description: |
+    Pendo Integration Key used for product analytics and user guidance.
+    An attacker with this credential can access product usage analytics,
+    feature adoption data, user metadata, NPS survey responses, and
+    guide configurations via the Pendo API.
+
+  references:
+  - https://engageapi.pendo.io/

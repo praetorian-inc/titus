@@ -1,0 +1,27 @@
+rules:
+
+- name: Instagram Graph API Access Token
+  id: np.instagram.1
+
+  pattern: '\b(?P<token>IGQVJ[A-Za-z0-9_-]{50,})\b'
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - "INSTAGRAM_ACCESS_TOKEN=IGQVJWZAkFNT1liY2J3b3FmUHJVQzNfSUtlX3RhVm5FNGppZAjhCeUpEWnJIUWxCNkVrQjhGSU9rOVBuVnBaQUtKYjF6MjFGZA3VhZAXRxYkJGS01wS1BNLVlsaGtJYUV3"
+  - 'instagram_token: "IGQVJXZAGtIR0hKVERjNXB5bnM0Y1BmUmFKa0RFZAnBXdVFKVUNNUjZAtVW5lZAXRhNGdLZA2V3OVlGS3dFZATVyYnlIVXlwcHdvdkxiS01wS1BNLVlsaGtJYUV3dg"'
+
+  negative_examples:
+  - "IGQVJ_short"
+  - "instagram_token=your-token-here"
+
+  description: |
+    Instagram Graph API Access Token starting with IGQVJ prefix.
+    An attacker with this credential can access user profile data,
+    read media posts and comments, and potentially manage
+    Instagram business accounts connected to the token.
+
+  references:
+  - https://developers.facebook.com/docs/instagram-basic-display-api/

@@ -1,0 +1,18 @@
+# pkg/validator/validators/deviantart.yaml
+# DeviantArt OAuth2 placebo endpoint for token validation
+# Uses POST form body to send access_token (same pattern as auth0.yaml)
+validators:
+  - name: deviantart-access-token
+    rule_ids:
+      - np.deviantart.1
+    http:
+      method: POST
+      url: "https://www.deviantart.com/api/v1/oauth2/placebo"
+      auth:
+        type: none  # Credentials sent in request body, not auth header
+      headers:
+        - name: Content-Type
+          value: application/x-www-form-urlencoded
+      body: "access_token={{token}}"
+      success_codes: [200]
+      failure_codes: [401]

@@ -1,0 +1,13 @@
+validators:
+  - name: instagram-graph-api-token
+    rule_ids:
+      - np.instagram.1
+    http:
+      method: GET
+      url: "https://graph.instagram.com/me?fields=id,username"
+      auth:
+        type: query
+        query_param: access_token
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [400, 401]
