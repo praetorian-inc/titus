@@ -1,10 +1,14 @@
 package enum
 
 import (
+	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 const testSecret = "AKIATESTKEY1234567890"
@@ -341,7 +345,8 @@ func TestExtractText_SQLite(t *testing.T) {
 				t.Fatalf("failed to read test file: %v", err)
 			}
 
-			results, err := extractSQLite(content)
+			state := &extractState{limits: DefaultExtractionLimits()}
+			results, err := extractSQLite(content, state)
 			if err != nil {
 				t.Fatalf("extractSQLite() error = %v", err)
 			}
@@ -637,6 +642,92 @@ func TestIsBinaryContent(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSQLiteRowLimit tests that the SQLite row limit is respected.
+// It builds an in-memory SQLite database with 10 rows and verifies that
+// a limit of 5 returns at most 5 rows, and a limit of 0 returns all 10.
+func TestSQLiteRowLimit(t *testing.T) {
+	content := buildSQLiteWithRows(t, 10)
+
+	t.Run("limit 5 returns at most 5 rows", func(t *testing.T) {
+		state := &extractState{
+			limits: ExtractionLimits{
+				MaxSize:        10 * 1024 * 1024,
+				MaxTotal:       100 * 1024 * 1024,
+				MaxDepth:       5,
+				SQLiteRowLimit: 5,
+			},
+		}
+		results, err := extractSQLite(content, state)
+		if err != nil {
+			t.Fatalf("extractSQLite() error = %v", err)
+		}
+		if len(results) == 0 {
+			t.Fatal("extractSQLite() returned no results")
+		}
+		// Each row is appended with a trailing "\n" in extractSQLite.
+		rowCount := strings.Count(string(results[0].Content), "\n")
+		if rowCount > 5 {
+			t.Errorf("expected at most 5 rows with limit 5, got %d", rowCount)
+		}
+	})
+
+	t.Run("limit 0 returns all rows", func(t *testing.T) {
+		state := &extractState{
+			limits: ExtractionLimits{
+				MaxSize:        10 * 1024 * 1024,
+				MaxTotal:       100 * 1024 * 1024,
+				MaxDepth:       5,
+				SQLiteRowLimit: 0,
+			},
+		}
+		results, err := extractSQLite(content, state)
+		if err != nil {
+			t.Fatalf("extractSQLite() error = %v", err)
+		}
+		if len(results) == 0 {
+			t.Fatal("extractSQLite() returned no results")
+		}
+		rowCount := strings.Count(string(results[0].Content), "\n")
+		if rowCount != 10 {
+			t.Errorf("expected 10 rows with unlimited (0) limit, got %d", rowCount)
+		}
+	})
+}
+
+// buildSQLiteWithRows creates a SQLite database file with n rows and returns its bytes.
+func buildSQLiteWithRows(t *testing.T, n int) []byte {
+	t.Helper()
+	tmpFile, err := os.CreateTemp("", "titus-test-sqlite-*.db")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	t.Cleanup(func() { os.Remove(tmpPath) })
+
+	db, err := sql.Open("sqlite", tmpPath)
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE secrets (val TEXT)`); err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+	for i := 0; i < n; i++ {
+		if _, err := db.Exec(`INSERT INTO secrets VALUES (?)`, fmt.Sprintf("row%d", i)); err != nil {
+			t.Fatalf("failed to insert row %d: %v", i, err)
+		}
+	}
+	db.Close()
+
+	content, err := os.ReadFile(tmpPath)
+	if err != nil {
+		t.Fatalf("failed to read sqlite file: %v", err)
+	}
+	return content
 }
 
 // TestCleanText tests the cleanText helper function.
