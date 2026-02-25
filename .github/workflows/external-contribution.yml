@@ -13,6 +13,7 @@ jobs:
       - uses: praetorian-inc/external-contrib-action@v1
         with:
           linear-team-id: "43502f93-0130-4cad-b35c-601bc4cc19a0"
+          linear-assignee-id: "432c49f2-226a-4f33-bf84-dff8f9882b6a"
           slack-channel-id: "C0AET1SD35F"
         env:
           ORG_MEMBER_CHECK_PAT: ${{ secrets.ORG_MEMBER_CHECK_PAT }}
