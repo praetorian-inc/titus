@@ -57,6 +57,7 @@ var (
 	extractMaxSize          string
 	extractMaxTotal         string
 	extractMaxDepth         int
+	scanSQLiteRowLimit      int
 	scanWorkers             int
 )
 
@@ -86,6 +87,7 @@ func init() {
 	scanCmd.Flags().StringVar(&extractMaxSize, "extract-max-size", "10MB", "Max uncompressed size per extracted file")
 	scanCmd.Flags().StringVar(&extractMaxTotal, "extract-max-total", "100MB", "Max total bytes to extract from one archive")
 	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
+	scanCmd.Flags().IntVar(&scanSQLiteRowLimit, "sqlite-row-limit", 1000, "Max rows per table for SQLite extraction (0 for unlimited)")
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
 }
 
@@ -473,6 +475,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	}
 	
 	limits.MaxDepth = extractMaxDepth
+	limits.SQLiteRowLimit = scanSQLiteRowLimit
 
 	config := enum.Config{
 		Root:            target,

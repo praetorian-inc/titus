@@ -170,6 +170,16 @@ titus scan path/to/files --extract=all \
   --extract-max-depth 5
 ```
 
+For SQLite databases, Titus extracts text from all tables (1000 rows per table by default). Use `--sqlite-row-limit` to adjust:
+
+```bash
+# Full dump of all SQLite tables (no row limit)
+titus scan path/to/files --extract=all --sqlite-row-limit 0
+
+# Custom row limit per table
+titus scan path/to/files --extract=all --sqlite-row-limit 5000
+```
+
 ## Go Library for Secrets Detection
 
 Titus can be imported as a Go library to add secrets detection to your own tools and pipelines.

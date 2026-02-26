@@ -91,7 +91,7 @@ func extractWithState(path string, content []byte, state *extractState) ([]Extra
 	case ".rtf":
 		return extractRTF(content)
 	case ".sqlite", ".db":
-		return extractSQLite(content)
+		return extractSQLite(content, state)
 	case ".7z":
 		return extract7z(content, state)
 	default:
@@ -610,7 +610,7 @@ func extractRTF(content []byte) ([]ExtractedContent, error) {
 }
 
 // extractSQLite extracts text from SQLite database files (.sqlite, .db).
-func extractSQLite(content []byte) ([]ExtractedContent, error) {
+func extractSQLite(content []byte, state *extractState) ([]ExtractedContent, error) {
 	// Write to temp file (SQLite needs file)
 	tmpFile, err := os.CreateTemp("", "titus-sqlite-*.db")
 	if err != nil {
@@ -650,7 +650,11 @@ func extractSQLite(content []byte) ([]ExtractedContent, error) {
 
 	// Extract text from each table (limit rows to prevent huge output)
 	for _, table := range tables {
-		rows, err := db.Query(fmt.Sprintf("SELECT * FROM %q LIMIT 1000", table))
+		query := fmt.Sprintf("SELECT * FROM %q", table)
+		if state.limits.SQLiteRowLimit > 0 {
+			query += fmt.Sprintf(" LIMIT %d", state.limits.SQLiteRowLimit)
+		}
+		rows, err := db.Query(query)
 		if err != nil {
 			continue
 		}
