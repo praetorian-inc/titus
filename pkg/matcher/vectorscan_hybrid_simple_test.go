@@ -3,7 +3,6 @@
 package matcher
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -28,30 +27,30 @@ func TestVectorscanMatcher_HybridSimple(t *testing.T) {
 	}
 
 	// Should successfully create matcher
-	fmt.Println("Creating matcher...")
+	t.Log("Creating matcher...")
 	matcher, err := NewVectorscan(rules, 2)
 	require.NoError(t, err, "matcher should be created")
-	fmt.Println("Matcher created successfully")
+	t.Log("Matcher created successfully")
 
 	// Test that simple pattern works via Hyperscan
-	fmt.Println("Testing simple pattern...")
+	t.Log("Testing simple pattern...")
 	content1 := []byte("Found key: AKIAIOSFODNN7EXAMPLE in config")
 	matches1, err := matcher.Match(content1)
 	require.NoError(t, err)
 	assert.Len(t, matches1, 1)
 	if len(matches1) > 0 {
 		assert.Equal(t, "simple-pattern", matches1[0].RuleID)
-		fmt.Printf("Simple pattern matched: %s\n", matches1[0].RuleID)
+		t.Logf("Simple pattern matched: %s", matches1[0].RuleID)
 	}
 
 	// Test that fallback pattern works
-	fmt.Println("Testing fallback pattern...")
+	t.Log("Testing fallback pattern...")
 	content2 := []byte("The secret:abc1234567 is here")
 	matches2, err := matcher.Match(content2)
 	require.NoError(t, err)
-	fmt.Printf("Found %d matches for fallback pattern\n", len(matches2))
+	t.Logf("Found %d matches for fallback pattern", len(matches2))
 	for _, m := range matches2 {
-		fmt.Printf("  Match: %s at %d-%d: %q\n", m.RuleID, m.Location.Offset.Start, m.Location.Offset.End, m.Snippet.Matching)
+		t.Logf("  Match: %s at %d-%d: %q", m.RuleID, m.Location.Offset.Start, m.Location.Offset.End, m.Snippet.Matching)
 	}
 
 	// Skip Close() for now - there's a pre-existing bug with hyperscan cleanup

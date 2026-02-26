@@ -147,6 +147,84 @@ func TestMatch_FindingID_Populated(t *testing.T) {
 	assert.Equal(t, "59141806118796593f3d14bae57834b794d3421b", match.FindingID)
 }
 
+// TestPortableRegexp_TimeoutIsTolerated verifies that a regex timeout on one rule
+// does NOT kill the scan; matches from other rules are still returned.
+func TestPortableRegexp_TimeoutIsTolerated(t *testing.T) {
+	// Build a catastrophic-backtracking pattern that will reliably time out under regexp2.
+	// The pattern (a+)+ on a string of a's followed by a non-match is the canonical example.
+	// We pair it with a benign rule so we can verify the benign rule still produces results.
+	rules := []*types.Rule{
+		{
+			ID:      "catastrophic-rule",
+			Name:    "Catastrophic Backtracking",
+			Pattern: `(a+)+b`, // Known catastrophic backtracking pattern
+		},
+		{
+			ID:      "good-rule",
+			Name:    "Good Pattern",
+			Pattern: `password\s*=\s*"([^"]+)"`,
+		},
+	}
+
+	// Content: long string of 'a's (no 'b' at end → catastrophic backtracking on rule 1)
+	// plus a password match that rule 2 should find.
+	catastrophicContent := strings.Repeat("a", 5000) + "c" // no 'b' → triggers timeout on rule 1
+	content := []byte(catastrophicContent + "\n" + `password = "secret123"`)
+
+	m, err := NewPortableRegexp(rules, 0)
+	require.NoError(t, err)
+
+	// This must NOT return an error even though catastrophic-rule times out.
+	matches, err := m.MatchWithBlobID(content, types.ComputeBlobID(content))
+	require.NoError(t, err, "timeout on one rule must not propagate as error")
+
+	// The good-rule must still produce its match.
+	ruleIDs := make(map[string]bool)
+	for _, match := range matches {
+		ruleIDs[match.RuleID] = true
+	}
+	assert.True(t, ruleIDs["good-rule"], "good-rule should still match despite other rule timing out")
+	assert.False(t, ruleIDs["catastrophic-rule"], "catastrophic-rule should not produce matches (timed out)")
+}
+
+// TestPortableRegexp_TimeoutIsTolerated_Parallel is the same test but for large content
+// that triggers the parallel path.
+func TestPortableRegexp_TimeoutIsTolerated_Parallel(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:      "catastrophic-rule",
+			Name:    "Catastrophic Backtracking",
+			Pattern: `(a+)+b`, // Known catastrophic backtracking pattern
+		},
+		{
+			ID:      "good-rule",
+			Name:    "Good Pattern",
+			Pattern: `password\s*=\s*"([^"]+)"`,
+		},
+	}
+
+	// Build content >10KB to trigger parallel path.
+	var sb strings.Builder
+	sb.WriteString(strings.Repeat("a", 5000) + "c\n")
+	for sb.Len() < parallelThreshold+1000 {
+		sb.WriteString(`password = "secret123"` + "\n")
+	}
+	content := []byte(sb.String())
+	require.Greater(t, len(content), parallelThreshold, "must trigger parallel path")
+
+	m, err := NewPortableRegexp(rules, 0)
+	require.NoError(t, err)
+
+	matches, err := m.MatchWithBlobID(content, types.ComputeBlobID(content))
+	require.NoError(t, err, "timeout on one rule must not propagate as error in parallel path")
+
+	ruleIDs := make(map[string]bool)
+	for _, match := range matches {
+		ruleIDs[match.RuleID] = true
+	}
+	assert.True(t, ruleIDs["good-rule"], "good-rule should still match in parallel path despite other rule timing out")
+}
+
 // TestMatchParallel_RaceDetector explicitly exercises parallel path with race detector
 func TestMatchParallel_RaceDetector(t *testing.T) {
 	rules := []*types.Rule{

@@ -263,7 +263,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 			for job := range jobs {
 				matches, err := m.MatchWithBlobID(job.content, job.blobID)
 				if err != nil {
-					return fmt.Errorf("matching content: %w", err)
+					// Log warning but continue scanning other files
+					fmt.Fprintf(os.Stderr, "[warn] match error (skipping blob %s): %v\n", job.blobID.Hex(), err)
+					continue
 				}
 
 				for _, match := range matches {

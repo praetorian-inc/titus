@@ -375,6 +375,12 @@ func (m *VectorscanMatcher) MatchWithBlobIDAndOptions(content []byte, blobID typ
 }
 
 // matchChunk performs matching on a single chunk of content.
+//
+// Hyperscan is used as a prefilter: its callback fires for every end position of a
+// match (since we do not use HS_FLAG_SOM_LEFTMOST, which would make 183/196 rules
+// incompatible). Rather than using the inaccurate (from=0, to=end) locations,
+// we collect only the *set* of matched rule IDs from Hyperscan and then use
+// regexp2 (already compiled in m.regexCache) to find the precise match locations.
 func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts Options) (*MatchResult, error) {
 	var scratch *hyperscan.Scratch
 
@@ -388,23 +394,15 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 		defer m.scratchPool.Put(scratch)
 	}
 
-	// Collect match locations from Hyperscan
-	type matchLocation struct {
-		ruleIdx uint
-		from    uint64
-		to      uint64
-	}
-	var locations []matchLocation
+	// Use Hyperscan only as a prefilter: collect the set of rule IDs that had any match.
+	// We deliberately ignore from/to because without SOM_LEFTMOST, from=0 for all matches
+	// and Hyperscan fires a callback for every valid end position (not just one per match).
+	matchedRuleIDs := make(map[uint]bool)
 	var mu sync.Mutex
 
-	// Hyperscan scan callback
 	handler := hyperscan.MatchHandler(func(id uint, from, to uint64, flags uint, context interface{}) error {
 		mu.Lock()
-		locations = append(locations, matchLocation{
-			ruleIdx: id,
-			from:    from,
-			to:      to,
-		})
+		matchedRuleIDs[id] = true
 		mu.Unlock()
 		return nil
 	})
@@ -417,20 +415,20 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 	}
 
 	// Process matches and extract captures
-	matches := make([]*types.Match, 0, len(locations))
+	matches := make([]*types.Match, 0)
 	ruleStats := make(map[string]RuleStat)
 	dedup := NewDeduplicator()
+	contentStr := string(content)
 
-	// Group locations by rule for stats tracking
-	ruleLocations := make(map[uint][]matchLocation)
-	for _, loc := range locations {
-		ruleLocations[loc.ruleIdx] = append(ruleLocations[loc.ruleIdx], loc)
-	}
-
-	// Process each rule's matches
-	for ruleIdx, locs := range ruleLocations {
+	// For each Hyperscan-identified rule, use regexp2 to find precise match locations.
+	for ruleIdx := range matchedRuleIDs {
 		rule := m.patternToRule[ruleIdx]
 		if rule == nil {
+			continue
+		}
+
+		re := m.regexCache[rule.Pattern]
+		if re == nil {
 			continue
 		}
 
@@ -443,54 +441,61 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 			Error:    nil,
 		}
 
-		for _, loc := range locs {
-			start := int(loc.from)
-			end := int(loc.to)
+		// Find all precise matches using regexp2
+		match, err := re.FindStringMatch(contentStr)
+		if err != nil {
+			if strings.Contains(err.Error(), "match timeout") {
+				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+			} else {
+				fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+			}
+			stat.Duration = time.Since(startTime)
+			ruleStats[rule.ID] = stat
+			continue
+		}
+		lastEnd := -1
+		for match != nil {
+			start := match.Index
+			end := start + match.Length
+
+			// Prevent infinite loops on zero-length matches
+			if start <= lastEnd {
+				break
+			}
 
 			// Bounds check
 			if start < 0 || end > len(content) || start > end {
+				match, err = re.FindNextMatch(match)
+				if err != nil {
+					if strings.Contains(err.Error(), "match timeout") {
+						fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					} else {
+						fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					}
+					break
+				}
 				continue
 			}
 
-			// Extract capture groups using regexp2 on the matched region
-			groups, namedGroups := m.extractCaptures(content, rule, start, end)
+			lastEnd = end
 
-			// Extract context
-			var before, after []byte
-			if m.contextLines > 0 {
-				before, after = ExtractContext(content, start, end, m.contextLines)
-			}
-
-			match := &types.Match{
-				BlobID:   blobID,
-				RuleID:   rule.ID,
-				RuleName: rule.Name,
-				Location: types.Location{
-					Offset: types.OffsetSpan{
-						Start: int64(start),
-						End:   int64(end),
-					},
-				},
-				Groups:      groups,
-				NamedGroups: namedGroups,
-				Snippet: types.Snippet{
-					Before:   before,
-					Matching: append([]byte{}, content[start:end]...),
-					After:    after,
-				},
-			}
-
-			// Compute structural ID for deduplication
-			match.StructuralID = match.ComputeStructuralID(rule.StructuralID)
-
-			// Compute finding ID for content-based deduplication (NoseyParker-compatible)
-			match.FindingID = types.ComputeFindingID(rule.StructuralID, groups)
+			newMatch := m.buildMatchFromRegexp2(content, blobID, rule, match)
 
 			// Deduplicate
-			if !dedup.IsDuplicate(match) {
-				dedup.Add(match)
-				matches = append(matches, match)
+			if !dedup.IsDuplicate(newMatch) {
+				dedup.Add(newMatch)
+				matches = append(matches, newMatch)
 				stat.Matches++
+			}
+
+			match, err = re.FindNextMatch(match)
+			if err != nil {
+				if strings.Contains(err.Error(), "match timeout") {
+					fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+				} else {
+					fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				}
+				break
 			}
 		}
 
@@ -587,68 +592,50 @@ func (m *VectorscanMatcher) matchChunked(content []byte, chunks []Chunk, blobID 
 	}, nil
 }
 
-// extractCaptures uses regexp2 to extract capture groups from a matched region.
-// Hyperscan doesn't support capture groups natively, so we use regexp2 as fallback.
-func (m *VectorscanMatcher) extractCaptures(content []byte, rule *types.Rule, start, end int) ([][]byte, map[string][]byte) {
-	re := m.regexCache[rule.Pattern]
-	if re == nil {
-		return nil, nil
+// buildMatchFromRegexp2 constructs a types.Match from a regexp2 match result.
+// It extracts positional and named capture groups, context lines, and computes
+// the structural and finding IDs. This is the shared match-building logic used
+// by both matchChunk and matchFallbackRules.
+func (m *VectorscanMatcher) buildMatchFromRegexp2(
+	content []byte,
+	blobID types.BlobID,
+	rule *types.Rule,
+	re2match *regexp2.Match,
+) *types.Match {
+	start := re2match.Index
+	end := start + re2match.Length
+
+	// Extract positional and named capture groups
+	groups, namedGroups := m.extractGroupsFromMatch(re2match, rule)
+
+	// Extract context
+	var before, after []byte
+	if m.contextLines > 0 {
+		before, after = ExtractContext(content, start, end, m.contextLines)
 	}
 
-	// Extract the matched region with some context for regex matching
-	// We need context because some patterns have anchors or lookbehind
-	contextStart := start - 100
-	if contextStart < 0 {
-		contextStart = 0
+	result := &types.Match{
+		BlobID:   blobID,
+		RuleID:   rule.ID,
+		RuleName: rule.Name,
+		Location: types.Location{
+			Offset: types.OffsetSpan{
+				Start: int64(start),
+				End:   int64(end),
+			},
+		},
+		Groups:      groups,
+		NamedGroups: namedGroups,
+		Snippet: types.Snippet{
+			Before:   before,
+			Matching: append([]byte{}, content[start:end]...),
+			After:    after,
+		},
 	}
-	contextEnd := end + 100
-	if contextEnd > len(content) {
-		contextEnd = len(content)
-	}
+	result.StructuralID = result.ComputeStructuralID(rule.StructuralID)
+	result.FindingID = types.ComputeFindingID(rule.StructuralID, groups)
 
-	region := string(content[contextStart:contextEnd])
-	relativeStart := start - contextStart
-	relativeEnd := end - contextStart
-
-	// Find match in region
-	match, err := re.FindStringMatch(region)
-	if err != nil || match == nil {
-		return nil, nil
-	}
-
-	// Find the match that corresponds to our Hyperscan location.
-	// With SomLeftMost enabled, Hyperscan reports accurate start offsets
-	// and the strict containment check works. As a fallback (e.g. when
-	// SOM is unavailable and from=0), we accept the first regexp2 match
-	// whose end aligns with the Hyperscan end offset.
-	var bestMatch *regexp2.Match
-	for match != nil {
-		matchStart := match.Index
-		matchEnd := matchStart + match.Length
-
-		// Strict containment: regexp2 match spans the Hyperscan region
-		if matchStart <= relativeStart && matchEnd >= relativeEnd {
-			bestMatch = match
-			break
-		}
-
-		// Fallback: regexp2 match end aligns with Hyperscan end
-		// (handles from=0 when SOM is not available)
-		if bestMatch == nil && matchEnd >= relativeEnd {
-			bestMatch = match
-		}
-
-		match, err = re.FindNextMatch(match)
-		if err != nil {
-			break
-		}
-	}
-
-	if bestMatch == nil {
-		return nil, nil
-	}
-
-	return m.extractGroupsFromMatch(bestMatch, rule)
+	return result
 }
 
 // extractGroupsFromMatch extracts positional and named capture groups from a regexp2 match.
@@ -709,8 +696,16 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 
 		// Find all matches for this rule
 		match, err := re.FindStringMatch(contentStr)
+		if err != nil {
+			if strings.Contains(err.Error(), "match timeout") {
+				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+			} else {
+				fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+			}
+			continue
+		}
 		lastEnd := -1 // Track last match end to prevent infinite loops on zero-length matches
-		for err == nil && match != nil {
+		for match != nil {
 			start := match.Index
 			end := start + match.Length
 
@@ -722,64 +717,31 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 			// Bounds check
 			if start < 0 || end > len(content) || start > end {
 				match, err = re.FindNextMatch(match)
+				if err != nil {
+					if strings.Contains(err.Error(), "match timeout") {
+						fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					} else {
+						fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					}
+					break
+				}
 				continue
 			}
 
 			lastEnd = end
 
-			// Extract positional capture groups
-			var groups [][]byte
-			matchGroups := match.Groups()
-			for i := 1; i < len(matchGroups); i++ {
-				group := matchGroups[i]
-				if len(group.Captures) > 0 {
-					capture := group.Captures[0]
-					groups = append(groups, []byte(capture.String()))
-				}
-			}
-
-			// Extract named capture groups
-			namedGroups := make(map[string][]byte)
-			groupNames := m.groupNameCache[rule.Pattern]
-			for _, name := range groupNames {
-				if name == "" || (len(name) > 0 && name[0] >= '0' && name[0] <= '9') {
-					continue
-				}
-				group := match.GroupByName(name)
-				if group != nil && len(group.Captures) > 0 {
-					namedGroups[name] = []byte(group.Captures[0].String())
-				}
-			}
-
-			// Extract context
-			var before, after []byte
-			if m.contextLines > 0 {
-				before, after = ExtractContext(content, start, end, m.contextLines)
-			}
-
-			m := &types.Match{
-				BlobID:   blobID,
-				RuleID:   rule.ID,
-				RuleName: rule.Name,
-				Location: types.Location{
-					Offset: types.OffsetSpan{
-						Start: int64(start),
-						End:   int64(end),
-					},
-				},
-				Groups:      groups,
-				NamedGroups: namedGroups,
-				Snippet: types.Snippet{
-					Before:   before,
-					Matching: append([]byte{}, content[start:end]...),
-					After:    after,
-				},
-			}
-			m.StructuralID = m.ComputeStructuralID(rule.StructuralID)
-			m.FindingID = types.ComputeFindingID(rule.StructuralID, groups)
-			matches = append(matches, m)
+			newMatch := m.buildMatchFromRegexp2(content, blobID, rule, match)
+			matches = append(matches, newMatch)
 
 			match, err = re.FindNextMatch(match)
+			if err != nil {
+				if strings.Contains(err.Error(), "match timeout") {
+					fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+				} else {
+					fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				}
+				break
+			}
 		}
 	}
 
