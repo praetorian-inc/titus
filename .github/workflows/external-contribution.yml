@@ -1,0 +1,21 @@
+name: External Contribution Notify
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: praetorian-inc/external-contrib-action@v1
+        with:
+          linear-team-id: ${{ secrets.LINEAR_TEAM_ID }}
+          linear-assignee-id: ${{ secrets.LINEAR_ASSIGNEE_ID }}
+          slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+        env:
+          ORG_MEMBER_CHECK_PAT: ${{ secrets.ORG_MEMBER_CHECK_PAT }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
