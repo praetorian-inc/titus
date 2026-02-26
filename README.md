@@ -50,11 +50,14 @@ titus scan path/to/file.txt
 # Scan a directory for leaked credentials
 titus scan path/to/directory
 
+# Scan a public GitHub repository (no token needed)
+titus scan github.com/org/repo
+
+# Scan a public GitLab project (no token needed)
+titus scan gitlab.com/namespace/project
+
 # Scan git history for secrets in past commits
 titus scan --git path/to/repo
-
-# Scan a GitHub repository via API (no clone required)
-titus github owner/repo --token $GITHUB_TOKEN
 
 # Validate detected secrets against source APIs
 titus scan path/to/code --validate
@@ -63,6 +66,37 @@ titus scan path/to/code --validate
 Results are written to a datastore (`titus.ds` by default) and printed to the console.
 
 ## Scanning Options
+
+### GitHub & GitLab Scanning
+
+Scan public repositories directly by URL — no API token required:
+
+```bash
+# Scan a GitHub repository
+titus scan github.com/kubernetes/kubernetes
+
+# Scan a GitLab project
+titus scan gitlab.com/gitlab-org/cli
+
+# Full URLs work too
+titus scan https://github.com/org/repo
+titus scan https://gitlab.com/namespace/project.git
+```
+
+For organization-wide or user-wide scanning, use the dedicated subcommands:
+
+```bash
+# Scan all repos in a GitHub org
+titus github --org kubernetes --token $GITHUB_TOKEN
+
+# Scan all projects in a GitLab group
+titus gitlab scan --group mygroup --token $GITLAB_TOKEN
+
+# Scan a single repo with git history (finds deleted secrets)
+titus github owner/repo --git
+```
+
+Tokens are optional for public repositories. Set `GITHUB_TOKEN` or `GITLAB_TOKEN` (or use `--token`) for private repository access and higher API rate limits.
 
 ### Viewing Scan Results
 

@@ -2,7 +2,43 @@ package main
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestGitHubCommand_Exists(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"github"})
+	require.NoError(t, err)
+	assert.Equal(t, "github", cmd.Name())
+}
+
+func TestGitHubCommand_NoCloneFlag(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"github"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("no-clone")
+	require.NotNil(t, flag, "--no-clone flag should exist")
+	assert.Equal(t, "false", flag.DefValue)
+}
+
+func TestGitHubCommand_GitFlag(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"github"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("git")
+	require.NotNil(t, flag, "--git flag should exist")
+	assert.Equal(t, "false", flag.DefValue)
+}
+
+func TestGitHubCommand_TokenOptional(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"github"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("token")
+	require.NotNil(t, flag, "--token flag should exist")
+	assert.Equal(t, "", flag.DefValue, "token should have empty default (optional)")
+}
 
 func TestSplitOwnerRepo(t *testing.T) {
 	tests := []struct {

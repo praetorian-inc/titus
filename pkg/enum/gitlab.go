@@ -27,10 +27,6 @@ type GitLabEnumerator struct {
 
 // NewGitLabEnumerator creates a new GitLab enumerator.
 func NewGitLabEnumerator(cfg GitLabConfig) (*GitLabEnumerator, error) {
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("GitLab token is required")
-	}
-
 	if cfg.Project == "" && cfg.Group == "" && cfg.User == "" {
 		return nil, fmt.Errorf("must specify project, group, or user")
 	}
@@ -134,6 +130,24 @@ func (e *GitLabEnumerator) listProjects(ctx context.Context) ([]*gitlab.Project,
 	}
 
 	return nil, fmt.Errorf("must specify project, group, or user")
+}
+
+// ListProjectURLs returns clone URLs for projects matching the configuration.
+func (e *GitLabEnumerator) ListProjectURLs(ctx context.Context) ([]RepoInfo, error) {
+	projects, err := e.listProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var urls []RepoInfo
+	for _, p := range projects {
+		urls = append(urls, RepoInfo{
+			Name:          p.PathWithNamespace,
+			CloneURL:      p.HTTPURLToRepo,
+			DefaultBranch: p.DefaultBranch,
+		})
+	}
+	return urls, nil
 }
 
 // enumerateProject walks a single project's file tree.

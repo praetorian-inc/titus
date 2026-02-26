@@ -7,18 +7,21 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-func TestGitLabEnumerator_RequiresToken(t *testing.T) {
-	// Test that GitLabEnumerator requires a token
-	_, err := NewGitLabEnumerator(GitLabConfig{
-		Token: "",
+func TestGitLabEnumerator_TokenOptional(t *testing.T) {
+	// Test that GitLabEnumerator allows empty token (unauthenticated access)
+	enumerator, err := NewGitLabEnumerator(GitLabConfig{
+		Token:   "",
 		Project: "owner/project",
 		Config: Config{
 			MaxFileSize: 10 * 1024 * 1024,
 		},
 	})
 
-	if err == nil {
-		t.Error("expected error when token is empty, got nil")
+	if err != nil {
+		t.Errorf("expected no error with empty token, got: %v", err)
+	}
+	if enumerator == nil {
+		t.Error("expected non-nil enumerator")
 	}
 }
 

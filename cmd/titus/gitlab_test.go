@@ -2,7 +2,28 @@ package main
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestGitLabScanCommand_NoCloneFlag(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"gitlab", "scan"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("no-clone")
+	require.NotNil(t, flag, "--no-clone flag should exist")
+	assert.Equal(t, "false", flag.DefValue)
+}
+
+func TestGitLabScanCommand_TokenOptional(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"gitlab", "scan"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("token")
+	require.NotNil(t, flag, "--token flag should exist")
+	assert.Equal(t, "", flag.DefValue, "token should have empty default (optional)")
+}
 
 func TestGitLabCmd_Exists(t *testing.T) {
 	// Verify gitlab command exists
@@ -13,8 +34,9 @@ func TestGitLabCmd_Exists(t *testing.T) {
 
 func TestGitLabCmd_Use(t *testing.T) {
 	// Verify command use string
-	if gitlabCmd.Use != "gitlab" {
-		t.Errorf("expected Use='gitlab', got %q", gitlabCmd.Use)
+	expected := "gitlab [namespace/project]"
+	if gitlabCmd.Use != expected {
+		t.Errorf("expected Use=%q, got %q", expected, gitlabCmd.Use)
 	}
 }
 
@@ -85,4 +107,13 @@ func TestGitLabCmd_HasScanSubcommand(t *testing.T) {
 	if !found {
 		t.Error("gitlab command does not have 'scan' subcommand")
 	}
+}
+
+func TestGitLabScanCommand_GitFlag(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"gitlab", "scan"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("git")
+	require.NotNil(t, flag, "--git flag should exist")
+	assert.Equal(t, "false", flag.DefValue)
 }

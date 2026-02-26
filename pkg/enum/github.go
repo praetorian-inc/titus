@@ -14,7 +14,7 @@ import (
 
 // GitHubConfig configures GitHub API enumeration.
 type GitHubConfig struct {
-	Token  string // GitHub API token (required)
+	Token  string // GitHub API token (optional; unauthenticated if empty)
 	Owner  string // Repository owner (for single repo)
 	Repo   string // Repository name (for single repo)
 	Org    string // Organization name (list all org repos)
@@ -30,15 +30,18 @@ type GitHubEnumerator struct {
 
 // NewGitHubEnumerator creates a new GitHub API enumerator.
 func NewGitHubEnumerator(cfg GitHubConfig) (*GitHubEnumerator, error) {
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("GitHub token is required")
-	}
+	var client *github.Client
 
-	// Create authenticated GitHub client
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: cfg.Token})
-	tc := oauth2.NewClient(ctx, ts)
-	client := github.NewClient(tc)
+	if cfg.Token != "" {
+		// Authenticated client
+		ctx := context.Background()
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: cfg.Token})
+		tc := oauth2.NewClient(ctx, ts)
+		client = github.NewClient(tc)
+	} else {
+		// Unauthenticated client (60 req/hour, public repos only)
+		client = github.NewClient(nil)
+	}
 
 	return &GitHubEnumerator{
 		client: client,
@@ -137,6 +140,24 @@ func (e *GitHubEnumerator) listUserRepos(ctx context.Context) ([]*github.Reposit
 	}
 
 	return allRepos, nil
+}
+
+// ListRepoURLs returns clone URLs for repos matching the configuration.
+func (e *GitHubEnumerator) ListRepoURLs(ctx context.Context) ([]RepoInfo, error) {
+	repos, err := e.listRepos(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var urls []RepoInfo
+	for _, repo := range repos {
+		urls = append(urls, RepoInfo{
+			Name:          repo.GetFullName(),
+			CloneURL:      repo.GetCloneURL(),
+			DefaultBranch: repo.GetDefaultBranch(),
+		})
+	}
+	return urls, nil
 }
 
 // enumerateRepo enumerates all files in a repository.

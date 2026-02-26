@@ -48,17 +48,20 @@ func TestGitHubEnumerator_Interface(t *testing.T) {
 	var _ Enumerator = enumerator
 }
 
-// TestGitHubEnumerator_RequiresToken tests that token is required.
-func TestGitHubEnumerator_RequiresToken(t *testing.T) {
+// TestGitHubEnumerator_TokenOptional tests that token is optional (unauthenticated access allowed).
+func TestGitHubEnumerator_TokenOptional(t *testing.T) {
 	config := GitHubConfig{
 		Token: "",
 		Owner: "owner",
 		Repo:  "repo",
 	}
 
-	_, err := NewGitHubEnumerator(config)
-	if err == nil {
-		t.Fatal("expected error when token is empty, got nil")
+	enumerator, err := NewGitHubEnumerator(config)
+	if err != nil {
+		t.Fatalf("expected no error with empty token, got: %v", err)
+	}
+	if enumerator == nil {
+		t.Fatal("expected non-nil enumerator")
 	}
 }
 
