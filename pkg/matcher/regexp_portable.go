@@ -5,7 +5,9 @@ package matcher
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,7 +118,12 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 		// Find first match
 		match, err := re.FindStringMatch(contentStr)
 		if err != nil {
-			return nil, fmt.Errorf("regex match error for rule %s: %w", rule.ID, err)
+			if strings.Contains(err.Error(), "match timeout") {
+				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+			} else {
+				fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+			}
+			continue
 		}
 
 		// Loop through all matches
@@ -140,7 +147,12 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 			// Find next match
 			match, err = re.FindNextMatch(match)
 			if err != nil {
-				return nil, fmt.Errorf("regex match error for rule %s: %w", rule.ID, err)
+				if strings.Contains(err.Error(), "match timeout") {
+					fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+				} else {
+					fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				}
+				break
 			}
 		}
 	}
@@ -199,9 +211,12 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 				// Find first match
 				match, err := re.FindStringMatch(contentStr)
 				if err != nil {
-					cancel() // Cancel other workers
-					results <- result{err: fmt.Errorf("regex match error for rule %s: %w", rule.ID, err)}
-					return
+					if strings.Contains(err.Error(), "match timeout") {
+						fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					} else {
+						fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					}
+					continue
 				}
 
 				// Loop through all matches
@@ -218,9 +233,12 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 					// Find next match
 					match, err = re.FindNextMatch(match)
 					if err != nil {
-						cancel() // Cancel other workers
-						results <- result{err: fmt.Errorf("regex match error for rule %s: %w", rule.ID, err)}
-						return
+						if strings.Contains(err.Error(), "match timeout") {
+							fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+						} else {
+							fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+						}
+						break
 					}
 				}
 			}

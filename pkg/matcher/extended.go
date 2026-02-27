@@ -12,6 +12,7 @@ import (
 // 1. Removes the (?x) flag
 // 2. Removes all whitespace (except escaped whitespace like \s or \ )
 // 3. Removes all comments in the form (?# ... )
+// 4. Removes all # line-end comments (from unescaped # outside character classes to end of line)
 //
 // This is necessary because the Hyperscan library (gohs) doesn't support the Extended flag,
 // which allows free-spacing mode with comments in regex patterns.
@@ -36,43 +37,79 @@ func stripExtendedMode(pattern string) string {
 	pattern = strings.ReplaceAll(pattern, "(?s)", "")
 	pattern = strings.ReplaceAll(pattern, "(?m)", "")
 
-	// Remove unescaped whitespace
+	// Remove unescaped whitespace and # line-end comments.
 	// We need to be careful to preserve:
 	// - Escaped spaces: \ (backslash followed by space)
 	// - Whitespace escape sequences: \s, \t, \n, \r, etc.
+	// - # inside character classes [...] (not a comment there)
 	//
-	// Strategy: Process character by character, skipping whitespace unless preceded by backslash
+	// Strategy: Process byte by byte (pattern is ASCII-safe after flag removal),
+	// tracking escape and character-class state.
 	var result strings.Builder
+	bytes := []byte(pattern)
 	escaped := false
+	inCharClass := false
+	i := 0
 
-	for i, char := range pattern {
+	for i < len(bytes) {
+		char := bytes[i]
+
 		if escaped {
 			// Previous character was backslash, keep this character regardless
-			result.WriteRune(char)
+			result.WriteByte(char)
 			escaped = false
+			i++
 			continue
 		}
 
 		if char == '\\' {
-			// Check if this is escaping whitespace or is part of a sequence
-			if i+1 < len(pattern) {
-				// Always write the backslash and mark as escaped
-				result.WriteRune(char)
+			if i+1 < len(bytes) {
+				// Write the backslash and mark as escaped
+				result.WriteByte(char)
 				escaped = true
 			} else {
 				// Trailing backslash, keep it
-				result.WriteRune(char)
+				result.WriteByte(char)
 			}
+			i++
+			continue
+		}
+
+		// Track character class boundaries
+		if char == '[' && !inCharClass {
+			inCharClass = true
+			result.WriteByte(char)
+			i++
+			continue
+		}
+		if char == ']' && inCharClass {
+			inCharClass = false
+			result.WriteByte(char)
+			i++
+			continue
+		}
+
+		// In extended mode, unescaped # outside a character class starts a line-end comment.
+		// Skip from # to the end of the line (the newline itself is stripped as whitespace).
+		if char == '#' && !inCharClass {
+			// Skip everything until we hit a newline or end of string
+			for i < len(bytes) && bytes[i] != '\n' {
+				i++
+			}
+			// The newline (if present) will be handled on the next iteration and stripped
+			// as unescaped whitespace.
 			continue
 		}
 
 		// Skip unescaped whitespace (space, tab, newline, carriage return)
 		if char == ' ' || char == '\t' || char == '\n' || char == '\r' {
+			i++
 			continue
 		}
 
 		// Keep all other characters
-		result.WriteRune(char)
+		result.WriteByte(char)
+		i++
 	}
 
 	return result.String()
