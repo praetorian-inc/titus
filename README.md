@@ -33,7 +33,13 @@ Built for security engineers, penetration testers, and DevSecOps teams, Titus co
 
 ## Installation
 
-Download a prebuilt binary from the [Releases](../../releases) page, or build from source:
+You can install Titus using:
+
+```
+go install github.com/praetorian-inc/titus/cmd/titus@latest
+```
+
+Alternatively, download a prebuilt binary from the [Releases](../../releases) page, or build from source:
 
 ```bash
 make build
