@@ -4,9 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
-        xkeysib-[a-f0-9]{64}-[a-z0-9]{16}
-      )
+      (?P<token>xkeysib-[a-f0-9]{64}-[a-z0-9]{16})
       \b
     pattern_requirements:
       min_digits: 2
@@ -15,6 +13,8 @@ rules:
     examples:
       - XKEYSIB_TOKEN=xkeysib-abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd-1234567890abcd12
       - '"sendinblue": "xkeysib-1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef-ab12cd34ef56gh78"'
+    categories:
+      - api
     references:
       - https://developers.sendinblue.com/docs/authentication
     validation:

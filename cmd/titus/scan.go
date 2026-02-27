@@ -915,6 +915,15 @@ func initValidationEngine() *validator.Engine {
 	validators = append(validators, validator.NewTwilioValidator())
 	validators = append(validators, validator.NewAzureStorageValidator())
 	validators = append(validators, validator.NewPostgresValidator())
+	validators = append(validators, validator.NewBrowserStackValidator())
+	validators = append(validators, validator.NewAmplitudeValidator())
+	validators = append(validators, validator.NewShopifyValidator())
+	validators = append(validators, validator.NewHelpScoutValidator())
+	validators = append(validators, validator.NewCypressValidator())
+	validators = append(validators, validator.NewKeenIOValidator())
+	validators = append(validators, validator.NewBranchIOValidator())
+	validators = append(validators, validator.NewZendeskValidator())
+	validators = append(validators, validator.NewWPEngineValidator())
 
 	// Add embedded YAML validators
 	embedded, err := validator.LoadEmbeddedValidators()

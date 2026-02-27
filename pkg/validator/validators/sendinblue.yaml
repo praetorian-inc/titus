@@ -1,0 +1,19 @@
+# pkg/validator/validators/sendinblue.yaml
+# Sendinblue (Brevo) uses custom api-key header authentication
+# Validation endpoint returns account information
+validators:
+  - name: sendinblue-api-token
+    rule_ids:
+      - kingfisher.sendinblue.1
+    http:
+      method: GET
+      url: "https://api.sendinblue.com/v3/account"
+      auth:
+        type: header
+        secret_group: "token"
+        header_name: "api-key"
+      headers:
+        - name: "Accept"
+          value: "application/json"
+      success_codes: [200]
+      failure_codes: [401, 403]
