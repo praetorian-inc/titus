@@ -17,9 +17,17 @@ var zendeskSubdomainPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`([a-z0-9][a-z0-9-]+)\.zendesk\.com`),
 }
 
-// ZendeskValidator validates Zendesk API tokens using the tickets API.
-// Zendesk authentication requires both a subdomain and an API token.
-// The regex captures the token; the validator searches snippet context for the subdomain.
+// Pre-compiled patterns for extracting Zendesk email from snippet context.
+var zendeskEmailPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)(?:ZENDESK_EMAIL|ZENDESK_USER|zendesk_email|zendesk_user)\s*[=:]\s*["']?([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})["']?`),
+	regexp.MustCompile(`(?i)(?:email|user(?:name)?)\s*[=:]\s*["']?([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})["']?`),
+	regexp.MustCompile(`-u\s+([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/token:`),
+}
+
+// ZendeskValidator validates Zendesk API tokens using the users/me API.
+// Zendesk API token authentication requires email, subdomain, and an API token.
+// Basic Auth format: {email}/token:{api_token}
+// The regex captures the token; the validator searches snippet context for subdomain and email.
 type ZendeskValidator struct {
 	client *http.Client
 }
@@ -47,7 +55,7 @@ func (v *ZendeskValidator) CanValidate(ruleID string) bool {
 // Validate checks Zendesk credentials against the API.
 func (v *ZendeskValidator) Validate(ctx context.Context, match *types.Match) (*types.ValidationResult, error) {
 	// Extract credentials
-	subdomain, token, err := v.extractCredentials(match)
+	subdomain, email, token, err := v.extractCredentials(match)
 	if err != nil {
 		// Partial credentials - return undetermined
 		return types.NewValidationResult(
@@ -57,8 +65,8 @@ func (v *ZendeskValidator) Validate(ctx context.Context, match *types.Match) (*t
 		), nil
 	}
 
-	// Build request to Zendesk API
-	url := fmt.Sprintf("https://%s.zendesk.com/api/v2/tickets.json", subdomain)
+	// Build request to Zendesk API (users/me is lightweight and requires no ticket scope)
+	url := fmt.Sprintf("https://%s.zendesk.com/api/v2/users/me.json", subdomain)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return types.NewValidationResult(
@@ -68,8 +76,8 @@ func (v *ZendeskValidator) Validate(ctx context.Context, match *types.Match) (*t
 		), nil
 	}
 
-	// Set Bearer auth header
-	req.Header.Set("Authorization", "Bearer "+token)
+	// Set Basic Auth: {email}/token:{api_token}
+	req.SetBasicAuth(email+"/token", token)
 
 	// Execute request
 	resp, err := v.client.Do(req)
@@ -106,33 +114,58 @@ func (v *ZendeskValidator) Validate(ctx context.Context, match *types.Match) (*t
 }
 
 // extractCredentials extracts Zendesk credentials from match.
-// Expects token from NamedGroups, searches snippet for subdomain.
-func (v *ZendeskValidator) extractCredentials(match *types.Match) (subdomain, token string, err error) {
+// Expects token from NamedGroups, searches snippet for subdomain and email.
+func (v *ZendeskValidator) extractCredentials(match *types.Match) (subdomain, email, token string, err error) {
 	// Extract token from named groups
 	if match.NamedGroups == nil {
-		return "", "", fmt.Errorf("no named capture groups in match")
+		return "", "", "", fmt.Errorf("no named capture groups in match")
 	}
 
 	tokenBytes, hasToken := match.NamedGroups["token"]
 	if !hasToken || len(tokenBytes) == 0 {
-		return "", "", fmt.Errorf("token not found in named groups")
+		return "", "", "", fmt.Errorf("token not found in named groups")
 	}
 	token = string(tokenBytes)
 
-	// Search for subdomain in snippet context
 	snippetParts := [][]byte{
 		match.Snippet.Before,
 		match.Snippet.Matching,
 		match.Snippet.After,
 	}
 
+	// Search for subdomain in snippet context
 	for _, pattern := range zendeskSubdomainPatterns {
 		for _, part := range snippetParts {
 			if matches := pattern.FindSubmatch(part); len(matches) >= 2 {
-				return string(matches[1]), token, nil
+				subdomain = string(matches[1])
+				break
 			}
+		}
+		if subdomain != "" {
+			break
 		}
 	}
 
-	return "", "", fmt.Errorf("partial credentials: found token but subdomain not in context")
+	if subdomain == "" {
+		return "", "", "", fmt.Errorf("partial credentials: found token but subdomain not in context")
+	}
+
+	// Search for email in snippet context
+	for _, pattern := range zendeskEmailPatterns {
+		for _, part := range snippetParts {
+			if matches := pattern.FindSubmatch(part); len(matches) >= 2 {
+				email = string(matches[1])
+				break
+			}
+		}
+		if email != "" {
+			break
+		}
+	}
+
+	if email == "" {
+		return "", "", "", fmt.Errorf("partial credentials: found token and subdomain but email not in context")
+	}
+
+	return subdomain, email, token, nil
 }

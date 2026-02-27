@@ -31,51 +31,53 @@ func TestZendeskValidator_CanValidate(t *testing.T) {
 func TestZendeskValidator_ExtractCredentials_Complete(t *testing.T) {
 	v := NewZendeskValidator()
 
-	// Match with token in named groups and subdomain in snippet
+	// Match with token in named groups, subdomain and email in snippet
 	match := &types.Match{
 		RuleID: "np.zendesk.1",
 		NamedGroups: map[string][]byte{
 			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
 		},
 		Snippet: types.Snippet{
-			Before:   []byte("ZENDESK_SUBDOMAIN=mycompany"),
+			Before:   []byte("ZENDESK_SUBDOMAIN=mycompany\nZENDESK_EMAIL=admin@mycompany.com"),
 			Matching: []byte("ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
 			After:    []byte(""),
 		},
 	}
 
-	subdomain, token, err := v.extractCredentials(match)
+	subdomain, email, token, err := v.extractCredentials(match)
 	assert.NoError(t, err)
 	assert.Equal(t, "mycompany", subdomain)
+	assert.Equal(t, "admin@mycompany.com", email)
 	assert.Equal(t, "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI", token)
 }
 
 func TestZendeskValidator_ExtractCredentials_SubdomainInAfter(t *testing.T) {
 	v := NewZendeskValidator()
 
-	// Match with subdomain in after context
+	// Match with subdomain in after context and email in before
 	match := &types.Match{
 		RuleID: "np.zendesk.1",
 		NamedGroups: map[string][]byte{
 			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
 		},
 		Snippet: types.Snippet{
-			Before:   []byte(""),
+			Before:   []byte("ZENDESK_EMAIL=admin@aftercompany.com"),
 			Matching: []byte("ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
 			After:    []byte("ZENDESK_SUBDOMAIN=aftercompany"),
 		},
 	}
 
-	subdomain, token, err := v.extractCredentials(match)
+	subdomain, email, token, err := v.extractCredentials(match)
 	assert.NoError(t, err)
 	assert.Equal(t, "aftercompany", subdomain)
+	assert.Equal(t, "admin@aftercompany.com", email)
 	assert.Equal(t, "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI", token)
 }
 
 func TestZendeskValidator_ExtractCredentials_SubdomainFromURL(t *testing.T) {
 	v := NewZendeskValidator()
 
-	// Match with subdomain extracted from URL pattern
+	// Match with subdomain extracted from URL pattern and email in after
 	match := &types.Match{
 		RuleID: "np.zendesk.1",
 		NamedGroups: map[string][]byte{
@@ -84,13 +86,14 @@ func TestZendeskValidator_ExtractCredentials_SubdomainFromURL(t *testing.T) {
 		Snippet: types.Snippet{
 			Before:   []byte("# API endpoint: https://mycompany.zendesk.com/api/v2"),
 			Matching: []byte("ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
-			After:    []byte(""),
+			After:    []byte("ZENDESK_EMAIL=admin@mycompany.com"),
 		},
 	}
 
-	subdomain, token, err := v.extractCredentials(match)
+	subdomain, email, token, err := v.extractCredentials(match)
 	assert.NoError(t, err)
 	assert.Equal(t, "mycompany", subdomain)
+	assert.Equal(t, "admin@mycompany.com", email)
 	assert.Equal(t, "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI", token)
 }
 
@@ -106,10 +109,11 @@ func TestZendeskValidator_ExtractCredentials_MissingToken(t *testing.T) {
 		},
 	}
 
-	subdomain, token, err := v.extractCredentials(match)
+	subdomain, email, token, err := v.extractCredentials(match)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "token")
 	assert.Empty(t, subdomain)
+	assert.Empty(t, email)
 	assert.Empty(t, token)
 }
 
@@ -129,11 +133,12 @@ func TestZendeskValidator_ExtractCredentials_MissingSubdomain(t *testing.T) {
 		},
 	}
 
-	subdomain, token, err := v.extractCredentials(match)
+	subdomain, email, token, err := v.extractCredentials(match)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "partial")
 	assert.Contains(t, err.Error(), "subdomain")
 	assert.Empty(t, subdomain)
+	assert.Empty(t, email)
 	assert.Empty(t, token)
 }
 
@@ -146,19 +151,67 @@ func TestZendeskValidator_ExtractCredentials_NoNamedGroups(t *testing.T) {
 		NamedGroups: nil,
 	}
 
-	subdomain, token, err := v.extractCredentials(match)
+	subdomain, email, token, err := v.extractCredentials(match)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no named capture groups")
 	assert.Empty(t, subdomain)
+	assert.Empty(t, email)
 	assert.Empty(t, token)
+}
+
+func TestZendeskValidator_ExtractCredentials_MissingEmail(t *testing.T) {
+	v := NewZendeskValidator()
+
+	// Has token and subdomain but no email in context
+	match := &types.Match{
+		RuleID: "np.zendesk.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("ZENDESK_SUBDOMAIN=mycompany"),
+			Matching: []byte("ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+			After:    []byte("no email address here"),
+		},
+	}
+
+	subdomain, email, token, err := v.extractCredentials(match)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "email")
+	assert.Empty(t, subdomain)
+	assert.Empty(t, email)
+	assert.Empty(t, token)
+}
+
+func TestZendeskValidator_ExtractCredentials_EmailFromCurl(t *testing.T) {
+	v := NewZendeskValidator()
+
+	// Email extracted from curl -u user@company.com/token: pattern
+	match := &types.Match{
+		RuleID: "np.zendesk.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("ZENDESK_SUBDOMAIN=mycompany\ncurl -u user@company.com/token:a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+			Matching: []byte("ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+			After:    []byte(""),
+		},
+	}
+
+	subdomain, email, token, err := v.extractCredentials(match)
+	assert.NoError(t, err)
+	assert.Equal(t, "mycompany", subdomain)
+	assert.Equal(t, "user@company.com", email)
+	assert.Equal(t, "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI", token)
 }
 
 func TestZendeskValidator_Validate_Valid(t *testing.T) {
 	// Create mock server that returns 200 OK
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify Bearer auth header is present
+		// Verify Basic auth header is present (not Bearer)
 		auth := r.Header.Get("Authorization")
-		assert.Contains(t, auth, "Bearer ")
+		assert.Contains(t, auth, "Basic ")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -174,7 +227,7 @@ func TestZendeskValidator_Validate_Valid(t *testing.T) {
 			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
 		},
 		Snippet: types.Snippet{
-			Before: []byte("ZENDESK_SUBDOMAIN=mycompany"),
+			Before: []byte("ZENDESK_SUBDOMAIN=mycompany\nZENDESK_EMAIL=admin@mycompany.com"),
 		},
 	}
 
@@ -188,6 +241,9 @@ func TestZendeskValidator_Validate_Valid(t *testing.T) {
 func TestZendeskValidator_Validate_Invalid_Unauthorized(t *testing.T) {
 	// Create mock server that returns 401 Unauthorized
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify Basic auth header is present (not Bearer)
+		auth := r.Header.Get("Authorization")
+		assert.Contains(t, auth, "Basic ")
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
@@ -202,7 +258,7 @@ func TestZendeskValidator_Validate_Invalid_Unauthorized(t *testing.T) {
 			"token": []byte("invalid0key12345678901234567890ab"),
 		},
 		Snippet: types.Snippet{
-			Before: []byte("ZENDESK_SUBDOMAIN=mycompany"),
+			Before: []byte("ZENDESK_SUBDOMAIN=mycompany\nZENDESK_EMAIL=admin@mycompany.com"),
 		},
 	}
 
@@ -230,7 +286,7 @@ func TestZendeskValidator_Validate_Invalid_Forbidden(t *testing.T) {
 			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
 		},
 		Snippet: types.Snippet{
-			Before: []byte("ZENDESK_SUBDOMAIN=mycompany"),
+			Before: []byte("ZENDESK_SUBDOMAIN=mycompany\nZENDESK_EMAIL=admin@mycompany.com"),
 		},
 	}
 
@@ -258,7 +314,7 @@ func TestZendeskValidator_Validate_Undetermined_ServerError(t *testing.T) {
 			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
 		},
 		Snippet: types.Snippet{
-			Before: []byte("ZENDESK_SUBDOMAIN=mycompany"),
+			Before: []byte("ZENDESK_SUBDOMAIN=mycompany\nZENDESK_EMAIL=admin@mycompany.com"),
 		},
 	}
 
@@ -289,4 +345,78 @@ func TestZendeskValidator_Validate_PartialCredentials(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusUndetermined, result.Status)
 	assert.Contains(t, result.Message, "cannot validate")
+}
+
+func TestZendeskValidator_ExtractCredentials_EmailFromGenericKey(t *testing.T) {
+	v := NewZendeskValidator()
+
+	match := &types.Match{
+		RuleID: "np.zendesk.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("ZENDESK_SUBDOMAIN=mycompany\nemail=support@mycompany.com"),
+			Matching: []byte("ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+			After:    []byte(""),
+		},
+	}
+
+	subdomain, email, token, err := v.extractCredentials(match)
+	assert.NoError(t, err)
+	assert.Equal(t, "mycompany", subdomain)
+	assert.Equal(t, "support@mycompany.com", email)
+	assert.Equal(t, "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI", token)
+}
+
+func TestZendeskValidator_ExtractCredentials_EmailInAfter(t *testing.T) {
+	v := NewZendeskValidator()
+
+	match := &types.Match{
+		RuleID: "np.zendesk.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("ZENDESK_SUBDOMAIN=mycompany"),
+			Matching: []byte("ZENDESK_API_TOKEN=a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+			After:    []byte("ZENDESK_EMAIL=ops@mycompany.com"),
+		},
+	}
+
+	subdomain, email, token, err := v.extractCredentials(match)
+	assert.NoError(t, err)
+	assert.Equal(t, "mycompany", subdomain)
+	assert.Equal(t, "ops@mycompany.com", email)
+	assert.Equal(t, "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI", token)
+}
+
+func TestZendeskValidator_Validate_BasicAuthFormat(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify Basic Auth credentials format
+		username, password, ok := r.BasicAuth()
+		assert.True(t, ok, "Basic auth should be present")
+		assert.Equal(t, "admin@mycompany.com/token", username)
+		assert.Equal(t, "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI", password)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	v := NewZendeskValidatorWithClient(&http.Client{
+		Transport: &testTransport{url: server.URL},
+	})
+
+	match := &types.Match{
+		RuleID: "np.zendesk.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI"),
+		},
+		Snippet: types.Snippet{
+			Before: []byte("ZENDESK_SUBDOMAIN=mycompany\nZENDESK_EMAIL=admin@mycompany.com"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
 }
