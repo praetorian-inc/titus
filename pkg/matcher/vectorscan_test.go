@@ -526,3 +526,55 @@ func TestVectorscanMatcher_LocationAccuracy(t *testing.T) {
 	matchedContent := content[matches[0].Location.Offset.Start:matches[0].Location.Offset.End]
 	assert.Equal(t, "secret", string(matchedContent))
 }
+
+func TestHasFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		pattern  string
+		flag     byte
+		expected bool
+	}{
+		{"(?i) has i", "(?i)test", 'i', true},
+		{"(?i) no s", "(?i)test", 's', false},
+		{"(?xi) has i", "(?xi)test", 'i', true},
+		{"(?xi) has x", "(?xi)test", 'x', true},
+		{"(?xis) has s", "(?xis)test", 's', true},
+		{"(?xis) has m", "(?xis)test", 'm', false},
+		{"(?ixm) has m", "(?ixm)test", 'm', true},
+		{"no flags", "test", 'i', false},
+		{"(?:) non-capturing no flags", "(?:test)", 'i', false},
+		{"(?=) lookahead no flags", "(?=test)", 'i', false},
+		{"inline (?s) in middle", "test(?s)pattern", 's', true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasFlag(tt.pattern, tt.flag)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestVectorscanMatcher_CombinedFlagsCaseInsensitive(t *testing.T) {
+	// Test that combined flags like (?xi) properly detect case-insensitivity
+	rules := []*types.Rule{
+		{
+			ID:      "combined-xi",
+			Name:    "Combined (?xi) Test",
+			Pattern: `(?xi)
+				secret   # keyword
+				_key     # suffix
+			`,
+		},
+	}
+
+	matcher, err := NewVectorscan(rules, 2)
+	require.NoError(t, err)
+	defer matcher.Close()
+
+	// Test case-insensitive matching (SECRET_KEY should match secret_key pattern)
+	content := []byte(`Found SECRET_KEY in the config`)
+	matches, err := matcher.Match(content)
+	require.NoError(t, err)
+	assert.Len(t, matches, 1, "(?xi) pattern should match case-insensitively")
+}
