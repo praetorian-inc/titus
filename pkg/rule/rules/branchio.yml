@@ -1,3 +1,5 @@
+# Validator: None. Only viable endpoint (POST /v1/url) is mutating (creates deep links).
+# GET /v1/app/{key} requires branch_secret, which this rule doesn't capture.
 rules:
 
 - name: Branch.io Live Key
@@ -15,7 +17,7 @@ rules:
 
   negative_examples:
   - "key_live_short"
-  - "key_live_xxxxxxxxxxxxxxxxxxxx"
+  - "key_live_@#$special!chars%^&"
   - "BRANCH_KEY=your-key-here"
 
   description: |
@@ -43,7 +45,7 @@ rules:
 
   negative_examples:
   - "key_test_short"
-  - "key_test_xxxxxxxxxxxxxxxxxxxx"
+  - "key_test_@#$special!chars%^&"
   - "BRANCH_KEY=test-key-here"
 
   description: |
