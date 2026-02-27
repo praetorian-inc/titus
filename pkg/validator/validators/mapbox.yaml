@@ -1,0 +1,42 @@
+# pkg/validator/validators/mapbox.yaml
+# Mapbox validates tokens via the tokens API
+# Works for public (pk), secret (sk), and temporary (tk) tokens
+validators:
+  - name: mapbox-public-token
+    rule_ids:
+      - np.mapbox.1
+    http:
+      method: GET
+      url: "https://api.mapbox.com/tokens/v2"
+      auth:
+        type: query
+        secret_group: "token"
+        query_param: "access_token"
+      success_codes: [200]
+      failure_codes: [401, 403]
+
+  - name: mapbox-secret-token
+    rule_ids:
+      - np.mapbox.2
+    http:
+      method: GET
+      url: "https://api.mapbox.com/tokens/v2"
+      auth:
+        type: query
+        secret_group: "token"
+        query_param: "access_token"
+      success_codes: [200]
+      failure_codes: [401, 403]
+
+  - name: mapbox-temporary-token
+    rule_ids:
+      - np.mapbox.3
+    http:
+      method: GET
+      url: "https://api.mapbox.com/tokens/v2"
+      auth:
+        type: query
+        secret_group: "token"
+        query_param: "access_token"
+      success_codes: [200]
+      failure_codes: [401, 403]
