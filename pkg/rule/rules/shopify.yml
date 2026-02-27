@@ -46,7 +46,7 @@ rules:
 
 - name: Shopify Access Token (Public App)
   id: np.shopify.3
-  pattern: '\b(shpat_[a-fA-F0-9]{32})\b'
+  pattern: '\b(?P<token>shpat_[a-fA-F0-9]{32})\b'
 
   categories:
   - api
@@ -66,7 +66,7 @@ rules:
 
 - name: Shopify Access Token (Custom App)
   id: np.shopify.4
-  pattern: '\b(shpca_[a-fA-F0-9]{32})\b'
+  pattern: '\b(?P<token>shpca_[a-fA-F0-9]{32})\b'
 
   categories:
   - api
@@ -82,7 +82,7 @@ rules:
 
 - name: Shopify Access Token (Legacy Private App)
   id: np.shopify.5
-  pattern: '\b(shppa_[a-fA-F0-9]{32})\b'
+  pattern: '\b(?P<token>shppa_[a-fA-F0-9]{32})\b'
 
   categories:
   - api

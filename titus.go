@@ -321,6 +321,7 @@ func createValidationEngine(workers int) *validator.Engine {
 	validators = append(validators, validator.NewPostgresValidator())
 	validators = append(validators, validator.NewBrowserStackValidator())
 	validators = append(validators, validator.NewAmplitudeValidator())
+	validators = append(validators, validator.NewShopifyValidator())
 	validators = append(validators, validator.NewHelpScoutValidator())
 	validators = append(validators, validator.NewCypressValidator())
 	validators = append(validators, validator.NewKeenIOValidator())
