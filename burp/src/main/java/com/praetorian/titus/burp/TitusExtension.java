@@ -97,13 +97,26 @@ public class TitusExtension implements BurpExtension {
     }
 
     private String findTitusBinary() throws java.io.IOException {
-        // Check common locations
-        String[] paths = {
-            System.getProperty("user.home") + "/.titus/titus",
-            System.getProperty("user.home") + "/bin/titus",
-            "/usr/local/bin/titus",
-            "titus" // PATH lookup
-        };
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        String exe = isWindows ? ".exe" : "";
+        String home = System.getProperty("user.home");
+
+        // Check common locations (platform-aware)
+        String[] paths;
+        if (isWindows) {
+            paths = new String[] {
+                home + "\\.titus\\titus" + exe,
+                home + "\\bin\\titus" + exe,
+                "titus" + exe // PATH lookup
+            };
+        } else {
+            paths = new String[] {
+                home + "/.titus/titus",
+                home + "/bin/titus",
+                "/usr/local/bin/titus",
+                "titus" // PATH lookup
+            };
+        }
 
         for (String path : paths) {
             if (java.nio.file.Files.exists(java.nio.file.Path.of(path))) {
@@ -116,15 +129,19 @@ public class TitusExtension implements BurpExtension {
     }
 
     private String extractBundledBinary() throws java.io.IOException {
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        String binaryName = isWindows ? "titus.exe" : "titus";
+        String installPath = isWindows ? "%USERPROFILE%\\.titus\\titus.exe" : "~/.titus/titus";
+
         // Extract from JAR resources
-        try (java.io.InputStream is = getClass().getResourceAsStream("/titus")) {
+        try (java.io.InputStream is = getClass().getResourceAsStream("/" + binaryName)) {
             if (is == null) {
                 throw new java.io.IOException(
-                    "Titus binary not found. Install it to ~/.titus/titus or /usr/local/bin/titus");
+                    "Titus binary not found. Install it to " + installPath);
             }
 
             var tempDir = java.nio.file.Files.createTempDirectory("titus");
-            var binaryPath = tempDir.resolve("titus");
+            var binaryPath = tempDir.resolve(binaryName);
             java.nio.file.Files.copy(is, binaryPath);
             binaryPath.toFile().setExecutable(true);
 
