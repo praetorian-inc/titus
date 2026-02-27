@@ -27,6 +27,7 @@ func init() {
 	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(gitlabCmd)
+	rootCmd.AddCommand(exploreCmd)
 }
 
 // Execute runs the root command.

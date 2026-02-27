@@ -37,6 +37,10 @@ func CreateSchema(db *sql.DB) error {
 		return fmt.Errorf("creating provenance table: %w", err)
 	}
 
+	if err := createAnnotationsTable(db); err != nil {
+		return fmt.Errorf("creating annotations table: %w", err)
+	}
+
 	return nil
 }
 
@@ -145,6 +149,21 @@ func createProvenanceTable(db *sql.DB) error {
 	// Create index for efficient provenance lookup by blob_id
 	_, err = db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_provenance_blob_id ON provenance(blob_id)
+	`)
+	return err
+}
+
+func createAnnotationsTable(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS annotations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_type TEXT NOT NULL,
+			target_id TEXT NOT NULL,
+			status TEXT,
+			comment TEXT,
+			updated_at TEXT NOT NULL,
+			UNIQUE(target_type, target_id)
+		)
 	`)
 	return err
 }

@@ -260,6 +260,39 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+func (s *SQLiteStore) GetAnnotation(targetType, targetID string) (string, string, error) {
+	var status, comment sql.NullString
+	err := s.e.QueryRow(
+		"SELECT status, comment FROM annotations WHERE target_type = ? AND target_id = ?",
+		targetType, targetID,
+	).Scan(&status, &comment)
+	if err == sql.ErrNoRows {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return status.String, comment.String, nil
+}
+
+func (s *SQLiteStore) SetAnnotation(targetType, targetID, status, comment string) error {
+	var statusVal, commentVal sql.NullString
+	if status != "" {
+		statusVal = sql.NullString{String: status, Valid: true}
+	}
+	if comment != "" {
+		commentVal = sql.NullString{String: comment, Valid: true}
+	}
+	_, err := s.e.Exec(`
+		INSERT INTO annotations (target_type, target_id, status, comment, updated_at)
+		VALUES (?, ?, ?, ?, datetime('now'))
+		ON CONFLICT(target_type, target_id)
+		DO UPDATE SET status = excluded.status, comment = excluded.comment, updated_at = excluded.updated_at`,
+		targetType, targetID, statusVal, commentVal,
+	)
+	return err
+}
+
 func scanMatches(rows *sql.Rows) ([]*types.Match, error) {
 	var result []*types.Match
 	for rows.Next() {
