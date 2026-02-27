@@ -10,6 +10,7 @@ validators:
       url: "https://www.deviantart.com/api/v1/oauth2/placebo"
       auth:
         type: none  # Credentials sent in request body, not auth header
+        secret_group: "token"  # Matches (?P<token>...) in rule regex
       headers:
         - name: Content-Type
           value: application/x-www-form-urlencoded
