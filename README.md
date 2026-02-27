@@ -243,12 +243,37 @@ The Burp extension scans HTTP responses for secrets during proxy traffic and act
 
 ### Setup
 
+#### Linux / macOS (Build from Source)
+
 ```bash
-# Build the secrets scanner CLI and Burp extension JAR, install CLI to ~/.titus/
+# Build the CLI and Burp extension JAR, install CLI to ~/.titus/
 make install-burp
 ```
 
 Then load `dist/titus-burp-1.0.0-all.jar` in Burp Suite under Extensions > Add.
+
+#### Windows (Download from Releases)
+
+1. Download `titus-windows-amd64.exe` and `titus-burp-<version>.jar` from [Releases](../../releases)
+2. Create the Titus directory and install the binary:
+   ```powershell
+   mkdir %USERPROFILE%\.titus
+   copy titus-windows-amd64.exe %USERPROFILE%\.titus\titus.exe
+   ```
+3. Load the JAR in Burp Suite under Extensions > Add
+
+#### Linux / macOS (Download from Releases)
+
+1. Download the appropriate binary for your platform and `titus-burp-<version>.jar` from [Releases](../../releases):
+   - `titus-linux-amd64` or `titus-linux-arm64` for Linux
+   - `titus-darwin-amd64` or `titus-darwin-arm64` for macOS
+2. Install the binary:
+   ```bash
+   mkdir -p ~/.titus
+   cp titus-<platform> ~/.titus/titus
+   chmod +x ~/.titus/titus
+   ```
+3. Load the JAR in Burp Suite under Extensions > Add
 
 The extension launches a `titus serve` process in the background and communicates over stdin/stdout using NDJSON. Detection rules are loaded once at startup.
 
