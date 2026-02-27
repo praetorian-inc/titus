@@ -908,26 +908,7 @@ func initValidationEngine() *validator.Engine {
 	if !scanValidate {
 		return nil
 	}
-
-	var validators []validator.Validator
-
-	// Add Go validators (complex multi-credential validation)
-	validators = append(validators, validator.NewAWSValidator())
-	validators = append(validators, validator.NewSauceLabsValidator())
-	validators = append(validators, validator.NewTwilioValidator())
-	validators = append(validators, validator.NewAzureStorageValidator())
-	validators = append(validators, validator.NewPostgresValidator())
-
-	// Add embedded YAML validators
-	embedded, err := validator.LoadEmbeddedValidators()
-	if err != nil {
-		// Log warning but continue
-		fmt.Fprintf(os.Stderr, "warning: failed to load embedded validators: %v\n", err)
-	} else {
-		validators = append(validators, embedded...)
-	}
-
-	return validator.NewEngine(scanValidateWorkers, validators...)
+	return validator.NewDefaultEngine(scanValidateWorkers)
 }
 
 // validateMatches validates matches using the validation engine.
