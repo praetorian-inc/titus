@@ -11,6 +11,11 @@ LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 CGO_ENABLED ?= 1
 GO_TAGS ?= vectorscan
 
+# Clear vectorscan tag when CGO is disabled (vectorscan requires CGO)
+ifeq ($(CGO_ENABLED),0)
+  GO_TAGS :=
+endif
+
 # Build -tags flag (empty when GO_TAGS is empty to avoid bare "-tags" argument)
 ifneq ($(GO_TAGS),)
   TAGS_FLAG := -tags $(GO_TAGS)
