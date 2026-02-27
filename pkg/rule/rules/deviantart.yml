@@ -37,3 +37,54 @@ rules:
 
     references:
     - https://www.deviantart.com/developers/http/v1/20210526
+
+  - name: DeviantArt OAuth Client Secret
+    id: kingfisher.deviantart.1
+
+    pattern: |
+      (?xi)
+      (?:deviantart|deviant_art|da_)
+      (?:.|\n|\r){0,64}?
+      (?:client[_-]?secret|oauth[_-]?secret)
+      (?:.|\n|\r){0,32}?
+      \b
+      (?P<secret>
+        (?!0123456789abcdef)
+        [0-9a-f]{32}
+      )
+      \b
+
+    examples:
+    - 'deviantart_client_secret = "76b08c69cfb27f26d6161f9ab6d061a1"'
+    - 'DEVIANTART_CLIENT_SECRET=ccd16fd197588957c0bd74939057fa9d'
+    - |
+        deviantart:
+          client_id: "7926"
+          client_secret: "7e9e2374a223c479f70e1bf18874f8c3"
+    - |
+        deviantart() {
+            CLIENT_ID=16531
+            CLIENT_SECRET=68c00f3d0ceab95b0fac638b33a3368e
+        }
+
+    negative_examples:
+    - 'github_client_secret = "76b08c69cfb27f26d6161f9ab6d061a1"'
+    - 'stripe_client_secret = "76b08c69cfb27f26d6161f9ab6d061a1"'
+    - 'deviantart_client_secret = "0123456789abcdef0123456789abcdef"'
+    - 'deviantart_client_secret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"'
+    - 'deviantart_client_secret = "LMNOPQRSTUVWXYZZZZZZZZ9999999999"'
+
+    description: |
+      DeviantArt OAuth 2.0 client secret used for API authentication.
+      An attacker with this credential and the corresponding client_id can
+      obtain access tokens via the client_credentials grant type, enabling
+      unauthorized API access to DeviantArt resources. Potential impact
+      includes scraping private user data, impersonating applications, and
+      abusing the DeviantArt API on behalf of the registered application.
+
+    references:
+    - https://www.deviantart.com/developers/authentication
+    - https://www.deviantart.com/developers/
+    - https://www.deviantart.com/developers/http/v1/20240701
+
+    categories: [api, secret]
