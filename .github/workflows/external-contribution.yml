@@ -14,6 +14,7 @@ jobs:
         with:
           linear-team-id: ${{ secrets.LINEAR_TEAM_ID }}
           linear-assignee-id: ${{ secrets.LINEAR_ASSIGNEE_ID }}
+          linear-parent-issue-id: ${{ secrets.LINEAR_PARENT_ISSUE_ID }}
           slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
         env:
           ORG_MEMBER_CHECK_PAT: ${{ secrets.ORG_MEMBER_CHECK_PAT }}
