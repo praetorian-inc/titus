@@ -85,6 +85,21 @@ test\ pattern    (?# with escaped space )
 			input:    `(?x) (?s) \. .+`,
 			expected: `\..+`,
 		},
+		{
+			name:     "pattern with (?xi) combined flags preserves i",
+			input:    `(?xi) test pattern`,
+			expected: `(?i)testpattern`,
+		},
+		{
+			name:     "pattern with (?xis) multiple flags preserves is",
+			input:    `(?xis) test .+`,
+			expected: `(?is)test.+`,
+		},
+		{
+			name:     "pattern with (?ixm) x in middle preserves im",
+			input:    `(?ixm) test$`,
+			expected: `(?im)test$`,
+		},
 	}
 
 	for _, tt := range tests {

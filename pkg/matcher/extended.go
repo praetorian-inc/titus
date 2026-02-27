@@ -8,8 +8,8 @@ import (
 )
 
 // stripExtendedMode preprocesses a regex pattern to remove extended mode syntax.
-// If the pattern starts with (?x), this function:
-// 1. Removes the (?x) flag
+// If the pattern starts with a flag group containing 'x' (e.g., (?x), (?xi), (?xis)), this function:
+// 1. Removes only the 'x' flag from the group (other flags like i, s, m are preserved)
 // 2. Removes all whitespace (except escaped whitespace like \s or \ )
 // 3. Removes all comments in the form (?# ... )
 // 4. Removes all # line-end comments (from unescaped # outside character classes to end of line)
@@ -17,14 +17,33 @@ import (
 // This is necessary because the Hyperscan library (gohs) doesn't support the Extended flag,
 // which allows free-spacing mode with comments in regex patterns.
 func stripExtendedMode(pattern string) string {
-	// Check if pattern uses extended mode
-	if !strings.HasPrefix(strings.TrimSpace(pattern), "(?x)") {
+	// Check if pattern uses extended mode by looking for (?...) with x flag
+	pattern = strings.TrimSpace(pattern)
+	if len(pattern) < 4 || pattern[0:2] != "(?" {
 		return pattern
 	}
 
-	// Remove the (?x) flag
-	pattern = strings.TrimSpace(pattern)
-	pattern = strings.TrimPrefix(pattern, "(?x)")
+	// Find the closing ) of the flag group
+	closeIdx := strings.Index(pattern[2:], ")")
+	if closeIdx == -1 {
+		return pattern
+	}
+
+	flags := pattern[2 : 2+closeIdx]
+	if !strings.Contains(flags, "x") {
+		return pattern
+	}
+
+	// Remove only the 'x' flag, preserve other flags
+	remainingFlags := strings.ReplaceAll(flags, "x", "")
+	rest := pattern[2+closeIdx+1:]
+
+	// Rebuild pattern with remaining flags (if any)
+	if remainingFlags != "" {
+		pattern = "(?" + remainingFlags + ")" + rest
+	} else {
+		pattern = rest
+	}
 
 	// Remove comments (?# ... )
 	// This regex matches (?# followed by any characters until the closing )

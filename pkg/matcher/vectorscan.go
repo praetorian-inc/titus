@@ -330,18 +330,42 @@ func hasExtendedMode(pattern string) bool {
 }
 
 // hasCaseInsensitive checks if pattern uses case-insensitive mode.
+// Detects both (?i) and combined forms like (?xi), (?is), etc.
 func hasCaseInsensitive(pattern string) bool {
-	return strings.Contains(pattern, "(?i)")
+	return hasFlag(pattern, 'i')
 }
 
 // hasDotAll checks if pattern uses dot-all mode.
+// Detects both (?s) and combined forms like (?xs), (?is), etc.
 func hasDotAll(pattern string) bool {
-	return strings.Contains(pattern, "(?s)")
+	return hasFlag(pattern, 's')
 }
 
 // hasMultiline checks if pattern uses multiline mode.
+// Detects both (?m) and combined forms like (?xm), (?im), etc.
 func hasMultiline(pattern string) bool {
-	return strings.Contains(pattern, "(?m)")
+	return hasFlag(pattern, 'm')
+}
+
+// hasFlag checks if a pattern contains the given flag character in any flag group.
+// It searches for (?...) groups anywhere in the pattern and checks if the flag is present.
+func hasFlag(pattern string, flag byte) bool {
+	for i := 0; i < len(pattern)-2; i++ {
+		if pattern[i] == '(' && pattern[i+1] == '?' {
+			// Found a flag group, extract flags until ')'
+			for j := i + 2; j < len(pattern); j++ {
+				c := pattern[j]
+				if c == ')' || c == ':' || c == '!' || c == '=' || c == '<' {
+					// End of flags (or start of non-capturing/lookahead/lookbehind group)
+					break
+				}
+				if c == flag {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // Match scans content against all loaded rules.
