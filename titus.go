@@ -311,30 +311,7 @@ func (s *Scanner) validateMatches(ctx context.Context, matches []*Match) {
 
 // createValidationEngine creates a validation engine with all available validators.
 func createValidationEngine(workers int) *validator.Engine {
-	var validators []validator.Validator
-
-	// Add Go validators (complex multi-credential validation)
-	validators = append(validators, validator.NewAWSValidator())
-	validators = append(validators, validator.NewSauceLabsValidator())
-	validators = append(validators, validator.NewTwilioValidator())
-	validators = append(validators, validator.NewAzureStorageValidator())
-	validators = append(validators, validator.NewPostgresValidator())
-	validators = append(validators, validator.NewBrowserStackValidator())
-	validators = append(validators, validator.NewAmplitudeValidator())
-	validators = append(validators, validator.NewHelpScoutValidator())
-	validators = append(validators, validator.NewCypressValidator())
-	validators = append(validators, validator.NewKeenIOValidator())
-	validators = append(validators, validator.NewBranchIOValidator())
-	validators = append(validators, validator.NewZendeskValidator())
-	validators = append(validators, validator.NewWPEngineValidator())
-
-	// Add embedded YAML validators
-	embedded, err := validator.LoadEmbeddedValidators()
-	if err == nil {
-		validators = append(validators, embedded...)
-	}
-
-	return validator.NewEngine(workers, validators...)
+	return validator.NewDefaultEngine(workers)
 }
 
 // LoadRulesFromFile loads detection rules from a YAML file.

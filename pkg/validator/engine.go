@@ -8,6 +8,35 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
+// NewDefaultEngine creates a validation engine pre-loaded with all built-in validators.
+// This is the single source of truth for validator registration.
+func NewDefaultEngine(workers int) *Engine {
+	var validators []Validator
+
+	// Go validators (complex multi-credential validation)
+	validators = append(validators, NewAWSValidator())
+	validators = append(validators, NewSauceLabsValidator())
+	validators = append(validators, NewTwilioValidator())
+	validators = append(validators, NewAzureStorageValidator())
+	validators = append(validators, NewPostgresValidator())
+	validators = append(validators, NewBrowserStackValidator())
+	validators = append(validators, NewAmplitudeValidator())
+	validators = append(validators, NewHelpScoutValidator())
+	validators = append(validators, NewCypressValidator())
+	validators = append(validators, NewKeenIOValidator())
+	validators = append(validators, NewBranchIOValidator())
+	validators = append(validators, NewZendeskValidator())
+	validators = append(validators, NewWPEngineValidator())
+
+	// Embedded YAML validators
+	embedded, err := LoadEmbeddedValidators()
+	if err == nil {
+		validators = append(validators, embedded...)
+	}
+
+	return NewEngine(workers, validators...)
+}
+
 // Engine coordinates validation across multiple validators with caching.
 type Engine struct {
 	validators []Validator
