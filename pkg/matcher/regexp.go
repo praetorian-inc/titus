@@ -84,8 +84,9 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 
 		// Loop through all matches
 		for match != nil {
-			start := match.Index
-			end := start + match.Length
+			// regexp2's Match.Index and Match.Length are rune-based, not byte-based
+			matchedText := []byte(match.String())
+			start, end := runeSpanToByteSpan(content, match.Index, match.Length)
 
 			// Extract capture groups (positional, for backwards compatibility)
 			var groups [][]byte
@@ -112,7 +113,7 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 				}
 			}
 
-			// Extract context
+			// Extract context using corrected positions
 			var before, after []byte
 			if m.contextLines > 0 {
 				before, after = ExtractContext(content, start, end, m.contextLines)
@@ -132,7 +133,7 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 				NamedGroups: namedGroups,
 				Snippet: types.Snippet{
 					Before:   before,
-					Matching: append([]byte{}, content[start:end]...),
+					Matching: matchedText,
 					After:    after,
 				},
 			}

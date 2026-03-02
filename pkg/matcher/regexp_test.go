@@ -263,3 +263,165 @@ func TestMatchParallel_RaceDetector(t *testing.T) {
 		assert.NotEmpty(t, matches, "iteration %d: should find matches", i)
 	}
 }
+
+// TestMatch_SnippetAndOffset_ASCII verifies correct snippet extraction and byte offsets
+// for ASCII-only content.
+func TestMatch_SnippetAndOffset_ASCII(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:      "test-secret",
+			Name:    "Secret Pattern",
+			Pattern: `\b(secret_[a-z]+)\b`,
+		},
+	}
+
+	content := []byte("prefix secret_key suffix")
+	//                 0123456789...
+	//                        ^-- "secret_key" starts at byte 7
+
+	matcher, err := NewPortableRegexp(rules, 0)
+	require.NoError(t, err)
+
+	matches, err := matcher.Match(content)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+
+	match := matches[0]
+
+	// Verify matched text
+	assert.Equal(t, "secret_key", string(match.Snippet.Matching))
+
+	// Verify byte offsets
+	assert.Equal(t, int64(7), match.Location.Offset.Start, "start offset should be 7")
+	assert.Equal(t, int64(17), match.Location.Offset.End, "end offset should be 17")
+
+	// Verify slicing with offsets gives correct result
+	start := match.Location.Offset.Start
+	end := match.Location.Offset.End
+	assert.Equal(t, "secret_key", string(content[start:end]))
+}
+
+// TestMatch_SnippetAndOffset_UTF8 verifies correct snippet extraction and byte offsets
+// when content contains multi-byte UTF-8 characters before the match.
+//
+// This is a regression test for the regexp2 rune-vs-byte index issue:
+// regexp2 returns Match.Index as a rune count, not byte count, which caused
+// incorrect offsets when content had multi-byte UTF-8 characters.
+func TestMatch_SnippetAndOffset_UTF8(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:      "test-secret",
+			Name:    "Secret Pattern",
+			Pattern: `\b(secret_[a-z]+)\b`,
+		},
+	}
+
+	testCases := []struct {
+		name        string
+		content     string
+		wantMatch   string
+		wantStart   int64
+		wantEnd     int64
+		description string
+	}{
+		{
+			name:        "2-byte UTF-8 before match",
+			content:     "préfix secret_key suffix", // é = 2 bytes
+			wantMatch:   "secret_key",
+			wantStart:   8, // "préfix " = 8 bytes (7 chars but é is 2 bytes)
+			wantEnd:     18,
+			description: "é (U+00E9) is 2 bytes in UTF-8",
+		},
+		{
+			name:        "3-byte UTF-8 before match",
+			content:     "pre–fix secret_key suffix", // – (en dash) = 3 bytes
+			wantMatch:   "secret_key",
+			wantStart:   10, // "pre–fix " = 10 bytes (8 chars but – is 3 bytes)
+			wantEnd:     20,
+			description: "– (U+2013 en dash) is 3 bytes in UTF-8",
+		},
+		{
+			name:        "4-byte UTF-8 before match",
+			content:     "prefix 🔑 secret_key suffix", // 🔑 = 4 bytes
+			wantMatch:   "secret_key",
+			wantStart:   12, // "prefix 🔑 " = 12 bytes (9 chars but 🔑 is 4 bytes)
+			wantEnd:     22,
+			description: "🔑 (U+1F511) is 4 bytes in UTF-8",
+		},
+		{
+			name:        "multiple multi-byte chars before match",
+			content:     "café 🔐 secret_key suffix", // é=2bytes, 🔐=4bytes
+			wantMatch:   "secret_key",
+			wantStart:   11, // "café 🔐 " = 11 bytes (7 chars)
+			wantEnd:     21,
+			description: "multiple multi-byte characters compound the offset",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			content := []byte(tc.content)
+
+			matcher, err := NewPortableRegexp(rules, 0)
+			require.NoError(t, err)
+
+			matches, err := matcher.Match(content)
+			require.NoError(t, err)
+			require.Len(t, matches, 1, "should find exactly one match")
+
+			match := matches[0]
+
+			// Verify matched text is correct
+			assert.Equal(t, tc.wantMatch, string(match.Snippet.Matching),
+				"Snippet.Matching should contain the correct text")
+
+			// Verify byte offsets are correct
+			assert.Equal(t, tc.wantStart, match.Location.Offset.Start,
+				"Location.Offset.Start should be correct byte offset")
+			assert.Equal(t, tc.wantEnd, match.Location.Offset.End,
+				"Location.Offset.End should be correct byte offset")
+
+			// Most importantly: verify slicing content with these offsets gives the matched text
+			start := match.Location.Offset.Start
+			end := match.Location.Offset.End
+			sliced := string(content[start:end])
+			assert.Equal(t, tc.wantMatch, sliced,
+				"content[Offset.Start:Offset.End] must equal the matched text")
+		})
+	}
+}
+
+// TestMatch_SnippetContext_UTF8 verifies that before/after context is correct
+// when content contains multi-byte UTF-8 characters.
+func TestMatch_SnippetContext_UTF8(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:      "test-secret",
+			Name:    "Secret Pattern",
+			Pattern: `\b(secret_[a-z]+)\b`,
+		},
+	}
+
+	// Content with multi-byte chars before and after the match
+	content := []byte("café secret_key 🔑end")
+
+	matcher, err := NewPortableRegexp(rules, 3) // 3 lines of context
+	require.NoError(t, err)
+
+	matches, err := matcher.Match(content)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+
+	match := matches[0]
+
+	// Verify the matched text
+	assert.Equal(t, "secret_key", string(match.Snippet.Matching))
+
+	// Verify before context contains the UTF-8 prefix
+	assert.Contains(t, string(match.Snippet.Before), "café",
+		"before context should include UTF-8 characters")
+
+	// Verify after context contains the UTF-8 suffix
+	assert.Contains(t, string(match.Snippet.After), "🔑",
+		"after context should include UTF-8 characters")
+}

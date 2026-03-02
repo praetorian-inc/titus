@@ -128,15 +128,12 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 
 		// Loop through all matches
 		for match != nil {
-			start := match.Index
-			end := start + match.Length
-
 			// Extract capture groups
 			groups := extractCaptureGroups(match)
 			namedGroups := extractNamedGroups(match, m.groupNameCache[rule.Pattern])
 
-			// Build match result
-			result := buildMatchResult(blobID, rule, start, end, groups, namedGroups, content, m.contextLines)
+			// Build match result (convert rune-based Index/Length to byte offsets)
+			result := buildMatchResult(blobID, rule, match.Index, match.Length, []byte(match.String()), groups, namedGroups, content, m.contextLines)
 
 			// Deduplicate
 			if !m.dedup.IsDuplicate(result) {
@@ -221,13 +218,10 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 
 				// Loop through all matches
 				for match != nil {
-					start := match.Index
-					end := start + match.Length
-
-					// Extract capture groups and build result
+					// Extract capture groups and build result (convert rune-based Index/Length to byte offsets)
 					groups := extractCaptureGroups(match)
 					namedGroups := extractNamedGroups(match, m.groupNameCache[rule.Pattern])
-					matchResult := buildMatchResult(blobID, rule, start, end, groups, namedGroups, content, m.contextLines)
+					matchResult := buildMatchResult(blobID, rule, match.Index, match.Length, []byte(match.String()), groups, namedGroups, content, m.contextLines)
 					workerMatches = append(workerMatches, matchResult)
 
 					// Find next match

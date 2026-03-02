@@ -626,8 +626,10 @@ func (m *VectorscanMatcher) buildMatchFromRegexp2(
 	rule *types.Rule,
 	re2match *regexp2.Match,
 ) *types.Match {
-	start := re2match.Index
-	end := start + re2match.Length
+	// regexp2's Match.Index and Match.Length are rune-based, not byte-based.
+	// Convert to byte offsets for correct slicing.
+	matchedText := []byte(re2match.String())
+	start, end := runeSpanToByteSpan(content, re2match.Index, re2match.Length)
 
 	// Extract positional and named capture groups
 	groups, namedGroups := m.extractGroupsFromMatch(re2match, rule)
@@ -652,7 +654,7 @@ func (m *VectorscanMatcher) buildMatchFromRegexp2(
 		NamedGroups: namedGroups,
 		Snippet: types.Snippet{
 			Before:   before,
-			Matching: append([]byte{}, content[start:end]...),
+			Matching: matchedText,
 			After:    after,
 		},
 	}
