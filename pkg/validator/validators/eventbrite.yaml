@@ -1,0 +1,15 @@
+validators:
+  - name: eventbrite-api-key
+    rule_ids:
+      - kingfisher.eventbrite.1
+    http:
+      method: GET
+      url: https://www.eventbriteapi.com/v3/users/me/organizations/
+      auth:
+        type: bearer
+        secret_group: "1"
+      headers:
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]
