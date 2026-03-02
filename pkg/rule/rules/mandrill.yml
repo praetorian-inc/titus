@@ -1,16 +1,24 @@
 rules:
+  # Matches Mandrill (Mailchimp Transactional) API keys.
+  # Key format: 22 characters from [A-Za-z0-9_-] — Base64url-safe alphabet.
+  # Evidence:
+  #   - TruffleHog detector (ID 577) uses \b([A-Za-z0-9_-]{22})\b with keyword "mandrill"
+  #   - Mandrill docs show example key "taqnVL1P5AJrM4oU4opSqQ" (22 chars, mixed case + digits)
+  #   - Keys are opaque tokens; no prefix or checksum structure
+  #   - Auth: POST JSON body {"key": "..."} to mandrillapp.com/api/1.0/
+  #   - Invalid keys return HTTP 500 with {"status":"error","code":-1,"name":"Invalid_Key"}
   - name: Mandrill API Key
     id: kingfisher.mandrill.1
     pattern: |
-      (?xi)                   
-      \b                     
+      (?xi)
+      \b
       mandrill
       (?:.|[\n\r]){0,32}?
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
-      \b                     
-      (                      
-        (?:[0-9A-Z_-]{11}){2}
+      \b
+      (?P<key>
+        [0-9A-Z_-]{22}
       )
     pattern_requirements:
       min_digits: 2
@@ -23,19 +31,3 @@ rules:
     categories:
       - api
       - identifier
-    validation:
-      type: Http
-      content:
-        request:
-          method: POST
-          headers:
-            Content-Type: application/json
-          body: |
-            { "key": "{{ TOKEN }}" }
-          url: https://mandrillapp.com/api/1.0/users/ping.json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status: [200]
-            - type: WordMatch
-              words: ['"PONG!"']

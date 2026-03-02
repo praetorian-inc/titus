@@ -1,0 +1,24 @@
+# Mandrill (Mailchimp Transactional) API key validator.
+# Auth: Mandrill authenticates via JSON POST body (not headers).
+# Endpoint: POST /api/1.0/users/ping2.json — lightweight auth check.
+#   - ping2.json returns {"PING":"PONG!"} on 200 for valid keys.
+#   - ping.json (v1) also works but requires email/password for some accounts.
+#   - Invalid keys return HTTP 500 with {"status":"error","code":-1,"name":"Invalid_Key"}.
+#     This is unusual — most APIs use 401. Mandrill uses 500 for all API errors.
+# Ref: https://mailchimp.com/developer/transactional/api/users/ping-2/
+validators:
+  - name: mandrill-api-key
+    rule_ids:
+      - kingfisher.mandrill.1
+    http:
+      method: POST
+      url: "https://mandrillapp.com/api/1.0/users/ping2.json"
+      auth:
+        type: none
+        secret_group: "key"
+      headers:
+        - name: Content-Type
+          value: application/json
+      body: '{"key": "{{key}}"}'
+      success_codes: [200]
+      failure_codes: [500]
