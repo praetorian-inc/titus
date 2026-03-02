@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -92,22 +93,29 @@ func (v *HTTPValidator) extractSecret(match *types.Match) (string, error) {
 		return "", fmt.Errorf("secret_group not specified in validator config")
 	}
 
-	// Look up the named capture group
-	if match.NamedGroups == nil {
-		return "", fmt.Errorf("no named capture groups in match (regex pattern needs (?P<%s>...) syntax)", groupName)
-	}
-
-	value, ok := match.NamedGroups[groupName]
-	if !ok {
-		// List available groups for debugging
-		available := make([]string, 0, len(match.NamedGroups))
-		for name := range match.NamedGroups {
-			available = append(available, name)
+	// Try named capture groups first
+	if match.NamedGroups != nil {
+		if value, ok := match.NamedGroups[groupName]; ok {
+			return string(value), nil
 		}
-		return "", fmt.Errorf("named group %q not found (available: %v)", groupName, available)
 	}
 
-	return string(value), nil
+	// Fall back to positional capture groups for numeric secret_group values
+	if idx, err := strconv.Atoi(groupName); err == nil {
+		// secret_group "1" = Groups[0] (1-based index)
+		zeroIdx := idx - 1
+		if zeroIdx >= 0 && zeroIdx < len(match.Groups) {
+			return string(match.Groups[zeroIdx]), nil
+		}
+		return "", fmt.Errorf("positional group %d out of range (have %d groups)", idx, len(match.Groups))
+	}
+
+	// List available groups for debugging
+	available := make([]string, 0, len(match.NamedGroups))
+	for name := range match.NamedGroups {
+		available = append(available, name)
+	}
+	return "", fmt.Errorf("named group %q not found (available: %v)", groupName, available)
 }
 
 func (v *HTTPValidator) applyAuth(req *http.Request, secret string) error {
