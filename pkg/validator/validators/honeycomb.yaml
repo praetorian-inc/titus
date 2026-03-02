@@ -1,0 +1,16 @@
+validators:
+  - name: honeycomb-api-key
+    rule_ids:
+      - kingfisher.honeycomb.1
+    http:
+      method: GET
+      url: https://api.honeycomb.io/1/auth
+      auth:
+        type: header
+        secret_group: "1"
+        header_name: X-Honeycomb-Team
+      headers:
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]
