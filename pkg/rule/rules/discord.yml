@@ -3,11 +3,11 @@ rules:
     id: kingfisher.discord.1
     pattern: |
       (?xi)
-      (
+      (?P<webhook_base>
         https://discord\.com/api/webhooks/
         \d{18}
       )/
-      (
+      (?P<webhook_token>
         [0-9a-z_\-]{68}
       )
       \b
@@ -35,14 +35,16 @@ rules:
     id: kingfisher.discord.2
     pattern: |
       (?xi)
-      (
-        [MNO][A-Z0-9_-]{23}\.[A-Z0-9_-]{6}\.[A-Z0-9_-]{27}
-      )  
+      (?P<token>
+        [MNO][A-Z0-9_-]{20,30}\.[A-Z0-9_-]{6}\.[A-Z0-9_-]{27,40}
+      )
       \b
     min_entropy: 3.3
     confidence: medium
     examples:
       - 'apikey: MC0dBvKTjD0rY0cV8i37CjBf.uLHQPq.Nb1Ok1mEhe-3iTdrGOuegj29yQR'
+    categories:
+      - api
     validation:
       type: Http
       content:
@@ -74,3 +76,5 @@ rules:
     examples:
       - discord = 12345678901234567
       - 'bot_id: "123456789012345678"'
+    categories:
+      - identifier

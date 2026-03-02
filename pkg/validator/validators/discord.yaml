@@ -1,0 +1,30 @@
+# pkg/validator/validators/discord.yaml
+# Discord webhook validation - GET the webhook URL
+# Discord bot token validation - GET /users/@me with Bot auth
+validators:
+  - name: discord-webhook
+    rule_ids:
+      - kingfisher.discord.1
+    http:
+      method: GET
+      url: "{{webhook_base}}/{{webhook_token}}"
+      auth:
+        type: none
+        secret_group: "webhook_token"
+      success_codes: [200]
+      failure_codes: [401, 404]
+
+  - name: discord-bot-token
+    rule_ids:
+      - kingfisher.discord.2
+    http:
+      method: GET
+      url: "https://discord.com/api/v10/users/@me"
+      auth:
+        type: none
+        secret_group: "token"
+      headers:
+        - name: "Authorization"
+          value: "Bot {{token}}"
+      success_codes: [200]
+      failure_codes: [401, 403]

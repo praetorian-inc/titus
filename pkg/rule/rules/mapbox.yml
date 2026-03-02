@@ -6,7 +6,7 @@ rules:
   # NOTE: `pk` tokens are public and have read-only access.
   #       `sk` tokens are secret and should never be shared.
   #       `tk` tokens are temporary access tokens.
-  pattern: '(?i)(?s)mapbox.{0,30}(pk\.[a-z0-9\-+/=]{32,128}\.[a-z0-9\-+/=]{20,30})(?:[^a-z0-9\-+/=]|$)'
+  pattern: '(?i)(?s)mapbox.{0,30}(?P<token>pk\.[a-z0-9\-+/=]{32,128}\.[a-z0-9\-+/=]{20,30})(?:[^a-z0-9\-+/=]|$)'
 
   categories: [api, fuzzy]
 
@@ -27,7 +27,7 @@ rules:
   # NOTE: `pk` tokens are public and have read-only access.
   #       `sk` tokens are secret and should never be shared.
   #       `tk` tokens are temporary access tokens.
-  pattern: '(?i)(?s)mapbox.{0,30}(sk\.[a-z0-9\-+/=]{32,128}\.[a-z0-9\-+/=]{20,30})(?:[^a-z0-9\-+/=]|$)'
+  pattern: '(?i)(?s)mapbox.{0,30}(?P<token>sk\.[a-z0-9\-+/=]{32,128}\.[a-z0-9\-+/=]{20,30})(?:[^a-z0-9\-+/=]|$)'
 
   categories: [api, fuzzy, secret]
 
@@ -47,7 +47,7 @@ rules:
   # NOTE: `pk` tokens are public and have read-only access.
   #       `sk` tokens are secret and should never be shared.
   #       `tk` tokens are temporary access tokens.
-  pattern: '(?i)(?s)mapbox.{0,30}(tk\.[a-z0-9\-+/=]{32,128}\.[a-z0-9\-+/=]{20,30})(?:[^a-z0-9\-+/=]|$)'
+  pattern: '(?i)(?s)mapbox.{0,30}(?P<token>tk\.[a-z0-9\-+/=]{32,1200}\.[a-z0-9\-+/=]{20,30})(?:[^a-z0-9\-+/=]|$)'
 
   categories: [api, fuzzy, secret]
 
