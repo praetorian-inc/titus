@@ -1,20 +1,20 @@
 rules:
+  # Matches AMQP connection URIs with embedded credentials.
+  # Named groups follow the Postgres validator pattern for Go-based validation.
+  # Regex sourced from TruffleHog detector (detector ID 903) with named groups added.
   - name: RabbitMQ Credential
     id: kingfisher.rabbitmq.1
     pattern: |
       (?xi)
-      (?:
-        amqps?
-      )
+      amqps?
       :\/\/
-      [\S]{3,50}
+      (?P<user>[\S]{3,50})
       :
-      (
-        [\S]{3,50}
-      )
+      (?P<password>[\S]{3,50})
       @
-      [-.%\w\/:]+
-      \b
+      (?P<host>[-.%\w]+)
+      (?::(?P<port>[0-9]{1,5}))?
+      (?:[\/][^\s]*)?
     pattern_requirements:
       min_special_chars: 1
     min_entropy: 3.5
@@ -22,20 +22,11 @@ rules:
     examples:
       - amqp://user:password@rabbitmq.example.com/queue
       - amqps://admin:3eCa3P@192.168.1.10:5671/vhost
-    # validation:
-    #   type: Http
-    #   content:
-    #     request:
-    #       url: '{{ URL }}'
-    #       headers:
-    #         Custom-header: '{{ TOKEN }}'
-    #       method: GET
-    #       response_matcher:
-    #         - report_response: true
-    #         - status:
-    #             - 200
-    #           type: StatusMatch
-    #         - report_response: true
-    #         - type: WordMatch
-    #           words:
-    #             - '"connected":true'
+      - amqps://myuser:s3cretP4ss@bunny.cloudamqp.com/myvhost
+      - amqp://app:xK9!mN2$@broker.internal:5672/production
+    negative_examples:
+      - amqp://user:pw@host
+      - amqp://guest:guest@localhost/
+    references:
+      - https://www.rabbitmq.com/docs/uri-spec
+      - https://www.rabbitmq.com/docs/management

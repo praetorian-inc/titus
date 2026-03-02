@@ -28,6 +28,7 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewBranchIOValidator())
 	validators = append(validators, NewZendeskValidator())
 	validators = append(validators, NewWPEngineValidator())
+	validators = append(validators, NewRabbitMQValidator())
 
 	// Embedded YAML validators
 	embedded, err := LoadEmbeddedValidators()
