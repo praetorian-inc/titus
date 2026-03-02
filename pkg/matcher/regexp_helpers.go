@@ -7,6 +7,30 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
+// runeSpanToByteSpan converts a rune-based span to a byte-based span.
+// regexp2 returns Match.Index and Match.Length as rune counts, not byte counts.
+// See: https://github.com/dlclark/regexp2/blob/master/match.go (Capture struct documentation)
+func runeSpanToByteSpan(content []byte, runeStart, runeLength int) (byteStart, byteEnd int) {
+	runes := []rune(string(content))
+
+	// Bounds check
+	if runeStart >= len(runes) {
+		return len(content), len(content)
+	}
+	runeEnd := runeStart + runeLength
+	if runeEnd > len(runes) {
+		runeEnd = len(runes)
+	}
+
+	// Convert prefix runes to string to get byte length (= start position)
+	byteStart = len(string(runes[:runeStart]))
+
+	// Convert prefix + match runes to string to get byte length (= end position)
+	byteEnd = len(string(runes[:runeEnd]))
+
+	return byteStart, byteEnd
+}
+
 // extractCaptureGroups extracts positional capture groups from a regexp2 match.
 func extractCaptureGroups(match *regexp2.Match) [][]byte {
 	var groups [][]byte
@@ -38,15 +62,22 @@ func extractNamedGroups(match *regexp2.Match, groupNames []string) map[string][]
 }
 
 // buildMatchResult constructs a types.Match from match data.
+// runeStart and runeLength come from regexp2.Match.Index and Match.Length (rune-based).
+// matchedText should be obtained from regexp2.Match.String().
 func buildMatchResult(
 	blobID types.BlobID,
 	rule *types.Rule,
-	start, end int,
+	runeStart int,
+	runeLength int,
+	matchedText []byte,
 	groups [][]byte,
 	namedGroups map[string][]byte,
 	content []byte,
 	contextLines int,
 ) *types.Match {
+	// Convert rune-based span to byte-based span
+	start, end := runeSpanToByteSpan(content, runeStart, runeLength)
+
 	var before, after []byte
 	if contextLines > 0 {
 		before, after = ExtractContext(content, start, end, contextLines)
@@ -66,7 +97,7 @@ func buildMatchResult(
 		NamedGroups: namedGroups,
 		Snippet: types.Snippet{
 			Before:   before,
-			Matching: append([]byte{}, content[start:end]...),
+			Matching: matchedText,
 			After:    after,
 		},
 	}
