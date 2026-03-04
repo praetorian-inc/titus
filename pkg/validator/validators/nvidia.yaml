@@ -1,0 +1,12 @@
+validators:
+  - name: nvidia-nim-api-key
+    rule_ids:
+      - kingfisher.nvidia.nim.1
+    http:
+      method: GET
+      url: "https://api.nvcf.nvidia.com/v2/nvcf/functions"
+      auth:
+        type: bearer
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [401, 403]
