@@ -113,3 +113,33 @@ rules:
             - type: StatusMatch
               status:
                 - 200
+
+  - name: Sentry DSN
+    id: kingfisher.sentry.4
+    pattern: |
+      (?xi)
+      (?:
+        \bSENTRY[_-]?DSN\b\s*[:=]\s*["']?
+      )?
+      (
+        https://
+        [a-f0-9]{32}
+        @
+        (?:
+          (?:o\d+\.)?sentry\.io
+          |
+          [a-z0-9][a-z0-9.-]*\.[a-z]{2,}
+        )
+        /\d+
+      )
+    min_entropy: 3.0
+    confidence: medium
+    examples:
+      - SENTRY_DSN=https://0123456789abcdef0123456789abcdef@sentry.io/12345
+      - SENTRY_DSN="https://abcdef0123456789abcdef0123456789@o123456.sentry.io/67890"
+      - https://0123456789abcdef0123456789abcdef@sentry.example.com/99999
+    negative_examples:
+      - SENTRY_DSN=not_a_valid_dsn
+      - https://invalid@sentry.io/abc
+    references:
+      - https://docs.sentry.io/concepts/key-terms/dsn-explainer/
