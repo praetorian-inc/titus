@@ -5,9 +5,9 @@ rules:
 
   pattern: |
     (?x)(?i)
-    (?: User | User\ Id | UserId | Uid) \s*=\s* ([^\s;]{3,100}) \s* ;
+    (?: User | User\ Id | UserId | Uid) \s*=\s* (?P<username>[^\s;]{3,100}) \s* ;
     [\ \t]* .{0,10} [\ \t]*  (?# possible extra stuff, e.g., string concatenation)
-    (?: Password | Pwd) \s*=\s* ([^\t\ ;]{3,100})
+    (?: Password | Pwd) \s*=\s* (?P<token>[^\t\ ;]{3,100})
     \s* (?: [;"'] | $)
 
   categories: [fuzzy, secret]
