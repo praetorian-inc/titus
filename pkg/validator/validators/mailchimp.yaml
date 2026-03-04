@@ -1,0 +1,13 @@
+validators:
+  - name: mailchimp-api-key
+    rule_ids:
+      - np.mailchimp.1
+    http:
+      method: GET
+      url: "https://{{dc}}.api.mailchimp.com/3.0/"
+      auth:
+        type: basic
+        username: "anystring"
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [401, 403]
