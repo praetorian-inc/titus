@@ -168,6 +168,17 @@ func convertYAMLRule(yr yamlRule) *types.Rule {
 		NegativeExamples: yr.NegativeExamples,
 		References:       yr.References,
 		Categories:       yr.Categories,
+		MinEntropy:       yr.MinEntropy,
+	}
+	if yr.PatternRequirements != nil {
+		r.PatternRequirements = &types.PatternRequirements{
+			MinDigits:        yr.PatternRequirements.MinDigits,
+			MinUppercase:     yr.PatternRequirements.MinUppercase,
+			MinLowercase:     yr.PatternRequirements.MinLowercase,
+			MinSpecialChars:  yr.PatternRequirements.MinSpecialChars,
+			SpecialChars:     yr.PatternRequirements.SpecialChars,
+			IgnoreIfContains: yr.PatternRequirements.IgnoreIfContains,
+		}
 	}
 	r.StructuralID = r.ComputeStructuralID()
 	return r

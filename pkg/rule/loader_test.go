@@ -332,3 +332,78 @@ func TestRoundTrip(t *testing.T) {
 		t.Error("expected StructuralID to be computed")
 	}
 }
+
+func TestLoadRule_WithMinEntropy(t *testing.T) {
+	loader := NewLoader()
+
+	yaml := `rules:
+  - name: Test Rule With Entropy
+    id: np.test.entropy.1
+    pattern: 'test[A-Z0-9]{16}'
+    min_entropy: 3.5
+`
+	rule, err := loader.LoadRule([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadRule failed: %v", err)
+	}
+	if rule.MinEntropy != 3.5 {
+		t.Errorf("expected MinEntropy 3.5, got %f", rule.MinEntropy)
+	}
+}
+
+func TestLoadRule_WithPatternRequirements(t *testing.T) {
+	loader := NewLoader()
+
+	yaml := `rules:
+  - name: Test Rule With Requirements
+    id: np.test.req.1
+    pattern: 'sk_live_[A-Za-z0-9]{24}'
+    pattern_requirements:
+      min_digits: 2
+      min_uppercase: 1
+      min_lowercase: 3
+      min_special_chars: 0
+      ignore_if_contains:
+        - EXAMPLE
+        - test
+`
+	rule, err := loader.LoadRule([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadRule failed: %v", err)
+	}
+	if rule.PatternRequirements == nil {
+		t.Fatal("expected PatternRequirements to be non-nil")
+	}
+	if rule.PatternRequirements.MinDigits != 2 {
+		t.Errorf("expected MinDigits 2, got %d", rule.PatternRequirements.MinDigits)
+	}
+	if rule.PatternRequirements.MinUppercase != 1 {
+		t.Errorf("expected MinUppercase 1, got %d", rule.PatternRequirements.MinUppercase)
+	}
+	if rule.PatternRequirements.MinLowercase != 3 {
+		t.Errorf("expected MinLowercase 3, got %d", rule.PatternRequirements.MinLowercase)
+	}
+	if len(rule.PatternRequirements.IgnoreIfContains) != 2 {
+		t.Errorf("expected 2 IgnoreIfContains entries, got %d", len(rule.PatternRequirements.IgnoreIfContains))
+	}
+}
+
+func TestLoadRule_NoPatternRequirements(t *testing.T) {
+	loader := NewLoader()
+
+	yaml := `rules:
+  - name: Simple Rule
+    id: np.test.simple.1
+    pattern: 'simple[A-Z0-9]+'
+`
+	rule, err := loader.LoadRule([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadRule failed: %v", err)
+	}
+	if rule.MinEntropy != 0 {
+		t.Errorf("expected MinEntropy 0 (unset), got %f", rule.MinEntropy)
+	}
+	if rule.PatternRequirements != nil {
+		t.Error("expected PatternRequirements to be nil for rule without requirements")
+	}
+}
