@@ -2,9 +2,9 @@ rules:
   - name: Jira Domain
     id: kingfisher.jira.1
     pattern: |
-      (?xi)    
-      \b               
-      (
+      (?xi)
+      \b
+      (?P<domain>
         [a-z][a-z0-9-]{5,24}\.atlassian\.net
       )
       \b
@@ -20,14 +20,14 @@ rules:
   - name: Jira Token
     id: kingfisher.jira.2
     pattern: |
-      (?xi)                   
-      \b                     
+      (?xi)
+      \b
       jira
       (?:.|[\n\r]){0,8}?
       (?:SECRET|PRIVATE|ACCESS|KEY|PASSWORD|TOKEN)
       (?:.|[\n\r]){0,16}?
-      \b                     
-      (                      
+      \b
+      (?P<token>
         [a-z0-9-]{24}
       )
       \b
@@ -40,6 +40,9 @@ rules:
     examples:
       - 'Here is my Jira token: VDOheDe1sSCeGkuTARhkFDE2'
       - public static final String JIRA_PASSWORD = "VDOheDe1sSCeGkuTARhkFDE2";
+    # Standalone YAML validator cannot handle this case: requires cross-rule
+    # dependency (depends_on_rule) to resolve DOMAIN from kingfisher.jira.1,
+    # which is not supported by the standalone validator framework.
     validation:
       type: Http
       content:
