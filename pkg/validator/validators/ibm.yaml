@@ -1,0 +1,18 @@
+validators:
+  - name: ibm-cloud-api-key
+    rule_ids:
+      - kingfisher.ibm.1
+    http:
+      method: GET
+      url: "https://iam.cloud.ibm.com/v1/apikeys/details"
+      auth:
+        type: query
+        secret_group: "token"
+        query_param: "apikey"
+      headers:
+        - name: Authorization
+          value: "Basic Yng6Yng="
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]
