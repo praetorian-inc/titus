@@ -1,0 +1,16 @@
+validators:
+  - name: nytimes-api-key
+    rule_ids:
+      - kingfisher.nytimes.1
+    http:
+      method: GET
+      url: "https://api.nytimes.com/svc/topstories/v2/home.json"
+      auth:
+        type: query
+        secret_group: "token"
+        query_param: "api-key"
+      headers:
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]

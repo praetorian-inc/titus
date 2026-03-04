@@ -6,7 +6,7 @@ rules:
       (?:nytimes|new[- ]?york[- ]?times)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [a-z0-9_\-=]{32}
       )
       \b
@@ -19,16 +19,3 @@ rules:
       - '"new-york-times": "zyxw9876vuts5432rqpo1098nmlk7654"'
     references:
       - https://developer.nytimes.com/
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: https://api.nytimes.com/svc/topstories/v2/home.json?api-key={{ TOKEN }}
-          headers:
-            Accept: application/json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status:
-                - 200
