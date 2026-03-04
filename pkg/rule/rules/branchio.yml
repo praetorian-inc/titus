@@ -1,5 +1,5 @@
-# Validator: None. Only viable endpoint (POST /v1/url) is mutating (creates deep links).
-# GET /v1/app/{key} requires branch_secret, which this rule doesn't capture.
+# Validator: Go (branchio.go). Uses GET /v1/app/{key}?branch_secret={secret}.
+# Extracts branch_secret from snippet context via regex pattern matching.
 rules:
 
 - name: Branch.io Live Key
