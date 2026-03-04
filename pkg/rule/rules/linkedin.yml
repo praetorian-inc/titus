@@ -53,13 +53,13 @@ rules:
 - name: LinkedIn Access Token
   id: np.linkedin.3
 
-  pattern: '\b(?P<access_token>AQ[A-Za-z0-9_-]{20,})\b'
+  pattern: '\b(?P<access_token>AQ[A-Za-z0-9_-]{200,1000})\b'
 
   categories: [api, secret, oauth_token]
 
   references:
-  - https://docs.microsoft.com/en-us/linkedin/shared/api-guide/concepts/oauth-tokens
+  - https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow
 
   examples:
-  - 'Authorization: Bearer AQVDwpT3CXLmR5dF8gKhNpUvYz1234567890abcdefghij'
-  - 'LINKEDIN_ACCESS_TOKEN=AQXyz123456789abcdefghijklmnopqrstuvwxyz0123456789'
+  - 'Authorization: Bearer AQXa7v2cG5dR8kL1mN3pQ6sT9uW0xY4zA7bC2eF5gH8iJ1kL4mN7oP0qR3sT6uV9wX2yA5bD8cE1fG4hI7jK0lM3nO6pQ9rS2tU5vW8xY1zA4bC7dE0fG3hI6jK9lM2nO5pQ8rS1tU4vW7xY0zA3bC6dE9fG2hI5jK8lM1nO4pQ7rS0tU3vW6xY9zA2bC5dE8fG1hI4jK7lM0nO3pQ6rS9tU2vW5xY8zA1bC4dE7fG0hI3jK6lM9nO2pQ5rS8tU1vW4xY7zA0bC3dE6fG9hI2jK5lM8nO1pQ4rS7tU0vW3xY6z'
+  - 'LINKEDIN_ACCESS_TOKEN=AQXa7v2cG5dR8kL1mN3pQ6sT9uW0xY4zA7bC2eF5gH8iJ1kL4mN7oP0qR3sT6uV9wX2yA5bD8cE1fG4hI7jK0lM3nO6pQ9rS2tU5vW8xY1zA4bC7dE0fG3hI6jK9lM2nO5pQ8rS1tU4vW7xY0zA3bC6dE9fG2hI5jK8lM1nO4pQ7rS0tU3vW6xY9zA2bC5dE8fG1hI4jK7lM0nO3pQ6rS9tU2vW5xY8zA1bC4dE7fG0hI3jK6lM9nO2pQ5rS8tU1vW4xY7zA0bC3dE6fG9hI2jK5lM8nO1pQ4rS7tU0vW3xY6z'
