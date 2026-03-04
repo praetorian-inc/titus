@@ -7,9 +7,9 @@ rules:
     (?x)(?i)
     Connect-VIServer
     .{0,50}
-    -User \s+ (\S{3,30}) \s+        (?# username )
+    -User \s+ (?P<username>\S{3,30}) \s+        (?# username )
     .{0,50}
-    -Password \s+ (\S{3,30})        (?# password )
+    -Password \s+ (?P<token>\S{3,30})        (?# password )
 
   categories: [fuzzy, secret]
 
