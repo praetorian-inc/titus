@@ -20,3 +20,20 @@ rules:
   references:
   - https://core.telegram.org/bots/api
   - https://core.telegram.org/bots/features#botfather
+
+  validation:
+    type: Http
+    content:
+      request:
+        method: GET
+        url: 'https://api.telegram.org/bot{{ TOKEN }}/getMe'
+        headers:
+          Accept: application/json
+        response_matcher:
+          - report_response: true
+          - type: StatusMatch
+            status:
+              - 200
+          - type: WordMatch
+            words:
+              - '"ok":true'

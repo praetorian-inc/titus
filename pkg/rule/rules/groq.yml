@@ -21,3 +21,18 @@ rules:
 
   - |
       const apiKey = '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'; // Replace with your actual API key
+
+  validation:
+    type: Http
+    content:
+      request:
+        method: GET
+        url: https://api.groq.com/openai/v1/models
+        headers:
+          Authorization: 'Bearer {{ TOKEN }}'
+          Accept: application/json
+        response_matcher:
+          - report_response: true
+          - type: StatusMatch
+            status:
+              - 200
