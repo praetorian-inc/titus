@@ -32,3 +32,27 @@ rules:
             - type: StatusMatch
               status:
                 - 200
+
+  - name: LaunchDarkly Client-side ID
+    id: kingfisher.launchdarkly.2
+    pattern: |
+      (?xi)
+      ["']?(?:LD|LAUNCHDARKLY)[_-]?CLIENT[_-]?(?:SIDE[_-]?)?ID["']?
+      \s*[":=]\s*["']?
+      (
+        [a-f0-9]{24}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 6
+    min_entropy: 3.0
+    confidence: medium
+    examples:
+      - LD_CLIENT_SIDE_ID=0123456789abcdef01234567
+      - LAUNCHDARKLY_CLIENT_ID="abcdef0123456789abcdef01"
+      - '"LD_CLIENT_SIDE_ID":"0123456789abcdef01234567"'
+    negative_examples:
+      - LD_CLIENT_SIDE_ID=not_valid_hex_id
+      - LAUNCHDARKLY_CLIENT_ID=tooshort
+    references:
+      - https://docs.launchdarkly.com/sdk/client-side/javascript
