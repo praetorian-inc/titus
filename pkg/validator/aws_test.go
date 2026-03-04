@@ -23,6 +23,7 @@ func TestAWSValidator_CanValidate(t *testing.T) {
 	// AWS rules it can potentially handle
 	assert.True(t, v.CanValidate("np.aws.1"))
 	assert.True(t, v.CanValidate("np.aws.2"))
+	assert.True(t, v.CanValidate("np.aws.4"))
 	assert.True(t, v.CanValidate("np.aws.6"))
 
 	// Non-AWS rules

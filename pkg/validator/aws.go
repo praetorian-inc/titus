@@ -15,8 +15,16 @@ import (
 
 // Pre-compiled patterns for extracting AWS credentials from snippet context.
 var (
-	awsSecretKeyPattern    = regexp.MustCompile(`AWS_SECRET_ACCESS_KEY[=:"\s]+([A-Za-z0-9/+=]{40})`)
-	awsSessionTokenPattern = regexp.MustCompile(`AWS_SESSION_TOKEN[=:"\s]+([A-Za-z0-9/+=]+)`)
+	awsAccessKeyIDPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)AWS_ACCESS_KEY_ID[=:"\s]+((?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})`),
+		regexp.MustCompile(`\b((?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b`),
+	}
+	awsSecretKeyPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)AWS_SECRET_ACCESS_KEY[=:"\s]+([A-Za-z0-9/+=]{40})`),
+	}
+	awsSessionTokenPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)AWS_SESSION_TOKEN[=:"\s]+([A-Za-z0-9/+=]+)`),
+	}
 )
 
 // STSClient interface for STS operations (allows mocking in tests).
@@ -47,7 +55,7 @@ func (v *AWSValidator) Name() string {
 // CanValidate returns true for AWS-related rule IDs.
 func (v *AWSValidator) CanValidate(ruleID string) bool {
 	switch ruleID {
-	case "np.aws.1", "np.aws.2", "np.aws.6":
+	case "np.aws.1", "np.aws.2", "np.aws.4", "np.aws.6":
 		return true
 	default:
 		return false
@@ -112,77 +120,57 @@ func (v *AWSValidator) Validate(ctx context.Context, match *types.Match) (*types
 	return result, nil
 }
 
-// extractCredentials extracts AWS credentials from match based on rule ID.
-// Returns error for partial credentials (np.aws.1, np.aws.2) when not found in snippet.
-//
-// Expected named capture groups:
-//   - key_id: AWS access key ID (e.g., AKIAIOSFODNN7EXAMPLE)
-//   - secret_key: AWS secret access key
-//   - session_token: (optional) AWS session token for temporary credentials
+// extractCredentials extracts AWS credentials from match using a unified flow.
+// First extracts from NamedGroups, then fills gaps by searching snippet context.
+// Returns error only if key_id or secret_key is still missing after both steps.
 func (v *AWSValidator) extractCredentials(match *types.Match) (keyID, secret, sessionToken string, err error) {
-	switch match.RuleID {
-	case "np.aws.6":
-		// np.aws.6 captures both key_id and secret_key
-		if match.NamedGroups == nil {
-			return "", "", "", fmt.Errorf("np.aws.6 requires named capture groups (key_id, secret_key)")
+	// Step 1: Extract whatever is available from NamedGroups.
+	if match.NamedGroups != nil {
+		if b, ok := match.NamedGroups["key_id"]; ok {
+			keyID = string(b)
 		}
-
-		keyIDBytes, hasKeyID := match.NamedGroups["key_id"]
-		secretBytes, hasSecret := match.NamedGroups["secret_key"]
-
-		if !hasKeyID || !hasSecret {
-			return "", "", "", fmt.Errorf("np.aws.6 requires named groups 'key_id' and 'secret_key' (found: %v)", keysOf(match.NamedGroups))
+		if b, ok := match.NamedGroups["secret_key"]; ok {
+			secret = string(b)
 		}
-
-		// Check for optional session token
-		if tokenBytes, ok := match.NamedGroups["session_token"]; ok {
-			sessionToken = string(tokenBytes)
+		if b, ok := match.NamedGroups["session_token"]; ok {
+			sessionToken = string(b)
 		}
-
-		return string(keyIDBytes), string(secretBytes), sessionToken, nil
-
-	case "np.aws.1":
-		// np.aws.1 captures access key ID - check snippet for secret key
-		if match.NamedGroups == nil {
-			return "", "", "", fmt.Errorf("np.aws.1 requires named capture group 'key_id'")
-		}
-
-		keyIDBytes, hasKeyID := match.NamedGroups["key_id"]
-		if !hasKeyID {
-			return "", "", "", fmt.Errorf("np.aws.1 requires named group 'key_id' (found: %v)", keysOf(match.NamedGroups))
-		}
-		keyID = string(keyIDBytes)
-
-		// Look for AWS_SECRET_ACCESS_KEY in snippet.After
-		secretMatches := awsSecretKeyPattern.FindSubmatch(match.Snippet.After)
-		if len(secretMatches) < 2 {
-			// Secret not found in snippet
-			return "", "", "", fmt.Errorf("partial credentials: np.aws.1 only contains access key ID")
-		}
-		secret = string(secretMatches[1])
-
-		// Look for AWS_SESSION_TOKEN in snippet.After (optional)
-		tokenMatches := awsSessionTokenPattern.FindSubmatch(match.Snippet.After)
-		if len(tokenMatches) >= 2 {
-			sessionToken = string(tokenMatches[1])
-		}
-
-		return keyID, secret, sessionToken, nil
-
-	case "np.aws.2":
-		// np.aws.2 only captures secret - cannot validate
-		return "", "", "", fmt.Errorf("partial credentials: np.aws.2 only contains secret key")
-
-	default:
-		return "", "", "", fmt.Errorf("unsupported rule ID: %s", match.RuleID)
 	}
+
+	// Step 2: Search snippet context for anything still missing.
+	if keyID == "" {
+		keyID = searchSnippet(match.Snippet, awsAccessKeyIDPatterns)
+	}
+	if secret == "" {
+		secret = searchSnippet(match.Snippet, awsSecretKeyPatterns)
+	}
+	if sessionToken == "" {
+		sessionToken = searchSnippet(match.Snippet, awsSessionTokenPatterns)
+	}
+
+	// Step 3: Require at least key_id and secret.
+	if keyID == "" || secret == "" {
+		return "", "", "", fmt.Errorf("partial credentials: need both key_id and secret_key")
+	}
+
+	return keyID, secret, sessionToken, nil
 }
 
-// keysOf returns the keys of a map as a slice (for error messages).
-func keysOf(m map[string][]byte) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+// searchSnippet searches all three snippet parts (Before, Matching, After) against
+// a list of patterns, returning the first captured group match.
+func searchSnippet(snippet types.Snippet, patterns []*regexp.Regexp) string {
+	snippetParts := [][]byte{
+		snippet.Before,
+		snippet.Matching,
+		snippet.After,
 	}
-	return keys
+
+	for _, pattern := range patterns {
+		for _, part := range snippetParts {
+			if matches := pattern.FindSubmatch(part); len(matches) >= 2 {
+				return string(matches[1])
+			}
+		}
+	}
+	return ""
 }
