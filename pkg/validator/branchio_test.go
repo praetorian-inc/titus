@@ -164,6 +164,69 @@ func TestBranchIOValidator_ExtractCredentials_NoNamedGroups(t *testing.T) {
 	assert.Empty(t, secret)
 }
 
+func TestBranchIOValidator_ExtractCredentials_SecretLivePrefix(t *testing.T) {
+	v := NewBranchIOValidator()
+
+	match := &types.Match{
+		RuleID: "np.branchio.1",
+		NamedGroups: map[string][]byte{
+			"key": []byte("key_live_nboN9E5Mb42YrMiEQlRi9ebpyrdlyvCY"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte(""),
+			Matching: []byte("key_live_nboN9E5Mb42YrMiEQlRi9ebpyrdlyvCY"),
+			After:    []byte(`branch_secret: "secret_live_cqbazwKj7qgWeTfJbCJTAmVbckACBDZL"`),
+		},
+	}
+
+	key, secret, err := v.extractCredentials(match)
+	assert.NoError(t, err)
+	assert.Equal(t, "key_live_nboN9E5Mb42YrMiEQlRi9ebpyrdlyvCY", key)
+	assert.Equal(t, "secret_live_cqbazwKj7qgWeTfJbCJTAmVbckACBDZL", secret)
+}
+
+func TestBranchIOValidator_ExtractCredentials_SecretTestPrefix(t *testing.T) {
+	v := NewBranchIOValidator()
+
+	match := &types.Match{
+		RuleID: "np.branchio.1",
+		NamedGroups: map[string][]byte{
+			"key": []byte("key_live_kaFuWw8WvY7yn1d9yYiP8gokwqjV0Swt"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("BRANCH_SECRET=secret_test_aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeF"),
+			Matching: []byte("BRANCH_KEY=key_live_kaFuWw8WvY7yn1d9yYiP8gokwqjV0Swt"),
+			After:    []byte(""),
+		},
+	}
+
+	key, secret, err := v.extractCredentials(match)
+	assert.NoError(t, err)
+	assert.Equal(t, "key_live_kaFuWw8WvY7yn1d9yYiP8gokwqjV0Swt", key)
+	assert.Equal(t, "secret_test_aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeF", secret)
+}
+
+func TestBranchIOValidator_ExtractCredentials_SecretLiveInJSConfig(t *testing.T) {
+	v := NewBranchIOValidator()
+
+	match := &types.Match{
+		RuleID: "np.branchio.1",
+		NamedGroups: map[string][]byte{
+			"key": []byte("key_live_nboN9E5Mb42YrMiEQlRi9ebpyrdlyvCY"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte(`branch_key: "key_live_nboN9E5Mb42YrMiEQlRi9ebpyrdlyvCY",`),
+			Matching: []byte("key_live_nboN9E5Mb42YrMiEQlRi9ebpyrdlyvCY"),
+			After:    []byte(`branch_secret: "secret_live_cqbazwKj7qgWeTfJbCJTAmVbckACBDZL",`),
+		},
+	}
+
+	key, secret, err := v.extractCredentials(match)
+	assert.NoError(t, err)
+	assert.Equal(t, "key_live_nboN9E5Mb42YrMiEQlRi9ebpyrdlyvCY", key)
+	assert.Equal(t, "secret_live_cqbazwKj7qgWeTfJbCJTAmVbckACBDZL", secret)
+}
+
 func TestBranchIOValidator_Validate_Valid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.NotEmpty(t, r.URL.Query().Get("branch_secret"))

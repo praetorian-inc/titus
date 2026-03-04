@@ -12,10 +12,14 @@ import (
 )
 
 // Pre-compiled patterns for extracting Branch.io secret from snippet context.
-// Branch secrets are 40-64 character alphanumeric strings.
+// Branch secrets come in two formats:
+//   - Prefixed: secret_live_<32 alnum> or secret_test_<32 alnum> (44 chars total)
+//   - Raw: 40-64 character alphanumeric strings assigned to BRANCH_SECRET vars
 var branchSecretPatterns = []*regexp.Regexp{
+	// secret_live_ / secret_test_ prefixed format (most common in real configs)
+	regexp.MustCompile(`(?i)(secret_(?:live|test)_[A-Za-z0-9]{32})`),
+	// Variable assignment with raw alphanumeric secret
 	regexp.MustCompile(`(?i)BRANCH_SECRET\s*[=:]\s*["']?([A-Za-z0-9]{40,64})["']?`),
-	regexp.MustCompile(`(?i)branch_secret\s*[=:]\s*["']?([A-Za-z0-9]{40,64})["']?`),
 	regexp.MustCompile(`(?i)BRANCH_KEY_SECRET\s*[=:]\s*["']?([A-Za-z0-9]{40,64})["']?`),
 }
 
