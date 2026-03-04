@@ -15,4 +15,4 @@ validators:
         - name: Accept
           value: application/json
       success_codes: [200]
-      failure_codes: [401, 403]
+      failure_codes: [400, 401, 403]
