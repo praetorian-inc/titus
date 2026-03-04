@@ -4,12 +4,12 @@ rules:
     pattern: |
       (?xi)
       paypal
-      (?:.|[\n\r]){0,8}?               
+      (?:.|[\n\r]){0,8}?
       (?:CLIENT|ID|USER)
-      (?:.|[\n\r]){0,16}?              
+      (?:.|[\n\r]){0,16}?
       \b
-      (                                 
-        A[A-Z0-9_-]{78,99}          
+      (?P<token>
+        A[A-Z0-9_-]{78,99}
       )
     pattern_requirements:
       min_digits: 2
@@ -23,12 +23,12 @@ rules:
     pattern: |
       (?xi)
       paypal
-      (?:.|[\n\r]){0,16}?              
+      (?:.|[\n\r]){0,16}?
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
-      (?:.|[\n\r]){0,32}?             
+      (?:.|[\n\r]){0,32}?
       \b
-      (
-        [A-Z0-9_.-]{78,120}        
+      (?P<token>
+        [A-Z0-9_.-]{78,120}
       )
       \b
     pattern_requirements:
@@ -37,12 +37,16 @@ rules:
     examples:
       - paypal_secret=EP0uwUsACKVPcbDRaXFYerX2ij6nbsha71cSdynuQWoSt1pIy4qtIs7gJQRmHwKXu5Icv3g1YQZzAywf
 
+    # Standalone YAML validator cannot handle this case: requires cross-rule
+    # dependency (depends_on_rule) for client ID from kingfisher.paypal.1 and
+    # template filters (append, b64enc) for Basic auth header construction.
+    # These features are not supported by the standalone validator framework.
     validation:
       type: Http
       content:
         request:
           method: POST
-          url: https://api-m.paypal.com/v1/oauth2/token    
+          url: https://api-m.paypal.com/v1/oauth2/token
           headers:
             Accept: application/json
             Accept-Language: en_US
@@ -53,7 +57,7 @@ rules:
           response_matcher:
             - report_response: true
             - type: StatusMatch
-              status: [200]                                  
+              status: [200]
       depends_on_rule:
         - rule_id: kingfisher.paypal.1
           variable: CLIENTID
