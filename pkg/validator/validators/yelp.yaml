@@ -1,0 +1,12 @@
+validators:
+  - name: yelp-api-key
+    rule_ids:
+      - kingfisher.yelp.1
+    http:
+      method: GET
+      url: "https://api.yelp.com/v3/categories?locale=en_US"
+      auth:
+        type: bearer
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [401, 403]

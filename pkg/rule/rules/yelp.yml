@@ -9,7 +9,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [a-zA-Z0-9_\\=.\\-]{128}
       )
       \b
@@ -22,18 +22,3 @@ rules:
     references:
       - https://docs.developer.yelp.com/docs/places-authentication
       - https://docs.developer.yelp.com/reference/v3_all_categories
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: "https://api.yelp.com/v3/categories?locale=en_US"
-          headers:
-            Authorization: "Bearer {{ TOKEN }}"
-            Accept: application/json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status: [200]
-            - type: WordMatch
-              words: ['"categories"']
