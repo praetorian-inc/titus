@@ -6,7 +6,7 @@ rules:
       recaptcha
       (?:.|[\n\r]){0,40}?
       \b
-      (
+      (?P<token>
         6l[c-f][a-z0-9_-].{36}
       )
     pattern_requirements:
@@ -17,20 +17,23 @@ rules:
       - recaptcha apikey = 6Lcr--w-BBBBBw-w-w----w-w-www-www--ww-w-
       - recaptcha_secret = 6Lcw--w-AAAAAw-w-w----w-w-www-www--ww-w-
       - '"recaptcha": { "site_key": "6Lcs--w-AAAAAw-w-w----w-w-www-www--ww-w-" }'
+    # Standalone YAML validator cannot handle this case: requires body
+    # interpolation (secret={{ TOKEN }}) and word matching, which are not
+    # supported by the standalone validator framework (pkg/validator/yaml.go).
     validation:
       type: Http
       content:
         request:
+          method: POST
+          url: https://www.google.com/recaptcha/api/siteverify
           headers:
             Content-Type: application/x-www-form-urlencoded
           body: |
-            secret={{ TOKEN }}
-            response=test
-          method: POST
+            secret={{ TOKEN }}&response=test
           response_matcher:
             - report_response: true
-            - match_all_words: true
-              type: WordMatch
-              words:
-                - '"success": true'
-          url: https://www.google.com/recaptcha/api/siteverify
+            - type: StatusMatch
+              status: [200]
+            - type: WordMatch
+              words: ['invalid-input-secret']
+              negative: true
