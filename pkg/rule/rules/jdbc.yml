@@ -3,7 +3,7 @@ rules:
     id: kingfisher.jdbc.1
     pattern: |
       (?xi)
-      (
+      (?P<token>
         jdbc:
         [a-z][a-z0-9+.-]{2,32}
         (?:[:][a-z0-9+.-]{1,32})*
