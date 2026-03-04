@@ -1,0 +1,13 @@
+validators:
+  - name: pypi-upload-token
+    rule_ids:
+      - np.pypi.1
+    http:
+      method: GET
+      url: "https://pypi.org/simple/"
+      auth:
+        type: basic
+        username: "__token__"
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [401, 403]
