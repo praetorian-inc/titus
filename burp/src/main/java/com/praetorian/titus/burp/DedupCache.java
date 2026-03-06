@@ -416,6 +416,7 @@ public class DedupCache {
         public String responseContent; // Full response content for display
         public Map<String, String> validationDetails;
         public Map<String, String> namedGroups;  // Named capture groups from regex match
+        public boolean hidden;  // User can hide secrets they don't want to see
 
         public FindingRecord() {
             this.urls = new HashSet<>();

@@ -9,7 +9,7 @@ import java.util.*;
  */
 public class SecretsTableModel extends AbstractTableModel {
 
-    private static final String[] COLUMNS = {"#", "Type", "Severity", "Secret Preview", "Host", "Count", "Checked", "Result", "False Positive"};
+    private static final String[] COLUMNS = {"#", "Type", "Severity", "Secret Preview", "Host", "Path", "Count", "Checked", "Result", "False Positive"};
 
     private final List<DedupCache.FindingRecord> findings = new ArrayList<>();
     private final DedupCache dedupCache;
@@ -55,7 +55,7 @@ public class SecretsTableModel extends AbstractTableModel {
     @Override
     public Class<?> getColumnClass(int column) {
         return switch (column) {
-            case 0, 5 -> Integer.class;  // # and Count columns
+            case 0, 6 -> Integer.class;  // # and Count columns
             default -> String.class;
         };
     }
@@ -73,10 +73,11 @@ public class SecretsTableModel extends AbstractTableModel {
             case 2 -> getSeverityDisplay(record.ruleId);  // Severity column
             case 3 -> record.secretPreview;
             case 4 -> record.primaryHost != null ? record.primaryHost : "unknown";
-            case 5 -> record.occurrenceCount;
-            case 6 -> // Checked column - was validation attempted?
+            case 5 -> extractPath(record);  // Path column
+            case 6 -> record.occurrenceCount;
+            case 7 -> // Checked column - was validation attempted?
                 record.validatedAt != null ? "Yes" : "No";
-            case 7 -> {
+            case 8 -> {
                 // Result column - show validation result
                 if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
                     yield "-";
@@ -92,9 +93,36 @@ public class SecretsTableModel extends AbstractTableModel {
                     default -> "Unknown"; // Should not happen if validatedAt is set
                 };
             }
-            case 8 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
+            case 9 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
             default -> null;
         };
+    }
+
+    /**
+     * Extract the path from the first URL in the finding record.
+     */
+    private String extractPath(DedupCache.FindingRecord record) {
+        if (record.urls == null || record.urls.isEmpty()) {
+            return "/";
+        }
+        String url = record.urls.iterator().next();
+        try {
+            // Extract path from URL
+            int schemeEnd = url.indexOf("://");
+            if (schemeEnd > 0) {
+                int pathStart = url.indexOf('/', schemeEnd + 3);
+                if (pathStart > 0) {
+                    int queryStart = url.indexOf('?', pathStart);
+                    if (queryStart > 0) {
+                        return url.substring(pathStart, queryStart);
+                    }
+                    return url.substring(pathStart);
+                }
+            }
+            return "/";
+        } catch (Exception e) {
+            return "/";
+        }
     }
 
     /**

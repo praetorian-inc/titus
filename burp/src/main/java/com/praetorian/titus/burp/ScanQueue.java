@@ -326,7 +326,14 @@ public class ScanQueue implements AutoCloseable {
             StringBuilder sb = new StringBuilder();
 
             // Response status line
-            sb.append("HTTP/").append(job.response().httpVersion()).append(" ");
+            // httpVersion() may return "HTTP/1.1" or just "1.1" depending on Burp version
+            String httpVersion = job.response().httpVersion();
+            if (httpVersion.startsWith("HTTP/")) {
+                sb.append(httpVersion);
+            } else {
+                sb.append("HTTP/").append(httpVersion);
+            }
+            sb.append(" ");
             sb.append(job.response().statusCode()).append(" ");
             sb.append(job.response().reasonPhrase()).append("\n");
 
