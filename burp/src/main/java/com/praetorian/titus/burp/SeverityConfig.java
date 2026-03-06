@@ -66,6 +66,14 @@ public class SeverityConfig {
     }
 
     /**
+     * Remove a category.
+     */
+    public void removeCategory(String category) {
+        categoryDefaults.remove(category.toLowerCase());
+        saveToSettings();
+    }
+
+    /**
      * Get all category defaults.
      */
     public Map<String, AuditIssueSeverity> getCategoryDefaults() {

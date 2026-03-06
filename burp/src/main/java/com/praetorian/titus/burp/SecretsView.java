@@ -1,6 +1,11 @@
 package com.praetorian.titus.burp;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
+import burp.api.montoya.ui.editor.HttpRequestEditor;
+import burp.api.montoya.ui.editor.HttpResponseEditor;
+import burp.api.montoya.ui.editor.EditorOptions;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -31,11 +36,10 @@ public class SecretsView extends JPanel {
     private final DedupCache dedupCache;
     private JTable secretsTable;
     private TableRowSorter<SecretsTableModel> rowSorter;
-    private JTextArea detailArea;
-    private JTextArea urlsArea;
-    private JTextArea validationArea;
-    private JTextPane requestPane;
-    private JTextPane responsePane;
+    private JEditorPane detailArea;
+    private HttpRequestEditor nativeRequestEditor;
+    private HttpResponseEditor nativeResponseEditor;
+    private String currentSecret;
     private JTabbedPane detailTabbedPane;
     private JLabel statusLabel;
     private JButton validateButton;
@@ -43,6 +47,8 @@ public class SecretsView extends JPanel {
     private JButton unmarkFPButton;
     private JButton copyButton;
     private JButton refreshButton;
+    private JLabel selectionLabel;
+    private JPopupMenu tableContextMenu;
 
     // Filter components
     private JTextField searchField;
@@ -110,24 +116,28 @@ public class SecretsView extends JPanel {
         // Configure column widths
         configureColumnWidths();
 
+        // Right-click context menu
+        createTableContextMenu();
+        secretsTable.setComponentPopupMenu(tableContextMenu);
+
         // Custom renderer for category colors
         secretsTable.setDefaultRenderer(Object.class, new CategoryColorRenderer());
         secretsTable.setDefaultRenderer(Integer.class, new CategoryColorRenderer());
 
         JScrollPane tableScroll = new JScrollPane(secretsTable);
-        tableScroll.setPreferredSize(new Dimension(800, 250));
+        tableScroll.setPreferredSize(new Dimension(600, 400));
 
         // Detail panel with tabs
         JPanel detailPanel = createDetailPanel();
 
-        // Split pane: table above, details below
+        // Split pane: table on left, details on right
         JSplitPane splitPane = new JSplitPane(
-            JSplitPane.VERTICAL_SPLIT,
+            JSplitPane.HORIZONTAL_SPLIT,
             tableScroll,
             detailPanel
         );
-        splitPane.setResizeWeight(0.6);
-        splitPane.setOneTouchExpandable(true);
+        splitPane.setResizeWeight(0.5);
+        splitPane.setOneTouchExpandable(false);
 
         add(splitPane, BorderLayout.CENTER);
 
@@ -149,21 +159,17 @@ public class SecretsView extends JPanel {
     }
 
     private void configureColumnWidths() {
+        // All columns are resizable - only set preferred widths, no max widths
         secretsTable.getColumnModel().getColumn(0).setPreferredWidth(40);   // #
-        secretsTable.getColumnModel().getColumn(0).setMaxWidth(50);
-        secretsTable.getColumnModel().getColumn(1).setPreferredWidth(150);  // Type
-        secretsTable.getColumnModel().getColumn(2).setPreferredWidth(60);   // Severity
-        secretsTable.getColumnModel().getColumn(2).setMaxWidth(70);
-        secretsTable.getColumnModel().getColumn(3).setPreferredWidth(200);  // Preview
-        secretsTable.getColumnModel().getColumn(4).setPreferredWidth(150);  // Host
-        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(50);   // Count
-        secretsTable.getColumnModel().getColumn(5).setMaxWidth(60);
-        secretsTable.getColumnModel().getColumn(6).setPreferredWidth(60);   // Checked
-        secretsTable.getColumnModel().getColumn(6).setMaxWidth(70);
-        secretsTable.getColumnModel().getColumn(7).setPreferredWidth(70);   // Result
-        secretsTable.getColumnModel().getColumn(7).setMaxWidth(80);
-        secretsTable.getColumnModel().getColumn(8).setPreferredWidth(80);   // False Positive
-        secretsTable.getColumnModel().getColumn(8).setMaxWidth(100);
+        secretsTable.getColumnModel().getColumn(1).setPreferredWidth(180);  // Type
+        secretsTable.getColumnModel().getColumn(2).setPreferredWidth(65);   // Severity
+        secretsTable.getColumnModel().getColumn(3).setPreferredWidth(180);  // Preview
+        secretsTable.getColumnModel().getColumn(4).setPreferredWidth(100);  // Host
+        secretsTable.getColumnModel().getColumn(5).setPreferredWidth(120);  // Path
+        secretsTable.getColumnModel().getColumn(6).setPreferredWidth(55);   // Count
+        secretsTable.getColumnModel().getColumn(7).setPreferredWidth(65);   // Checked
+        secretsTable.getColumnModel().getColumn(8).setPreferredWidth(70);   // Result
+        secretsTable.getColumnModel().getColumn(9).setPreferredWidth(95);   // False Positive
     }
 
     /**
@@ -193,7 +199,10 @@ public class SecretsView extends JPanel {
     }
 
     private JPanel createToolbar() {
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel toolbar = new JPanel(new BorderLayout());
+
+        // Left side: action buttons
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
 
         refreshButton = new JButton("Refresh");
         refreshButton.addActionListener(e -> refresh());
@@ -204,24 +213,79 @@ public class SecretsView extends JPanel {
 
         falsePositiveButton = new JButton("Mark False Positive");
         falsePositiveButton.setEnabled(false);
+        falsePositiveButton.setToolTipText("Mark selected secrets as False Positive");
         falsePositiveButton.addActionListener(e -> markFalsePositive());
 
         unmarkFPButton = new JButton("Unmark False Positive");
         unmarkFPButton.setEnabled(false);
+        unmarkFPButton.setToolTipText("Unmark False Positive status");
         unmarkFPButton.addActionListener(e -> unmarkFalsePositive());
 
-        copyButton = new JButton("Copy Secret");
+        copyButton = new JButton("Copy");
         copyButton.setEnabled(false);
+        copyButton.setToolTipText("Copy secret value to clipboard");
         copyButton.addActionListener(e -> copySelectedSecret());
 
-        toolbar.add(refreshButton);
-        toolbar.add(validateButton);
-        toolbar.add(falsePositiveButton);
-        toolbar.add(unmarkFPButton);
-        toolbar.add(copyButton);
+        leftPanel.add(refreshButton);
+        leftPanel.add(validateButton);
+        leftPanel.add(falsePositiveButton);
+        leftPanel.add(unmarkFPButton);
+        leftPanel.add(copyButton);
+
+        // Right side: selection indicator
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        selectionLabel = new JLabel("");
+        selectionLabel.setFont(selectionLabel.getFont().deriveFont(Font.BOLD));
+        rightPanel.add(selectionLabel);
+
+        toolbar.add(leftPanel, BorderLayout.WEST);
+        toolbar.add(rightPanel, BorderLayout.EAST);
 
         return toolbar;
     }
+
+    private void createTableContextMenu() {
+        tableContextMenu = new JPopupMenu();
+
+        JMenuItem copySecretItem = new JMenuItem("Copy Secret");
+        copySecretItem.addActionListener(e -> copySelectedSecret());
+
+        JMenuItem copyPreviewItem = new JMenuItem("Copy Preview");
+        copyPreviewItem.addActionListener(e -> copySelectedPreview());
+
+        JMenuItem validateItem = new JMenuItem("Validate");
+        validateItem.addActionListener(e -> validateSelected());
+
+        JMenuItem markFPItem = new JMenuItem("Mark as False Positive");
+        markFPItem.addActionListener(e -> markFalsePositive());
+
+        JMenuItem unmarkFPItem = new JMenuItem("Unmark False Positive");
+        unmarkFPItem.addActionListener(e -> unmarkFalsePositive());
+
+        tableContextMenu.add(copySecretItem);
+        tableContextMenu.add(copyPreviewItem);
+        tableContextMenu.addSeparator();
+        tableContextMenu.add(validateItem);
+        tableContextMenu.addSeparator();
+        tableContextMenu.add(markFPItem);
+        tableContextMenu.add(unmarkFPItem);
+    }
+
+    private void copySelectedPreview() {
+        int selectedRow = secretsTable.getSelectedRow();
+        if (selectedRow < 0) {
+            return;
+        }
+
+        int modelRow = secretsTable.convertRowIndexToModel(selectedRow);
+        DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+        if (record != null && record.secretPreview != null) {
+            java.awt.datatransfer.StringSelection selection = new java.awt.datatransfer.StringSelection(record.secretPreview);
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+            api.logging().logToOutput("Copied secret preview to clipboard");
+        }
+    }
+
 
     private JPanel createFilterPanel() {
         JPanel mainPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
@@ -462,19 +526,19 @@ public class SecretsView extends JPanel {
         if (!statusAllCheckbox.isSelected()) {
             if (selectedStatuses.isEmpty()) {
                 // Nothing selected = show nothing
-                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 7));
+                filters.add(RowFilter.regexFilter("^$IMPOSSIBLE_MATCH$", 8));
             } else {
                 List<RowFilter<SecretsTableModel, Integer>> statusFilters = new ArrayList<>();
                 for (String status : selectedStatuses) {
                     switch (status) {
-                        case "False Positive" -> // Column 8 (FP) = "Yes"
-                            statusFilters.add(RowFilter.regexFilter("^Yes$", 8));
-                        case "True Positive" -> // Column 8 (FP) = "No"
-                            statusFilters.add(RowFilter.regexFilter("^No$", 8));
-                        case "Valid" -> // Column 7 (Result) = "Active"
-                            statusFilters.add(RowFilter.regexFilter("^Active$", 7));
-                        case "Invalid" -> // Column 7 (Result) = "Inactive"
-                            statusFilters.add(RowFilter.regexFilter("^Inactive$", 7));
+                        case "False Positive" -> // Column 9 (FP) = "Yes"
+                            statusFilters.add(RowFilter.regexFilter("^Yes$", 9));
+                        case "True Positive" -> // Column 9 (FP) = "No"
+                            statusFilters.add(RowFilter.regexFilter("^No$", 9));
+                        case "Valid" -> // Column 8 (Result) = "Active"
+                            statusFilters.add(RowFilter.regexFilter("^Active$", 8));
+                        case "Invalid" -> // Column 8 (Result) = "Inactive"
+                            statusFilters.add(RowFilter.regexFilter("^Inactive$", 8));
                     }
                 }
                 if (!statusFilters.isEmpty()) {
@@ -527,63 +591,40 @@ public class SecretsView extends JPanel {
         typeFilterButton.setText("Type");
         hostFilterButton.setText("Host");
         statusFilterButton.setText("Status");
-        rowSorter.setRowFilter(null);
+        applyFilters();
         updateStatus();
     }
 
     private JPanel createDetailPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(new TitledBorder("Secret Details"));
+        // Create titled border with larger, bold font
+        TitledBorder titleBorder = new TitledBorder("Secret Details");
+        titleBorder.setTitleFont(titleBorder.getTitleFont().deriveFont(Font.BOLD, 14f));
+        panel.setBorder(titleBorder);
 
         detailTabbedPane = new JTabbedPane();
 
-        // Details tab
-        detailArea = new JTextArea();
+        // Details tab - HTML formatted (combines Details, URLs, Advisory, Validation)
+        detailArea = new JEditorPane();
+        detailArea.setContentType("text/html");
         detailArea.setEditable(false);
-        detailArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        detailArea.setLineWrap(true);
-        detailArea.setWrapStyleWord(true);
+        detailArea.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         JScrollPane detailScroll = new JScrollPane(detailArea);
         detailTabbedPane.addTab("Details", detailScroll);
 
-        // URLs tab
-        urlsArea = new JTextArea();
-        urlsArea.setEditable(false);
-        urlsArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        urlsArea.setLineWrap(true);
-        urlsArea.setWrapStyleWord(true);
-        JScrollPane urlsScroll = new JScrollPane(urlsArea);
-        detailTabbedPane.addTab("URLs", urlsScroll);
+        // Request tab - use Burp's native editor
+        nativeRequestEditor = api.userInterface().createHttpRequestEditor(EditorOptions.READ_ONLY);
+        detailTabbedPane.addTab("Request", nativeRequestEditor.uiComponent());
 
-        // Validation tab
-        validationArea = new JTextArea();
-        validationArea.setEditable(false);
-        validationArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        validationArea.setLineWrap(true);
-        validationArea.setWrapStyleWord(true);
-        JScrollPane validationScroll = new JScrollPane(validationArea);
-        detailTabbedPane.addTab("Validation", validationScroll);
-
-        // Request tab
-        requestPane = new JTextPane();
-        requestPane.setEditable(false);
-        requestPane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        JScrollPane requestScroll = new JScrollPane(requestPane);
-        detailTabbedPane.addTab("Request", requestScroll);
-
-        // Response tab
-        responsePane = new JTextPane();
-        responsePane.setEditable(false);
-        responsePane.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        JScrollPane responseScroll = new JScrollPane(responsePane);
-        detailTabbedPane.addTab("Response", responseScroll);
+        // Response tab - use Burp's native editor
+        nativeResponseEditor = api.userInterface().createHttpResponseEditor(EditorOptions.READ_ONLY);
+        detailTabbedPane.addTab("Response", nativeResponseEditor.uiComponent());
 
         panel.add(detailTabbedPane, BorderLayout.CENTER);
-        panel.setPreferredSize(new Dimension(800, 150));
+        panel.setPreferredSize(new Dimension(500, 400));
 
         return panel;
     }
-
     private void onSelectionChanged(ListSelectionEvent e) {
         if (e.getValueIsAdjusting()) {
             return;
@@ -591,17 +632,20 @@ public class SecretsView extends JPanel {
 
         int[] selectedRows = secretsTable.getSelectedRows();
         if (selectedRows.length == 0) {
-            detailArea.setText("");
-            urlsArea.setText("");
-            validationArea.setText("");
-            requestPane.setText("");
-            responsePane.setText("");
+            detailArea.setText("<html><body style='font-family: sans-serif; font-size: 10px; padding: 6px; color: #888;'>Select a secret to view details</body></html>");
+            // Clear native editors
+            nativeRequestEditor.setRequest(HttpRequest.httpRequest("GET / HTTP/1.1\r\nHost: none\r\n\r\n"));
+            nativeResponseEditor.setResponse(HttpResponse.httpResponse("HTTP/1.1 200 OK\r\n\r\n"));
             validateButton.setEnabled(false);
             falsePositiveButton.setEnabled(false);
             unmarkFPButton.setEnabled(false);
             copyButton.setEnabled(false);
+            selectionLabel.setText("");
             return;
         }
+
+        // Update selection label
+        selectionLabel.setText(selectedRows.length + " secret" + (selectedRows.length > 1 ? "s" : "") + " selected");
 
         // Convert view rows to model rows
         int[] modelRows = new int[selectedRows.length];
@@ -640,153 +684,132 @@ public class SecretsView extends JPanel {
                 displayRecordDetails(record);
             }
         } else {
-            detailArea.setText(modelRows.length + " secrets selected");
-            urlsArea.setText("");
-            validationArea.setText("");
-            requestPane.setText("");
-            responsePane.setText("");
+            detailArea.setText("<html><body style='font-family: sans-serif; font-size: 10px; padding: 6px;'><b>" + modelRows.length + " secrets selected</b><br/><span style='color: #888;'>Select a single secret to view details</span></body></html>");
+            // Clear native editors for multi-selection
+            nativeRequestEditor.setRequest(HttpRequest.httpRequest("GET / HTTP/1.1\r\nHost: multiple\r\n\r\n" + modelRows.length + " secrets selected"));
+            nativeResponseEditor.setResponse(HttpResponse.httpResponse("HTTP/1.1 200 OK\r\n\r\n" + modelRows.length + " secrets selected"));
         }
     }
 
     private void displayRecordDetails(DedupCache.FindingRecord record) {
-        StringBuilder sb = new StringBuilder();
+        // Build combined HTML for Details tab - includes Advisory, Details, URLs, Validation
+        StringBuilder html = new StringBuilder();
+        html.append("<html><body style='font-family: sans-serif; font-size: 9px; padding: 8px;'>");
 
-        sb.append("Rule ID: ").append(record.ruleId).append("\n");
-        sb.append("Rule Name: ").append(record.ruleName != null ? record.ruleName : "N/A").append("\n");
-        sb.append("Category: ").append(SecretCategoryMapper.getCategory(record.ruleId).getDisplayName()).append("\n");
-        sb.append("\n");
+        // === ADVISORY SECTION ===
+        // Header with severity indicator and title
+        String severityColor = getSeverityIndicatorColor(record.ruleId);
+        String displayName = record.ruleName != null ? record.ruleName : SecretCategoryMapper.getDisplayName(record.ruleId, record.ruleName);
+        html.append("<div style='margin-bottom: 8px;'>");
+        html.append("<span style='color: ").append(severityColor).append("; font-size: 12px;'>&#9679;</span> ");
+        html.append("<b style='font-size: 11px;'>Secret Detected: ").append(escapeHtml(displayName)).append("</b>");
+        html.append("</div>");
 
-        sb.append("Secret Preview: ").append(record.secretPreview).append("\n");
-        sb.append("Occurrences: ").append(record.occurrenceCount).append("\n");
-        sb.append("First Seen: ").append(record.firstSeen != null ? TIME_FORMAT.format(record.firstSeen.atZone(java.time.ZoneId.systemDefault())) : "N/A").append("\n");
-        sb.append("\n");
+        // Severity, Confidence, Host
+        String severity = getSeverityName(record.ruleId);
+        html.append("<table cellpadding='1' cellspacing='0' style='margin-bottom: 8px;'>");
+        html.append("<tr><td style='color: #888;'>Severity:</td><td style='padding-left: 8px;'>").append(severity).append("</td></tr>");
+        html.append("<tr><td style='color: #888;'>Confidence:</td><td style='padding-left: 8px;'>Certain</td></tr>");
+        html.append("<tr><td style='color: #888;'>Host:</td><td style='padding-left: 8px;'>").append(escapeHtml(record.primaryHost != null ? record.primaryHost : "N/A")).append("</td></tr>");
+        html.append("</table>");
 
-        sb.append("Primary Host: ").append(record.primaryHost != null ? record.primaryHost : "N/A").append("\n");
-        if (record.hosts != null && record.hosts.size() > 1) {
-            sb.append("All Hosts: ").append(String.join(", ", record.hosts)).append("\n");
-        }
-        sb.append("\n");
+        // === ISSUE DETAIL SECTION ===
+        html.append("<div style='margin-bottom: 8px;'>");
+        html.append("<div style='font-size: 10px; font-weight: bold; margin-bottom: 4px;'>Issue detail</div>");
+        html.append("<table cellpadding='1' cellspacing='0'>");
+        html.append("<tr><td><b>Rule:</b></td><td style='padding-left: 8px; font-family: monospace;'>").append(escapeHtml(record.ruleId)).append("</td></tr>");
+        html.append("<tr><td><b>Rule Name:</b></td><td style='padding-left: 8px;'>").append(escapeHtml(displayName)).append("</td></tr>");
+        html.append("<tr><td><b>Category:</b></td><td style='padding-left: 8px;'>").append(escapeHtml(SecretCategoryMapper.getCategory(record.ruleId).getDisplayName())).append("</td></tr>");
+        html.append("<tr><td><b>Occurrences:</b></td><td style='padding-left: 8px;'>").append(record.occurrenceCount).append("</td></tr>");
+        html.append("<tr><td><b>First Seen:</b></td><td style='padding-left: 8px;'>").append(record.firstSeen != null ? TIME_FORMAT.format(record.firstSeen.atZone(java.time.ZoneId.systemDefault())) : "N/A").append("</td></tr>");
+        html.append("</table>");
+        html.append("</div>");
 
-        // Brief validation summary
-        boolean wasValidated = record.validatedAt != null;
-        sb.append("Validated: ").append(wasValidated ? "Yes" : "No").append("\n");
-        if (wasValidated) {
-            sb.append("Validation Result: ").append(getValidationResultDisplay(record.validationStatus)).append("\n");
-        }
-        sb.append("False Positive: ").append(record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No").append("\n");
+        // === SECRET/CONTEXT SECTION ===
+        html.append("<div style='margin-bottom: 8px;'>");
+        html.append("<div style='font-weight: bold; margin-bottom: 2px;'>Secret:</div>");
+        String secretValue = record.secretContent != null ? record.secretContent : record.secretPreview;
+        html.append("<div style='font-family: monospace; font-size: 9px; padding: 4px; background: #2a2a2a; border-radius: 2px; word-wrap: break-word;'>");
+        html.append(escapeHtml(secretValue));
+        html.append("</div>");
+        html.append("</div>");
 
-        detailArea.setText(sb.toString());
-        detailArea.setCaretPosition(0);
-
-        // URLs tab
-        StringBuilder urlsSb = new StringBuilder();
-        urlsSb.append("URLs where this secret was found:\n\n");
-        if (record.urls != null) {
-            int i = 1;
+        // === URLs SECTION ===
+        html.append("<div style='margin-bottom: 8px;'>");
+        html.append("<div style='font-size: 10px; font-weight: bold; margin-bottom: 4px;'>URLs</div>");
+        if (record.urls != null && !record.urls.isEmpty()) {
+            html.append("<ol style='margin: 0; padding-left: 16px;'>");
             for (String url : record.urls) {
-                urlsSb.append(i++).append(". ").append(url).append("\n");
+                html.append("<li style='margin-bottom: 1px; font-family: monospace; font-size: 9px;'>").append(escapeHtml(url)).append("</li>");
             }
-        }
-        urlsArea.setText(urlsSb.toString());
-        urlsArea.setCaretPosition(0);
-
-        // Validation tab - detailed validation info
-        StringBuilder validSb = new StringBuilder();
-        validSb.append("=== Validation Information ===\n\n");
-
-        if (record.validatedAt == null) {
-            validSb.append("Status: Not Checked\n\n");
-            validSb.append("Click 'Validate' to check if this secret is active.\n");
+            html.append("</ol>");
         } else {
-            // Determine meaningful status display
+            html.append("<div style='color: #888;'>No URLs recorded</div>");
+        }
+        html.append("</div>");
+
+        // === VALIDATION SECTION ===
+        html.append("<div style='margin-bottom: 8px;'>");
+        html.append("<div style='font-size: 10px; font-weight: bold; margin-bottom: 4px;'>Validation</div>");
+        if (record.validatedAt == null) {
+            html.append("<div>Status: <b>Not Checked</b></div>");
+            html.append("<div style='color: #888; margin-top: 2px;'>Click 'Validate' to check if this secret is active.</div>");
+        } else {
             String statusDisplay = getValidationResultDisplay(record.validationStatus);
-            validSb.append("Checked: Yes\n");
-            validSb.append("Result: ").append(statusDisplay).append("\n");
-            validSb.append("Validated At: ").append(TIME_FORMAT.format(record.validatedAt.atZone(java.time.ZoneId.systemDefault()))).append("\n\n");
+            html.append("<table cellpadding='1' cellspacing='0'>");
+            html.append("<tr><td>Status:</td><td style='padding-left: 8px;'><b>").append(statusDisplay).append("</b></td></tr>");
+            html.append("<tr><td>Validated:</td><td style='padding-left: 8px;'>").append(TIME_FORMAT.format(record.validatedAt.atZone(java.time.ZoneId.systemDefault()))).append("</td></tr>");
+            html.append("</table>");
 
             if (record.validationMessage != null && !record.validationMessage.isEmpty()) {
-                validSb.append("Message: ").append(record.validationMessage).append("\n\n");
+                html.append("<div style='margin-top: 2px;'>Message: ").append(escapeHtml(record.validationMessage)).append("</div>");
             }
 
             if (record.validationDetails != null && !record.validationDetails.isEmpty()) {
-                validSb.append("=== Details ===\n");
+                html.append("<table cellpadding='1' cellspacing='0' style='margin-top: 2px;'>");
                 for (Map.Entry<String, String> entry : record.validationDetails.entrySet()) {
                     String key = entry.getKey();
-                    // Format key nicely (e.g., "user_id" -> "User ID")
                     String displayKey = key.substring(0, 1).toUpperCase() + key.substring(1).replace("_", " ");
-                    validSb.append(displayKey).append(": ").append(entry.getValue()).append("\n");
+                    html.append("<tr><td>").append(escapeHtml(displayKey)).append(":</td>");
+                    html.append("<td style='padding-left: 8px; font-family: monospace;'>").append(escapeHtml(entry.getValue())).append("</td></tr>");
                 }
+                html.append("</table>");
             }
         }
-
         if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
-            validSb.append("\n=== False Positive ===\n");
-            validSb.append("This finding has been marked as a false positive.\n");
+            html.append("<div style='margin-top: 4px; color: #888;'>This finding has been marked as a false positive.</div>");
         }
+        html.append("</div>");
 
-        validationArea.setText(validSb.toString());
-        validationArea.setCaretPosition(0);
+        html.append("</body></html>");
+        detailArea.setText(html.toString());
+        detailArea.setCaretPosition(0);
 
-        // Request tab - show full request with highlighted secret
-        displayContentWithHighlight(requestPane, record.requestContent, record.secretContent,
-                                   "(Request not available - this finding may have been loaded from cache)");
-
-        // Response tab - show full response with highlighted secret
-        displayContentWithHighlight(responsePane, record.responseContent, record.secretContent,
-                                   "(Response not available - this finding may have been loaded from cache)");
-    }
-
-    /**
-     * Display content in a JTextPane with the secret highlighted.
-     */
-    private void displayContentWithHighlight(JTextPane pane, String content, String secretContent, String fallbackMessage) {
-        pane.setText("");
-
-        if (content == null || content.isEmpty()) {
-            pane.setText(fallbackMessage);
-            return;
-        }
-
-        javax.swing.text.StyledDocument doc = pane.getStyledDocument();
-
-        // Define highlight style
-        javax.swing.text.Style highlightStyle = pane.addStyle("highlight", null);
-        javax.swing.text.StyleConstants.setBackground(highlightStyle, new Color(255, 255, 0)); // Yellow background
-        javax.swing.text.StyleConstants.setForeground(highlightStyle, Color.BLACK);
-        javax.swing.text.StyleConstants.setBold(highlightStyle, true);
-
-        // Define normal style
-        javax.swing.text.Style normalStyle = pane.addStyle("normal", null);
-        javax.swing.text.StyleConstants.setFontFamily(normalStyle, Font.MONOSPACED);
-        javax.swing.text.StyleConstants.setFontSize(normalStyle, 12);
-
-        try {
-            if (secretContent != null && !secretContent.isEmpty() && content.contains(secretContent)) {
-                // Find and highlight all occurrences
-                int lastEnd = 0;
-                int index;
-                while ((index = content.indexOf(secretContent, lastEnd)) >= 0) {
-                    // Add text before the match
-                    if (index > lastEnd) {
-                        doc.insertString(doc.getLength(), content.substring(lastEnd, index), normalStyle);
-                    }
-                    // Add highlighted match
-                    doc.insertString(doc.getLength(), secretContent, highlightStyle);
-                    lastEnd = index + secretContent.length();
-                }
-                // Add remaining text
-                if (lastEnd < content.length()) {
-                    doc.insertString(doc.getLength(), content.substring(lastEnd), normalStyle);
-                }
-            } else {
-                // No secret to highlight, just show content
-                doc.insertString(doc.getLength(), content, normalStyle);
+        // Request tab - use native Burp editor
+        if (record.requestContent != null && !record.requestContent.isEmpty()) {
+            try {
+                HttpRequest request = HttpRequest.httpRequest(record.requestContent);
+                nativeRequestEditor.setRequest(request);
+            } catch (Exception e) {
+                HttpRequest request = HttpRequest.httpRequest("GET / HTTP/1.1\r\nHost: error\r\n\r\n" + record.requestContent);
+                nativeRequestEditor.setRequest(request);
             }
-        } catch (javax.swing.text.BadLocationException e) {
-            pane.setText(content);
+        } else {
+            nativeRequestEditor.setRequest(HttpRequest.httpRequest("GET / HTTP/1.1\r\nHost: unavailable\r\n\r\n(Request not available)"));
         }
 
-        pane.setCaretPosition(0);
+        // Response tab - use native Burp editor
+        if (record.responseContent != null && !record.responseContent.isEmpty()) {
+            try {
+                HttpResponse response = HttpResponse.httpResponse(record.responseContent);
+                nativeResponseEditor.setResponse(response);
+            } catch (Exception e) {
+                HttpResponse response = HttpResponse.httpResponse("HTTP/1.1 200 OK\r\n\r\n" + record.responseContent);
+                nativeResponseEditor.setResponse(response);
+            }
+        } else {
+            nativeResponseEditor.setResponse(HttpResponse.httpResponse("HTTP/1.1 200 OK\r\n\r\n(Response not available)"));
+        }
     }
 
     /**
@@ -801,6 +824,62 @@ public class SecretsView extends JPanel {
             case VALIDATING -> "Validating...";
             case NOT_CHECKED -> "Not Checked";
         };
+    }
+
+    /**
+     * Get HTML color code for validation status.
+     */
+    private String getStatusColor(DedupCache.ValidationStatus status) {
+        return switch (status) {
+            case VALID -> "#d9534f";      // Red - active credentials are dangerous
+            case INVALID -> "#5cb85c";    // Green - inactive is safe
+            case UNDETERMINED -> "#f0ad4e"; // Orange - unknown
+            case FALSE_POSITIVE -> "#999999"; // Gray
+            case VALIDATING -> "#5bc0de"; // Blue - in progress
+            case NOT_CHECKED -> "#999999"; // Gray
+        };
+    }
+
+    /**
+     * Escape HTML special characters.
+     */
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+                   .replace("\"", "&quot;")
+                   .replace("'", "&#39;");
+    }
+
+    /**
+     * Get severity indicator color for advisory display.
+     */
+    private String getSeverityIndicatorColor(String ruleId) {
+        SecretCategoryMapper.Category category = SecretCategoryMapper.getCategory(ruleId);
+        String name = category.name();
+        if (name.equals("CLOUD") || name.equals("DATABASE") || name.equals("AUTH")) {
+            return "#d9534f";  // Red for High
+        } else if (name.equals("SAAS") || name.equals("AI")) {
+            return "#f0ad4e";  // Orange for Medium
+        } else {
+            return "#5bc0de";  // Blue for Low/Info
+        }
+    }
+
+    /**
+     * Get severity name for advisory display.
+     */
+    private String getSeverityName(String ruleId) {
+        SecretCategoryMapper.Category category = SecretCategoryMapper.getCategory(ruleId);
+        String name = category.name();
+        if (name.equals("CLOUD") || name.equals("DATABASE") || name.equals("AUTH")) {
+            return "High";
+        } else if (name.equals("SAAS") || name.equals("AI")) {
+            return "Medium";
+        } else {
+            return "Low";
+        }
     }
 
     private void validateSelected() {
@@ -991,7 +1070,7 @@ public class SecretsView extends JPanel {
             }
 
             // Center align small columns: #, Severity, Count, Checked, Result, False Positive
-            if (column == 0 || column == 2 || column == 5 || column == 6 || column == 7 || column == 8) {
+            if (column == 0 || column == 2 || column == 6 || column == 7 || column == 8 || column == 9) {
                 setHorizontalAlignment(JLabel.CENTER);
             } else {
                 setHorizontalAlignment(JLabel.LEFT);
