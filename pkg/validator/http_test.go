@@ -537,3 +537,114 @@ func TestHTTPValidator_Validate_None_EmptyAuthType(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
 }
+
+func TestHTTPValidator_Validate_SuccessBodyContains_Valid(t *testing.T) {
+	// Slack-style API: returns 200 with ok:true/false in body
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true,"team":"T123"}`))
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "slack-token",
+		RuleIDs: []string{"np.slack.4"},
+		HTTP: HTTPDef{
+			Method: "POST",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "bearer",
+				SecretGroup: "token",
+			},
+			SuccessCodes:        []int{200},
+			FailureCodes:        []int{},
+			SuccessBodyContains: `"ok":true`,
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.slack.4",
+		NamedGroups: map[string][]byte{
+			"token": []byte("xoxp-valid-token"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestHTTPValidator_Validate_SuccessBodyContains_Invalid(t *testing.T) {
+	// Slack-style API: returns 200 with ok:false for invalid tokens
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":false,"error":"invalid_auth"}`))
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "slack-token",
+		RuleIDs: []string{"np.slack.4"},
+		HTTP: HTTPDef{
+			Method: "POST",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "bearer",
+				SecretGroup: "token",
+			},
+			SuccessCodes:        []int{200},
+			FailureCodes:        []int{},
+			SuccessBodyContains: `"ok":true`,
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.slack.4",
+		NamedGroups: map[string][]byte{
+			"token": []byte("xoxp-invalid-token"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusInvalid, result.Status)
+}
+
+func TestHTTPValidator_Validate_FailureBodyContains(t *testing.T) {
+	// API that returns 200 but with error in body
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"error","message":"unauthorized"}`))
+	}))
+	defer server.Close()
+
+	def := ValidatorDef{
+		Name:    "api-token",
+		RuleIDs: []string{"np.test.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    server.URL,
+			Auth: AuthDef{
+				Type:        "bearer",
+				SecretGroup: "token",
+			},
+			SuccessCodes:        []int{200},
+			FailureCodes:        []int{},
+			FailureBodyContains: `"status":"error"`,
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID: "np.test.1",
+		NamedGroups: map[string][]byte{
+			"token": []byte("bad-token"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusInvalid, result.Status)
+}

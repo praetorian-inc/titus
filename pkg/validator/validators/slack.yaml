@@ -29,8 +29,9 @@ validators:
       auth:
         type: bearer
         secret_group: "token"  # Matches (?P<token>...) in rule regex
-      success_codes: [200]  # 200 with ok=true in JSON response
-      failure_codes: []  # 200 with ok=false indicates invalid (check response body for error field)
+      success_codes: [200]
+      failure_codes: []
+      success_body_contains: '"ok":true'  # Slack returns 200 with ok:true/false in body
 
   - name: slack-user-token
     rule_ids:
@@ -43,6 +44,7 @@ validators:
         secret_group: "token"
       success_codes: [200]
       failure_codes: []
+      success_body_contains: '"ok":true'
 
   - name: slack-app-token
     rule_ids:
@@ -55,6 +57,7 @@ validators:
         secret_group: "token"
       success_codes: [200]
       failure_codes: []
+      success_body_contains: '"ok":true'
 
   - name: slack-legacy-bot-token
     rule_ids:
@@ -67,3 +70,4 @@ validators:
         secret_group: "token"
       success_codes: [200]
       failure_codes: []
+      success_body_contains: '"ok":true'
