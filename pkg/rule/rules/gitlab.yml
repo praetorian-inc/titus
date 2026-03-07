@@ -62,3 +62,18 @@ rules:
       --no-progress-meter \
       -F token=glptt-0d66598d696a02da33fb65e2a041f607c68ea50d \
       -F ref=main
+
+
+- name: GitLab Routable Personal Access Token
+  id: np.gitlab.4
+  pattern: '\b(glpat-[0-9a-zA-Z_-]{27,300}\.[0-9a-z]{2}\.[a-z0-9]{9})(?:\b|$)'
+
+  categories: [api, secret]
+
+  references:
+  - https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html
+  - https://gitlab.com/gitlab-org/gitlab/-/merge_requests/169322
+
+  examples:
+  - 'export GITLAB_TOKEN="glpat-3fZ1p5y4XWcCvMGVlfakeW86MQp1Oml3Ymg0Cw.01.1203afake"'
+  - 'PRIVATE-TOKEN: glpat-AbCdEfGhIjKlMnOpQrStUvWxYz012345.02.a1b2c3d4e'
