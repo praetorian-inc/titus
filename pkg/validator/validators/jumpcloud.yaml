@@ -1,0 +1,16 @@
+validators:
+  - name: jumpcloud-api-key
+    rule_ids:
+      - kingfisher.jumpcloud.1
+    http:
+      method: GET
+      url: "https://console.jumpcloud.com/api/systemusers?limit=1&skip=0"
+      auth:
+        type: header
+        secret_group: "1"
+        header_name: x-api-key
+      headers:
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]
