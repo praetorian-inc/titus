@@ -81,6 +81,7 @@ rulesets:
   - np.gitlab.1       # GitLab Runner Registration Token
   - np.gitlab.2       # GitLab Personal Access Token
   - np.gitlab.3       # GitLab Pipeline Trigger Token
+  - np.gitlab.4       # GitLab Routable Personal Access Token
   - np.google.2       # Google OAuth Client Secret (prefixed)
   - np.google.3       # Google OAuth Client Secret
   - np.google.4       # Google OAuth Access Token
