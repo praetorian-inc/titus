@@ -81,10 +81,21 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("request failed: %v", err)), nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer resp.Body.Close()
 
-	// Check response code
-	return v.evaluateResponse(resp.StatusCode), nil
+	// Read response body if needed for body-based validation
+	var respBody []byte
+	if v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" {
+		respBody, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
+		}
+	} else {
+		io.Copy(io.Discard, resp.Body)
+	}
+
+	// Check response code and body
+	return v.evaluateResponse(resp.StatusCode, respBody), nil
 }
 
 func (v *HTTPValidator) extractSecret(match *types.Match) (string, error) {
@@ -166,10 +177,25 @@ func (v *HTTPValidator) applyAuth(req *http.Request, secret string) error {
 	return nil
 }
 
-func (v *HTTPValidator) evaluateResponse(statusCode int) *types.ValidationResult {
+func (v *HTTPValidator) evaluateResponse(statusCode int, body []byte) *types.ValidationResult {
+	bodyStr := string(body)
+
+	// Check failure body first (takes precedence over success codes)
+	if v.def.HTTP.FailureBodyContains != "" && strings.Contains(bodyStr, v.def.HTTP.FailureBodyContains) {
+		return types.NewValidationResult(types.StatusInvalid, 1.0, fmt.Sprintf("HTTP %d - response body indicates invalid credentials", statusCode))
+	}
+
 	// Check success codes
 	for _, code := range v.def.HTTP.SuccessCodes {
 		if statusCode == code {
+			// If success_body_contains is specified, also check the body
+			if v.def.HTTP.SuccessBodyContains != "" {
+				if strings.Contains(bodyStr, v.def.HTTP.SuccessBodyContains) {
+					return types.NewValidationResult(types.StatusValid, 1.0, fmt.Sprintf("HTTP %d - credentials accepted", statusCode))
+				}
+				// Status code matched but body didn't - treat as invalid
+				return types.NewValidationResult(types.StatusInvalid, 1.0, fmt.Sprintf("HTTP %d - response body indicates invalid credentials", statusCode))
+			}
 			return types.NewValidationResult(types.StatusValid, 1.0, fmt.Sprintf("HTTP %d - credentials accepted", statusCode))
 		}
 	}
