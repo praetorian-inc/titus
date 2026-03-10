@@ -1,0 +1,19 @@
+validators:
+  - name: sourcegraph-access-token
+    rule_ids:
+      - np.sourcegraph.1
+    http:
+      method: POST
+      url: https://sourcegraph.com/.api/graphql
+      auth:
+        type: api_key
+        secret_group: "1"
+        key_prefix: "token "
+      headers:
+        - name: Content-Type
+          value: application/json
+        - name: Accept
+          value: application/json
+      body: '{"query":"{ currentUser { username } }"}'
+      success_codes: [200]
+      failure_codes: [401, 403]
