@@ -1,0 +1,31 @@
+validators:
+  - name: mailjet-sms-api-key
+    rule_ids:
+      - kingfisher.mailjet.1
+    http:
+      method: GET
+      url: https://api.mailjet.com/v4/sms/count
+      auth:
+        type: bearer
+        secret_group: "1"
+      headers:
+        - name: Accept
+          value: "application/vnd.mailjetsms+json; version=3"
+      success_codes: [200]
+      failure_codes: [401, 403]
+
+  - name: mailjet-email-basic-auth
+    rule_ids:
+      - kingfisher.mailjet.2
+    http:
+      method: GET
+      url: "https://api.mailjet.com/v3/REST/apikey?Limit=1"
+      auth:
+        type: api_key
+        secret_group: "1"
+        key_prefix: "Basic "
+      headers:
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]
