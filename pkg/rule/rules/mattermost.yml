@@ -1,10 +1,11 @@
 rules:
+
   - name: Mattermost URL
     id: kingfisher.mattermost.1
     pattern: |
       (?xi)
       \b
-      mattermost
+      (?:mattermost|mm)
       (?:.|[\n\r]){0,32}?
       (
         https?:\/\/[a-z0-9.-]+
@@ -15,22 +16,29 @@ rules:
     confidence: medium
     visible: false
     min_entropy: 2.0
+    description: >
+      A URL was found near a 'mattermost' or 'mm' keyword.
+      This is a helper rule used for token validation against the detected Mattermost instance.
     examples:
       - mattermost_url = "https://community.mattermost.com"
       - mattermost_url='http://localhost:8065'
       - 'mattermost_url: https://intra.example.com/mattermost'
+      - 'mm_url=http://localhost:8065'
+    negative_examples:
+      - slack_url = "https://hooks.slack.com"
+      - 'discord_url: https://discord.com/api'
 
   - name: Mattermost Access Token
     id: kingfisher.mattermost.2
     pattern: |
       (?xi)
       \b
-      mattermost
+      (?:mattermost|mm)
       (?:.|[\n\r]){0,32}?
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [A-Z0-9]{26}
       )
       \b
@@ -38,8 +46,21 @@ rules:
       min_digits: 2
     confidence: medium
     min_entropy: 4.0
+    categories:
+      - api
+      - secret
+    description: >
+      A Mattermost access token was found near a 'mattermost' or 'mm' keyword.
+      Mattermost tokens are 26-character z-base-32 encoded strings used
+      to authenticate API requests. An attacker could use the token to
+      access the Mattermost instance as the associated user or bot.
     examples:
-      - "mattermost_token: abcde12345fghij67890klmno1"
+      - "mattermost_token: 9xuqwrwgstrb3mzrxb83nb357a"
+      - 'MATTERMOST_ACCESS_TOKEN=bh5q3yjrufdr7z68nt1msp8oqr'
+      - 'MM_ACCESS_TOKEN=bh5q3yjrufdr7z68nt1msp8oqr'
+    negative_examples:
+      - "mattermost_url=https://community.mattermost.com"
+      - "this is not a mattermost secret at all"
     validation:
       type: Http
       content:
@@ -65,4 +86,93 @@ rules:
         variable: MATTERMOST_URL
     references:
       - https://developers.mattermost.com/api-documentation/
-      - https://developers.mattermost.com/integrate/faq/
+      - https://developers.mattermost.com/integrate/reference/personal-access-token/
+
+  - name: Mattermost Incoming Webhook URL
+    id: kingfisher.mattermost.3
+    pattern: |
+      (?xi)
+      (?P<webhook>
+        https?://
+        [a-z0-9.-]*(?:mattermost|mm)[a-z0-9.-]*
+        (?::\d{2,5})?
+        /hooks/
+        [a-z0-9]{26}
+      )
+      \b
+    min_entropy: 3.0
+    confidence: medium
+    categories:
+      - api
+      - secret
+    description: >
+      A Mattermost incoming webhook URL was found.
+      Webhook URLs allow posting messages to Mattermost channels without
+      further authentication. An attacker could use the webhook URL to
+      post messages, conduct phishing, or exfiltrate data through the channel.
+    examples:
+      - 'WEBHOOK_URL=https://mattermost.example.com/hooks/9xuqwrwgstrb3mzrxb83nb357a'
+      - 'webhook: http://mattermost:8065/hooks/bh5q3yjrufdr7z68nt1msp8oqr'
+      - 'curl -X POST https://chat-mattermost.company.io/hooks/tj4xmdnqpfbryx1gwkhge1ca9h'
+      - 'webhook: https://mm.example.com:8082/hooks/bh5q3yjrufdr7z68nt1msp8oqr'
+    negative_examples:
+      - 'WEBHOOK=https://hooks.slack.com/services/T1234/B5678/abcdefghijklmnopqrstuvwx'
+      - 'url=https://example.com/hooks/9xuqwrwgstrb3mzrxb83nb357a'
+      - 'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz'
+    validation:
+      type: Http
+      content:
+        request:
+          method: POST
+          url: "{{ TOKEN }}"
+          headers:
+            Content-Type: application/json
+          body: '{"text":""}'
+          response_matcher:
+            - report_response: true
+            - type: StatusMatch
+              status: [400]
+    references:
+      - https://developers.mattermost.com/integrate/webhooks/incoming/
+      - https://developers.mattermost.com/api-documentation/
+
+  - name: Mattermost Personal Access Token
+    id: np.mattermost.1
+    pattern: |
+      (?xi)
+      (?:mattermost|mm)
+      .?
+      (?: access | api | auth | bot | personal | private | secret )?
+      .?
+      (?: key | pat | secret | token )
+      .{0,2} \s{0,20} .{0,2} \s{0,20} .{0,2}
+      \b (?P<token>[a-km-uw-z13-9]{26}) \b
+
+    categories: [api, fuzzy, secret]
+
+    description: >
+      A Mattermost personal access token or bot token was found.
+      Mattermost tokens are 26-character z-base-32 encoded strings
+      generated from UUID v4. The z-base-32 character set excludes
+      the letters 'l' and 'v' and the digits '0' and '2'.
+      An attacker could use the token to access the Mattermost instance
+      as the associated user or bot.
+
+    examples:
+    - 'MATTERMOST_TOKEN=9xuqwrwgstrb3mzrxb83nb357a'
+    - 'mattermost_access_token: zmigewsanbbsdf59xnmduzypjc'
+    - 'export MATTERMOST_PAT="bh5q3yjrufdr7z68nt1msp8oqr"'
+    - |
+        mattermost_bot_token = "tj4xmdnqpfbryx1gwkhge1ca9h"
+    - 'MM_TOKEN=9xuqwrwgstrb3mzrxb83nb357a'
+    - 'mm_access_token: zmigewsanbbsdf59xnmduzypjc'
+
+    negative_examples:
+    - 'SLACK_TOKEN=fake-slack-token-not-mattermost'
+    - 'mattermost_url=https://community.mattermost.com'
+    - 'mattermost_token=abcdefghijklmnopqrstuvwxyz'
+    - 'mattermost_version=7.10.2'
+
+    references:
+    - https://developers.mattermost.com/integrate/reference/personal-access-token/
+    - https://developers.mattermost.com/api-documentation/
