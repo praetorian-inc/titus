@@ -154,6 +154,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Initialize validation engine (nil if validation disabled)
 	validationEngine := initValidationEngine()
 
+	// Cross-rule dedup: suppress redundant matches from different rules
+	// detecting the same secret in the same blob
+	canValidate := func(ruleID string) bool { return false }
+	if validationEngine != nil {
+		canValidate = validationEngine.CanValidate
+	}
+	crossRuleDedup := matcher.NewCrossRuleDeduplicator(ruleMap, canValidate)
+
 	// Create enumerator
 	enumerator, err := createEnumerator(target, scanGit)
 	if err != nil {
@@ -276,6 +284,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 					match.Location.Source.End.Line = endLine
 					match.Location.Source.End.Column = endCol
 				}
+
+				// Cross-rule dedup before validation to avoid wasted API calls
+				matches = crossRuleDedup.Deduplicate(matches)
 
 				validateMatches(ctx, validationEngine, matches, verbose)
 				matchCount.Add(int64(len(matches)))
@@ -622,6 +633,12 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 
 	validationEngine := initValidationEngine()
 
+	canValidate := func(ruleID string) bool { return false }
+	if validationEngine != nil {
+		canValidate = validationEngine.CanValidate
+	}
+	crossRuleDedup := matcher.NewCrossRuleDeduplicator(ruleMap, canValidate)
+
 	ctx := context.Background()
 	var matchCount atomic.Int64
 	var findingCount atomic.Int64
@@ -734,6 +751,9 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 					match.Location.Source.End.Line = endLine
 					match.Location.Source.End.Column = endCol
 				}
+
+				// Cross-rule dedup before validation to avoid wasted API calls
+				matches = crossRuleDedup.Deduplicate(matches)
 
 				validateMatches(ctx, validationEngine, matches, verbose)
 				matchCount.Add(int64(len(matches)))

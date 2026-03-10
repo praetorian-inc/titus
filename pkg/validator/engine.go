@@ -90,6 +90,16 @@ func (e *Engine) ValidateMatch(ctx context.Context, match *types.Match) (*types.
 	return types.NewValidationResult(types.StatusUndetermined, 0, "no validator available for this secret type"), nil
 }
 
+// CanValidate reports whether any registered validator can handle the given rule ID.
+func (e *Engine) CanValidate(ruleID string) bool {
+	for _, v := range e.validators {
+		if v.CanValidate(ruleID) {
+			return true
+		}
+	}
+	return false
+}
+
 // extractSecret extracts the secret value from a match for caching purposes.
 // Prefers named group "secret", falls back to matching snippet.
 func extractSecret(match *types.Match) []byte {
