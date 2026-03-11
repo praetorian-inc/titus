@@ -1,0 +1,16 @@
+validators:
+  - name: shippo-api-token
+    rule_ids:
+      - kingfisher.shippo.1
+    http:
+      method: GET
+      url: https://api.goshippo.com/shipments/
+      auth:
+        type: api_key
+        secret_group: "1"
+        key_prefix: "ShippoToken "
+      headers:
+        - name: Accept
+          value: application/json
+      success_codes: [200]
+      failure_codes: [401, 403]
