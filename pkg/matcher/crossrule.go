@@ -27,6 +27,12 @@ func NewCrossRuleDeduplicator(
 	}
 }
 
+// SetCanValidate updates the validator awareness function after construction.
+// Passing nil disables validator-based scoring (all rules treated equally).
+func (d *CrossRuleDeduplicator) SetCanValidate(fn func(ruleID string) bool) {
+	d.canValidate = fn
+}
+
 // Deduplicate takes all matches from a single blob and returns only the
 // non-redundant subset. Matches are clustered by shared captured group values,
 // then for each cluster the most informative match is kept.

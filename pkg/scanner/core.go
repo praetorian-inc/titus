@@ -142,6 +142,14 @@ func (c *Core) Close() {
 	}
 }
 
+// SetCanValidate upgrades the deduplicator with validator awareness. Call this
+// after NewCore() when a validation engine is available so the deduplicator can
+// prefer rules that have validators during cross-rule tie-breaking.
+// Passing nil reverts to treating all rules as having no validator.
+func (c *Core) SetCanValidate(fn func(ruleID string) bool) {
+	matcher.SetCanValidate(c.matcher, fn)
+}
+
 // GetBuiltinRules returns the built-in rules (cached)
 func GetBuiltinRules() ([]*types.Rule, error) {
 	return loadBuiltinRulesCached()

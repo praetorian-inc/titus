@@ -12,5 +12,6 @@ func New(cfg Config) (Matcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newFilteringMatcher(inner, cfg.Rules), nil
+	filtered := newFilteringMatcher(inner, cfg.Rules)
+	return newDedupMatcher(filtered, cfg.Rules), nil
 }
