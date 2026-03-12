@@ -61,3 +61,53 @@ rules:
   - https://www.truenas.com/docs/scale/scaleclireference/auth/cliapikey/
   - https://www.truenas.com/docs/scale/api/
   - https://www.truenas.com/community/threads/api-examples-in-perl-python.108053/
+
+- name: TrueNAS API Key (keyword proximity)
+  id: np.truenas.3
+
+  pattern: |
+    (?xi)
+    \b(?:truenas|true[_-]nas|tn[_-])
+    (?:.|[\n\r]){0,64}?
+    (?:api[_-]?key|api[_-]?token|token|secret|password|auth)
+    (?:.|[\n\r]){0,32}?
+    (?P<token>
+      \d+-[a-zA-Z0-9]{64}
+    )
+    \b
+
+  categories:
+  - api
+  - fuzzy
+  - secret
+
+  description: >
+    A TrueNAS API key was found near a TrueNAS-related keyword such as
+    "truenas", "true_nas", "true-nas", or "tn_". TrueNAS API keys follow
+    the format {numeric_id}-{64 alphanumeric characters} and are used for
+    programmatic authentication to TrueNAS CORE and SCALE APIs. An attacker
+    with this key can authenticate to the TrueNAS instance as the associated
+    user, access NAS data, modify storage configuration, and potentially
+    gain full administrative control.
+
+  examples:
+  - 'TRUENAS_API_KEY=8-Lp22ov7halMBLUpG97Wg4y7fibQi3CW19VJiZcCu746zgCs0mdDdTCoOcpgEucgu'
+  - 'truenas_token: "10-6LZBVhNq8zze0rzXJptfSWDBoskWuThnQb3fUVw4sVNgJ7GKT3ITVIovhwPf34oL"'
+  - '"truenas_api_key": "9-hTSZDBPyg0PjRZvWb8omoxJ7X2gAjRGmiPKql9ENGIUP9OPtEAzz5f6g9YIMVbZT"'
+  - 'tn_api_key = "8-Lp22ov7halMBLUpG97Wg4y7fibQi3CW19VJiZcCu746zgCs0mdDdTCoOcpgEucgu"'
+  - 'true-nas_secret=9-hTSZDBPyg0PjRZvWb8omoxJ7X2gAjRGmiPKql9ENGIUP9OPtEAzz5f6g9YIMVbZT'
+
+  negative_examples:
+  - 'truenas_version=12.0'
+  - 'truenas_url=http://192.168.1.1'
+  - 'tn_host=192.168.0.30'
+  - 'TRUENAS_API_KEY=not-a-valid-key'
+  - 'truenas_token=abc123'
+
+  references:
+  - https://www.truenas.com/docs/api/core_websocket_api.html
+  - https://www.truenas.com/docs/api/scale_rest_api.html
+  - https://www.truenas.com/docs/scale/scaletutorials/toptoolbar/managingapikeys/
+  - https://www.truenas.com/docs/scale/scaleclireference/auth/cliapikey/
+  - https://www.truenas.com/docs/scale/api/
+  - https://www.truenas.com/community/threads/api-examples-in-perl-python.108053/
