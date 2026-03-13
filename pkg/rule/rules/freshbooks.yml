@@ -7,7 +7,7 @@ rules:
       freshbooks
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [a-z0-9]{64}
       )
       \b
@@ -20,17 +20,3 @@ rules:
       - '"freshbooksAccess": "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"'
     references:
       - https://www.freshbooks.com/api/authentication
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: https://api.freshbooks.com/auth/api/v1/users/me
-          headers:
-            Authorization: 'Bearer {{ TOKEN }}'
-            Accept: application/json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status:
-                - 200

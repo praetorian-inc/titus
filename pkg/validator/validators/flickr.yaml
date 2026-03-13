@@ -1,0 +1,23 @@
+validators:
+  - name: flickr-api-key
+    rule_ids:
+      - kingfisher.flickr.1
+    http:
+      method: GET
+      url: "https://www.flickr.com/services/rest/?method=flickr.test.login&api_key={{token}}&format=json&nojsoncallback=1"
+      auth:
+        type: none
+        secret_group: "token"
+      success_codes: [200]
+      failure_body_contains: "Invalid API Key"
+  - name: flickr-oauth-token
+    rule_ids:
+      - kingfisher.flickr.2
+    http:
+      method: GET
+      url: "https://www.flickr.com/services/rest/?method=flickr.auth.oauth.checkToken&api_key={{token}}&oauth_token={{token}}&format=json&nojsoncallback=1"
+      auth:
+        type: none
+        secret_group: "token"
+      success_codes: [200]
+      success_body_contains: '"stat":"ok"'

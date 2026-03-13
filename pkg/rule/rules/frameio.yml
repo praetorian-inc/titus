@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         fio-u-[a-z0-9\-_=]{64}
       )
       \b
@@ -17,17 +17,3 @@ rules:
       - '"Authorization": "Bearer fio-u-b1c2d3e4f5g6h7i8j9k0l1m2n3o4p5q6r7s8t9u0v1w2x3y4z5a6b7c8d9e0f123"'
     references:
       - https://developer.frame.io/docs/api/authentication
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: https://api.frame.io/v2/me
-          headers:
-            Authorization: 'Bearer {{ TOKEN }}'
-            Accept: application/json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status:
-                - 200

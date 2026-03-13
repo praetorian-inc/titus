@@ -7,7 +7,7 @@ rules:
       finnhub
       (?:.|[\n\r]){0,24}?
       \b
-      (
+      (?P<token>
         [a-z0-9]{20}
       )
       \b
@@ -20,16 +20,3 @@ rules:
       - '"finnhubToken": "9b8a7c6d5e4f3a2b1c0d"'
     references:
       - https://finnhub.io/docs/api
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: https://finnhub.io/api/v1/stock/profile2?symbol=MDB&token={{ TOKEN }}
-          headers:
-            Accept: application/json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status:
-                - 200

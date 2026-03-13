@@ -1,0 +1,13 @@
+validators:
+  - name: openweathermap-api-key
+    rule_ids:
+      - kingfisher.openweather.1
+    http:
+      method: GET
+      url: "https://api.openweathermap.org/data/2.5/forecast?q=London"
+      auth:
+        type: query
+        secret_group: "token"
+        query_param: "appid"
+      success_codes: [200]
+      failure_codes: [401]
