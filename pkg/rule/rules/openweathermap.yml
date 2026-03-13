@@ -5,7 +5,6 @@ rules:
       (?xi)
       (?:pyowm|openweather|\bowm\b)
       (?:.|[\n\r]){0,64}?
-      \b
       (?:APPID=)?
       (?P<token>
         [a-z0-9]{32}
