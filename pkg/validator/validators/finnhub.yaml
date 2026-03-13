@@ -1,0 +1,13 @@
+validators:
+  - name: finnhub-api-token
+    rule_ids:
+      - kingfisher.finnhub.1
+    http:
+      method: GET
+      url: "https://finnhub.io/api/v1/stock/profile2?symbol=AAPL"
+      auth:
+        type: query
+        secret_group: "token"
+        query_param: "token"
+      success_codes: [200]
+      failure_codes: [401, 403]
