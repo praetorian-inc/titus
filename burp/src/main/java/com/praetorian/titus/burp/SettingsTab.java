@@ -5,11 +5,16 @@ import burp.api.montoya.scanner.audit.issues.AuditIssueSeverity;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
+import javax.swing.RowFilter;
 import java.awt.*;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * Settings tab UI for the Titus extension.
@@ -37,6 +42,8 @@ public class SettingsTab extends JPanel {
     private ValidationManager validationManager;
     private JTable severityTable;
     private DefaultTableModel severityTableModel;
+    private TableRowSorter<DefaultTableModel> severityRowSorter;
+    private JTextField severitySearchField;
 
     private Timer statsTimer;
 
@@ -280,7 +287,7 @@ public class SettingsTab extends JPanel {
         hint.setForeground(Color.GRAY);
         hint.setFont(hint.getFont().deriveFont(Font.ITALIC, 11f));
 
-        JLabel validationWarning = new JLabel("<html>Warning: Validation may trigger alerts (e.g., AWS CloudTrail) and makes requests to external services.</html>");
+        JLabel validationWarning = new JLabel("Warning: Validation may trigger alerts (e.g., AWS CloudTrail) and makes requests to external services.");
         validationWarning.setForeground(new Color(200, 100, 0));
         validationWarning.setFont(validationWarning.getFont().deriveFont(Font.ITALIC, 10f));
 
@@ -298,11 +305,11 @@ public class SettingsTab extends JPanel {
     }
 
     private JPanel createSeverityPanel() {
-        JPanel panel = new JPanel(new BorderLayout(5, 5));
+        JPanel panel = new JPanel(new BorderLayout(10, 5));
         panel.setBorder(new TitledBorder("Severity Configuration"));
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 250));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 280));
 
-        // Create table
+        // Create table model
         String[] columns = {"Category", "Severity"};
         severityTableModel = new DefaultTableModel(columns, 0) {
             @Override
@@ -312,9 +319,25 @@ public class SettingsTab extends JPanel {
         };
 
         severityTable = new JTable(severityTableModel);
+
+        // Add row sorter for sorting columns
+        severityRowSorter = new TableRowSorter<>(severityTableModel);
+        severityTable.setRowSorter(severityRowSorter);
+
+        // Custom comparator for severity column to sort by severity order
+        severityRowSorter.setComparator(1, (o1, o2) -> {
+            AuditIssueSeverity s1 = o1 instanceof AuditIssueSeverity ? (AuditIssueSeverity) o1 : AuditIssueSeverity.valueOf(o1.toString());
+            AuditIssueSeverity s2 = o2 instanceof AuditIssueSeverity ? (AuditIssueSeverity) o2 : AuditIssueSeverity.valueOf(o2.toString());
+            return s1.ordinal() - s2.ordinal();
+        });
+
         severityTable.getColumnModel().getColumn(1).setCellEditor(
             new DefaultCellEditor(new JComboBox<>(AuditIssueSeverity.values()))
         );
+
+        // Set preferred column widths
+        severityTable.getColumnModel().getColumn(0).setPreferredWidth(150);
+        severityTable.getColumnModel().getColumn(1).setPreferredWidth(100);
 
         // Populate table
         populateSeverityTable();
@@ -322,9 +345,10 @@ public class SettingsTab extends JPanel {
         // Add listener for changes
         severityTableModel.addTableModelListener(e -> {
             if (e.getColumn() == 1) {
-                int row = e.getFirstRow();
-                String category = (String) severityTableModel.getValueAt(row, 0);
-                Object value = severityTableModel.getValueAt(row, 1);
+                int viewRow = e.getFirstRow();
+                // Convert to model row since we have sorting
+                String category = (String) severityTableModel.getValueAt(viewRow, 0);
+                Object value = severityTableModel.getValueAt(viewRow, 1);
                 AuditIssueSeverity severity = value instanceof AuditIssueSeverity
                     ? (AuditIssueSeverity) value
                     : AuditIssueSeverity.valueOf(value.toString());
@@ -332,15 +356,162 @@ public class SettingsTab extends JPanel {
             }
         });
 
+        // Table in scroll pane - constrain width
         JScrollPane tableScroll = new JScrollPane(severityTable);
-        panel.add(tableScroll, BorderLayout.CENTER);
+        tableScroll.setPreferredSize(new Dimension(350, 180));
 
-        JLabel hint = new JLabel("Edit severity levels by clicking the Severity column");
-        hint.setForeground(Color.GRAY);
-        hint.setFont(hint.getFont().deriveFont(Font.ITALIC, 11f));
-        panel.add(hint, BorderLayout.SOUTH);
+        // Left panel: table with constrained width
+        JPanel tablePanel = new JPanel(new BorderLayout(5, 5));
+
+        // Top: search bar
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        searchPanel.add(new JLabel("Search:"));
+        severitySearchField = new JTextField(15);
+        severitySearchField.setToolTipText("Filter categories");
+        severitySearchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) { filterSeverityTable(); }
+            @Override
+            public void removeUpdate(DocumentEvent e) { filterSeverityTable(); }
+            @Override
+            public void changedUpdate(DocumentEvent e) { filterSeverityTable(); }
+        });
+        searchPanel.add(severitySearchField);
+
+        tablePanel.add(searchPanel, BorderLayout.NORTH);
+        tablePanel.add(tableScroll, BorderLayout.CENTER);
+
+        // Bottom: buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+
+        JButton addButton = new JButton("+");
+        addButton.setToolTipText("Add custom category");
+        addButton.setMargin(new Insets(2, 6, 2, 6));
+        addButton.addActionListener(e -> addCustomCategory());
+
+        JButton removeButton = new JButton("-");
+        removeButton.setToolTipText("Remove selected category");
+        removeButton.setMargin(new Insets(2, 6, 2, 6));
+        removeButton.addActionListener(e -> removeSelectedCategory());
+
+        buttonPanel.add(addButton);
+        buttonPanel.add(removeButton);
+
+        tablePanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Right panel: hints/info
+        JPanel infoPanel = new JPanel();
+        infoPanel.setLayout(new BoxLayout(infoPanel, BoxLayout.Y_AXIS));
+        infoPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 5));
+
+        JLabel hint1 = new JLabel("Click column headers to sort");
+        hint1.setForeground(Color.GRAY);
+        hint1.setFont(hint1.getFont().deriveFont(Font.ITALIC, 11f));
+
+        JLabel hint2 = new JLabel("Click Severity column to edit");
+        hint2.setForeground(Color.GRAY);
+        hint2.setFont(hint2.getFont().deriveFont(Font.ITALIC, 11f));
+
+        JLabel hint3 = new JLabel("Use + to add custom categories");
+        hint3.setForeground(Color.GRAY);
+        hint3.setFont(hint3.getFont().deriveFont(Font.ITALIC, 11f));
+
+        infoPanel.add(hint1);
+        infoPanel.add(Box.createVerticalStrut(5));
+        infoPanel.add(hint2);
+        infoPanel.add(Box.createVerticalStrut(5));
+        infoPanel.add(hint3);
+        infoPanel.add(Box.createVerticalGlue());
+
+        // Main layout: table on left, info on right
+        panel.add(tablePanel, BorderLayout.WEST);
+        panel.add(infoPanel, BorderLayout.CENTER);
 
         return panel;
+    }
+
+    private void filterSeverityTable() {
+        String text = severitySearchField.getText().trim();
+        if (text.isEmpty()) {
+            severityRowSorter.setRowFilter(null);
+        } else {
+            try {
+                severityRowSorter.setRowFilter(RowFilter.regexFilter("(?i)" + text, 0));
+            } catch (PatternSyntaxException e) {
+                // Invalid regex, ignore
+            }
+        }
+    }
+
+    private void addCustomCategory() {
+        String categoryName = JOptionPane.showInputDialog(
+            this,
+            "Enter category name (e.g., 'stripe', 'sendgrid'):",
+            "Add Custom Category",
+            JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (categoryName != null && !categoryName.trim().isEmpty()) {
+            String category = categoryName.trim().toLowerCase();
+
+            // Check if already exists
+            Map<String, AuditIssueSeverity> existing = severityConfig.getCategoryDefaults();
+            if (existing.containsKey(category)) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Category '" + category + "' already exists.",
+                    "Category Exists",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+
+            // Add with default severity MEDIUM
+            severityConfig.setCategorySeverity(category, AuditIssueSeverity.MEDIUM);
+            populateSeverityTable();
+
+            // Find and scroll to the newly added category
+            SwingUtilities.invokeLater(() -> {
+                for (int i = 0; i < severityTable.getRowCount(); i++) {
+                    String cat = (String) severityTable.getValueAt(i, 0);
+                    if (cat.equals(category)) {
+                        severityTable.setRowSelectionInterval(i, i);
+                        severityTable.scrollRectToVisible(severityTable.getCellRect(i, 0, true));
+                        break;
+                    }
+                }
+            });
+
+            api.logging().logToOutput("Added custom category: " + category);
+        }
+    }
+
+    private void removeSelectedCategory() {
+        int selectedRow = severityTable.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Please select a category to remove.",
+                "No Selection",
+                JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        String category = (String) severityTableModel.getValueAt(selectedRow, 0);
+
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            "Remove category '" + category + "'?",
+            "Remove Category",
+            JOptionPane.YES_NO_OPTION
+        );
+
+        if (result == JOptionPane.YES_OPTION) {
+            severityConfig.removeCategory(category);
+            populateSeverityTable();
+            api.logging().logToOutput("Removed category: " + category);
+        }
     }
 
     private JPanel createActionsPanel() {
