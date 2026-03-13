@@ -14,6 +14,11 @@ var rootCmd = &cobra.Command{
 	Short: "Titus - Go port of NoseyParker secrets scanner",
 	Long: `Titus is a fast secrets scanner that finds credentials in code, files, and git history.
 It uses regex-based detection rules to identify sensitive data like API keys, passwords, and tokens.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if !quiet {
+			printBanner()
+		}
+	},
 }
 
 func init() {
