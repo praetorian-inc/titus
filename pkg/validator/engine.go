@@ -30,6 +30,7 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewWPEngineValidator())
 	validators = append(validators, NewRabbitMQValidator())
 	validators = append(validators, NewMattermostValidator())
+	validators = append(validators, NewTrueNASValidator())
 
 	// Embedded YAML validators
 	embedded, err := LoadEmbeddedValidators()
