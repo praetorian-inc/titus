@@ -24,7 +24,7 @@ const banner = `
 /_/  /___/  /_/   \____/ /____/
 `
 
-const tagline = " Secrets hide. Titus finds."
+const tagline = " There's always something."
 const credit = " Praetorian Security, Inc."
 
 func printBanner() {
@@ -32,7 +32,7 @@ func printBanner() {
 
 	if useColor {
 		fmt.Fprintf(os.Stderr, "%s%s%s%s", colorBold, colorRed, banner, colorReset)
-		fmt.Fprintf(os.Stderr, "%s%s%s\n", colorCyan, tagline, colorReset)
+		fmt.Fprintf(os.Stderr, "%s%s%s%s\n", colorBold, colorRed, tagline, colorReset)
 		fmt.Fprintf(os.Stderr, "%s%s%s\n\n", colorDim, credit, colorReset)
 	} else {
 		fmt.Fprint(os.Stderr, banner)
