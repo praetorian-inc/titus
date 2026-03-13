@@ -1,0 +1,16 @@
+validators:
+  - name: harness-pat
+    rule_ids:
+      - kingfisher.harness.pat.1
+    http:
+      method: GET
+      url: "https://app.harness.io/ng/api/apikey/aggregate"
+      auth:
+        type: header
+        secret_group: "token"
+        header_name: "x-api-key"
+      headers:
+        - name: "Accept"
+          value: "application/json"
+      success_codes: [200, 400, 403]
+      failure_codes: [401]
