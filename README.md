@@ -86,8 +86,14 @@ titus scan https://gitlab.com/namespace/project.git
 For organization-wide or user-wide scanning, use the dedicated subcommands:
 
 ```bash
-# Scan all repos in a GitHub org
+# Scan all public repos in a GitHub org
+titus github --org kubernetes
+
+# Scan all repos in a GitHub org with a token (private repos + higher rate limits)
 titus github --org kubernetes --token $GITHUB_TOKEN
+
+# Scan all repos for a GitHub user
+titus github --user octocat
 
 # Scan all projects in a GitLab group
 titus gitlab scan --group mygroup --token $GITLAB_TOKEN
