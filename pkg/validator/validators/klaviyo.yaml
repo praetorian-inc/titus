@@ -1,0 +1,18 @@
+validators:
+  - name: klaviyo-api-key
+    rule_ids:
+      - kingfisher.klaviyo.1
+    http:
+      method: GET
+      url: "https://a.klaviyo.com/api/accounts"
+      auth:
+        type: api_key
+        secret_group: "token"
+        key_prefix: "Klaviyo-API-Key "
+      headers:
+        - name: "Revision"
+          value: "2023-02-22"
+        - name: "Accept"
+          value: "application/json"
+      success_codes: [200]
+      failure_codes: [401, 403]

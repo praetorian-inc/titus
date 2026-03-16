@@ -1,0 +1,12 @@
+validators:
+  - name: frameio-api-token
+    rule_ids:
+      - kingfisher.frameio.1
+    http:
+      method: GET
+      url: "https://api.frame.io/v2/me"
+      auth:
+        type: bearer
+        secret_group: "token"
+      success_codes: [200]
+      failure_codes: [401, 403]

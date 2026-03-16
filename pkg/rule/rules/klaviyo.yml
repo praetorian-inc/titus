@@ -7,7 +7,7 @@ rules:
       klaviyo
       (?:.|[\n\r]){0,16}?
       \b
-      (
+      (?P<token>
         pk_[A-Z0-9]{34}
       )
       \b
@@ -15,19 +15,3 @@ rules:
     confidence: medium
     examples:
       - klaviyo_key = pk_abcd1234fghij5678klmn9012opqr3456s
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: https://a.klaviyo.com/api/accounts
-          headers:
-            Revision: "2023-02-22"
-            Authorization: "Klaviyo-API-Key {{ TOKEN }}"
-            Accept: application/json
-          response_matcher:
-            - report_response: true
-            - type: StatusMatch
-              status: [200]
-            - type: WordMatch
-              words: ['"data"']

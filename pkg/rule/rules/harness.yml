@@ -4,7 +4,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         pat\.
         [A-Z0-9]{22}
         \.
@@ -20,18 +20,3 @@ rules:
     references:
       - https://developer.harness.io/docs/platform/automation/api/api-quickstart/
       - https://apidocs.harness.io/
-    validation:
-      type: Http
-      content:
-        request:
-          method: GET
-          url: https://app.harness.io/ng/api/apikey/aggregate
-          headers:
-            Accept: application/json
-            x-api-key: "{{ TOKEN }}"
-          response_matcher:
-            # Valid token + authorized OR valid token but missing params/perms
-            - type: StatusMatch
-              status: [200, 400, 403]
-              negative: true
-            - type: JsonValid
