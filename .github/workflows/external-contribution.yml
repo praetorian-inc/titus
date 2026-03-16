@@ -2,21 +2,27 @@ name: External Contribution Notify
 
 on:
   issues:
-    types: [opened]
+    types: [opened, assigned, closed]
   pull_request_target:
-    types: [opened]
+    types: [opened, assigned, closed]
+
+permissions:
+  issues: write
+  pull-requests: write
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - uses: praetorian-inc/external-contrib-action@v1
+      - uses: praetorian-inc/external-contrib-action@v2
         with:
           linear-team-id: ${{ secrets.LINEAR_TEAM_ID }}
           linear-assignee-id: ${{ secrets.LINEAR_ASSIGNEE_ID }}
           linear-parent-issue-id: ${{ secrets.LINEAR_PARENT_ISSUE_ID }}
           slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          dry-run: "false"
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ORG_MEMBER_CHECK_PAT: ${{ secrets.ORG_MEMBER_CHECK_PAT }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
