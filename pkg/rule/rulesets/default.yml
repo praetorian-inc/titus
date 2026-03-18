@@ -18,6 +18,8 @@ rulesets:
   - np.atlassian.1    # Atlassian Cloud API Token
   - np.anthropic.1    # Anthropic API Key
   - np.artifactory.1  # Artifactory API Key
+  - np.amplitude.1    # Amplitude API Key
+  - np.appcenter.1    # Visual Studio App Center API Token
   - np.appsync.1      # AWS AppSync API Key
   - np.auth0.1        # Auth0 Application Credentials
   - np.aws.2          # AWS Secret Access Key
@@ -28,15 +30,24 @@ rulesets:
   - np.azure.2        # Azure App Configuration Connection String
   - np.azure.3        # Azure Personal Access Token
   - np.azure.4        # Azure DevOps Personal Access Token
+  - np.azure.5        # Azure API Management Subscription Key
+  - np.azure.6        # Azure Notification Hub Access Key
   - np.bitbucket.1    # Bitbucket App Password
   - np.blynk.1        # Blynk Device Access Token
   - np.blynk.2        # Blynk Organization Access Token
   - np.blynk.3        # Blynk Organization Access Token
   - np.blynk.8        # Blynk Organization Client Credentials
   - np.blynk.9        # Blynk Organization Client Credentials
+  - np.branchio.1     # Branch.io Live Key
+  - np.branchio.2     # Branch.io Test Key
+  - np.browserstack.1 # BrowserStack Access Key
+  - np.calendly.1     # Calendly Personal Access Token
   - np.codeclimate.1  # CodeClimate
   - np.cratesio.1     # crates.io API Key
+  - np.cypress.1      # Cypress Record Key
   - np.databricks.1   # Databricks Personal Access Token
+  - np.delighted.1    # Delighted API Key
+  - np.deviantart.1   # DeviantArt Access Token
   - np.django.1       # Django Secret Key
   - np.dtrack.1       # Dependency-Track API Key
   - np.digitalocean.1 # DigitalOcean Application Access Token
@@ -53,7 +64,9 @@ rulesets:
   - np.dynatrace.1    # Dynatrace Token
   - np.facebook.1     # Facebook Secret Key
   - np.facebook.2     # Facebook Access Token
+  - np.facebook.3     # Facebook App Credentials
   - np.figma.1        # Figma Personal Access Token
+  - np.firebase.1     # Firebase Cloud Messaging Server Key
   - np.firecrawl.1    # Firecrawl API Key
   - np.generic.1      # Generic Secret
   - np.generic.2      # Generic API Key
@@ -87,11 +100,14 @@ rulesets:
   - np.google.4       # Google OAuth Access Token
   - np.google.5       # Google API Key
   - np.google.6       # Google OAuth Credentials
+  - np.google.7       # Google API Key (Base64 Encoded)
+  - np.google.8       # Google Maps API Key
   - np.gradle.1       # Hardcoded Gradle Credentials
   - np.grafana.1      # Grafana API Token
   - np.grafana.2      # Grafana Cloud API Token
   - np.grafana.3      # Grafana Service Account Token
   - np.groq.1         # Groq API Key
+  - np.helpscout.1    # Help Scout OAuth Client Secret
   - np.hashicorp.1    # Hashicorp Vault Service Token (< v1.10)
   - np.hashicorp.2    # Hashicorp Vault Batch Token (< v1.10)
   - np.hashicorp.3    # Hashicorp Vault Recovery Token (< v1.10)
@@ -103,6 +119,8 @@ rulesets:
   - np.http.1         # HTTP Basic Authentication
   - np.http.2         # HTTP Bearer Token
   - np.huggingface.1  # HuggingFace User Access Token
+  - np.instagram.1    # Instagram Graph API Access Token
+  - np.iterable.1     # Iterable API Key
   - np.jenkins.1      # Jenkins Token or Crumb
   - np.jenkins.2      # Jenkins Setup Admin Password
   - np.jina.1         # Jina Search Foundation API Key
@@ -110,12 +128,15 @@ rulesets:
   - np.jwt.2          # JSON Web Token Secret
   - np.jwt.3          # JSON Web Token Secret
   - np.kagi.1         # Kagi API Key
+  - np.keenio.1       # Keen.io API Key
   - np.kubernetes.1   # Kubernetes Bootstrap Token
   - np.kubernetes.2   # Kubernetes Bootstrap Token
+  - np.lokalise.1     # Lokalise API Token
   - np.linkedin.2     # LinkedIn Secret Key
   - np.linkedin.3     # LinkedIn Access Token
   - np.mailchimp.1    # MailChimp API Key
   - np.mailgun.1      # Mailgun API Key
+  - np.mattermost.1   # Mattermost Personal Access Token
   - np.mapbox.2       # Mapbox Secret Access Token
   - np.mapbox.3       # Mapbox Temporary Access Token
   - np.msteams.1      # Microsoft Teams Webhook
@@ -136,6 +157,7 @@ rulesets:
   - np.odbc.1         # Credentials in ODBC Connection String
   - np.okta.1         # Okta API Token
   - np.openai.1       # OpenAI API Key
+  - np.pendo.1        # Pendo Integration Key
   - np.particleio.1   # particle.io Access Token
   - np.particleio.2   # particle.io Access Token
   - np.pem.1          # PEM-Encoded Private Key
@@ -146,6 +168,8 @@ rulesets:
   - np.postmark.1     # Postmark API Token
   - np.psexec.1       # Credentials in PsExec Command
   - np.pypi.1         # PyPI Upload Token
+  - np.razorpay.1     # Razorpay API Key
+  - np.razorpay.2     # Razorpay Test API Key
   - np.reactapp.1     # React App Username
   - np.reactapp.2     # React App Password
   - np.redis.1        # Redis URI Connection String
@@ -158,6 +182,7 @@ rulesets:
   - np.shopify.3      # Shopify Access Token (Public App)
   - np.shopify.4      # Shopify Access Token (Custom App)
   - np.shopify.5      # Shopify Access Token (Legacy Private App)
+  - np.spotify.1      # Spotify Access Token
   - np.slack.2        # Slack Bot Token
   - np.slack.3        # Slack Webhook
   - np.slack.4        # Slack User Token
@@ -178,9 +203,18 @@ rulesets:
   - np.thingsboard.3  # ThingsBoard Provision Device Secret
   - np.truenas.1      # TrueNAS API Key (WebSocket)
   - np.truenas.2      # TrueNAS API Key (REST API)
+  - np.truenas.3      # TrueNAS API Key (keyword proximity)
   - np.twilio.1       # Twilio API Key
   - np.twitter.2      # Twitter Secret Key
+  - np.twitter.3      # Twitter/X Bearer Token
+  - np.twitter.4      # Twitter/X Access Token
   - np.twitch.1       # Twitch Stream Key
   - np.vmware.1       # Credentials in Connect-VIServer Command
+  - np.wakatime.1     # WakaTime API Key
+  - np.wakatime.2     # WakaTime Prefixed API Key
   - np.wireguard.1    # WireGuard Private Key
   - np.wireguard.2    # WireGuard Preshared Key
+  - np.wpengine.1     # WPEngine API Key
+  - np.youtube.1      # YouTube API Key
+  - np.zapier.1       # Zapier Webhook URL
+  - np.zendesk.1      # Zendesk API Token
