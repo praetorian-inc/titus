@@ -3,6 +3,8 @@ package rule
 import (
 	"testing"
 	"testing/fstest"
+
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 func TestLoadRule_Valid(t *testing.T) {
@@ -405,5 +407,26 @@ func TestLoadRule_NoPatternRequirements(t *testing.T) {
 	}
 	if rule.PatternRequirements != nil {
 		t.Error("expected PatternRequirements to be nil for rule without requirements")
+	}
+}
+
+func TestFindRuleset(t *testing.T) {
+	rulesets := []*types.Ruleset{
+		{ID: "default", Name: "Default"},
+		{ID: "np.assets", Name: "Assets"},
+		{ID: "np.hashes", Name: "Hashes"},
+	}
+
+	rs := FindRuleset(rulesets, "np.assets")
+	if rs == nil {
+		t.Fatal("expected to find np.assets ruleset")
+	}
+	if rs.ID != "np.assets" {
+		t.Errorf("expected np.assets, got %s", rs.ID)
+	}
+
+	rs = FindRuleset(rulesets, "nonexistent")
+	if rs != nil {
+		t.Error("expected nil for nonexistent ruleset")
 	}
 }

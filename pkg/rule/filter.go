@@ -107,3 +107,24 @@ func matchesAny(ruleID string, regexes []*regexp.Regexp) bool {
 	}
 	return false
 }
+
+// ApplyRuleset filters rules to only those whose ID appears in the ruleset.
+// If ruleset is nil, all rules are returned unfiltered.
+func ApplyRuleset(rules []*types.Rule, ruleset *types.Ruleset) []*types.Rule {
+	if ruleset == nil {
+		return rules
+	}
+
+	allowed := make(map[string]bool, len(ruleset.RuleIDs))
+	for _, id := range ruleset.RuleIDs {
+		allowed[id] = true
+	}
+
+	var out []*types.Rule
+	for _, r := range rules {
+		if allowed[r.ID] {
+			out = append(out, r)
+		}
+	}
+	return out
+}

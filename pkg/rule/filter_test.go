@@ -289,3 +289,70 @@ func TestFilter_NilRules(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, filtered)
 }
+
+func TestApplyRuleset(t *testing.T) {
+	rules := []*types.Rule{
+		{ID: "np.aws.1"},
+		{ID: "np.aws.2"},
+		{ID: "np.aws.3"},
+		{ID: "np.github.1"},
+	}
+	ruleset := &types.Ruleset{
+		ID:      "test",
+		RuleIDs: []string{"np.aws.1", "np.aws.3"},
+	}
+	filtered := ApplyRuleset(rules, ruleset)
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(filtered))
+	}
+	ids := map[string]bool{}
+	for _, r := range filtered {
+		ids[r.ID] = true
+	}
+	if !ids["np.aws.1"] || !ids["np.aws.3"] {
+		t.Errorf("expected np.aws.1 and np.aws.3, got %v", ids)
+	}
+}
+
+func TestApplyRuleset_NilRuleset(t *testing.T) {
+	rules := []*types.Rule{
+		{ID: "np.aws.1"},
+		{ID: "np.aws.2"},
+	}
+	filtered := ApplyRuleset(rules, nil)
+	if len(filtered) != 2 {
+		t.Fatalf("expected all rules returned when ruleset is nil, got %d", len(filtered))
+	}
+}
+
+func TestApplyRuleset_EmptyRuleIDs(t *testing.T) {
+	rules := []*types.Rule{
+		{ID: "np.aws.1"},
+	}
+	ruleset := &types.Ruleset{
+		ID:      "empty",
+		RuleIDs: []string{},
+	}
+	filtered := ApplyRuleset(rules, ruleset)
+	if len(filtered) != 0 {
+		t.Fatalf("expected 0 rules, got %d", len(filtered))
+	}
+}
+
+func TestApplyRuleset_NonexistentRuleIDs(t *testing.T) {
+	rules := []*types.Rule{
+		{ID: "np.aws.1"},
+		{ID: "np.aws.2"},
+	}
+	ruleset := &types.Ruleset{
+		ID:      "test",
+		RuleIDs: []string{"np.aws.1", "np.nonexistent.99"},
+	}
+	filtered := ApplyRuleset(rules, ruleset)
+	if len(filtered) != 1 {
+		t.Fatalf("expected 1 rule (nonexistent silently skipped), got %d", len(filtered))
+	}
+	if filtered[0].ID != "np.aws.1" {
+		t.Errorf("expected np.aws.1, got %s", filtered[0].ID)
+	}
+}
