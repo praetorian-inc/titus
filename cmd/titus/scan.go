@@ -47,7 +47,6 @@ var (
 	scanOutputFormat        string
 	scanGit                 bool
 	scanMaxFileSize         int64
-	scanIncludeHidden       bool
 	scanContextLines        int
 	scanIncremental         bool
 	scanValidate            bool
@@ -77,7 +76,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
-	scanCmd.Flags().BoolVar(&scanIncludeHidden, "include-hidden", false, "Include hidden files and directories")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
@@ -486,7 +484,6 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 
 	config := enum.Config{
 		Root:            target,
-		IncludeHidden:   scanIncludeHidden,
 		MaxFileSize:     scanMaxFileSize,
 		FollowSymlinks:  false,
 		ExtractArchives: string(scanExtractArchivesFlag),

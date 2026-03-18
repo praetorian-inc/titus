@@ -56,17 +56,10 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 		}
 
 		if info.IsDir() {
-			if !e.config.IncludeHidden && isHidden(info.Name()) {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 
 		if info.Mode()&os.ModeSymlink != 0 && !e.config.FollowSymlinks {
-			return nil
-		}
-
-		if !e.config.IncludeHidden && isHidden(info.Name()) {
 			return nil
 		}
 
@@ -201,15 +194,6 @@ func shouldExtract(config Config, ext string) bool {
 		}
 	}
 	return false
-}
-
-// isHidden checks if a filename is hidden (starts with .).
-// The special entries "." and ".." are NOT considered hidden.
-func isHidden(name string) bool {
-	if name == "." || name == ".." {
-		return false
-	}
-	return strings.HasPrefix(name, ".")
 }
 
 // isBinary detects if content is binary by checking first 8KB for null bytes.
