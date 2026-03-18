@@ -1,4 +1,4 @@
-package enum
+package ignore
 
 import (
 	"os"
@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestCompileIgnorePatterns_DefaultPatternsMatch(t *testing.T) {
-	ig, err := CompileIgnorePatterns("")
+func TestCompilePatterns_DefaultPatternsMatch(t *testing.T) {
+	ig, err := CompilePatterns("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -45,21 +45,21 @@ func TestCompileIgnorePatterns_DefaultPatternsMatch(t *testing.T) {
 	}
 }
 
-func TestCompileIgnorePatterns_InvalidFileReturnsError(t *testing.T) {
-	_, err := CompileIgnorePatterns("/nonexistent/path/ignore.conf")
+func TestCompilePatterns_InvalidFileReturnsError(t *testing.T) {
+	_, err := CompilePatterns("/nonexistent/path/ignore.conf")
 	if err == nil {
 		t.Fatal("expected error for nonexistent ignore file")
 	}
 }
 
-func TestCompileIgnorePatterns_CustomFileReplacesDefaults(t *testing.T) {
+func TestCompilePatterns_CustomFileReplacesDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
 	ignoreFile := filepath.Join(tmpDir, "custom.conf")
 	if err := os.WriteFile(ignoreFile, []byte("*.secret\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	ig, err := CompileIgnorePatterns(ignoreFile)
+	ig, err := CompilePatterns(ignoreFile)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

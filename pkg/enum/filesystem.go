@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/praetorian-inc/titus/pkg/enum/ignore"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"golang.org/x/sync/errgroup"
 )
@@ -33,7 +34,7 @@ type fileEntry struct {
 // Phase 2: Read files and invoke callback in parallel.
 func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	// Compile ignore patterns (default embedded list or user-supplied file)
-	ignore, err := CompileIgnorePatterns(e.config.IgnoreFile)
+	ig, err := ignore.CompilePatterns(e.config.IgnoreFile)
 	if err != nil {
 		return err
 	}
@@ -64,12 +65,12 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 			return nil
 		}
 
-		if ignore != nil {
+		if ig != nil {
 			relPath, err := filepath.Rel(e.config.Root, path)
 			if err != nil {
 				return err
 			}
-			if ignore.MatchesPath(relPath) {
+			if ig.MatchesPath(relPath) {
 				return nil
 			}
 		}
