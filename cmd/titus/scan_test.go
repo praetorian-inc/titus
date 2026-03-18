@@ -55,6 +55,56 @@ func TestCreateEnumerator_InvalidTarget(t *testing.T) {
 	assert.NotNil(t, e)
 }
 
+func TestLoadRules_DefaultRuleset(t *testing.T) {
+	rules, err := loadRules("", "", "", "default")
+	require.NoError(t, err)
+	ruleIDs := make(map[string]bool)
+	for _, r := range rules {
+		ruleIDs[r.ID] = true
+	}
+	assert.False(t, ruleIDs["np.aws.1"], "np.aws.1 (identifier) should not be in default ruleset")
+	assert.False(t, ruleIDs["np.aws.3"], "np.aws.3 (identifier) should not be in default ruleset")
+	assert.True(t, ruleIDs["np.aws.2"], "np.aws.2 (secret) should be in default ruleset")
+}
+
+func TestLoadRules_AllRuleset(t *testing.T) {
+	rules, err := loadRules("", "", "", "all")
+	require.NoError(t, err)
+	ruleIDs := make(map[string]bool)
+	for _, r := range rules {
+		ruleIDs[r.ID] = true
+	}
+	assert.True(t, ruleIDs["np.aws.1"], "np.aws.1 should be present with ruleset=all")
+	assert.True(t, ruleIDs["np.aws.3"], "np.aws.3 should be present with ruleset=all")
+}
+
+func TestLoadRules_UnknownRuleset(t *testing.T) {
+	_, err := loadRules("", "", "", "bogus")
+	assert.Error(t, err, "expected error for unknown ruleset")
+}
+
+func TestLoadRules_RulesetThenIncludeExclude(t *testing.T) {
+	rules, err := loadRules("", "np\\.aws\\.", "", "default")
+	require.NoError(t, err)
+	ruleIDs := make(map[string]bool)
+	for _, r := range rules {
+		ruleIDs[r.ID] = true
+		assert.Contains(t, r.ID, "np.aws", "expected only aws rules after include filter")
+	}
+	assert.False(t, ruleIDs["np.aws.1"], "np.aws.1 should not appear — not in default ruleset")
+}
+
+func TestLoadRules_AssetsRuleset(t *testing.T) {
+	rules, err := loadRules("", "", "", "np.assets")
+	require.NoError(t, err)
+	ruleIDs := make(map[string]bool)
+	for _, r := range rules {
+		ruleIDs[r.ID] = true
+	}
+	assert.True(t, ruleIDs["np.aws.1"], "np.aws.1 should be in np.assets ruleset")
+	assert.False(t, ruleIDs["np.aws.2"], "np.aws.2 (secret) should not be in np.assets ruleset")
+}
+
 func init() {
 	// Ensure the package-level flag vars have sane defaults for unit tests
 	// (they are normally set by cobra flag parsing).
