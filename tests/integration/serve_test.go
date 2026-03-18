@@ -106,7 +106,7 @@ func TestServeIntegration_ScanAWSKey(t *testing.T) {
 	t.Log("Ready signal received")
 
 	// Send scan request with AWS key
-	request := `{"type":"scan","payload":{"content":"aws_access_key_id = AKIAIOSFODNN7EXAMPLE","source":"test-file.txt"}}` + "\n"
+	request := `{"type":"scan","payload":{"content":"aws_access_key_id = AKIADEADBEEFDEADBEEF","source":"test-file.txt"}}` + "\n"
 	_, err = stdin.Write([]byte(request))
 	require.NoError(t, err)
 

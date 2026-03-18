@@ -15,6 +15,10 @@ rules:
   - api
   - identifier
 
+  pattern_requirements:
+    ignore_if_contains:
+      - "EXAMPLE"
+
   examples:
   - 'A3T0ABCDEFGHIJKLMNOP'
   - 'AKIADEADBEEFDEADBEEF'
@@ -52,6 +56,10 @@ rules:
   - api
   - fuzzy
   - secret
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "EXAMPLE"
 
   examples:
   - 'aws_secret_access_key:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -124,6 +132,10 @@ rules:
   - api
   - fuzzy
   - secret
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "EXAMPLE"
 
   negative_examples:
   - '======================'

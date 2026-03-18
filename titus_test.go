@@ -35,7 +35,7 @@ func TestScanString(t *testing.T) {
 	defer scanner.Close()
 
 	// Test content with a fake AWS key pattern
-	content := `aws_access_key_id = AKIAIOSFODNN7EXAMPLE`
+	content := `aws_access_key_id = AKIADEADBEEFDEADBEEF`
 
 	matches, err := scanner.ScanString(content)
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func TestScanBytes(t *testing.T) {
 	defer scanner.Close()
 
 	// Test with a realistic AWS access key pattern that's in the builtin rules
-	content := []byte(`AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE`)
+	content := []byte(`AWS_ACCESS_KEY_ID=AKIADEADBEEFDEADBEEF`)
 
 	matches, err := scanner.ScanBytes(content)
 	require.NoError(t, err)
