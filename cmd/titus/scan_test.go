@@ -103,6 +103,13 @@ func TestLoadRules_AssetsRuleset(t *testing.T) {
 	}
 	assert.True(t, ruleIDs["np.aws.1"], "np.aws.1 should be in np.assets ruleset")
 	assert.False(t, ruleIDs["np.aws.2"], "np.aws.2 (secret) should not be in np.assets ruleset")
+func TestScanCommand_IgnoreFlag(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"scan"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("ignore")
+	require.NotNil(t, flag, "--ignore flag should exist")
+	assert.Equal(t, "", flag.DefValue, "default --ignore should be empty (uses embedded defaults)")
 }
 
 func init() {

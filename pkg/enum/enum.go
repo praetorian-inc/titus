@@ -36,9 +36,6 @@ type Config struct {
 	// Root is the starting path for enumeration.
 	Root string
 
-	// IncludeHidden includes hidden files/directories (starting with .).
-	IncludeHidden bool
-
 	// MaxFileSize is the maximum file size to process (0 = no limit).
 	MaxFileSize int64
 
@@ -50,4 +47,9 @@ type Config struct {
 
 	// ExtractLimits specifies safety limits for archive extraction.
 	ExtractLimits ExtractionLimits
+
+	// IgnoreFile is a path to a gitignore-style file of path patterns to skip.
+	// If empty, the embedded default ignore.conf is used.
+	// Use "/dev/null" to disable all ignore patterns.
+	IgnoreFile string
 }

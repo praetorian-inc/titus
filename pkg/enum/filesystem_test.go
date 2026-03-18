@@ -38,9 +38,8 @@ func TestFilesystemEnumerator(t *testing.T) {
 
 	// Enumerate and collect results
 	config := Config{
-		Root:          tmpDir,
-		IncludeHidden: false,
-		MaxFileSize:   0,
+		Root:        tmpDir,
+		MaxFileSize: 0,
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
@@ -69,69 +68,6 @@ func TestFilesystemEnumerator(t *testing.T) {
 	// Should find 3 files
 	if len(foundFiles) != 3 {
 		t.Errorf("expected 3 files, got %d: %v", len(foundFiles), foundFiles)
-	}
-}
-
-func TestFilesystemEnumerator_HiddenFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create visible and hidden files
-	visibleFile := filepath.Join(tmpDir, "visible.txt")
-	if err := os.WriteFile(visibleFile, []byte("visible"), 0644); err != nil {
-		t.Fatalf("failed to create file: %v", err)
-	}
-
-	hiddenFile := filepath.Join(tmpDir, ".hidden.txt")
-	if err := os.WriteFile(hiddenFile, []byte("hidden"), 0644); err != nil {
-		t.Fatalf("failed to create file: %v", err)
-	}
-
-	// Test without including hidden files
-	config := Config{
-		Root:          tmpDir,
-		IncludeHidden: false,
-	}
-	enumerator := NewFilesystemEnumerator(config)
-
-	var mu sync.Mutex
-	var foundFiles []string
-	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		mu.Lock()
-		defer mu.Unlock()
-		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
-		return nil
-	})
-
-	if err != nil {
-		t.Fatalf("enumerate failed: %v", err)
-	}
-
-	if len(foundFiles) != 1 {
-		t.Errorf("expected 1 file, got %d", len(foundFiles))
-	}
-	if len(foundFiles) > 0 && foundFiles[0] != "visible.txt" {
-		t.Errorf("expected visible.txt, got %s", foundFiles[0])
-	}
-
-	// Test with including hidden files
-	config.IncludeHidden = true
-	enumerator = NewFilesystemEnumerator(config)
-
-	var mu2 sync.Mutex
-	foundFiles = nil
-	err = enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		mu2.Lock()
-		defer mu2.Unlock()
-		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
-		return nil
-	})
-
-	if err != nil {
-		t.Fatalf("enumerate failed: %v", err)
-	}
-
-	if len(foundFiles) != 2 {
-		t.Errorf("expected 2 files, got %d", len(foundFiles))
 	}
 }
 
@@ -222,36 +158,25 @@ func TestFilesystemEnumerator_BinaryFiles(t *testing.T) {
 	}
 }
 
-func TestFilesystemEnumerator_Gitignore(t *testing.T) {
+func TestFilesystemEnumerator_GitignoreNotRespected(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create .gitignore
+	// Create .gitignore that would exclude secret.txt
 	gitignorePath := filepath.Join(tmpDir, ".gitignore")
-	gitignoreContent := "ignored.txt\n*.log\n"
-	if err := os.WriteFile(gitignorePath, []byte(gitignoreContent), 0644); err != nil {
+	if err := os.WriteFile(gitignorePath, []byte("secret.txt\n"), 0644); err != nil {
 		t.Fatalf("failed to create .gitignore: %v", err)
 	}
 
 	// Create files
-	includedFile := filepath.Join(tmpDir, "included.txt")
-	if err := os.WriteFile(includedFile, []byte("included"), 0644); err != nil {
-		t.Fatalf("failed to create file: %v", err)
+	if err := os.WriteFile(filepath.Join(tmpDir, "secret.txt"), []byte("secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "public.txt"), []byte("public"), 0644); err != nil {
+		t.Fatal(err)
 	}
 
-	ignoredFile1 := filepath.Join(tmpDir, "ignored.txt")
-	if err := os.WriteFile(ignoredFile1, []byte("ignored1"), 0644); err != nil {
-		t.Fatalf("failed to create file: %v", err)
-	}
-
-	ignoredFile2 := filepath.Join(tmpDir, "test.log")
-	if err := os.WriteFile(ignoredFile2, []byte("ignored2"), 0644); err != nil {
-		t.Fatalf("failed to create file: %v", err)
-	}
-
-	// Enumerate
 	config := Config{
-		Root:          tmpDir,
-		IncludeHidden: true, // Include .gitignore itself
+		Root: tmpDir,
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
@@ -268,33 +193,161 @@ func TestFilesystemEnumerator_Gitignore(t *testing.T) {
 		t.Fatalf("enumerate failed: %v", err)
 	}
 
-	// Should find .gitignore and included.txt (but not ignored files)
+	// A secrets scanner should NOT respect .gitignore — secret.txt must be found
+	foundSet := make(map[string]bool)
+	for _, f := range foundFiles {
+		foundSet[f] = true
+	}
+	if !foundSet["secret.txt"] {
+		t.Error("secret.txt should be found (secrets scanner must not respect .gitignore)")
+	}
+	if !foundSet["public.txt"] {
+		t.Error("public.txt should be found")
+	}
+}
+
+func TestFilesystemEnumerator_IgnorePatterns(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create files that should be ignored by default patterns
+	nodeDir := filepath.Join(tmpDir, "node_modules", "@aws-sdk")
+	if err := os.MkdirAll(nodeDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nodeDir, "secret.txt"), []byte("aws key"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a lockfile that should be ignored
+	if err := os.WriteFile(filepath.Join(tmpDir, "package-lock.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a file that should NOT be ignored
+	if err := os.WriteFile(filepath.Join(tmpDir, "app.js"), []byte("const x = 1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Enumerate with default ignore (empty IgnoreFile = use defaults)
+	config := Config{
+		Root: tmpDir,
+	}
+	enumerator := NewFilesystemEnumerator(config)
+
+	var mu sync.Mutex
+	var foundFiles []string
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
+		relPath, _ := filepath.Rel(tmpDir, prov.Path())
+		foundFiles = append(foundFiles, relPath)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	if len(foundFiles) != 1 {
+		t.Errorf("expected 1 file, got %d: %v", len(foundFiles), foundFiles)
+	}
+	if len(foundFiles) > 0 && foundFiles[0] != "app.js" {
+		t.Errorf("expected app.js, got %s", foundFiles[0])
+	}
+}
+
+func TestFilesystemEnumerator_CustomIgnoreFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create custom ignore file
+	ignoreFile := filepath.Join(tmpDir, "my-ignore.conf")
+	if err := os.WriteFile(ignoreFile, []byte("secret.txt\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create files
+	if err := os.WriteFile(filepath.Join(tmpDir, "secret.txt"), []byte("secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "public.txt"), []byte("public"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Also create a lockfile — should NOT be ignored since custom file replaces defaults
+	if err := os.WriteFile(filepath.Join(tmpDir, "package-lock.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	config := Config{
+		Root:       tmpDir,
+		IgnoreFile: ignoreFile,
+	}
+	enumerator := NewFilesystemEnumerator(config)
+
+	var mu sync.Mutex
+	var foundFiles []string
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
+		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	foundSet := make(map[string]bool)
+	for _, f := range foundFiles {
+		foundSet[f] = true
+	}
+	if foundSet["secret.txt"] {
+		t.Error("secret.txt should have been ignored")
+	}
+	if !foundSet["public.txt"] {
+		t.Error("public.txt should have been found")
+	}
+	if !foundSet["package-lock.json"] {
+		t.Error("package-lock.json should not be ignored with custom ignore file")
+	}
+}
+
+func TestFilesystemEnumerator_DevNullIgnoreFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a lockfile that default patterns would ignore
+	if err := os.WriteFile(filepath.Join(tmpDir, "package-lock.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "app.js"), []byte("const x = 1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	config := Config{
+		Root:       tmpDir,
+		IgnoreFile: "/dev/null",
+	}
+	enumerator := NewFilesystemEnumerator(config)
+
+	var mu sync.Mutex
+	var foundFiles []string
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
+		foundFiles = append(foundFiles, filepath.Base(prov.Path()))
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
 	if len(foundFiles) != 2 {
-		t.Errorf("expected 2 files, got %d: %v", len(foundFiles), foundFiles)
-	}
-
-	foundIncluded := false
-	foundGitignore := false
-	for _, name := range foundFiles {
-		if name == "included.txt" {
-			foundIncluded = true
-		}
-		if name == ".gitignore" {
-			foundGitignore = true
-		}
-	}
-
-	if !foundIncluded {
-		t.Error("included.txt not found")
-	}
-	if !foundGitignore {
-		t.Error(".gitignore not found")
+		t.Errorf("expected 2 files (nothing ignored), got %d: %v", len(foundFiles), foundFiles)
 	}
 }
 
 func TestFilesystemEnumerator_CurrentDirectory(t *testing.T) {
 	// Regression test: scanning "." should not skip the entire directory
-	// because "." starts with a dot (isHidden should not treat it as hidden)
 	tmpDir := t.TempDir()
 
 	// Create a test file
@@ -316,8 +369,7 @@ func TestFilesystemEnumerator_CurrentDirectory(t *testing.T) {
 
 	// Enumerate using "." as root (this was the bug: it would skip everything)
 	config := Config{
-		Root:          ".",
-		IncludeHidden: false, // The bug manifests when hidden files are NOT included
+		Root: ".",
 	}
 	enumerator := NewFilesystemEnumerator(config)
 
@@ -340,30 +392,6 @@ func TestFilesystemEnumerator_CurrentDirectory(t *testing.T) {
 	}
 	if len(foundFiles) > 0 && foundFiles[0] != "secret.txt" {
 		t.Errorf("expected secret.txt, got %s", foundFiles[0])
-	}
-}
-
-func TestIsHidden(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-		want     bool
-	}{
-		{"current dir", ".", false},
-		{"parent dir", "..", false},
-		{"hidden file", ".hidden", true},
-		{"hidden directory", ".git", true},
-		{"normal file", "file.txt", false},
-		{"normal directory", "src", false},
-		{"dotfile", ".gitignore", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isHidden(tt.filename); got != tt.want {
-				t.Errorf("isHidden(%q) = %v, want %v", tt.filename, got, tt.want)
-			}
-		})
 	}
 }
 

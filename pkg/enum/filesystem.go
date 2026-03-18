@@ -9,8 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	gitignore "github.com/sabhiram/go-gitignore"
-
+	"github.com/praetorian-inc/titus/pkg/enum/ignore"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"golang.org/x/sync/errgroup"
 )
@@ -34,16 +33,15 @@ type fileEntry struct {
 // Phase 1: Walk directory tree and collect eligible file paths (fast, sequential).
 // Phase 2: Read files and invoke callback in parallel.
 func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	// Load .gitignore patterns if present
-	var ignore *gitignore.GitIgnore
-	gitignorePath := filepath.Join(e.config.Root, ".gitignore")
-	if _, err := os.Stat(gitignorePath); err == nil {
-		ignore, _ = gitignore.CompileIgnoreFile(gitignorePath)
+	// Compile ignore patterns (default embedded list or user-supplied file)
+	ig, err := ignore.CompilePatterns(e.config.IgnoreFile)
+	if err != nil {
+		return err
 	}
 
 	// Phase 1: Walk and collect eligible file paths
 	var files []fileEntry
-	err := filepath.Walk(e.config.Root, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(e.config.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 			return nil
@@ -56,9 +54,6 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 		}
 
 		if info.IsDir() {
-			if !e.config.IncludeHidden && isHidden(info.Name()) {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 
@@ -66,20 +61,16 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 			return nil
 		}
 
-		if !e.config.IncludeHidden && isHidden(info.Name()) {
-			return nil
-		}
-
 		if e.config.MaxFileSize > 0 && info.Size() > e.config.MaxFileSize {
 			return nil
 		}
 
-		if ignore != nil {
+		if ig != nil {
 			relPath, err := filepath.Rel(e.config.Root, path)
 			if err != nil {
 				return err
 			}
-			if ignore.MatchesPath(relPath) {
+			if ig.MatchesPath(relPath) {
 				return nil
 			}
 		}
@@ -201,15 +192,6 @@ func shouldExtract(config Config, ext string) bool {
 		}
 	}
 	return false
-}
-
-// isHidden checks if a filename is hidden (starts with .).
-// The special entries "." and ".." are NOT considered hidden.
-func isHidden(name string) bool {
-	if name == "." || name == ".." {
-		return false
-	}
-	return strings.HasPrefix(name, ".")
 }
 
 // isBinary detects if content is binary by checking first 8KB for null bytes.

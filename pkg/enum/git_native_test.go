@@ -401,6 +401,40 @@ func TestNativeGitEnumerator_DispatchFromEnumerate(t *testing.T) {
 	}
 }
 
+func TestNativeGitEnumerator_DoesNotApplyIgnorePatterns(t *testing.T) {
+	skipIfNoGit(t)
+
+	// Ignore patterns are intentionally NOT applied to git history scanning.
+	// git rev-list deduplicates by blob hash and picks one representative path —
+	// if that path matched an ignore pattern, we'd lose the blob entirely even
+	// if it also exists at a non-ignored path. Filesystem scanning handles ignore.
+	tmpDir := t.TempDir()
+	initGitRepo(t, tmpDir)
+
+	writeFile(t, filepath.Join(tmpDir, "package-lock.json"), `{"lockfileVersion": 3}`)
+	writeFile(t, filepath.Join(tmpDir, "app.js"), "const x = 1")
+	gitAddCommit(t, tmpDir, "Add files")
+
+	config := Config{Root: tmpDir}
+	enumerator := NewGitEnumerator(config)
+	enumerator.WalkAll = true
+
+	var foundFiles []string
+	err := enumerator.enumerateAllHistoryNative(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		foundFiles = append(foundFiles, prov.Path())
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	// Both files should be found — git enumerator does not filter
+	if len(foundFiles) != 2 {
+		t.Errorf("expected 2 files (git does not apply ignore), got %d: %v", len(foundFiles), foundFiles)
+	}
+}
+
 // --- Test helpers ---
 
 func initGitRepo(t *testing.T, dir string) {

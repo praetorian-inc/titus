@@ -681,3 +681,53 @@ func TestGitEnumerator_WalkAll_MultipleBranches(t *testing.T) {
 		t.Error("missing feature branch content")
 	}
 }
+
+func TestGitEnumerator_DoesNotApplyIgnorePatterns(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to init git repo: %v", err)
+	}
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "config", "user.name", "Test User")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Create a file that matches default ignore patterns
+	if err := os.WriteFile(filepath.Join(tmpDir, "package-lock.json"), []byte(`{"lockfileVersion": 3}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "app.js"), []byte("const x = 1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	cmd.Run()
+	cmd = exec.Command("git", "commit", "-m", "Add files")
+	cmd.Dir = tmpDir
+	cmd.Run()
+
+	// Ignore patterns are NOT applied to git history — see git_native_test.go
+	// for rationale (git rev-list dedup makes ignore unsafe).
+	config := Config{Root: tmpDir}
+	enumerator := NewGitEnumerator(config)
+
+	var foundFiles []string
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		foundFiles = append(foundFiles, prov.Path())
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	if len(foundFiles) != 2 {
+		t.Errorf("expected 2 files (git does not apply ignore), got %d: %v", len(foundFiles), foundFiles)
+	}
+}

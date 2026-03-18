@@ -47,7 +47,6 @@ var (
 	scanOutputFormat        string
 	scanGit                 bool
 	scanMaxFileSize         int64
-	scanIncludeHidden       bool
 	scanContextLines        int
 	scanIncremental         bool
 	scanValidate            bool
@@ -60,6 +59,7 @@ var (
 	scanSQLiteRowLimit      int
 	scanWorkers             int
 	scanRuleset             string
+	scanIgnoreFile          string
 )
 
 var scanCmd = &cobra.Command{
@@ -79,7 +79,6 @@ func init() {
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
-	scanCmd.Flags().BoolVar(&scanIncludeHidden, "include-hidden", false, "Include hidden files and directories")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
@@ -91,6 +90,7 @@ func init() {
 	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
 	scanCmd.Flags().IntVar(&scanSQLiteRowLimit, "sqlite-row-limit", 1000, "Max rows per table for SQLite extraction (0 for unlimited)")
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
+	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -505,11 +505,11 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 
 	config := enum.Config{
 		Root:            target,
-		IncludeHidden:   scanIncludeHidden,
 		MaxFileSize:     scanMaxFileSize,
 		FollowSymlinks:  false,
 		ExtractArchives: string(scanExtractArchivesFlag),
 		ExtractLimits:   limits,
+		IgnoreFile:      scanIgnoreFile,
 	}
 
 	if useGit {
@@ -603,6 +603,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 
 	cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
 		MaxFileSize: scanMaxFileSize,
+		IgnoreFile:  scanIgnoreFile,
 	})
 	cloneEnum.Git = scanGit
 
