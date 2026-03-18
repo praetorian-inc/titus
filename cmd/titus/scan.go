@@ -58,6 +58,7 @@ var (
 	extractMaxDepth         int
 	scanSQLiteRowLimit      int
 	scanWorkers             int
+	scanIgnoreFile          string
 )
 
 var scanCmd = &cobra.Command{
@@ -87,6 +88,7 @@ func init() {
 	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
 	scanCmd.Flags().IntVar(&scanSQLiteRowLimit, "sqlite-row-limit", 1000, "Max rows per table for SQLite extraction (0 for unlimited)")
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
+	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -488,6 +490,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 		FollowSymlinks:  false,
 		ExtractArchives: string(scanExtractArchivesFlag),
 		ExtractLimits:   limits,
+		IgnoreFile:      scanIgnoreFile,
 	}
 
 	if useGit {
@@ -581,6 +584,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 
 	cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
 		MaxFileSize: scanMaxFileSize,
+		IgnoreFile:  scanIgnoreFile,
 	})
 	cloneEnum.Git = scanGit
 
