@@ -263,6 +263,29 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-visLen)
 }
 
+// sanitizeForDisplay replaces non-printable characters with a dot,
+// preserving only newlines (for line splitting) and printable ASCII
+// (0x20-0x7E). Tabs and carriage returns are replaced because tabs
+// expand to variable-width columns (breaking truncation) and carriage
+// returns reset the cursor position (overwriting content). A
+// single-byte replacement is used intentionally so that byte-based
+// operations like truncateString remain safe.
+func sanitizeForDisplay(b []byte) string {
+	var sb strings.Builder
+	sb.Grow(len(b))
+	for _, c := range b {
+		switch {
+		case c == '\n':
+			sb.WriteByte(c)
+		case c >= 0x20 && c <= 0x7E:
+			sb.WriteByte(c)
+		default:
+			sb.WriteByte('.')
+		}
+	}
+	return sb.String()
+}
+
 // stripAnsi removes ANSI escape sequences for re-styling.
 func stripAnsi(s string) string {
 	var result strings.Builder

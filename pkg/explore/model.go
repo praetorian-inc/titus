@@ -585,11 +585,11 @@ func (m *Model) openSource() tea.Cmd {
 	// Fallback: show snippet in overlay
 	var sb strings.Builder
 	if len(match.Snippet.Before) > 0 {
-		sb.Write(match.Snippet.Before)
+		sb.WriteString(sanitizeForDisplay(match.Snippet.Before))
 	}
-	sb.Write(match.Snippet.Matching)
+	sb.WriteString(sanitizeForDisplay(match.Snippet.Matching))
 	if len(match.Snippet.After) > 0 {
-		sb.Write(match.Snippet.After)
+		sb.WriteString(sanitizeForDisplay(match.Snippet.After))
 	}
 
 	m.sourceContent = sb.String()

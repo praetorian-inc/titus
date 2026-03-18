@@ -266,7 +266,7 @@ func formatGroups(groups [][]byte) string {
 	}
 	parts := make([]string, len(groups))
 	for i, g := range groups {
-		parts[i] = string(g)
+		parts[i] = sanitizeForDisplay(g)
 	}
 	return strings.Join(parts, ", ")
 }

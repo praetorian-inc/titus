@@ -101,7 +101,7 @@ func (dp detailsPane) View() string {
 		for i, g := range f.Groups {
 			lines = append(lines, fmt.Sprintf("  %s %s",
 				fieldLabelStyle.Render(fmt.Sprintf("Group %d:", i+1)),
-				snippetMatchStyle.Render(string(g))))
+				snippetMatchStyle.Render(sanitizeForDisplay(g))))
 		}
 
 		if f.AnnotationStatus != "" {
@@ -241,7 +241,7 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 		for name, val := range m.NamedGroups {
 			lines = append(lines, fmt.Sprintf("    %s: %s",
 				fieldLabelStyle.Render(name),
-				snippetMatchStyle.Render(truncateString(string(val), 60))))
+				snippetMatchStyle.Render(truncateString(sanitizeForDisplay(val), 60))))
 		}
 	}
 
@@ -262,9 +262,9 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 	lines = append(lines, fmt.Sprintf("  %s", fieldLabelStyle.Render("Snippet:")))
 
 	snippetWidth := maxWidth - 6
-	before := strings.TrimRight(string(m.Snippet.Before), "\n\r")
-	matching := string(m.Snippet.Matching)
-	after := strings.TrimLeft(string(m.Snippet.After), "\n\r")
+	before := strings.TrimRight(sanitizeForDisplay(m.Snippet.Before), "\n\r")
+	matching := sanitizeForDisplay(m.Snippet.Matching)
+	after := strings.TrimLeft(sanitizeForDisplay(m.Snippet.After), "\n\r")
 
 	// Render snippet lines
 	for _, line := range strings.Split(before, "\n") {
