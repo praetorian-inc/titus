@@ -36,9 +36,6 @@ type Config struct {
 	// Root is the starting path for enumeration.
 	Root string
 
-	// IncludeHidden includes hidden files/directories (starting with .).
-	IncludeHidden bool
-
 	// MaxFileSize is the maximum file size to process (0 = no limit).
 	MaxFileSize int64
 
