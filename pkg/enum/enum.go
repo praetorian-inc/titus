@@ -47,4 +47,9 @@ type Config struct {
 
 	// ExtractLimits specifies safety limits for archive extraction.
 	ExtractLimits ExtractionLimits
+
+	// IgnoreFile is a path to a gitignore-style file of path patterns to skip.
+	// If empty, the embedded default ignore.conf is used.
+	// Use "/dev/null" to disable all ignore patterns.
+	IgnoreFile string
 }
