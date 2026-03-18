@@ -59,6 +59,7 @@ var (
 	extractMaxDepth         int
 	scanSQLiteRowLimit      int
 	scanWorkers             int
+	scanRuleset             string
 )
 
 var scanCmd = &cobra.Command{
@@ -73,6 +74,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory")
 	scanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	scanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
+	scanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
 	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.ds", "Output datastore path (use :memory: for in-memory only)")
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
@@ -112,7 +114,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load rules
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
@@ -316,14 +318,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 // HELPERS
 // =============================================================================
 
-func loadRules(path, include, exclude string) ([]*types.Rule, error) {
+func loadRules(path, include, exclude, rulesetID string) ([]*types.Rule, error) {
 	loader := rule.NewLoader()
 
 	var rules []*types.Rule
 	var err error
 
 	if path != "" {
-		// Custom rules from file
+		// Custom rules from file — skip ruleset filtering
 		r, err := loader.LoadRuleFile(path)
 		if err != nil {
 			return nil, err
@@ -335,9 +337,26 @@ func loadRules(path, include, exclude string) ([]*types.Rule, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// Apply ruleset filtering (skip if "all")
+		if rulesetID != "all" {
+			rulesets, err := loader.LoadBuiltinRulesets()
+			if err != nil {
+				return nil, fmt.Errorf("loading rulesets: %w", err)
+			}
+			rs := rule.FindRuleset(rulesets, rulesetID)
+			if rs == nil {
+				available := make([]string, len(rulesets))
+				for i, r := range rulesets {
+					available[i] = r.ID
+				}
+				return nil, fmt.Errorf("unknown ruleset %q (available: %s, all)", rulesetID, strings.Join(available, ", "))
+			}
+			rules = rule.ApplyRuleset(rules, rs)
+		}
 	}
 
-	// Apply filtering if patterns specified
+	// Apply regex filtering if patterns specified
 	if include != "" || exclude != "" {
 		config := rule.FilterConfig{
 			Include: rule.ParsePatterns(include),
@@ -588,7 +607,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	cloneEnum.Git = scanGit
 
 	// Load rules
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
