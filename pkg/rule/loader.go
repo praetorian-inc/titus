@@ -193,3 +193,13 @@ func convertYAMLRuleset(yrs yamlRuleset) *types.Ruleset {
 		RuleIDs:     yrs.RuleIDs,
 	}
 }
+
+// FindRuleset returns the ruleset with the given ID, or nil if not found.
+func FindRuleset(rulesets []*types.Ruleset, id string) *types.Ruleset {
+	for _, rs := range rulesets {
+		if rs.ID == id {
+			return rs
+		}
+	}
+	return nil
+}
