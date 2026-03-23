@@ -632,7 +632,8 @@ public class SecretsView extends JPanel {
 
         int[] selectedRows = secretsTable.getSelectedRows();
         if (selectedRows.length == 0) {
-            detailArea.setText("<html><body style='font-family: sans-serif; font-size: 10px; padding: 6px; color: #888;'>Select a secret to view details</body></html>");
+            String[] t = getThemeColors();
+            detailArea.setText("<html><body style='font-family: sans-serif; font-size: 10px; padding: 6px; color: " + t[1] + ";'>Select a secret to view details</body></html>");
             // Clear native editors
             nativeRequestEditor.setRequest(HttpRequest.httpRequest("GET / HTTP/1.1\r\nHost: none\r\n\r\n"));
             nativeResponseEditor.setResponse(HttpResponse.httpResponse("HTTP/1.1 200 OK\r\n\r\n"));
@@ -691,10 +692,24 @@ public class SecretsView extends JPanel {
         }
     }
 
+    /**
+     * Get CSS colors adapted to the current theme (light or dark).
+     */
+    private String[] getThemeColors() {
+        boolean dark = isDarkTheme();
+        // [textColor, mutedColor, codeBg, codeFg]
+        if (dark) {
+            return new String[]{"#dcdcdc", "#888888", "#2a2a2a", "#e0e0e0"};
+        } else {
+            return new String[]{"#1a1a1a", "#666666", "#f4f4f4", "#1a1a1a"};
+        }
+    }
+
     private void displayRecordDetails(DedupCache.FindingRecord record) {
         // Build combined HTML for Details tab - includes Advisory, Details, URLs, Validation
         StringBuilder html = new StringBuilder();
-        html.append("<html><body style='font-family: sans-serif; font-size: 9px; padding: 8px;'>");
+        String[] theme = getThemeColors(); // [text, muted, codeBg, codeFg]
+        html.append("<html><body style='font-family: sans-serif; font-size: 9px; padding: 8px; color: ").append(theme[0]).append(";'>");
 
         // === ADVISORY SECTION ===
         // Header with severity indicator and title
@@ -708,9 +723,9 @@ public class SecretsView extends JPanel {
         // Severity, Confidence, Host
         String severity = getSeverityName(record.ruleId);
         html.append("<table cellpadding='1' cellspacing='0' style='margin-bottom: 8px;'>");
-        html.append("<tr><td style='color: #888;'>Severity:</td><td style='padding-left: 8px;'>").append(severity).append("</td></tr>");
-        html.append("<tr><td style='color: #888;'>Confidence:</td><td style='padding-left: 8px;'>Certain</td></tr>");
-        html.append("<tr><td style='color: #888;'>Host:</td><td style='padding-left: 8px;'>").append(escapeHtml(record.primaryHost != null ? record.primaryHost : "N/A")).append("</td></tr>");
+        html.append("<tr><td style='color: ").append(theme[1]).append(";'>Severity:</td><td style='padding-left: 8px;'>").append(severity).append("</td></tr>");
+        html.append("<tr><td style='color: ").append(theme[1]).append(";'>Confidence:</td><td style='padding-left: 8px;'>Certain</td></tr>");
+        html.append("<tr><td style='color: ").append(theme[1]).append(";'>Host:</td><td style='padding-left: 8px;'>").append(escapeHtml(record.primaryHost != null ? record.primaryHost : "N/A")).append("</td></tr>");
         html.append("</table>");
 
         // === ISSUE DETAIL SECTION ===
@@ -729,7 +744,7 @@ public class SecretsView extends JPanel {
         html.append("<div style='margin-bottom: 8px;'>");
         html.append("<div style='font-weight: bold; margin-bottom: 2px;'>Secret:</div>");
         String secretValue = record.secretContent != null ? record.secretContent : record.secretPreview;
-        html.append("<div style='font-family: monospace; font-size: 9px; padding: 4px; background: #2a2a2a; border-radius: 2px; word-wrap: break-word;'>");
+        html.append("<div style='font-family: monospace; font-size: 9px; padding: 4px; background: ").append(theme[2]).append("; color: ").append(theme[3]).append("; border-radius: 2px; word-wrap: break-word;'>");
         html.append(escapeHtml(secretValue));
         html.append("</div>");
         html.append("</div>");
@@ -744,7 +759,7 @@ public class SecretsView extends JPanel {
             }
             html.append("</ol>");
         } else {
-            html.append("<div style='color: #888;'>No URLs recorded</div>");
+            html.append("<div style='color: ").append(theme[1]).append(";'>No URLs recorded</div>");
         }
         html.append("</div>");
 
@@ -753,7 +768,7 @@ public class SecretsView extends JPanel {
         html.append("<div style='font-size: 10px; font-weight: bold; margin-bottom: 4px;'>Validation</div>");
         if (record.validatedAt == null) {
             html.append("<div>Status: <b>Not Checked</b></div>");
-            html.append("<div style='color: #888; margin-top: 2px;'>Click 'Validate' to check if this secret is active.</div>");
+            html.append("<div style='color: ").append(theme[1]).append("; margin-top: 2px;'>Click 'Validate' to check if this secret is active.</div>");
         } else {
             String statusDisplay = getValidationResultDisplay(record.validationStatus);
             html.append("<table cellpadding='1' cellspacing='0'>");
@@ -777,7 +792,7 @@ public class SecretsView extends JPanel {
             }
         }
         if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
-            html.append("<div style='margin-top: 4px; color: #888;'>This finding has been marked as a false positive.</div>");
+            html.append("<div style='margin-top: 4px; color: ").append(theme[1]).append(";'>This finding has been marked as a false positive.</div>");
         }
         html.append("</div>");
 
@@ -1031,12 +1046,27 @@ public class SecretsView extends JPanel {
     }
 
     /**
-     * Custom cell renderer that colors rows by severity.
+     * Detect whether the current Look and Feel is a dark theme.
+     */
+    private static boolean isDarkTheme() {
+        Color bg = UIManager.getColor("Table.background");
+        if (bg == null) return false;
+        // Perceived brightness: dark if below ~128
+        double brightness = (bg.getRed() * 0.299 + bg.getGreen() * 0.587 + bg.getBlue() * 0.114);
+        return brightness < 128;
+    }
+
+    /**
+     * Custom cell renderer that colors rows by severity, adapting to light/dark themes.
      */
     private class CategoryColorRenderer extends DefaultTableCellRenderer {
-        // Severity colors - darker muted tones for dark theme
-        private static final Color HIGH_COLOR = new Color(140, 70, 70);        // Dark maroon/burgundy
-        private static final Color MEDIUM_COLOR = new Color(140, 130, 60);     // Dark olive/amber
+        // Dark theme: muted darker tones
+        private static final Color HIGH_COLOR_DARK = new Color(140, 70, 70);
+        private static final Color MEDIUM_COLOR_DARK = new Color(140, 130, 60);
+
+        // Light theme: soft pastel tones
+        private static final Color HIGH_COLOR_LIGHT = new Color(255, 200, 200);
+        private static final Color MEDIUM_COLOR_LIGHT = new Color(255, 243, 200);
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
@@ -1049,11 +1079,12 @@ public class SecretsView extends JPanel {
                 int modelRow = table.convertRowIndexToModel(row);
                 burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity = tableModel.getSeverityAt(modelRow);
 
-                // Only set background for HIGH and MEDIUM
-                Color bgColor = getSeverityColor(severity);
+                boolean dark = isDarkTheme();
+                Color bgColor = getSeverityColor(severity, dark);
                 if (bgColor != null) {
                     c.setBackground(bgColor);
-                    c.setForeground(Color.WHITE);  // White text on dark colored backgrounds
+                    // Dark backgrounds need white text; light backgrounds need dark text
+                    c.setForeground(dark ? Color.WHITE : Color.BLACK);
                 } else {
                     // Use UIManager's default colors for consistent appearance
                     Color defaultBg = UIManager.getColor("Table.background");
@@ -1080,13 +1111,13 @@ public class SecretsView extends JPanel {
         }
 
         /**
-         * Get color for severity. Returns null for Low/Info/FP (use default).
+         * Get color for severity, adapted to current theme. Returns null for Low/Info/FP (use default).
          */
-        private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity) {
+        private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity, boolean dark) {
             return switch (severity) {
-                case HIGH -> HIGH_COLOR;
-                case MEDIUM -> MEDIUM_COLOR;
-                case LOW, INFORMATION, FALSE_POSITIVE -> null;  // No custom color
+                case HIGH -> dark ? HIGH_COLOR_DARK : HIGH_COLOR_LIGHT;
+                case MEDIUM -> dark ? MEDIUM_COLOR_DARK : MEDIUM_COLOR_LIGHT;
+                case LOW, INFORMATION, FALSE_POSITIVE -> null;
             };
         }
     }
