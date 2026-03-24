@@ -80,14 +80,26 @@ func TestCompilePatterns_ExtraLinesAppendToDefaults(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !ig.MatchesPath("src/generated/foo.json") {
-		t.Error("expected src/generated/foo.json to be ignored by extra pattern")
+	shouldIgnore := []string{
+		"src/generated/foo.json",
+		"snapshot.snap",
+		"package-lock.json", // from defaults
 	}
-	if !ig.MatchesPath("snapshot.snap") {
-		t.Error("expected snapshot.snap to be ignored by extra pattern")
+	for _, path := range shouldIgnore {
+		if !ig.MatchesPath(path) {
+			t.Errorf("expected %q to be ignored", path)
+		}
 	}
-	if !ig.MatchesPath("package-lock.json") {
-		t.Error("expected package-lock.json to still be ignored by default patterns")
+
+	shouldNotIgnore := []string{
+		"src/app/main.go",
+		"src/generation/foo.json",
+		"snapshot.txt",
+	}
+	for _, path := range shouldNotIgnore {
+		if ig.MatchesPath(path) {
+			t.Errorf("expected %q to NOT be ignored", path)
+		}
 	}
 }
 
@@ -103,13 +115,25 @@ func TestCompilePatterns_ExtraLinesAppendToCustomFile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !ig.MatchesPath("custom/file.txt") {
-		t.Error("expected custom/file.txt to be ignored by custom file pattern")
+	shouldIgnore := []string{
+		"custom/file.txt",
+		"src/generated/foo.json",
 	}
-	if !ig.MatchesPath("src/generated/foo.json") {
-		t.Error("expected src/generated/foo.json to be ignored by extra pattern")
+	for _, path := range shouldIgnore {
+		if !ig.MatchesPath(path) {
+			t.Errorf("expected %q to be ignored", path)
+		}
 	}
-	if ig.MatchesPath("package-lock.json") {
-		t.Error("package-lock.json should not be ignored when custom file replaces defaults")
+
+	shouldNotIgnore := []string{
+		"package-lock.json",
+		"customish/file.txt",
+		"src/generation/foo.json",
+		"main.go",
+	}
+	for _, path := range shouldNotIgnore {
+		if ig.MatchesPath(path) {
+			t.Errorf("expected %q to NOT be ignored", path)
+		}
 	}
 }
