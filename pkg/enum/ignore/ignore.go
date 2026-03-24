@@ -25,6 +25,15 @@ func CompilePatterns(ignoreFile string, extraLines ...string) (*gitignore.GitIgn
 		return ig, nil
 	}
 
-	lines := append(strings.Split(defaultIgnoreConf, "\n"), extraLines...)
+	var lines []string
+	for _, line := range strings.Split(defaultIgnoreConf, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+
+	lines = append(lines, extraLines...)
 	return gitignore.CompileIgnoreLines(lines...), nil
 }
