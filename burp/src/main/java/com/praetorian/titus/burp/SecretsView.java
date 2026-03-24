@@ -825,6 +825,13 @@ public class SecretsView extends JPanel {
         } else {
             nativeResponseEditor.setResponse(HttpResponse.httpResponse("HTTP/1.1 200 OK\r\n\r\n(Response not available)"));
         }
+
+        // Highlight the secret in both editors
+        String searchTerm = record.secretContent != null ? record.secretContent : record.secretPreview;
+        if (searchTerm != null && !searchTerm.isEmpty()) {
+            nativeRequestEditor.setSearchExpression(searchTerm);
+            nativeResponseEditor.setSearchExpression(searchTerm);
+        }
     }
 
     /**
