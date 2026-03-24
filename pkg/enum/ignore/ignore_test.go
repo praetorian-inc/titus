@@ -73,3 +73,43 @@ func TestCompilePatterns_CustomFileReplacesDefaults(t *testing.T) {
 		t.Error("package-lock.json should not be ignored when using custom file")
 	}
 }
+
+func TestCompilePatterns_ExtraLinesAppendToDefaults(t *testing.T) {
+	ig, err := CompilePatterns("", "src/generated/**", "*.snap")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !ig.MatchesPath("src/generated/foo.json") {
+		t.Error("expected src/generated/foo.json to be ignored by extra pattern")
+	}
+	if !ig.MatchesPath("snapshot.snap") {
+		t.Error("expected snapshot.snap to be ignored by extra pattern")
+	}
+	if !ig.MatchesPath("package-lock.json") {
+		t.Error("expected package-lock.json to still be ignored by default patterns")
+	}
+}
+
+func TestCompilePatterns_ExtraLinesAppendToCustomFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	ignoreFile := filepath.Join(tmpDir, "custom.conf")
+	if err := os.WriteFile(ignoreFile, []byte("custom/**\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ig, err := CompilePatterns(ignoreFile, "src/generated/**")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !ig.MatchesPath("custom/file.txt") {
+		t.Error("expected custom/file.txt to be ignored by custom file pattern")
+	}
+	if !ig.MatchesPath("src/generated/foo.json") {
+		t.Error("expected src/generated/foo.json to be ignored by extra pattern")
+	}
+	if ig.MatchesPath("package-lock.json") {
+		t.Error("package-lock.json should not be ignored when custom file replaces defaults")
+	}
+}
