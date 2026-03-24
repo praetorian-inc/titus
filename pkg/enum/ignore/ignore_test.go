@@ -73,3 +73,67 @@ func TestCompilePatterns_CustomFileReplacesDefaults(t *testing.T) {
 		t.Error("package-lock.json should not be ignored when using custom file")
 	}
 }
+
+func TestCompilePatterns_ExtraLinesAppendToDefaults(t *testing.T) {
+	ig, err := CompilePatterns("", "src/generated/**", "*.snap")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	shouldIgnore := []string{
+		"src/generated/foo.json",
+		"snapshot.snap",
+		"package-lock.json", // from defaults
+	}
+	for _, path := range shouldIgnore {
+		if !ig.MatchesPath(path) {
+			t.Errorf("expected %q to be ignored", path)
+		}
+	}
+
+	shouldNotIgnore := []string{
+		"src/app/main.go",
+		"src/generation/foo.json",
+		"snapshot.txt",
+	}
+	for _, path := range shouldNotIgnore {
+		if ig.MatchesPath(path) {
+			t.Errorf("expected %q to NOT be ignored", path)
+		}
+	}
+}
+
+func TestCompilePatterns_ExtraLinesAppendToCustomFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	ignoreFile := filepath.Join(tmpDir, "custom.conf")
+	if err := os.WriteFile(ignoreFile, []byte("custom/**\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ig, err := CompilePatterns(ignoreFile, "src/generated/**")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	shouldIgnore := []string{
+		"custom/file.txt",
+		"src/generated/foo.json",
+	}
+	for _, path := range shouldIgnore {
+		if !ig.MatchesPath(path) {
+			t.Errorf("expected %q to be ignored", path)
+		}
+	}
+
+	shouldNotIgnore := []string{
+		"package-lock.json",
+		"customish/file.txt",
+		"src/generation/foo.json",
+		"main.go",
+	}
+	for _, path := range shouldNotIgnore {
+		if ig.MatchesPath(path) {
+			t.Errorf("expected %q to NOT be ignored", path)
+		}
+	}
+}

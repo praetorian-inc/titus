@@ -14,16 +14,17 @@ var defaultIgnoreConf string
 // CompilePatterns compiles gitignore-style patterns from the given ignore
 // file path. If ignoreFile is empty, the embedded default ignore.conf is used.
 // Returns an error if a user-supplied file cannot be read.
-func CompilePatterns(ignoreFile string) (*gitignore.GitIgnore, error) {
+//
+// extraLines are optional additional gitignore-style patterns
+func CompilePatterns(ignoreFile string, extraLines ...string) (*gitignore.GitIgnore, error) {
 	if ignoreFile != "" {
-		ig, err := gitignore.CompileIgnoreFile(ignoreFile)
+		ig, err := gitignore.CompileIgnoreFileAndLines(ignoreFile, extraLines...)
 		if err != nil {
 			return nil, fmt.Errorf("compiling ignore file %s: %w", ignoreFile, err)
 		}
 		return ig, nil
 	}
 
-	// Parse embedded defaults
 	var lines []string
 	for _, line := range strings.Split(defaultIgnoreConf, "\n") {
 		line = strings.TrimSpace(line)
@@ -32,5 +33,7 @@ func CompilePatterns(ignoreFile string) (*gitignore.GitIgnore, error) {
 		}
 		lines = append(lines, line)
 	}
+
+	lines = append(lines, extraLines...)
 	return gitignore.CompileIgnoreLines(lines...), nil
 }
