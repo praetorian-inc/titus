@@ -980,11 +980,41 @@ public class SecretsView extends JPanel {
     }
 
     /**
-     * Refresh the table data.
+     * Refresh the table data, preserving the current selection.
      */
     public void refresh() {
+        // Save selected records before refresh
+        List<DedupCache.FindingRecord> selectedRecords = new ArrayList<>();
+        for (int viewRow : secretsTable.getSelectedRows()) {
+            int modelRow = secretsTable.convertRowIndexToModel(viewRow);
+            DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+            if (record != null) {
+                selectedRecords.add(record);
+            }
+        }
+
         tableModel.refresh();
         updateFilterDropdowns();
+
+        // Restore selection by finding the same records in the refreshed table
+        if (!selectedRecords.isEmpty()) {
+            secretsTable.clearSelection();
+            for (DedupCache.FindingRecord saved : selectedRecords) {
+                for (int modelRow = 0; modelRow < tableModel.getRowCount(); modelRow++) {
+                    DedupCache.FindingRecord current = tableModel.getRecordAt(modelRow);
+                    if (current == saved) {  // Same object from DedupCache
+                        try {
+                            int viewRow = secretsTable.convertRowIndexToView(modelRow);
+                            secretsTable.addRowSelectionInterval(viewRow, viewRow);
+                        } catch (IndexOutOfBoundsException ignored) {
+                            // Row may be filtered out
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         updateStatus();
     }
 
