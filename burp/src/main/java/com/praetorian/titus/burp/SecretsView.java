@@ -17,7 +17,7 @@ import javax.swing.table.TableRowSorter;
 import javax.swing.RowFilter;
 import java.awt.*;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,6 +49,8 @@ public class SecretsView extends JPanel {
     private JButton refreshButton;
     private JLabel selectionLabel;
     private JPopupMenu tableContextMenu;
+    private final Map<Integer, javax.swing.table.TableColumn> allColumns = new LinkedHashMap<>();
+    private final Set<Integer> hiddenColumns = new HashSet<>();
 
     // Filter components
     private JTextField searchField;
@@ -116,9 +118,12 @@ public class SecretsView extends JPanel {
         // Configure column widths
         configureColumnWidths();
 
-        // Right-click context menu
+        // Right-click context menu for table rows
         createTableContextMenu();
         secretsTable.setComponentPopupMenu(tableContextMenu);
+
+        // Right-click context menu on table header for column visibility
+        createHeaderContextMenu();
 
         // Custom renderer for category colors
         secretsTable.setDefaultRenderer(Object.class, new CategoryColorRenderer());
@@ -170,6 +175,81 @@ public class SecretsView extends JPanel {
         secretsTable.getColumnModel().getColumn(7).setPreferredWidth(65);   // Checked
         secretsTable.getColumnModel().getColumn(8).setPreferredWidth(70);   // Result
         secretsTable.getColumnModel().getColumn(9).setPreferredWidth(95);   // False Positive
+
+        // Store references to all columns for visibility toggling
+        for (int i = 0; i < secretsTable.getColumnModel().getColumnCount(); i++) {
+            allColumns.put(i, secretsTable.getColumnModel().getColumn(i));
+        }
+    }
+
+    /**
+     * Create right-click context menu on the table header for column visibility.
+     */
+    private void createHeaderContextMenu() {
+        JPopupMenu headerMenu = new JPopupMenu();
+
+        secretsTable.getTableHeader().addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) { showIfPopup(e); }
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) { showIfPopup(e); }
+            private void showIfPopup(java.awt.event.MouseEvent e) {
+                if (!e.isPopupTrigger()) return;
+                headerMenu.removeAll();
+                for (int i = 0; i < COLUMN_NAMES.length; i++) {
+                    if (i == 0) continue; // # always visible
+                    final int colIndex = i;
+                    JCheckBoxMenuItem item = new JCheckBoxMenuItem(COLUMN_NAMES[i], !hiddenColumns.contains(colIndex));
+                    item.addActionListener(a -> toggleColumn(colIndex));
+                    headerMenu.add(item);
+                }
+                headerMenu.show(e.getComponent(), e.getX(), e.getY());
+            }
+        });
+    }
+
+    private static final String[] COLUMN_NAMES = {"#", "Type", "Severity", "Secret Preview", "Host", "Path", "Count", "Checked", "Result", "False Positive"};
+
+    /**
+     * Show column visibility popup from the Columns button.
+     */
+    private void showColumnsPopup(JButton anchor) {
+        JPopupMenu popup = new JPopupMenu();
+        for (int i = 0; i < COLUMN_NAMES.length; i++) {
+            if (i == 0) continue; // # always visible
+            final int colIndex = i;
+            JCheckBoxMenuItem item = new JCheckBoxMenuItem(COLUMN_NAMES[i], !hiddenColumns.contains(colIndex));
+            item.addActionListener(a -> toggleColumn(colIndex));
+            popup.add(item);
+        }
+        popup.show(anchor, 0, anchor.getHeight());
+    }
+
+    /**
+     * Toggle column visibility.
+     */
+    private void toggleColumn(int modelIndex) {
+        javax.swing.table.TableColumn col = allColumns.get(modelIndex);
+        if (col == null) return;
+
+        if (hiddenColumns.contains(modelIndex)) {
+            // Show column — insert at the right position
+            hiddenColumns.remove(modelIndex);
+            // Find the correct insert position based on model order
+            int insertPos = 0;
+            for (int i = 0; i < modelIndex; i++) {
+                if (!hiddenColumns.contains(i)) insertPos++;
+            }
+            secretsTable.getColumnModel().addColumn(col);
+            int currentPos = secretsTable.getColumnModel().getColumnCount() - 1;
+            if (insertPos < currentPos) {
+                secretsTable.getColumnModel().moveColumn(currentPos, insertPos);
+            }
+        } else {
+            // Hide column
+            hiddenColumns.add(modelIndex);
+            secretsTable.getColumnModel().removeColumn(col);
+        }
     }
 
     /**
@@ -234,6 +314,7 @@ public class SecretsView extends JPanel {
 
         // Right side: selection indicator
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+
         selectionLabel = new JLabel("");
         selectionLabel.setFont(selectionLabel.getFont().deriveFont(Font.BOLD));
         rightPanel.add(selectionLabel);
@@ -462,8 +543,14 @@ public class SecretsView extends JPanel {
         statusFilterButton.addActionListener(e -> statusPopup.show(statusFilterButton, 0, statusFilterButton.getHeight()));
         mainPanel.add(statusFilterButton);
 
+        // Columns visibility button
+        JButton columnsButton = new JButton("Columns");
+        columnsButton.setToolTipText("Show/hide table columns");
+        columnsButton.addActionListener(e -> showColumnsPopup(columnsButton));
+        mainPanel.add(columnsButton);
+
         // Clear button
-        JButton clearButton = new JButton("Clear All");
+        JButton clearButton = new JButton("Clear Filters");
         clearButton.addActionListener(e -> clearFilters());
         mainPanel.add(clearButton);
 
@@ -558,6 +645,11 @@ public class SecretsView extends JPanel {
         }
         hostCheckboxPanel.revalidate();
         hostCheckboxPanel.repaint();
+
+        // Update button text to reflect current filter state
+        updateFilterButtonText(typeFilterButton, "Type", getSelectedItems(typeCheckboxes, typeAllCheckbox));
+        updateFilterButtonText(hostFilterButton, "Host", getSelectedItems(hostCheckboxes, hostAllCheckbox));
+        updateFilterButtonText(statusFilterButton, "Status", getSelectedItems(statusCheckboxes, statusAllCheckbox));
     }
 
     private void applyFilters() {
@@ -664,6 +756,10 @@ public class SecretsView extends JPanel {
         typeFilterButton.setText("Type");
         hostFilterButton.setText("Host");
         statusFilterButton.setText("Status");
+        // Restore all hidden columns
+        for (int colIndex : new ArrayList<>(hiddenColumns)) {
+            toggleColumn(colIndex);
+        }
         applyFilters();
         updateStatus();
     }
