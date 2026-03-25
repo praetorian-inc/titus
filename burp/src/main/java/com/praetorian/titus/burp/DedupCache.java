@@ -282,6 +282,21 @@ public class DedupCache {
     /**
      * Clear the cache.
      */
+    /**
+     * Remove a specific finding from the cache.
+     *
+     * @param record The finding record to remove
+     * @return true if the finding was removed
+     */
+    public boolean removeFinding(FindingRecord record) {
+        String key = computeKey(record.secretContent, record.ruleId);
+        boolean removed = cache.remove(key) != null;
+        if (removed) {
+            saveToSettings();
+        }
+        return removed;
+    }
+
     public void clear() {
         cache.clear();
         scannedUrls.clear();

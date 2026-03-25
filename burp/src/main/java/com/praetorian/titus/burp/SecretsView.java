@@ -485,6 +485,69 @@ public class SecretsView extends JPanel {
             unmarkFPItem.addActionListener(e -> unmarkFalsePositive());
             tableContextMenu.add(unmarkFPItem);
         }
+
+        tableContextMenu.addSeparator();
+
+        // Delete action
+        String deleteLabel = selectedRows.length == 1 ? "Delete Finding" : "Delete " + selectedRows.length + " Findings";
+        JMenuItem deleteItem = new JMenuItem(deleteLabel);
+        deleteItem.setForeground(new Color(200, 50, 50));
+        deleteItem.addActionListener(e -> deleteSelected());
+        tableContextMenu.add(deleteItem);
+    }
+
+    private void deleteSelected() {
+        int[] selectedRows = secretsTable.getSelectedRows();
+        if (selectedRows.length == 0) return;
+
+        // Collect records to delete
+        java.util.List<DedupCache.FindingRecord> toDelete = new java.util.ArrayList<>();
+        for (int row : selectedRows) {
+            int modelRow = secretsTable.convertRowIndexToModel(row);
+            DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+            if (record != null) {
+                toDelete.add(record);
+            }
+        }
+
+        if (toDelete.isEmpty()) return;
+
+        // Confirmation dialog
+        String message;
+        if (toDelete.size() == 1) {
+            DedupCache.FindingRecord r = toDelete.get(0);
+            String type = r.ruleName != null ? r.ruleName : r.ruleId;
+            String preview = r.secretPreview != null && r.secretPreview.length() > 40
+                ? r.secretPreview.substring(0, 40) + "..."
+                : r.secretPreview;
+            message = "Permanently delete this finding?\n\n"
+                + "Type: " + type + "\n"
+                + "Secret: " + preview + "\n\n"
+                + "This cannot be undone. The secret will be re-detected\n"
+                + "if the same traffic is scanned again.";
+        } else {
+            message = "Permanently delete " + toDelete.size() + " findings?\n\n"
+                + "This cannot be undone. Deleted secrets will be re-detected\n"
+                + "if the same traffic is scanned again.";
+        }
+
+        int result = javax.swing.JOptionPane.showConfirmDialog(
+            this, message, "Delete Finding" + (toDelete.size() > 1 ? "s" : ""),
+            javax.swing.JOptionPane.YES_NO_OPTION,
+            javax.swing.JOptionPane.WARNING_MESSAGE
+        );
+
+        if (result != javax.swing.JOptionPane.YES_OPTION) return;
+
+        int deleted = 0;
+        for (DedupCache.FindingRecord record : toDelete) {
+            if (dedupCache.removeFinding(record)) {
+                deleted++;
+            }
+        }
+
+        refresh();
+        api.logging().logToOutput("Deleted " + deleted + " finding(s)");
     }
 
     private void copySelectedPreview() {
