@@ -1370,6 +1370,16 @@ public class SecretsView extends JPanel {
     }
 
     /**
+     * Show a temporary status message that reverts to normal after 5 seconds.
+     */
+    public void showTemporaryStatus(String message) {
+        statusLabel.setText(message);
+        javax.swing.Timer timer = new javax.swing.Timer(5000, e -> updateStatus());
+        timer.setRepeats(false);
+        timer.start();
+    }
+
+    /**
      * Set the validation listener.
      */
     public void setValidationListener(ValidationListener listener) {

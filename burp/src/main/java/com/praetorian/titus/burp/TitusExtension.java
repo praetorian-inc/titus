@@ -10,6 +10,7 @@ import burp.api.montoya.ui.contextmenu.ContextMenuItemsProvider;
 import java.awt.Component;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.JMenuItem;
 
 /**
@@ -67,13 +68,16 @@ public class TitusExtension implements BurpExtension {
             this.validationManager = new ValidationManager(api, processManager, dedupCache);
             this.settingsTab.setValidationManager(validationManager);
 
+            // Wire annotation callback for active scan results
+            this.settingsTab.setAnnotationCallback(this::annotateScannedItems);
+
             // Initialize bulk scan handler
             this.bulkScanHandler = new BulkScanHandler(api, scanQueue, fastPathFilter, dedupCache, settingsTab);
 
-            // Custom response editor disabled - using Secrets tab instead
-            // api.userInterface().registerHttpResponseEditorProvider(
-            //     new SecretEditorProvider(api, processManager, dedupCache)
-            // );
+            // Titus sub-tab in response editors (Proxy, Repeater) - shows inline secret findings
+            api.userInterface().registerHttpResponseEditorProvider(
+                new SecretEditorProvider(api, processManager, dedupCache)
+            );
 
             api.logging().logToOutput("Titus Secret Scanner initialized successfully");
             api.logging().logToOutput("  - Titus version: " + processManager.getScanner().getVersion());
@@ -192,6 +196,9 @@ public class TitusExtension implements BurpExtension {
     /**
      * Context menu provider for active scanning of selected items.
      */
+    // Track items from active scans for annotation after completion
+    private final java.util.Map<String, HttpRequestResponse> pendingAnnotations = new ConcurrentHashMap<>();
+
     private class TitusContextMenuProvider implements ContextMenuItemsProvider {
 
         @Override
@@ -230,6 +237,8 @@ public class TitusExtension implements BurpExtension {
                 }
 
                 try {
+                    String url = item.request().url();
+                    pendingAnnotations.put(url, item);
                     scanQueue.enqueue(new ScanJob(
                         item.request(),
                         item.response(),
@@ -242,7 +251,40 @@ public class TitusExtension implements BurpExtension {
                 }
             }
 
+            if (queued > 0) {
+                String msg = "Scanning " + queued + " request" + (queued > 1 ? "s" : "") + " with Titus.\n\n"
+                    + "Results will be written to the Notes field of each request.\n"
+                    + "If secrets are found, they will also appear in the Titus response\n"
+                    + "tab and the Titus extension tab.";
+                javax.swing.JOptionPane.showMessageDialog(
+                    null, msg, "Titus Scan", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            }
+
             api.logging().logToOutput("Queued " + queued + " items for Titus scanning");
+        }
+    }
+
+    /**
+     * Annotate actively-scanned items with scan results.
+     * Called from the ScanQueueListener after a batch completes.
+     */
+    void annotateScannedItems(String url, int newSecretsFound) {
+        HttpRequestResponse item = pendingAnnotations.remove(url);
+        if (item != null) {
+            try {
+                // Check total findings for this URL (includes previously found secrets)
+                int totalFindings = dedupCache.getFindingsForUrl(url).size();
+                String note;
+                if (totalFindings > 0) {
+                    note = "Titus: " + totalFindings + " secret" + (totalFindings > 1 ? "s" : "") + " found";
+                } else {
+                    note = "Titus: No secrets found";
+                }
+                item.annotations().setNotes(note);
+            } catch (Exception e) {
+                // Annotations may not be supported for all request types
+                api.logging().logToError("Failed to annotate request: " + e.getMessage());
+            }
         }
     }
 }

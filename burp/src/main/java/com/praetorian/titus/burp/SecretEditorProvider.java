@@ -343,7 +343,7 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
 
         @Override
         public boolean isEnabledFor(HttpRequestResponse requestResponse) {
-            // Only show tab if secrets are found
+            // Only show Titus tab when secrets are found
             if (requestResponse == null || requestResponse.response() == null) {
                 return false;
             }
@@ -371,11 +371,9 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
 
                 List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
 
-                // Cache result
                 lastCheckedRequestResponse = requestResponse;
                 lastCheckHadSecrets = !matches.isEmpty();
 
-                // Also cache matches for setRequestResponse to reuse
                 if (lastCheckHadSecrets) {
                     this.currentMatches = matches;
                 }

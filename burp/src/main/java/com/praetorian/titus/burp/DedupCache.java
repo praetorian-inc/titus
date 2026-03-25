@@ -59,6 +59,8 @@ public class DedupCache {
     private final Map<String, FindingRecord> cache = new ConcurrentHashMap<>();
     // Track processed URL+contentHash for bulk scan deduplication
     private final Set<String> processedUrls = ConcurrentHashMap.newKeySet();
+    // Track all URLs that have been scanned (for Titus editor tab visibility)
+    private final Set<String> scannedUrls = ConcurrentHashMap.newKeySet();
 
     public DedupCache(MontoyaApi api) {
         this.api = api;
@@ -91,6 +93,20 @@ public class DedupCache {
      */
     public void clearProcessedUrls() {
         processedUrls.clear();
+    }
+
+    /**
+     * Mark a URL as having been scanned by the scan queue.
+     */
+    public void markUrlScanned(String url) {
+        scannedUrls.add(normalizeUrl(url));
+    }
+
+    /**
+     * Check if a URL has been scanned (regardless of whether secrets were found).
+     */
+    public boolean hasUrlBeenScanned(String url) {
+        return scannedUrls.contains(normalizeUrl(url));
     }
 
     /**
@@ -268,6 +284,7 @@ public class DedupCache {
      */
     public void clear() {
         cache.clear();
+        scannedUrls.clear();
         saveToSettings();
     }
 

@@ -14,6 +14,7 @@ import java.awt.*;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.function.BiConsumer;
 import java.util.regex.PatternSyntaxException;
 
 /**
@@ -47,6 +48,9 @@ public class SettingsTab extends JPanel {
     private SecretsTableModel secretsTableModel;
 
     private Timer statsTimer;
+
+    // Callback for annotating scanned items (URL, secretsFound) -> annotation
+    private BiConsumer<String, Integer> annotationCallback;
 
     public SettingsTab(MontoyaApi api, SeverityConfig severityConfig,
                        ScanQueue scanQueue, DedupCache dedupCache) {
@@ -112,6 +116,35 @@ public class SettingsTab extends JPanel {
                     // Also refresh secrets view when new secrets are found
                     secretsView.refresh();
                 });
+            }
+
+            @Override
+            public void onScanComplete(int jobCount, int secretsFound, ScanJob.Source source) {
+                SwingUtilities.invokeLater(() -> {
+                    // Always refresh secrets view on scan complete (to update counts for existing secrets)
+                    secretsView.refresh();
+
+                    // Show feedback for active (right-click) scans
+                    if (source == ScanJob.Source.ACTIVE) {
+                        String msg;
+                        if (secretsFound > 0) {
+                            msg = "Titus: Found " + secretsFound + " new secret" + (secretsFound > 1 ? "s" : "") +
+                                  " in " + jobCount + " request" + (jobCount > 1 ? "s" : "");
+                        } else {
+                            msg = "Titus: No new secrets found in " + jobCount + " request" + (jobCount > 1 ? "s" : "");
+                        }
+                        secretsView.showTemporaryStatus(msg);
+                    }
+                });
+            }
+
+            @Override
+            public void onUrlScanned(String url, int secretsFound, ScanJob.Source source) {
+                // Forward to annotation callback (for Proxy history annotations)
+                BiConsumer<String, Integer> cb = annotationCallback;
+                if (cb != null) {
+                    cb.accept(url, secretsFound);
+                }
             }
         });
 
@@ -218,6 +251,14 @@ public class SettingsTab extends JPanel {
                 });
             });
         }
+    }
+
+    /**
+     * Set the callback for annotating actively-scanned items.
+     * Called with (url, secretsFound) after each URL is scanned.
+     */
+    public void setAnnotationCallback(BiConsumer<String, Integer> callback) {
+        this.annotationCallback = callback;
     }
 
     /**
