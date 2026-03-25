@@ -237,9 +237,14 @@ public class ScanQueue implements AutoCloseable {
                     SecretCategoryMapper.Category primaryCategory = null;
 
                     for (TitusProcessScanner.Match match : matches) {
-                        // Check dedup
-                        if (!dedupCache.isNewFinding(url, match.matchedContent(), match.ruleId())) {
-                            log("Worker " + id + " skipping duplicate: " + match.ruleId());
+                        boolean isNew = dedupCache.isNewFinding(url, match.matchedContent(), match.ruleId());
+
+                        // Always record occurrence to track URLs and increment count
+                        dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId(), match.ruleName(),
+                                                   requestContent, responseContent, match.namedGroups());
+
+                        if (!isNew) {
+                            log("Worker " + id + " duplicate at new URL: " + match.ruleId());
                             continue;
                         }
 
@@ -254,9 +259,6 @@ public class ScanQueue implements AutoCloseable {
                             primaryCategory = category;
                         }
 
-                        // Record and report with HTTP content and named groups
-                        dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId(), match.ruleName(),
-                                                   requestContent, responseContent, match.namedGroups());
                         issueReporter.reportIssue(job, match);
                     }
 

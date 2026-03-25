@@ -413,14 +413,18 @@ public class SettingsTab extends JPanel {
         clearCacheButton.addActionListener(e -> {
             int result = JOptionPane.showConfirmDialog(
                 this,
-                "Clear all findings and stored requests? This will allow duplicate issues to be reported again.",
-                "Clear Findings",
-                JOptionPane.YES_NO_OPTION
+                "This will permanently delete all findings, stored requests, and statistics.\nThe extension will start fresh as if no secrets were ever found.",
+                "Clear All Findings",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
             );
             if (result == JOptionPane.YES_OPTION) {
                 dedupCache.clear();
                 requestsView.clear();
                 messagePersistence.clear();
+                if (secretsTableModel != null) {
+                    secretsTableModel.refresh();
+                }
                 api.logging().logToOutput("Findings and requests cleared");
                 updateStats();
             }

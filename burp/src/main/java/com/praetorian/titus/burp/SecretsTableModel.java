@@ -74,7 +74,7 @@ public class SecretsTableModel extends AbstractTableModel {
             case 3 -> getSecretPreview(record);
             case 4 -> record.primaryHost != null ? record.primaryHost : "unknown";
             case 5 -> extractPath(record);  // Path column
-            case 6 -> record.occurrenceCount;
+            case 6 -> record.urls != null ? record.urls.size() : record.occurrenceCount;
             case 7 -> // Checked column - was validation attempted?
                 record.validatedAt != null ? "Yes" : "No";
             case 8 -> {
@@ -137,8 +137,16 @@ public class SecretsTableModel extends AbstractTableModel {
             return "/";
         }
         String url = record.urls.iterator().next();
+        String path = extractPathFromUrl(url);
+        int urlCount = record.urls.size();
+        if (urlCount > 1) {
+            return path + " (+" + (urlCount - 1) + " more)";
+        }
+        return path;
+    }
+
+    private String extractPathFromUrl(String url) {
         try {
-            // Extract path from URL
             int schemeEnd = url.indexOf("://");
             if (schemeEnd > 0) {
                 int pathStart = url.indexOf('/', schemeEnd + 3);

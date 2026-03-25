@@ -102,7 +102,7 @@ public class DedupCache {
      * @return true if this is a new finding
      */
     public boolean isNewFinding(String url, String secretContent, String ruleId) {
-        String key = computeKey(normalizeUrl(url), secretContent, ruleId);
+        String key = computeKey(secretContent, ruleId);
         return !cache.containsKey(key);
     }
 
@@ -164,7 +164,7 @@ public class DedupCache {
                                           Map<String, String> namedGroups) {
         String normalizedUrl = normalizeUrl(url);
         String host = SecretCategoryMapper.extractHost(url);
-        String key = computeKey(normalizedUrl, secretContent, ruleId);
+        String key = computeKey(secretContent, ruleId);
 
         // Evict oldest entries if at max capacity before adding new
         if (!cache.containsKey(key) && cache.size() >= MAX_CACHE_SIZE) {
@@ -190,13 +190,14 @@ public class DedupCache {
                 }
                 return newRecord;
             } else {
-                existing.urls.add(normalizedUrl);
+                boolean isNewUrl = existing.urls.add(normalizedUrl);
                 existing.hosts.add(host);
                 existing.occurrenceCount++;
                 // Update named groups if not set (keep first occurrence's groups)
                 if ((existing.namedGroups == null || existing.namedGroups.isEmpty()) && namedGroups != null) {
                     existing.namedGroups = namedGroups;
                 }
+                // Keep first occurrence's HTTP content (user can check other URLs in Proxy history)
                 return existing;
             }
         });
@@ -227,7 +228,7 @@ public class DedupCache {
      * Get a finding record by URL, secret, and rule ID.
      */
     public FindingRecord getFinding(String url, String secretContent, String ruleId) {
-        String key = computeKey(normalizeUrl(url), secretContent, ruleId);
+        String key = computeKey(secretContent, ruleId);
         return cache.get(key);
     }
 
@@ -293,31 +294,36 @@ public class DedupCache {
                 List<FindingRecord> records = GSON.fromJson(json, listType);
                 if (records != null) {
                     for (FindingRecord record : records) {
-                        // Reconstruct keys (we need at least one URL)
-                        if (!record.urls.isEmpty()) {
-                            String url = record.urls.iterator().next();
-                            // We don't have the original secret, so use preview as approximation
-                            String key = computeKey(url, record.secretPreview, record.ruleId);
+                        String secretForKey = record.secretContent != null ? record.secretContent : record.secretPreview;
+                        String key = computeKey(secretForKey, record.ruleId);
+                        String url = !record.urls.isEmpty() ? record.urls.iterator().next() : null;
 
-                            // Fix missing host data from older cache versions
-                            if (record.primaryHost == null || record.primaryHost.isEmpty()) {
-                                record.primaryHost = SecretCategoryMapper.extractHost(url);
+                        // Fix missing host data from older cache versions
+                        if (record.primaryHost == null || record.primaryHost.isEmpty()) {
+                            record.primaryHost = url != null ? SecretCategoryMapper.extractHost(url) : "unknown";
+                        }
+                        if (record.hosts == null) {
+                            record.hosts = new HashSet<>();
+                        }
+                        if (record.hosts.isEmpty()) {
+                            for (String u : record.urls) {
+                                record.hosts.add(SecretCategoryMapper.extractHost(u));
                             }
-                            if (record.hosts == null) {
-                                record.hosts = new HashSet<>();
-                            }
-                            if (record.hosts.isEmpty()) {
-                                for (String u : record.urls) {
-                                    record.hosts.add(SecretCategoryMapper.extractHost(u));
-                                }
-                            }
-                            if (record.validationStatus == null) {
-                                record.validationStatus = ValidationStatus.NOT_CHECKED;
-                            }
-                            if (record.namedGroups == null) {
-                                record.namedGroups = new HashMap<>();
-                            }
+                        }
+                        if (record.validationStatus == null) {
+                            record.validationStatus = ValidationStatus.NOT_CHECKED;
+                        }
+                        if (record.namedGroups == null) {
+                            record.namedGroups = new HashMap<>();
+                        }
 
+                        // Merge with existing entry if same key (migrating old per-URL entries)
+                        FindingRecord existing = cache.get(key);
+                        if (existing != null) {
+                            existing.urls.addAll(record.urls);
+                            existing.hosts.addAll(record.hosts);
+                            existing.occurrenceCount += record.occurrenceCount;
+                        } else {
                             cache.put(key, record);
                         }
                     }
@@ -329,16 +335,16 @@ public class DedupCache {
         }
     }
 
-    private String computeKey(String normalizedUrl, String secretContent, String ruleId) {
+    private String computeKey(String secretContent, String ruleId) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            // Include ruleId in key to distinguish findings from different rules with same first capture group
-            String combined = normalizedUrl + ":" + ruleId + ":" + secretContent;
+            // Key by ruleId + secretContent only — same secret at different URLs = one finding
+            String combined = ruleId + ":" + secretContent;
             byte[] hash = digest.digest(combined.getBytes(StandardCharsets.UTF_8));
             return bytesToHex(hash);
         } catch (NoSuchAlgorithmException e) {
             // Fallback to simple hash
-            return String.valueOf((normalizedUrl + ":" + ruleId + ":" + secretContent).hashCode());
+            return String.valueOf((ruleId + ":" + secretContent).hashCode());
         }
     }
 
