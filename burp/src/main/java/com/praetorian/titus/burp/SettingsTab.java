@@ -471,18 +471,10 @@ public class SettingsTab extends JPanel {
             }
         });
 
-        JButton resetSeverityButton = new JButton("Reset Severities to Defaults");
-        resetSeverityButton.addActionListener(e -> {
-            severityConfig.resetToDefaults();
-            populateSeverityTable();
-            api.logging().logToOutput("Severity configuration reset to defaults");
-        });
-
         JButton exportButton = new JButton("Export Findings to JSON");
         exportButton.addActionListener(e -> findingsExporter.exportFindings(dedupCache, this));
 
         panel.add(clearCacheButton);
-        panel.add(resetSeverityButton);
         panel.add(exportButton);
 
         return panel;

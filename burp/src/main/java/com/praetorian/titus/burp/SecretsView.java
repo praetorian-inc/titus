@@ -1293,7 +1293,9 @@ public class SecretsView extends JPanel {
             } else {
                 for (DedupCache.FindingRecord record : records) {
                     record.preMarkFPStatus = record.validationStatus;
-                    record.setValidation(DedupCache.ValidationStatus.FALSE_POSITIVE, "Marked by user");
+                    // Set FP status without modifying validatedAt (Checked column)
+                    record.validationStatus = DedupCache.ValidationStatus.FALSE_POSITIVE;
+                    record.validationMessage = "Marked by user";
                 }
                 dedupCache.saveToSettings();
                 refresh();
@@ -1311,9 +1313,9 @@ public class SecretsView extends JPanel {
             int modelRow = secretsTable.convertRowIndexToModel(row);
             DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
             if (record != null && record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
-                DedupCache.ValidationStatus restored = record.preMarkFPStatus != null
+                // Restore previous status without modifying validatedAt (Checked column)
+                record.validationStatus = record.preMarkFPStatus != null
                     ? record.preMarkFPStatus : DedupCache.ValidationStatus.NOT_CHECKED;
-                record.setValidation(restored, record.validationMessage);
                 record.preMarkFPStatus = null;
             }
         }

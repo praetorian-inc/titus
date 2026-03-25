@@ -25,8 +25,6 @@ public class StatisticsView extends JPanel {
     private final JTable hostTable;
     private final JTable typeTable;
     private final JLabel summaryLabel;
-    private final JButton refreshButton;
-
     public StatisticsView(MontoyaApi api, SecretsTableModel secretsModel, SeverityConfig severityConfig) {
         this.api = api;
         this.secretsModel = secretsModel;
@@ -35,12 +33,6 @@ public class StatisticsView extends JPanel {
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        // Toolbar
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        refreshButton = new JButton("Refresh Statistics");
-        refreshButton.addActionListener(e -> refresh());
-        toolbar.add(refreshButton);
-
         // Summary bar at top
         summaryLabel = new JLabel("No statistics available");
         summaryLabel.setBorder(BorderFactory.createCompoundBorder(
@@ -48,11 +40,7 @@ public class StatisticsView extends JPanel {
             BorderFactory.createEmptyBorder(5, 10, 5, 10)
         ));
         summaryLabel.setFont(summaryLabel.getFont().deriveFont(Font.BOLD));
-
-        JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.add(toolbar, BorderLayout.NORTH);
-        topPanel.add(summaryLabel, BorderLayout.SOUTH);
-        add(topPanel, BorderLayout.NORTH);
+        add(summaryLabel, BorderLayout.NORTH);
 
         // Main content - two tables side by side
         JPanel tablesPanel = new JPanel(new GridLayout(1, 2, 10, 0));
