@@ -46,7 +46,6 @@ public class SecretsView extends JPanel {
     private JButton falsePositiveButton;
     private JButton unmarkFPButton;
     private JButton copyButton;
-    private JButton refreshButton;
     private JLabel selectionLabel;
     private JPopupMenu tableContextMenu;
     private final Map<Integer, javax.swing.table.TableColumn> allColumns = new LinkedHashMap<>();
@@ -284,9 +283,6 @@ public class SecretsView extends JPanel {
         // Left side: action buttons
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
 
-        refreshButton = new JButton("Refresh");
-        refreshButton.addActionListener(e -> refresh());
-
         validateButton = new JButton("Validate");
         validateButton.setEnabled(false);
         validateButton.addActionListener(e -> validateSelected());
@@ -306,7 +302,6 @@ public class SecretsView extends JPanel {
         copyButton.setToolTipText("Copy secret value to clipboard");
         copyButton.addActionListener(e -> copySelectedSecret());
 
-        leftPanel.add(refreshButton);
         leftPanel.add(validateButton);
         leftPanel.add(falsePositiveButton);
         leftPanel.add(unmarkFPButton);

@@ -519,17 +519,19 @@ public class SettingsTab extends JPanel {
         panel.setBorder(new TitledBorder("Actions"));
         panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
 
-        JButton clearCacheButton = new JButton("Clear Finding Cache");
+        JButton clearCacheButton = new JButton("Clear Findings");
         clearCacheButton.addActionListener(e -> {
             int result = JOptionPane.showConfirmDialog(
                 this,
-                "Clear all cached findings? This will allow duplicate issues to be reported again.",
-                "Clear Cache",
+                "Clear all findings and stored requests? This will allow duplicate issues to be reported again.",
+                "Clear Findings",
                 JOptionPane.YES_NO_OPTION
             );
             if (result == JOptionPane.YES_OPTION) {
                 dedupCache.clear();
-                api.logging().logToOutput("Finding cache cleared");
+                requestsView.clear();
+                messagePersistence.clear();
+                api.logging().logToOutput("Findings and requests cleared");
                 updateStats();
             }
         });
@@ -552,28 +554,12 @@ public class SettingsTab extends JPanel {
             );
         });
 
-        JButton clearRequestsButton = new JButton("Clear Requests");
-        clearRequestsButton.addActionListener(e -> {
-            int result = JOptionPane.showConfirmDialog(
-                this,
-                "Clear all requests from the table?",
-                "Clear Requests",
-                JOptionPane.YES_NO_OPTION
-            );
-            if (result == JOptionPane.YES_OPTION) {
-                requestsView.clear();
-                messagePersistence.clear();
-                api.logging().logToOutput("Requests cleared");
-            }
-        });
-
         JButton exportButton = new JButton("Export Findings to JSON");
         exportButton.addActionListener(e -> findingsExporter.exportFindings(dedupCache, this));
 
         panel.add(clearCacheButton);
         panel.add(resetSeverityButton);
         panel.add(saveMessagesButton);
-        panel.add(clearRequestsButton);
         panel.add(exportButton);
 
         return panel;
