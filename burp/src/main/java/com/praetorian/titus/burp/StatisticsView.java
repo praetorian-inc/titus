@@ -1,6 +1,7 @@
 package com.praetorian.titus.burp;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.scanner.audit.issues.AuditIssueSeverity;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
@@ -17,6 +18,7 @@ public class StatisticsView extends JPanel {
 
     private final MontoyaApi api;
     private final SecretsTableModel secretsModel;
+    private final SeverityConfig severityConfig;
 
     private final DefaultTableModel hostTableModel;
     private final DefaultTableModel typeTableModel;
@@ -25,9 +27,10 @@ public class StatisticsView extends JPanel {
     private final JLabel summaryLabel;
     private final JButton refreshButton;
 
-    public StatisticsView(MontoyaApi api, SecretsTableModel secretsModel) {
+    public StatisticsView(MontoyaApi api, SecretsTableModel secretsModel, SeverityConfig severityConfig) {
         this.api = api;
         this.secretsModel = secretsModel;
+        this.severityConfig = severityConfig;
 
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -55,7 +58,7 @@ public class StatisticsView extends JPanel {
         JPanel tablesPanel = new JPanel(new GridLayout(1, 2, 10, 0));
 
         // Type statistics table (on left)
-        typeTableModel = new DefaultTableModel(new String[]{"Type", "Count", "Category"}, 0) {
+        typeTableModel = new DefaultTableModel(new String[]{"Type", "Count", "Severity"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -72,8 +75,8 @@ public class StatisticsView extends JPanel {
         typeTable.getColumnModel().getColumn(2).setPreferredWidth(120);
         centerColumn(typeTable, 1);
 
-        // Color the category column
-        typeTable.getColumnModel().getColumn(2).setCellRenderer(new CategoryColorCellRenderer());
+        // Color the severity column
+        typeTable.getColumnModel().getColumn(2).setCellRenderer(new SeverityColorCellRenderer());
 
         JPanel typePanel = new JPanel(new BorderLayout());
         typePanel.setBorder(new TitledBorder("Secrets by Type"));
@@ -136,30 +139,38 @@ public class StatisticsView extends JPanel {
         sortedTypes.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
 
         for (Map.Entry<String, Integer> entry : sortedTypes) {
-            // Find category for this type
-            String category = findCategoryForType(entry.getKey());
-            typeTableModel.addRow(new Object[]{entry.getKey(), entry.getValue(), category});
+            // Find severity for this type from actual config
+            String severity = findSeverityForType(entry.getKey());
+            typeTableModel.addRow(new Object[]{entry.getKey(), entry.getValue(), severity});
         }
 
         // Update summary
         updateSummary();
     }
 
-    private String findCategoryForType(String typeName) {
-        // This is a simplified lookup - ideally we'd track ruleId -> type mapping
-        Map<SecretCategoryMapper.Category, Integer> categoryCounts = secretsModel.getCountByCategory();
-        // Return most likely category based on type name
-        String lower = typeName.toLowerCase();
-        if (lower.contains("aws") || lower.contains("azure") || lower.contains("gcp") || lower.contains("cloud")) {
-            return SecretCategoryMapper.Category.CLOUD.getDisplayName();
-        } else if (lower.contains("database") || lower.contains("postgres") || lower.contains("mysql") || lower.contains("password")) {
-            return SecretCategoryMapper.Category.DATABASE.getDisplayName();
-        } else if (lower.contains("private") || lower.contains("ssh") || lower.contains("rsa") || lower.contains("key")) {
-            return SecretCategoryMapper.Category.PRIVATE_KEY.getDisplayName();
-        } else if (lower.contains("api") || lower.contains("token") || lower.contains("slack") || lower.contains("stripe")) {
-            return SecretCategoryMapper.Category.API_KEY.getDisplayName();
+    /**
+     * Find the severity label for a type by looking up the first matching finding's ruleId
+     * in the severity config.
+     */
+    private String findSeverityForType(String typeName) {
+        // Find a finding record that matches this type to get the ruleId
+        for (int i = 0; i < secretsModel.getRowCount(); i++) {
+            DedupCache.FindingRecord record = secretsModel.getRecordAt(i);
+            if (record != null) {
+                String recordType = record.ruleName != null ? record.ruleName : SecretCategoryMapper.getDisplayName(record.ruleId, null);
+                if (recordType.equals(typeName)) {
+                    AuditIssueSeverity severity = secretsModel.getSeverityAt(i);
+                    return switch (severity) {
+                        case HIGH -> "High";
+                        case MEDIUM -> "Medium";
+                        case LOW -> "Low";
+                        case INFORMATION -> "Info";
+                        case FALSE_POSITIVE -> "FP";
+                    };
+                }
+            }
         }
-        return SecretCategoryMapper.Category.GENERIC.getDisplayName();
+        return "Medium";
     }
 
     private void updateSummary() {
@@ -189,9 +200,14 @@ public class StatisticsView extends JPanel {
     }
 
     /**
-     * Custom renderer for category column with color coding.
+     * Custom renderer for severity column with color coding based on actual severity level.
      */
-    private static class CategoryColorCellRenderer extends DefaultTableCellRenderer {
+    private static class SeverityColorCellRenderer extends DefaultTableCellRenderer {
+        private static final Color HIGH_COLOR = new Color(220, 53, 69, 100);    // Red
+        private static final Color MEDIUM_COLOR = new Color(255, 152, 0, 100);  // Orange
+        private static final Color LOW_COLOR = new Color(91, 192, 222, 100);    // Blue
+        private static final Color INFO_COLOR = new Color(91, 192, 222, 60);    // Light blue
+
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
                                                        boolean isSelected, boolean hasFocus,
@@ -199,13 +215,16 @@ public class StatisticsView extends JPanel {
             Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
             if (!isSelected && value != null) {
-                String categoryName = value.toString();
-                for (SecretCategoryMapper.Category cat : SecretCategoryMapper.Category.values()) {
-                    if (cat.getDisplayName().equals(categoryName)) {
-                        c.setBackground(cat.getLightColor());
-                        break;
-                    }
-                }
+                String severity = value.toString();
+                c.setBackground(switch (severity) {
+                    case "High" -> HIGH_COLOR;
+                    case "Medium" -> MEDIUM_COLOR;
+                    case "Low" -> LOW_COLOR;
+                    case "Info" -> INFO_COLOR;
+                    default -> null;
+                });
+            } else if (!isSelected) {
+                c.setBackground(null);
             }
 
             return c;

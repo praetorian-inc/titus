@@ -20,6 +20,34 @@ public class SeverityConfig {
     private static final String SETTINGS_KEY = "titus.severity_config";
     private static final Gson GSON = new Gson();
 
+    private static final Map<String, String> CATEGORY_DESCRIPTIONS = new HashMap<>();
+    static {
+        CATEGORY_DESCRIPTIONS.put("aws", "AWS access keys, secret keys, session tokens");
+        CATEGORY_DESCRIPTIONS.put("azure", "Azure subscription keys, AD credentials, storage keys");
+        CATEGORY_DESCRIPTIONS.put("gcp", "Google Cloud service account keys, API keys");
+        CATEGORY_DESCRIPTIONS.put("cloud", "Generic cloud provider credentials");
+        CATEGORY_DESCRIPTIONS.put("auth", "Authentication tokens and credentials");
+        CATEGORY_DESCRIPTIONS.put("api", "API keys and access tokens");
+        CATEGORY_DESCRIPTIONS.put("oauth", "OAuth client secrets and refresh tokens");
+        CATEGORY_DESCRIPTIONS.put("jwt", "JSON Web Tokens and signing keys");
+        CATEGORY_DESCRIPTIONS.put("database", "Generic database connection strings");
+        CATEGORY_DESCRIPTIONS.put("db", "Database credentials and connection URIs");
+        CATEGORY_DESCRIPTIONS.put("postgres", "PostgreSQL connection strings and passwords");
+        CATEGORY_DESCRIPTIONS.put("mysql", "MySQL connection strings and passwords");
+        CATEGORY_DESCRIPTIONS.put("mongodb", "MongoDB connection strings and credentials");
+        CATEGORY_DESCRIPTIONS.put("private", "Private keys (PEM, PKCS)");
+        CATEGORY_DESCRIPTIONS.put("ssh", "SSH private keys and passphrases");
+        CATEGORY_DESCRIPTIONS.put("rsa", "RSA private keys");
+        CATEGORY_DESCRIPTIONS.put("slack", "Slack bot tokens, webhooks, API keys");
+        CATEGORY_DESCRIPTIONS.put("github", "GitHub personal access tokens, OAuth tokens");
+        CATEGORY_DESCRIPTIONS.put("gitlab", "GitLab personal/project access tokens");
+        CATEGORY_DESCRIPTIONS.put("npm", "NPM registry authentication tokens");
+        CATEGORY_DESCRIPTIONS.put("pypi", "PyPI upload tokens and credentials");
+        CATEGORY_DESCRIPTIONS.put("generic", "Generic secrets and patterns (higher FP rate)");
+        CATEGORY_DESCRIPTIONS.put("password", "Hardcoded passwords in source or config");
+        CATEGORY_DESCRIPTIONS.put("secret", "Generic secret values and keys");
+    }
+
     private final MontoyaApi api;
     private final Map<String, AuditIssueSeverity> ruleOverrides = new HashMap<>();
     private final Map<String, AuditIssueSeverity> categoryDefaults = new HashMap<>();
@@ -78,6 +106,13 @@ public class SeverityConfig {
      */
     public Map<String, AuditIssueSeverity> getCategoryDefaults() {
         return new HashMap<>(categoryDefaults);
+    }
+
+    /**
+     * Get description for a category.
+     */
+    public String getCategoryDescription(String category) {
+        return CATEGORY_DESCRIPTIONS.getOrDefault(category.toLowerCase(), "");
     }
 
     /**

@@ -44,6 +44,7 @@ public class SettingsTab extends JPanel {
     private DefaultTableModel severityTableModel;
     private TableRowSorter<DefaultTableModel> severityRowSorter;
     private JTextField severitySearchField;
+    private SecretsTableModel secretsTableModel;
 
     private Timer statsTimer;
 
@@ -68,8 +69,11 @@ public class SettingsTab extends JPanel {
         secretsView.setSeverityConfig(severityConfig);
         tabbedPane.addTab("Secrets", secretsView);
 
+        // Keep reference for severity table
+        secretsTableModel = secretsView.getTableModel();
+
         // Statistics tab (second)
-        statisticsView = new StatisticsView(api, secretsView.getTableModel());
+        statisticsView = new StatisticsView(api, secretsTableModel, severityConfig);
         tabbedPane.addTab("Statistics", statisticsView);
 
         // Settings tab (last)
@@ -309,12 +313,12 @@ public class SettingsTab extends JPanel {
         panel.setBorder(new TitledBorder("Severity Configuration"));
         panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 280));
 
-        // Create table model
-        String[] columns = {"Category", "Severity"};
+        // Create table model: Type | Severity | Description (read-only)
+        String[] columns = {"Type", "Severity", "Description"};
         severityTableModel = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return column == 1; // Only severity column is editable
+                return false; // Read-only table
             }
         };
 
@@ -326,48 +330,29 @@ public class SettingsTab extends JPanel {
 
         // Custom comparator for severity column to sort by severity order
         severityRowSorter.setComparator(1, (o1, o2) -> {
-            AuditIssueSeverity s1 = o1 instanceof AuditIssueSeverity ? (AuditIssueSeverity) o1 : AuditIssueSeverity.valueOf(o1.toString());
-            AuditIssueSeverity s2 = o2 instanceof AuditIssueSeverity ? (AuditIssueSeverity) o2 : AuditIssueSeverity.valueOf(o2.toString());
-            return s1.ordinal() - s2.ordinal();
+            String s1 = o1.toString();
+            String s2 = o2.toString();
+            return severityOrdinal(s1) - severityOrdinal(s2);
         });
-
-        severityTable.getColumnModel().getColumn(1).setCellEditor(
-            new DefaultCellEditor(new JComboBox<>(AuditIssueSeverity.values()))
-        );
 
         // Set preferred column widths
         severityTable.getColumnModel().getColumn(0).setPreferredWidth(150);
-        severityTable.getColumnModel().getColumn(1).setPreferredWidth(100);
+        severityTable.getColumnModel().getColumn(1).setPreferredWidth(80);
+        severityTable.getColumnModel().getColumn(2).setPreferredWidth(300);
 
         // Populate table
         populateSeverityTable();
 
-        // Add listener for changes
-        severityTableModel.addTableModelListener(e -> {
-            if (e.getColumn() == 1) {
-                int viewRow = e.getFirstRow();
-                // Convert to model row since we have sorting
-                String category = (String) severityTableModel.getValueAt(viewRow, 0);
-                Object value = severityTableModel.getValueAt(viewRow, 1);
-                AuditIssueSeverity severity = value instanceof AuditIssueSeverity
-                    ? (AuditIssueSeverity) value
-                    : AuditIssueSeverity.valueOf(value.toString());
-                severityConfig.setCategorySeverity(category, severity);
-            }
-        });
-
-        // Table in scroll pane - constrain width
+        // Table in scroll pane
         JScrollPane tableScroll = new JScrollPane(severityTable);
-        tableScroll.setPreferredSize(new Dimension(350, 180));
 
-        // Left panel: table with constrained width
         JPanel tablePanel = new JPanel(new BorderLayout(5, 5));
 
         // Top: search bar
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         searchPanel.add(new JLabel("Search:"));
         severitySearchField = new JTextField(15);
-        severitySearchField.setToolTipText("Filter categories");
+        severitySearchField.setToolTipText("Filter types");
         severitySearchField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) { filterSeverityTable(); }
@@ -381,53 +366,29 @@ public class SettingsTab extends JPanel {
         tablePanel.add(searchPanel, BorderLayout.NORTH);
         tablePanel.add(tableScroll, BorderLayout.CENTER);
 
-        // Bottom: buttons
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-
-        JButton addButton = new JButton("+");
-        addButton.setToolTipText("Add custom category");
-        addButton.setMargin(new Insets(2, 6, 2, 6));
-        addButton.addActionListener(e -> addCustomCategory());
-
-        JButton removeButton = new JButton("-");
-        removeButton.setToolTipText("Remove selected category");
-        removeButton.setMargin(new Insets(2, 6, 2, 6));
-        removeButton.addActionListener(e -> removeSelectedCategory());
-
-        buttonPanel.add(addButton);
-        buttonPanel.add(removeButton);
-
-        tablePanel.add(buttonPanel, BorderLayout.SOUTH);
-
-        // Right panel: hints/info
-        JPanel infoPanel = new JPanel();
-        infoPanel.setLayout(new BoxLayout(infoPanel, BoxLayout.Y_AXIS));
-        infoPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 5));
-
-        JLabel hint1 = new JLabel("Click column headers to sort");
-        hint1.setForeground(Color.GRAY);
-        hint1.setFont(hint1.getFont().deriveFont(Font.ITALIC, 11f));
-
-        JLabel hint2 = new JLabel("Click Severity column to edit");
-        hint2.setForeground(Color.GRAY);
-        hint2.setFont(hint2.getFont().deriveFont(Font.ITALIC, 11f));
-
-        JLabel hint3 = new JLabel("Use + to add custom categories");
-        hint3.setForeground(Color.GRAY);
-        hint3.setFont(hint3.getFont().deriveFont(Font.ITALIC, 11f));
-
-        infoPanel.add(hint1);
-        infoPanel.add(Box.createVerticalStrut(5));
-        infoPanel.add(hint2);
-        infoPanel.add(Box.createVerticalStrut(5));
-        infoPanel.add(hint3);
-        infoPanel.add(Box.createVerticalGlue());
-
-        // Main layout: table on left, info on right
-        panel.add(tablePanel, BorderLayout.WEST);
-        panel.add(infoPanel, BorderLayout.CENTER);
+        panel.add(tablePanel, BorderLayout.CENTER);
 
         return panel;
+    }
+
+    private static int severityOrdinal(String display) {
+        return switch (display) {
+            case "High" -> 0;
+            case "Medium" -> 1;
+            case "Low" -> 2;
+            case "Info" -> 3;
+            default -> 4;
+        };
+    }
+
+    private static String severityToDisplay(AuditIssueSeverity severity) {
+        return switch (severity) {
+            case HIGH -> "High";
+            case MEDIUM -> "Medium";
+            case LOW -> "Low";
+            case INFORMATION -> "Info";
+            case FALSE_POSITIVE -> "FP";
+        };
     }
 
     private void filterSeverityTable() {
@@ -440,77 +401,6 @@ public class SettingsTab extends JPanel {
             } catch (PatternSyntaxException e) {
                 // Invalid regex, ignore
             }
-        }
-    }
-
-    private void addCustomCategory() {
-        String categoryName = JOptionPane.showInputDialog(
-            this,
-            "Enter category name (e.g., 'stripe', 'sendgrid'):",
-            "Add Custom Category",
-            JOptionPane.PLAIN_MESSAGE
-        );
-
-        if (categoryName != null && !categoryName.trim().isEmpty()) {
-            String category = categoryName.trim().toLowerCase();
-
-            // Check if already exists
-            Map<String, AuditIssueSeverity> existing = severityConfig.getCategoryDefaults();
-            if (existing.containsKey(category)) {
-                JOptionPane.showMessageDialog(
-                    this,
-                    "Category '" + category + "' already exists.",
-                    "Category Exists",
-                    JOptionPane.WARNING_MESSAGE
-                );
-                return;
-            }
-
-            // Add with default severity MEDIUM
-            severityConfig.setCategorySeverity(category, AuditIssueSeverity.MEDIUM);
-            populateSeverityTable();
-
-            // Find and scroll to the newly added category
-            SwingUtilities.invokeLater(() -> {
-                for (int i = 0; i < severityTable.getRowCount(); i++) {
-                    String cat = (String) severityTable.getValueAt(i, 0);
-                    if (cat.equals(category)) {
-                        severityTable.setRowSelectionInterval(i, i);
-                        severityTable.scrollRectToVisible(severityTable.getCellRect(i, 0, true));
-                        break;
-                    }
-                }
-            });
-
-            api.logging().logToOutput("Added custom category: " + category);
-        }
-    }
-
-    private void removeSelectedCategory() {
-        int selectedRow = severityTable.getSelectedRow();
-        if (selectedRow < 0) {
-            JOptionPane.showMessageDialog(
-                this,
-                "Please select a category to remove.",
-                "No Selection",
-                JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        String category = (String) severityTableModel.getValueAt(selectedRow, 0);
-
-        int result = JOptionPane.showConfirmDialog(
-            this,
-            "Remove category '" + category + "'?",
-            "Remove Category",
-            JOptionPane.YES_NO_OPTION
-        );
-
-        if (result == JOptionPane.YES_OPTION) {
-            severityConfig.removeCategory(category);
-            populateSeverityTable();
-            api.logging().logToOutput("Removed category: " + category);
         }
     }
 
@@ -543,23 +433,11 @@ public class SettingsTab extends JPanel {
             api.logging().logToOutput("Severity configuration reset to defaults");
         });
 
-        JButton saveMessagesButton = new JButton("Save Requests");
-        saveMessagesButton.addActionListener(e -> {
-            saveMessages();
-            JOptionPane.showMessageDialog(
-                this,
-                "Requests saved. They will be restored when the extension reloads.",
-                "Requests Saved",
-                JOptionPane.INFORMATION_MESSAGE
-            );
-        });
-
         JButton exportButton = new JButton("Export Findings to JSON");
         exportButton.addActionListener(e -> findingsExporter.exportFindings(dedupCache, this));
 
         panel.add(clearCacheButton);
         panel.add(resetSeverityButton);
-        panel.add(saveMessagesButton);
         panel.add(exportButton);
 
         return panel;
@@ -568,10 +446,137 @@ public class SettingsTab extends JPanel {
     private void populateSeverityTable() {
         severityTableModel.setRowCount(0);
 
-        Map<String, AuditIssueSeverity> defaults = severityConfig.getCategoryDefaults();
-        for (Map.Entry<String, AuditIssueSeverity> entry : defaults.entrySet()) {
-            severityTableModel.addRow(new Object[]{entry.getKey(), entry.getValue()});
+        if (secretsTableModel == null || secretsTableModel.getRowCount() == 0) {
+            return;
         }
+
+        // Collect unique types with their severity and ruleId
+        Map<String, String[]> typeInfo = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < secretsTableModel.getRowCount(); i++) {
+            DedupCache.FindingRecord record = secretsTableModel.getRecordAt(i);
+            if (record == null) continue;
+
+            String type = record.ruleName != null ? record.ruleName
+                : SecretCategoryMapper.getDisplayName(record.ruleId, null);
+
+            if (!typeInfo.containsKey(type)) {
+                AuditIssueSeverity severity = secretsTableModel.getSeverityAt(i);
+                String description = getTypeDescription(record.ruleId, type);
+                typeInfo.put(type, new String[]{severityToDisplay(severity), description});
+            }
+        }
+
+        // Add rows sorted by type name
+        typeInfo.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(entry -> {
+                String type = entry.getKey();
+                String severity = entry.getValue()[0];
+                String description = entry.getValue()[1];
+                severityTableModel.addRow(new Object[]{type, severity, description});
+            });
+    }
+
+    /**
+     * Generate a human-readable description for a secret type based on its rule ID.
+     */
+    private String getTypeDescription(String ruleId, String typeName) {
+        if (ruleId == null) return "Secret pattern detected in traffic";
+
+        String lower = ruleId.toLowerCase();
+
+        // Cloud providers
+        if (lower.contains("aws")) return "Amazon Web Services credentials (access keys, secret keys, session tokens)";
+        if (lower.contains("azure")) return "Microsoft Azure credentials (subscription keys, storage keys, AD tokens)";
+        if (lower.contains("gcp") || lower.contains("gcs")) return "Google Cloud Platform service account keys and credentials";
+        if (lower.contains("google")) return "Google API keys and OAuth credentials";
+        if (lower.contains("firebase")) return "Firebase API keys and service credentials";
+        if (lower.contains("digitalocean")) return "DigitalOcean API tokens and access keys";
+        if (lower.contains("heroku")) return "Heroku API keys and deployment credentials";
+        if (lower.contains("cloudflare")) return "Cloudflare API tokens and zone keys";
+        if (lower.contains("vercel")) return "Vercel deployment tokens and API keys";
+        if (lower.contains("netlify")) return "Netlify access tokens and site credentials";
+        if (lower.contains("flyio")) return "Fly.io deploy tokens and API keys";
+
+        // Databases
+        if (lower.contains("postgres")) return "PostgreSQL connection strings and passwords";
+        if (lower.contains("mysql")) return "MySQL connection strings and passwords";
+        if (lower.contains("mongodb")) return "MongoDB connection URIs and credentials";
+        if (lower.contains("redis")) return "Redis connection strings and auth tokens";
+        if (lower.contains("jdbc")) return "JDBC database connection strings with embedded credentials";
+
+        // Private keys
+        if (lower.contains("pem") || lower.contains("privkey")) return "Private key files (PEM, PKCS format)";
+        if (lower.contains("ssh")) return "SSH private keys and passphrases";
+        if (lower.contains("age")) return "Age encryption private keys";
+        if (lower.contains("wireguard")) return "WireGuard VPN private keys";
+
+        // Auth & Identity
+        if (lower.contains("jwt")) return "JSON Web Tokens (may contain session data or signing secrets)";
+        if (lower.contains("oauth")) return "OAuth client secrets and refresh tokens";
+        if (lower.contains("auth0")) return "Auth0 management API tokens and client secrets";
+        if (lower.contains("okta")) return "Okta API tokens and SSO credentials";
+        if (lower.contains("kubernetes") || lower.contains("k8s")) return "Kubernetes service account tokens and kubeconfig secrets";
+
+        // AI & ML
+        if (lower.contains("openai")) return "OpenAI API keys for GPT and other AI models";
+        if (lower.contains("anthropic")) return "Anthropic API keys for Claude models";
+        if (lower.contains("huggingface")) return "Hugging Face access tokens for model repositories";
+        if (lower.contains("cohere")) return "Cohere API keys for language models";
+        if (lower.contains("replicate")) return "Replicate API tokens for ML model hosting";
+        if (lower.contains("deepseek")) return "DeepSeek API keys for AI models";
+        if (lower.contains("mistral")) return "Mistral AI API keys";
+        if (lower.contains("groq")) return "Groq API keys for fast AI inference";
+
+        // Communication & Email
+        if (lower.contains("slack")) return "Slack bot tokens, webhooks, and OAuth tokens";
+        if (lower.contains("discord")) return "Discord bot tokens and webhook URLs";
+        if (lower.contains("telegram")) return "Telegram bot tokens and API credentials";
+        if (lower.contains("twilio")) return "Twilio API keys for SMS and voice services";
+        if (lower.contains("sendgrid")) return "SendGrid API keys for email delivery";
+        if (lower.contains("mailgun")) return "Mailgun API keys for email services";
+        if (lower.contains("mailchimp")) return "Mailchimp API keys for email marketing";
+        if (lower.contains("msteams")) return "Microsoft Teams webhook URLs and connector tokens";
+
+        // Payment
+        if (lower.contains("stripe")) return "Stripe API keys for payment processing";
+        if (lower.contains("square")) return "Square API keys for payment services";
+        if (lower.contains("paypal")) return "PayPal API credentials and client secrets";
+
+        // CI/CD & DevOps
+        if (lower.contains("github")) return "GitHub personal access tokens and OAuth tokens";
+        if (lower.contains("gitlab")) return "GitLab personal and project access tokens";
+        if (lower.contains("bitbucket")) return "Bitbucket app passwords and OAuth credentials";
+        if (lower.contains("jenkins")) return "Jenkins API tokens and build credentials";
+        if (lower.contains("circleci")) return "CircleCI API tokens for CI/CD pipelines";
+        if (lower.contains("docker")) return "Docker registry credentials and hub tokens";
+        if (lower.contains("npm")) return "NPM registry authentication tokens";
+        if (lower.contains("pypi")) return "PyPI upload tokens for package publishing";
+
+        // Monitoring & Analytics
+        if (lower.contains("datadog")) return "Datadog API and application keys for monitoring";
+        if (lower.contains("sentry")) return "Sentry DSN and auth tokens for error tracking";
+        if (lower.contains("newrelic")) return "New Relic API keys for application monitoring";
+        if (lower.contains("grafana")) return "Grafana API keys and service account tokens";
+        if (lower.contains("pagerduty")) return "PagerDuty API keys for incident management";
+
+        // Social & Marketing
+        if (lower.contains("linkedin")) return "LinkedIn API keys and OAuth tokens";
+        if (lower.contains("facebook") || lower.contains("instagram")) return "Meta (Facebook/Instagram) API tokens and app secrets";
+        if (lower.contains("twitter")) return "Twitter/X API keys and bearer tokens";
+        if (lower.contains("spotify")) return "Spotify API client credentials and tokens";
+        if (lower.contains("youtube")) return "YouTube Data API keys";
+
+        // Generic patterns
+        if (lower.contains("generic")) return "Generic secret patterns (passwords, keys, tokens found via broad rules)";
+        if (lower.contains("password") || lower.contains("pwhash")) return "Hardcoded passwords or password hashes in source or config";
+        if (lower.contains("http")) return "Credentials embedded in HTTP URLs or headers";
+        if (lower.contains("credentials") || lower.contains("netrc")) return "Stored credentials in configuration files";
+        if (lower.contains("uri")) return "Connection URIs with embedded authentication";
+
+        // Fallback: use category
+        SecretCategoryMapper.Category category = SecretCategoryMapper.getCategory(ruleId);
+        return category.getDisplayName() + " — detected by rule " + ruleId;
     }
 
     private void loadSettings() {
@@ -615,10 +620,21 @@ public class SettingsTab extends JPanel {
         }, 1000, 1000); // Update every second
     }
 
+    private int lastSeverityTableSize = 0;
+
     private void updateStats() {
         // Stats are now shown in the Statistics tab, refresh it periodically
         if (statisticsView != null) {
             statisticsView.refresh();
+        }
+
+        // Refresh severity table when new types appear
+        if (secretsTableModel != null) {
+            int currentTypes = secretsTableModel.getUniqueTypes().size();
+            if (currentTypes != lastSeverityTableSize) {
+                lastSeverityTableSize = currentTypes;
+                populateSeverityTable();
+            }
         }
     }
 }
