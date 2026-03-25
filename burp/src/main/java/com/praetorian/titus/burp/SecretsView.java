@@ -98,6 +98,7 @@ public class SecretsView extends JPanel {
 
         // Create table with row sorter for filtering and sorting
         secretsTable = new JTable(tableModel);
+        secretsTable.setShowVerticalLines(false);
         rowSorter = new TableRowSorter<>(tableModel);
         secretsTable.setRowSorter(rowSorter);
 
@@ -113,6 +114,16 @@ public class SecretsView extends JPanel {
         secretsTable.getTableHeader().setReorderingAllowed(true);
         secretsTable.getTableHeader().setResizingAllowed(true);
         secretsTable.getSelectionModel().addListSelectionListener(this::onSelectionChanged);
+
+        // Ctrl+A / Cmd+A to select all
+        secretsTable.getInputMap(JComponent.WHEN_FOCUSED).put(
+            KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_A, java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()),
+            "selectAll"
+        );
+        secretsTable.getActionMap().put("selectAll", new javax.swing.AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) { selectAll(); }
+        });
 
         // Configure column widths
         configureColumnWidths();
@@ -341,17 +352,34 @@ public class SecretsView extends JPanel {
         copyButton.setToolTipText("Copy secret value to clipboard");
         copyButton.addActionListener(e -> copySelectedSecret());
 
+        JButton selectAllButton = new JButton("Select All");
+        selectAllButton.setToolTipText("Select all visible secrets (Ctrl+A)");
+        selectAllButton.addActionListener(e -> selectAll());
+
+        leftPanel.add(selectAllButton);
         leftPanel.add(validateButton);
         leftPanel.add(falsePositiveButton);
         leftPanel.add(unmarkFPButton);
         leftPanel.add(copyButton);
 
-        // Right side: selection indicator
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        // Right side: selection indicator with help text
+        JPanel rightInner = new JPanel();
+        rightInner.setLayout(new BoxLayout(rightInner, BoxLayout.Y_AXIS));
 
         selectionLabel = new JLabel("");
         selectionLabel.setFont(selectionLabel.getFont().deriveFont(Font.BOLD));
-        rightPanel.add(selectionLabel);
+        selectionLabel.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        rightInner.add(selectionLabel);
+
+        String shortcutKey = System.getProperty("os.name").toLowerCase().contains("mac") ? "\u2318" : "Ctrl";
+        JLabel helpLabel = new JLabel(shortcutKey + "+click for multiple \u2022 Shift+click for range");
+        helpLabel.setFont(helpLabel.getFont().deriveFont(Font.PLAIN, 11f));
+        helpLabel.setForeground(Color.GRAY);
+        helpLabel.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        rightInner.add(helpLabel);
+
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        rightPanel.add(rightInner);
 
         toolbar.add(leftPanel, BorderLayout.WEST);
         toolbar.add(rightPanel, BorderLayout.EAST);
@@ -963,11 +991,9 @@ public class SecretsView extends JPanel {
             // Paired secret — show each named group with its label
             html.append("<div style='font-weight: bold; margin-bottom: 2px;'>Secret (paired):</div>");
             for (java.util.Map.Entry<String, String> entry : groups.entrySet()) {
-                html.append("<div style='margin-bottom: 2px;'>");
-                html.append("<span style='font-size: 9px; color: ").append(theme[1]).append(";'>").append(escapeHtml(entry.getKey())).append(":</span> ");
-                html.append("<span style='font-family: monospace; font-size: 9px; padding: 2px 4px; background: ").append(theme[2]).append("; color: ").append(theme[3]).append("; border-radius: 2px; word-wrap: break-word;'>");
+                html.append("<div style='font-family: monospace; font-size: 9px; padding: 2px 4px; margin-bottom: 2px; background: ").append(theme[2]).append("; color: ").append(theme[3]).append("; border-radius: 2px; word-wrap: break-word;'>");
+                html.append("<span style='color: ").append(theme[1]).append(";'>").append(escapeHtml(entry.getKey())).append(":</span> ");
                 html.append(escapeHtml(entry.getValue()));
-                html.append("</span>");
                 html.append("</div>");
             }
         } else {
@@ -1255,6 +1281,12 @@ public class SecretsView extends JPanel {
         refresh();
     }
 
+    private void selectAll() {
+        if (secretsTable.getRowCount() > 0) {
+            secretsTable.setRowSelectionInterval(0, secretsTable.getRowCount() - 1);
+        }
+    }
+
     private void copySelectedSecret() {
         int selectedRow = secretsTable.getSelectedRow();
         if (selectedRow < 0) {
@@ -1391,10 +1423,18 @@ public class SecretsView extends JPanel {
         // Dark theme: muted darker tones
         private static final Color HIGH_COLOR_DARK = new Color(140, 70, 70);
         private static final Color MEDIUM_COLOR_DARK = new Color(140, 130, 60);
+        private static final Color LOW_COLOR_DARK = new Color(120, 140, 165);
 
         // Light theme: soft pastel tones
         private static final Color HIGH_COLOR_LIGHT = new Color(255, 200, 200);
         private static final Color MEDIUM_COLOR_LIGHT = new Color(255, 243, 200);
+        private static final Color LOW_COLOR_LIGHT = new Color(235, 242, 255);
+
+        // Validation state colors
+        private static final Color VALID_BG_DARK = new Color(50, 100, 50);
+        private static final Color VALID_BG_LIGHT = new Color(210, 245, 210);
+        private static final Color DIMMED_FG_DARK = new Color(120, 120, 120);
+        private static final Color DIMMED_FG_LIGHT = new Color(170, 170, 170);
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
@@ -1406,26 +1446,39 @@ public class SecretsView extends JPanel {
                 // Convert view row to model row for correct severity lookup
                 int modelRow = table.convertRowIndexToModel(row);
                 burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity = tableModel.getSeverityAt(modelRow);
+                DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+                DedupCache.ValidationStatus valStatus = record != null ? record.validationStatus : null;
 
                 boolean dark = isDarkTheme();
-                Color bgColor = getSeverityColor(severity, dark);
-                if (bgColor != null) {
-                    c.setBackground(bgColor);
-                    // Dark backgrounds need white text; light backgrounds need dark text
-                    c.setForeground(dark ? Color.WHITE : Color.BLACK);
+
+                // Determine background: validation state takes priority over severity
+                Color bgColor;
+                Color fgColor;
+
+                if (valStatus == DedupCache.ValidationStatus.VALID) {
+                    // Valid/Active: subtle green background
+                    bgColor = dark ? VALID_BG_DARK : VALID_BG_LIGHT;
+                    fgColor = dark ? Color.WHITE : Color.BLACK;
+                } else if (valStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+                    // Manually marked FP: dimmed text, default background
+                    bgColor = UIManager.getColor("Table.background");
+                    if (bgColor == null) bgColor = dark ? Color.DARK_GRAY : Color.WHITE;
+                    fgColor = dark ? DIMMED_FG_DARK : DIMMED_FG_LIGHT;
                 } else {
-                    // Use UIManager's default colors for consistent appearance
-                    Color defaultBg = UIManager.getColor("Table.background");
-                    if (defaultBg == null) {
-                        defaultBg = Color.WHITE;
+                    // Normal: use severity color
+                    bgColor = getSeverityColor(severity, dark);
+                    if (bgColor != null) {
+                        fgColor = dark ? Color.WHITE : Color.BLACK;
+                    } else {
+                        bgColor = UIManager.getColor("Table.background");
+                        if (bgColor == null) bgColor = dark ? Color.DARK_GRAY : Color.WHITE;
+                        fgColor = UIManager.getColor("Table.foreground");
+                        if (fgColor == null) fgColor = dark ? Color.WHITE : Color.BLACK;
                     }
-                    c.setBackground(defaultBg);
-                    Color defaultFg = UIManager.getColor("Table.foreground");
-                    if (defaultFg == null) {
-                        defaultFg = Color.BLACK;
-                    }
-                    c.setForeground(defaultFg);
                 }
+
+                c.setBackground(bgColor);
+                c.setForeground(fgColor);
             }
 
             // Center align small columns: #, Severity, Count, Checked, Result, False Positive
@@ -1441,13 +1494,14 @@ public class SecretsView extends JPanel {
         }
 
         /**
-         * Get color for severity, adapted to current theme. Returns null for Low/Info/FP (use default).
+         * Get color for severity, adapted to current theme. Returns null for Info/FP (use default).
          */
         private Color getSeverityColor(burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity, boolean dark) {
             return switch (severity) {
                 case HIGH -> dark ? HIGH_COLOR_DARK : HIGH_COLOR_LIGHT;
                 case MEDIUM -> dark ? MEDIUM_COLOR_DARK : MEDIUM_COLOR_LIGHT;
-                case LOW, INFORMATION, FALSE_POSITIVE -> null;
+                case LOW -> dark ? LOW_COLOR_DARK : LOW_COLOR_LIGHT;
+                case INFORMATION, FALSE_POSITIVE -> null;
             };
         }
     }

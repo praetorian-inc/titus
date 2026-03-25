@@ -203,10 +203,15 @@ public class StatisticsView extends JPanel {
      * Custom renderer for severity column with color coding based on actual severity level.
      */
     private static class SeverityColorCellRenderer extends DefaultTableCellRenderer {
-        private static final Color HIGH_COLOR = new Color(220, 53, 69, 100);    // Red
-        private static final Color MEDIUM_COLOR = new Color(255, 152, 0, 100);  // Orange
-        private static final Color LOW_COLOR = new Color(91, 192, 222, 100);    // Blue
-        private static final Color INFO_COLOR = new Color(91, 192, 222, 60);    // Light blue
+        // Dark theme: muted darker tones (matching SecretsView)
+        private static final Color HIGH_COLOR_DARK = new Color(140, 70, 70);
+        private static final Color MEDIUM_COLOR_DARK = new Color(140, 130, 60);
+        private static final Color LOW_COLOR_DARK = new Color(120, 140, 165);
+
+        // Light theme: soft pastel tones (matching SecretsView)
+        private static final Color HIGH_COLOR_LIGHT = new Color(255, 200, 200);
+        private static final Color MEDIUM_COLOR_LIGHT = new Color(255, 243, 200);
+        private static final Color LOW_COLOR_LIGHT = new Color(235, 242, 255);
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
@@ -215,19 +220,36 @@ public class StatisticsView extends JPanel {
             Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
 
             if (!isSelected && value != null) {
+                boolean dark = isDarkTheme();
                 String severity = value.toString();
-                c.setBackground(switch (severity) {
-                    case "High" -> HIGH_COLOR;
-                    case "Medium" -> MEDIUM_COLOR;
-                    case "Low" -> LOW_COLOR;
-                    case "Info" -> INFO_COLOR;
-                    default -> null;
-                });
+                Color bgColor = switch (severity) {
+                    case "High" -> dark ? HIGH_COLOR_DARK : HIGH_COLOR_LIGHT;
+                    case "Medium" -> dark ? MEDIUM_COLOR_DARK : MEDIUM_COLOR_LIGHT;
+                    case "Low" -> dark ? LOW_COLOR_DARK : LOW_COLOR_LIGHT;
+                    default -> null; // Info uses default background
+                };
+
+                if (bgColor != null) {
+                    c.setBackground(bgColor);
+                    c.setForeground(dark ? Color.WHITE : Color.BLACK);
+                } else {
+                    Color defaultBg = UIManager.getColor("Table.background");
+                    c.setBackground(defaultBg != null ? defaultBg : (dark ? Color.DARK_GRAY : Color.WHITE));
+                    Color defaultFg = UIManager.getColor("Table.foreground");
+                    c.setForeground(defaultFg != null ? defaultFg : (dark ? Color.WHITE : Color.BLACK));
+                }
             } else if (!isSelected) {
                 c.setBackground(null);
             }
 
             return c;
+        }
+
+        private static boolean isDarkTheme() {
+            Color bg = UIManager.getColor("Table.background");
+            if (bg == null) return false;
+            double brightness = (bg.getRed() * 0.299 + bg.getGreen() * 0.587 + bg.getBlue() * 0.114);
+            return brightness < 128;
         }
     }
 }
