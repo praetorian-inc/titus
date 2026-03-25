@@ -78,19 +78,20 @@ public class SecretsTableModel extends AbstractTableModel {
             case 7 -> // Checked column - was validation attempted?
                 record.validatedAt != null ? "Yes" : "No";
             case 8 -> {
-                // Result column - show validation result
-                if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+                // Result column - show validation result (preserved even when marked FP)
+                DedupCache.ValidationStatus effectiveStatus = record.validationStatus;
+                if (effectiveStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+                    effectiveStatus = record.preMarkFPStatus;
+                }
+                if (effectiveStatus == null || effectiveStatus == DedupCache.ValidationStatus.NOT_CHECKED) {
                     yield "-";
                 }
-                if (record.validatedAt == null) {
-                    yield "-";
-                }
-                yield switch (record.validationStatus) {
+                yield switch (effectiveStatus) {
                     case VALID -> "Active";
                     case INVALID -> "Inactive";
                     case UNDETERMINED -> "Unknown";
                     case VALIDATING -> "...";
-                    default -> "Unknown"; // Should not happen if validatedAt is set
+                    default -> "-";
                 };
             }
             case 9 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";

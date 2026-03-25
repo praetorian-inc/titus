@@ -939,6 +939,7 @@ public class SecretsView extends JPanel {
                 falsePositiveListener.onFalsePositiveRequested(records);
             } else {
                 for (DedupCache.FindingRecord record : records) {
+                    record.preMarkFPStatus = record.validationStatus;
                     record.setValidation(DedupCache.ValidationStatus.FALSE_POSITIVE, "Marked by user");
                 }
                 dedupCache.saveToSettings();
@@ -957,7 +958,10 @@ public class SecretsView extends JPanel {
             int modelRow = secretsTable.convertRowIndexToModel(row);
             DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
             if (record != null && record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
-                record.setValidation(DedupCache.ValidationStatus.NOT_CHECKED, null);
+                DedupCache.ValidationStatus restored = record.preMarkFPStatus != null
+                    ? record.preMarkFPStatus : DedupCache.ValidationStatus.NOT_CHECKED;
+                record.setValidation(restored, record.validationMessage);
+                record.preMarkFPStatus = null;
             }
         }
         dedupCache.saveToSettings();

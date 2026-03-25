@@ -417,6 +417,7 @@ public class DedupCache {
         public Map<String, String> validationDetails;
         public Map<String, String> namedGroups;  // Named capture groups from regex match
         public boolean hidden;  // User can hide secrets they don't want to see
+        public ValidationStatus preMarkFPStatus;  // Validation status before FP marking
 
         public FindingRecord() {
             this.urls = new HashSet<>();
