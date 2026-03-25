@@ -247,21 +247,76 @@ public class SecretsView extends JPanel {
     private void createTableContextMenu() {
         tableContextMenu = new JPopupMenu();
 
+        // Add a listener that dynamically builds menu items before showing
+        tableContextMenu.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+                buildContextMenuItems();
+            }
+            @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
+            @Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
+        });
+    }
+
+    /**
+     * Build context menu items dynamically based on selected findings' state.
+     */
+    private void buildContextMenuItems() {
+        tableContextMenu.removeAll();
+
+        int[] selectedRows = secretsTable.getSelectedRows();
+        if (selectedRows.length == 0) return;
+
+        // Determine aggregate state of selected findings
+        boolean anyNotValidated = false;
+        boolean anyValidated = false;
+        boolean anyFP = false;
+        boolean anyNotFP = false;
+        for (int row : selectedRows) {
+            int modelRow = secretsTable.convertRowIndexToModel(row);
+            DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+            if (record == null) continue;
+            if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+                anyFP = true;
+            } else {
+                anyNotFP = true;
+            }
+            if (record.validatedAt != null) {
+                anyValidated = true;
+            } else {
+                anyNotValidated = true;
+            }
+        }
+
+        // Copy actions — always available
         JMenuItem copySecretItem = new JMenuItem("Copy Secret");
         copySecretItem.addActionListener(e -> copySelectedSecret());
+        tableContextMenu.add(copySecretItem);
 
         JMenuItem copyPreviewItem = new JMenuItem("Copy Preview");
         copyPreviewItem.addActionListener(e -> copySelectedPreview());
+        tableContextMenu.add(copyPreviewItem);
 
-        JMenuItem validateItem = new JMenuItem("Validate");
-        validateItem.addActionListener(e -> validateSelected());
+        tableContextMenu.addSeparator();
 
-        JMenuItem markFPItem = new JMenuItem("Mark as False Positive");
-        markFPItem.addActionListener(e -> markFalsePositive());
+        // Validate / Revalidate — show based on validation state
+        if (anyNotValidated && !anyValidated) {
+            JMenuItem validateItem = new JMenuItem("Validate");
+            validateItem.addActionListener(e -> validateSelected());
+            tableContextMenu.add(validateItem);
+        } else if (anyValidated && !anyNotValidated) {
+            JMenuItem revalidateItem = new JMenuItem("Revalidate");
+            revalidateItem.addActionListener(e -> validateSelected());
+            tableContextMenu.add(revalidateItem);
+        } else {
+            // Mixed selection
+            JMenuItem validateItem = new JMenuItem("Validate / Revalidate");
+            validateItem.addActionListener(e -> validateSelected());
+            tableContextMenu.add(validateItem);
+        }
 
-        JMenuItem unmarkFPItem = new JMenuItem("Unmark False Positive");
-        unmarkFPItem.addActionListener(e -> unmarkFalsePositive());
+        tableContextMenu.addSeparator();
 
+        // Change Severity — always available
         JMenu changeSeverityMenu = new JMenu("Change Severity");
         for (var sev : new String[]{"High", "Medium", "Low", "Info"}) {
             JMenuItem item = new JMenuItem(sev);
@@ -272,16 +327,21 @@ public class SecretsView extends JPanel {
         JMenuItem resetSevItem = new JMenuItem("Reset to Default");
         resetSevItem.addActionListener(e -> changeSeverityOfSelected(null));
         changeSeverityMenu.add(resetSevItem);
-
-        tableContextMenu.add(copySecretItem);
-        tableContextMenu.add(copyPreviewItem);
-        tableContextMenu.addSeparator();
-        tableContextMenu.add(validateItem);
-        tableContextMenu.addSeparator();
         tableContextMenu.add(changeSeverityMenu);
+
         tableContextMenu.addSeparator();
-        tableContextMenu.add(markFPItem);
-        tableContextMenu.add(unmarkFPItem);
+
+        // FP actions — show only relevant option(s)
+        if (anyNotFP) {
+            JMenuItem markFPItem = new JMenuItem("Mark as False Positive");
+            markFPItem.addActionListener(e -> markFalsePositive());
+            tableContextMenu.add(markFPItem);
+        }
+        if (anyFP) {
+            JMenuItem unmarkFPItem = new JMenuItem("Unmark False Positive");
+            unmarkFPItem.addActionListener(e -> unmarkFalsePositive());
+            tableContextMenu.add(unmarkFPItem);
+        }
     }
 
     private void copySelectedPreview() {
@@ -937,7 +997,7 @@ public class SecretsView extends JPanel {
         for (int row : selectedRows) {
             int modelRow = secretsTable.convertRowIndexToModel(row);
             DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
-            if (record != null && record.validationStatus == DedupCache.ValidationStatus.NOT_CHECKED) {
+            if (record != null && record.validationStatus != DedupCache.ValidationStatus.VALIDATING) {
                 validationListener.onValidateRequested(record);
             }
         }
