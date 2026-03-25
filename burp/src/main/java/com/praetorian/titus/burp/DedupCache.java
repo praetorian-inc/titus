@@ -418,6 +418,7 @@ public class DedupCache {
         public Map<String, String> namedGroups;  // Named capture groups from regex match
         public boolean hidden;  // User can hide secrets they don't want to see
         public ValidationStatus preMarkFPStatus;  // Validation status before FP marking
+        public String severityOverride;  // Per-finding severity override (HIGH/MEDIUM/LOW/INFORMATION), null = use config default
 
         public FindingRecord() {
             this.urls = new HashSet<>();

@@ -262,10 +262,23 @@ public class SecretsView extends JPanel {
         JMenuItem unmarkFPItem = new JMenuItem("Unmark False Positive");
         unmarkFPItem.addActionListener(e -> unmarkFalsePositive());
 
+        JMenu changeSeverityMenu = new JMenu("Change Severity");
+        for (var sev : new String[]{"High", "Medium", "Low", "Info"}) {
+            JMenuItem item = new JMenuItem(sev);
+            item.addActionListener(e -> changeSeverityOfSelected(sev));
+            changeSeverityMenu.add(item);
+        }
+        changeSeverityMenu.addSeparator();
+        JMenuItem resetSevItem = new JMenuItem("Reset to Default");
+        resetSevItem.addActionListener(e -> changeSeverityOfSelected(null));
+        changeSeverityMenu.add(resetSevItem);
+
         tableContextMenu.add(copySecretItem);
         tableContextMenu.add(copyPreviewItem);
         tableContextMenu.addSeparator();
         tableContextMenu.add(validateItem);
+        tableContextMenu.addSeparator();
+        tableContextMenu.add(changeSeverityMenu);
         tableContextMenu.addSeparator();
         tableContextMenu.add(markFPItem);
         tableContextMenu.add(unmarkFPItem);
@@ -713,7 +726,7 @@ public class SecretsView extends JPanel {
 
         // === ADVISORY SECTION ===
         // Header with severity indicator and title
-        String severityColor = getSeverityIndicatorColor(record.ruleId);
+        String severityColor = getSeverityIndicatorColor(record);
         String displayName = record.ruleName != null ? record.ruleName : SecretCategoryMapper.getDisplayName(record.ruleId, record.ruleName);
         html.append("<div style='margin-bottom: 8px;'>");
         html.append("<span style='color: ").append(severityColor).append("; font-size: 12px;'>&#9679;</span> ");
@@ -721,7 +734,7 @@ public class SecretsView extends JPanel {
         html.append("</div>");
 
         // Severity, Confidence, Host
-        String severity = getSeverityName(record.ruleId);
+        String severity = getSeverityName(record);
         html.append("<table cellpadding='1' cellspacing='0' style='margin-bottom: 8px;'>");
         html.append("<tr><td style='color: ").append(theme[1]).append(";'>Severity:</td><td style='padding-left: 8px;'>").append(severity).append("</td></tr>");
         html.append("<tr><td style='color: ").append(theme[1]).append(";'>Confidence:</td><td style='padding-left: 8px;'>Certain</td></tr>");
@@ -877,31 +890,42 @@ public class SecretsView extends JPanel {
     /**
      * Get severity indicator color for advisory display.
      */
-    private String getSeverityIndicatorColor(String ruleId) {
-        SecretCategoryMapper.Category category = SecretCategoryMapper.getCategory(ruleId);
-        String name = category.name();
-        if (name.equals("CLOUD") || name.equals("DATABASE") || name.equals("AUTH")) {
-            return "#d9534f";  // Red for High
-        } else if (name.equals("SAAS") || name.equals("AI")) {
-            return "#f0ad4e";  // Orange for Medium
-        } else {
-            return "#5bc0de";  // Blue for Low/Info
-        }
+    private String getSeverityIndicatorColor(DedupCache.FindingRecord record) {
+        int modelRow = findings_indexOf(record);
+        burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity =
+            modelRow >= 0 ? tableModel.getSeverityAt(modelRow) : burp.api.montoya.scanner.audit.issues.AuditIssueSeverity.MEDIUM;
+        return switch (severity) {
+            case HIGH -> "#d9534f";
+            case MEDIUM -> "#f0ad4e";
+            case LOW, INFORMATION -> "#5bc0de";
+            case FALSE_POSITIVE -> "#999999";
+        };
     }
 
     /**
      * Get severity name for advisory display.
      */
-    private String getSeverityName(String ruleId) {
-        SecretCategoryMapper.Category category = SecretCategoryMapper.getCategory(ruleId);
-        String name = category.name();
-        if (name.equals("CLOUD") || name.equals("DATABASE") || name.equals("AUTH")) {
-            return "High";
-        } else if (name.equals("SAAS") || name.equals("AI")) {
-            return "Medium";
-        } else {
-            return "Low";
+    private String getSeverityName(DedupCache.FindingRecord record) {
+        int modelRow = findings_indexOf(record);
+        burp.api.montoya.scanner.audit.issues.AuditIssueSeverity severity =
+            modelRow >= 0 ? tableModel.getSeverityAt(modelRow) : burp.api.montoya.scanner.audit.issues.AuditIssueSeverity.MEDIUM;
+        return switch (severity) {
+            case HIGH -> "High";
+            case MEDIUM -> "Medium";
+            case LOW -> "Low";
+            case INFORMATION -> "Info";
+            case FALSE_POSITIVE -> "FP";
+        };
+    }
+
+    /**
+     * Find model row index for a record.
+     */
+    private int findings_indexOf(DedupCache.FindingRecord record) {
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            if (tableModel.getRecordAt(i) == record) return i;
         }
+        return -1;
     }
 
     private void validateSelected() {
@@ -962,6 +986,29 @@ public class SecretsView extends JPanel {
                     ? record.preMarkFPStatus : DedupCache.ValidationStatus.NOT_CHECKED;
                 record.setValidation(restored, record.validationMessage);
                 record.preMarkFPStatus = null;
+            }
+        }
+        dedupCache.saveToSettings();
+        refresh();
+    }
+
+    private void changeSeverityOfSelected(String severityLabel) {
+        int[] selectedRows = secretsTable.getSelectedRows();
+        if (selectedRows.length == 0) return;
+
+        String override = severityLabel != null ? switch (severityLabel) {
+            case "High" -> "HIGH";
+            case "Medium" -> "MEDIUM";
+            case "Low" -> "LOW";
+            case "Info" -> "INFORMATION";
+            default -> null;
+        } : null;
+
+        for (int row : selectedRows) {
+            int modelRow = secretsTable.convertRowIndexToModel(row);
+            DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
+            if (record != null) {
+                record.severityOverride = override;
             }
         }
         dedupCache.saveToSettings();

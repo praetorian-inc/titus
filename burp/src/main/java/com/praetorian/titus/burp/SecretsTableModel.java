@@ -70,7 +70,7 @@ public class SecretsTableModel extends AbstractTableModel {
         return switch (column) {
             case 0 -> row + 1;
             case 1 -> record.ruleName != null ? record.ruleName : SecretCategoryMapper.getDisplayName(record.ruleId, null);
-            case 2 -> getSeverityDisplay(record.ruleId);  // Severity column
+            case 2 -> getSeverityDisplay(record);  // Severity column
             case 3 -> record.secretPreview;
             case 4 -> record.primaryHost != null ? record.primaryHost : "unknown";
             case 5 -> extractPath(record);  // Path column
@@ -127,13 +127,25 @@ public class SecretsTableModel extends AbstractTableModel {
     }
 
     /**
-     * Get severity display text for a rule ID.
+     * Get effective severity for a finding, checking per-finding override first.
      */
-    private String getSeverityDisplay(String ruleId) {
-        if (severityConfig == null) {
-            return "Medium";
+    private AuditIssueSeverity getEffectiveSeverity(DedupCache.FindingRecord record) {
+        if (record.severityOverride != null) {
+            try {
+                return AuditIssueSeverity.valueOf(record.severityOverride);
+            } catch (IllegalArgumentException ignored) {}
         }
-        AuditIssueSeverity severity = severityConfig.getSeverity(ruleId);
+        if (severityConfig == null) {
+            return AuditIssueSeverity.MEDIUM;
+        }
+        return severityConfig.getSeverity(record.ruleId);
+    }
+
+    /**
+     * Get severity display text for a finding.
+     */
+    private String getSeverityDisplay(DedupCache.FindingRecord record) {
+        AuditIssueSeverity severity = getEffectiveSeverity(record);
         return switch (severity) {
             case HIGH -> "High";
             case MEDIUM -> "Medium";
@@ -144,13 +156,13 @@ public class SecretsTableModel extends AbstractTableModel {
     }
 
     /**
-     * Get severity for a rule ID.
+     * Get severity at a row.
      */
     public AuditIssueSeverity getSeverityAt(int row) {
-        if (row < 0 || row >= findings.size() || severityConfig == null) {
+        if (row < 0 || row >= findings.size()) {
             return AuditIssueSeverity.MEDIUM;
         }
-        return severityConfig.getSeverity(findings.get(row).ruleId);
+        return getEffectiveSeverity(findings.get(row));
     }
 
     /**
