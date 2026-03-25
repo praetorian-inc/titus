@@ -212,16 +212,55 @@ public class SecretsView extends JPanel {
     /**
      * Show column visibility popup from the Columns button.
      */
+    private JWindow columnsWindow;
+
     private void showColumnsPopup(JButton anchor) {
-        JPopupMenu popup = new JPopupMenu();
+        // Close existing popup if open
+        if (columnsWindow != null && columnsWindow.isVisible()) {
+            columnsWindow.dispose();
+            columnsWindow = null;
+            return;
+        }
+
+        // Use a JWindow with checkboxes — stays open on click
+        java.awt.Window parentWindow = SwingUtilities.getWindowAncestor(anchor);
+        columnsWindow = new JWindow(parentWindow);
+
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Color.GRAY),
+            BorderFactory.createEmptyBorder(4, 4, 4, 4)
+        ));
+
         for (int i = 0; i < COLUMN_NAMES.length; i++) {
             if (i == 0) continue; // # always visible
             final int colIndex = i;
-            JCheckBoxMenuItem item = new JCheckBoxMenuItem(COLUMN_NAMES[i], !hiddenColumns.contains(colIndex));
-            item.addActionListener(a -> toggleColumn(colIndex));
-            popup.add(item);
+            JCheckBox cb = new JCheckBox(COLUMN_NAMES[i], !hiddenColumns.contains(colIndex));
+            cb.addActionListener(a -> toggleColumn(colIndex));
+            panel.add(cb);
         }
-        popup.show(anchor, 0, anchor.getHeight());
+
+        columnsWindow.setContentPane(panel);
+        columnsWindow.pack();
+
+        // Position below the anchor button
+        java.awt.Point loc = anchor.getLocationOnScreen();
+        columnsWindow.setLocation(loc.x, loc.y + anchor.getHeight());
+        columnsWindow.setVisible(true);
+
+        // Close when clicking outside
+        columnsWindow.addWindowFocusListener(new java.awt.event.WindowFocusListener() {
+            @Override
+            public void windowGainedFocus(java.awt.event.WindowEvent e) {}
+            @Override
+            public void windowLostFocus(java.awt.event.WindowEvent e) {
+                if (columnsWindow != null) {
+                    columnsWindow.dispose();
+                    columnsWindow = null;
+                }
+            }
+        });
     }
 
     /**
@@ -919,11 +958,25 @@ public class SecretsView extends JPanel {
 
         // === SECRET/CONTEXT SECTION ===
         html.append("<div style='margin-bottom: 8px;'>");
-        html.append("<div style='font-weight: bold; margin-bottom: 2px;'>Secret:</div>");
-        String secretValue = record.secretContent != null ? record.secretContent : record.secretPreview;
-        html.append("<div style='font-family: monospace; font-size: 9px; padding: 4px; background: ").append(theme[2]).append("; color: ").append(theme[3]).append("; border-radius: 2px; word-wrap: break-word;'>");
-        html.append(escapeHtml(secretValue));
-        html.append("</div>");
+        java.util.Map<String, String> groups = record.getNamedGroups();
+        if (groups != null && groups.size() > 1) {
+            // Paired secret — show each named group with its label
+            html.append("<div style='font-weight: bold; margin-bottom: 2px;'>Secret (paired):</div>");
+            for (java.util.Map.Entry<String, String> entry : groups.entrySet()) {
+                html.append("<div style='margin-bottom: 2px;'>");
+                html.append("<span style='font-size: 9px; color: ").append(theme[1]).append(";'>").append(escapeHtml(entry.getKey())).append(":</span> ");
+                html.append("<span style='font-family: monospace; font-size: 9px; padding: 2px 4px; background: ").append(theme[2]).append("; color: ").append(theme[3]).append("; border-radius: 2px; word-wrap: break-word;'>");
+                html.append(escapeHtml(entry.getValue()));
+                html.append("</span>");
+                html.append("</div>");
+            }
+        } else {
+            html.append("<div style='font-weight: bold; margin-bottom: 2px;'>Secret:</div>");
+            String secretValue = record.secretContent != null ? record.secretContent : record.secretPreview;
+            html.append("<div style='font-family: monospace; font-size: 9px; padding: 4px; background: ").append(theme[2]).append("; color: ").append(theme[3]).append("; border-radius: 2px; word-wrap: break-word;'>");
+            html.append(escapeHtml(secretValue));
+            html.append("</div>");
+        }
         html.append("</div>");
 
         // === URLs SECTION ===
@@ -1376,7 +1429,9 @@ public class SecretsView extends JPanel {
             }
 
             // Center align small columns: #, Severity, Count, Checked, Result, False Positive
-            if (column == 0 || column == 2 || column == 6 || column == 7 || column == 8 || column == 9) {
+            // Use model column index since view columns may shift when columns are hidden
+            int modelCol = table.convertColumnIndexToModel(column);
+            if (modelCol == 0 || modelCol == 2 || modelCol == 6 || modelCol == 7 || modelCol == 8 || modelCol == 9) {
                 setHorizontalAlignment(JLabel.CENTER);
             } else {
                 setHorizontalAlignment(JLabel.LEFT);

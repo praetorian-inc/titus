@@ -176,7 +176,7 @@ public class DedupCache {
                 FindingRecord newRecord = new FindingRecord(
                     ruleId,
                     ruleName != null ? ruleName : SecretCategoryMapper.getDisplayName(ruleId, null),
-                    createPreview(secretContent),
+                    createPreview(secretContent, namedGroups),
                     secretContent,
                     host,
                     new HashSet<>(Set.of(normalizedUrl)),
@@ -355,7 +355,28 @@ public class DedupCache {
         return url;
     }
 
-    private String createPreview(String secretContent) {
+    private String createPreview(String secretContent, Map<String, String> namedGroups) {
+        // For findings with multiple named groups (e.g., AWS key_id + secret_key),
+        // show a paired preview with values joined by ":"
+        if (namedGroups != null && namedGroups.size() > 1) {
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, String> entry : namedGroups.entrySet()) {
+                if (sb.length() > 0) sb.append(":");
+                String val = entry.getValue();
+                if (val.length() > 12) {
+                    sb.append(val, 0, 12).append("...");
+                } else {
+                    sb.append(val);
+                }
+            }
+            String paired = sb.toString();
+            if (paired.length() > 40) {
+                return paired.substring(0, 40) + "...";
+            }
+            return paired;
+        }
+
+        // Single value preview
         if (secretContent == null || secretContent.isEmpty()) {
             return "[empty]";
         }

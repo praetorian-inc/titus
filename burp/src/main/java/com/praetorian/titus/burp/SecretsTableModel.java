@@ -71,7 +71,7 @@ public class SecretsTableModel extends AbstractTableModel {
             case 0 -> row + 1;
             case 1 -> record.ruleName != null ? record.ruleName : SecretCategoryMapper.getDisplayName(record.ruleId, null);
             case 2 -> getSeverityDisplay(record);  // Severity column
-            case 3 -> record.secretPreview;
+            case 3 -> getSecretPreview(record);
             case 4 -> record.primaryHost != null ? record.primaryHost : "unknown";
             case 5 -> extractPath(record);  // Path column
             case 6 -> record.occurrenceCount;
@@ -97,6 +97,36 @@ public class SecretsTableModel extends AbstractTableModel {
             case 9 -> record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE ? "Yes" : "No";
             default -> null;
         };
+    }
+
+    /**
+     * Get the secret preview, showing paired values for multi-group findings.
+     * Returns the full content so wider columns show more text.
+     */
+    private static final int MAX_PREVIEW_LENGTH = 120;
+
+    private String getSecretPreview(DedupCache.FindingRecord record) {
+        String preview;
+
+        // For findings with multiple named groups, show paired values
+        Map<String, String> groups = record.getNamedGroups();
+        if (groups != null && groups.size() > 1) {
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, String> entry : groups.entrySet()) {
+                if (sb.length() > 0) sb.append(" : ");
+                sb.append(entry.getValue());
+            }
+            preview = sb.toString();
+        } else if (record.secretContent != null && !record.secretContent.isEmpty()) {
+            preview = record.secretContent;
+        } else {
+            return record.secretPreview != null ? record.secretPreview : "[empty]";
+        }
+
+        if (preview.length() > MAX_PREVIEW_LENGTH) {
+            return preview.substring(0, MAX_PREVIEW_LENGTH) + "...";
+        }
+        return preview;
     }
 
     /**
