@@ -66,13 +66,19 @@ public class ValidationManager {
             return;
         }
 
-        // Check cache
+        // Remember if finding was marked as FP — preserve across revalidation
+        boolean wasFP = record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE;
+        boolean isRevalidation = record.validatedAt != null || wasFP;
+
+        // Check cache (skip for revalidation)
         String cacheKey = record.ruleId + ":" + record.secretContent;
-        DedupCache.ValidationStatus cached = validationCache.get(cacheKey);
-        if (cached != null && cached != DedupCache.ValidationStatus.NOT_CHECKED) {
-            record.validationStatus = cached;
-            SwingUtilities.invokeLater(() -> callback.accept(record));
-            return;
+        if (!isRevalidation) {
+            DedupCache.ValidationStatus cached = validationCache.get(cacheKey);
+            if (cached != null && cached != DedupCache.ValidationStatus.NOT_CHECKED) {
+                record.validationStatus = cached;
+                SwingUtilities.invokeLater(() -> callback.accept(record));
+                return;
+            }
         }
 
         // Mark as validating
@@ -90,7 +96,13 @@ public class ValidationManager {
                     default -> DedupCache.ValidationStatus.UNDETERMINED;
                 };
 
-                record.setValidation(status, result.message());
+                // If it was FP, keep the FP flag but update the underlying result
+                if (wasFP) {
+                    record.preMarkFPStatus = status;
+                    record.setValidation(DedupCache.ValidationStatus.FALSE_POSITIVE, result.message());
+                } else {
+                    record.setValidation(status, result.message());
+                }
                 record.setValidationDetails(result.details());
                 validationCache.put(cacheKey, status);
                 dedupCache.saveToSettings(); // Persist
@@ -99,7 +111,12 @@ public class ValidationManager {
 
             } catch (Exception e) {
                 api.logging().logToError("Validation failed: " + e.getMessage());
-                record.setValidation(DedupCache.ValidationStatus.UNDETERMINED, "Error: " + e.getMessage());
+                if (wasFP) {
+                    record.preMarkFPStatus = DedupCache.ValidationStatus.UNDETERMINED;
+                    record.setValidation(DedupCache.ValidationStatus.FALSE_POSITIVE, "Error: " + e.getMessage());
+                } else {
+                    record.setValidation(DedupCache.ValidationStatus.UNDETERMINED, "Error: " + e.getMessage());
+                }
                 SwingUtilities.invokeLater(() -> callback.accept(record));
             }
         }, "titus-validator").start();

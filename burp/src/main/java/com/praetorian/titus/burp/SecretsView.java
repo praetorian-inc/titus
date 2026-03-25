@@ -728,7 +728,8 @@ public class SecretsView extends JPanel {
         }
 
         // Enable buttons based on selection
-        boolean anyValidatable = false;
+        boolean anyNotChecked = false;
+        boolean anyValidated = false;
         boolean anyFalsePositive = false;
         boolean anyNotFalsePositive = false;
 
@@ -736,7 +737,12 @@ public class SecretsView extends JPanel {
             DedupCache.FindingRecord record = tableModel.getRecordAt(row);
             if (record != null) {
                 if (record.validationStatus == DedupCache.ValidationStatus.NOT_CHECKED) {
-                    anyValidatable = true;
+                    anyNotChecked = true;
+                }
+                if (record.validatedAt != null || record.validationStatus == DedupCache.ValidationStatus.VALID
+                        || record.validationStatus == DedupCache.ValidationStatus.INVALID
+                        || record.validationStatus == DedupCache.ValidationStatus.UNDETERMINED) {
+                    anyValidated = true;
                 }
                 if (record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
                     anyFalsePositive = true;
@@ -746,7 +752,14 @@ public class SecretsView extends JPanel {
             }
         }
 
-        validateButton.setEnabled(anyValidatable);
+        // Update validate button label and enable state
+        boolean canValidate = anyNotChecked || anyValidated;
+        validateButton.setEnabled(canValidate);
+        if (anyValidated && !anyNotChecked) {
+            validateButton.setText("Revalidate");
+        } else {
+            validateButton.setText("Validate");
+        }
         falsePositiveButton.setEnabled(anyNotFalsePositive);
         unmarkFPButton.setEnabled(anyFalsePositive);
         copyButton.setEnabled(modelRows.length == 1);
@@ -994,12 +1007,35 @@ public class SecretsView extends JPanel {
             return;
         }
 
+        // Collect eligible findings (skip currently validating)
+        List<DedupCache.FindingRecord> toValidate = new ArrayList<>();
+        boolean anyAlreadyValidated = false;
         for (int row : selectedRows) {
             int modelRow = secretsTable.convertRowIndexToModel(row);
             DedupCache.FindingRecord record = tableModel.getRecordAt(modelRow);
-            if (record != null && record.validationStatus != DedupCache.ValidationStatus.VALIDATING) {
-                validationListener.onValidateRequested(record);
+            if (record == null || record.validationStatus == DedupCache.ValidationStatus.VALIDATING) {
+                continue;
             }
+            if (record.validatedAt != null || record.validationStatus == DedupCache.ValidationStatus.FALSE_POSITIVE) {
+                anyAlreadyValidated = true;
+            }
+            toValidate.add(record);
+        }
+
+        if (toValidate.isEmpty()) return;
+
+        // Confirm revalidation
+        if (anyAlreadyValidated) {
+            int result = javax.swing.JOptionPane.showConfirmDialog(this,
+                "This will re-check the secret and send new requests to the target. Current results may change.",
+                "Revalidate Secret", javax.swing.JOptionPane.OK_CANCEL_OPTION, javax.swing.JOptionPane.QUESTION_MESSAGE);
+            if (result != javax.swing.JOptionPane.OK_OPTION) {
+                return;
+            }
+        }
+
+        for (DedupCache.FindingRecord record : toValidate) {
+            validationListener.onValidateRequested(record);
         }
     }
 
