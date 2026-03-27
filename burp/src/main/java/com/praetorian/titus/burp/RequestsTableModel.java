@@ -111,27 +111,17 @@ public class RequestsTableModel extends AbstractTableModel {
             }
         }
 
-        int responseSize = 0;
-        int status = 0;
-
-        if (job.response() != null) {
-            status = job.response().statusCode();
-            if (job.response().body() != null) {
-                responseSize = job.response().body().length();
-            }
-        }
-
         String url = job.url();
         String host = SecretCategoryMapper.extractHost(url);
         SecretInfo secretInfo = secretsByUrl.get(url);
 
         RequestEntry entry = new RequestEntry(
             entries.size() + 1,
-            job.request().method(),
+            job.method(),
             url,
             host,
-            status,
-            responseSize,
+            job.statusCode(),
+            job.responseSize(),
             job.queuedAt(),
             job,
             secretInfo

@@ -82,8 +82,8 @@ public class BulkScanHandler {
                         continue;
                     }
 
-                    // Queue for scanning
-                    ScanJob job = new ScanJob(
+                    // Queue for scanning - extract data immediately, don't keep Burp object references
+                    ScanJob job = ScanJob.fromBurpObjects(
                         item.request(),
                         item.response(),
                         ScanJob.Source.ACTIVE,

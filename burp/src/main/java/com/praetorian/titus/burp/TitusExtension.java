@@ -194,10 +194,10 @@ public class TitusExtension implements BurpExtension {
                 return ResponseReceivedAction.continueWith(response);
             }
 
-            // Queue for scanning
+            // Queue for scanning - extract data immediately, don't keep Burp object references
             try {
                 boolean scanRequest = settingsTab.isRequestScanEnabled();
-                scanQueue.enqueue(new ScanJob(
+                scanQueue.enqueue(ScanJob.fromBurpObjects(
                     response.initiatingRequest(),
                     response,
                     ScanJob.Source.PASSIVE,
@@ -256,7 +256,8 @@ public class TitusExtension implements BurpExtension {
 
                 try {
                     String url = item.request().url();
-                    boolean enqueued = scanQueue.enqueue(new ScanJob(
+                    // Extract data immediately, don't keep Burp object references
+                    boolean enqueued = scanQueue.enqueue(ScanJob.fromBurpObjects(
                         item.request(),
                         item.response(),
                         ScanJob.Source.ACTIVE,
