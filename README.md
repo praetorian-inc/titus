@@ -300,7 +300,7 @@ The extension adds a **Titus** tab to Burp with three sub-tabs:
 
 **Secrets**: All detected secrets with filtering by type, host, and validation status.
 
-<img width="1423" height="718" alt="Titus Burp Suite extension secrets tab showing detected API keys and credentials with validation status" src="https://github.com/user-attachments/assets/0c0a17b1-2ae0-4305-a8c0-386ec08d366f" />
+<img width="2108" height="1634" alt="Titus Burp Suite extension secrets tab showing detected API keys and credentials with validation status" src="https://github.com/user-attachments/assets/245bc848-353e-48f8-a4c2-82f719057e28" />
 
 - **Validation status**: Shows whether secrets have been checked (Active/Inactive/Unknown)
 - **Filtering**: Click Type, Host, or Status buttons to filter by specific values; use the search box for text and regex matching
@@ -322,7 +322,7 @@ The extension adds a **Titus** tab to Burp with three sub-tabs:
 
 **Settings**: Configure scanning options, validation, and severity mappings.
 
-<img width="2164" height="1192" alt="Titus Burp Suite extension settings tab with scan configuration options" src="https://github.com/user-attachments/assets/396b3844-561c-4f3b-94b8-f9a9e3f5e5a1" />
+<img width="2164" height="1192" alt="Titus Burp Suite extension settings tab with scan configuration options" src="https://github.com/user-attachments/assets/4bdcfe59-8a0c-45eb-a476-6a6346dd1809" />
 
 - **Scan Settings**:
     - *Passive scanning*: Automatically scan all proxy traffic (enabled by default)
@@ -335,7 +335,7 @@ The extension adds a **Titus** tab to Burp with three sub-tabs:
 
 When viewing any request in Burp, a **Titus** tab appears in the response inspector if secrets are detected, providing quick access to findings without switching to the main Titus tab.
 
-<img width="2658" height="946" alt="Titus tab in Burp Suite response inspector highlighting detected secrets in HTTP responses" src="https://github.com/user-attachments/assets/c93faf24-bead-49d4-83ee-46980ace3cc7" />
+<img width="2658" height="946" alt="Titus tab in Burp Suite response inspector highlighting detected secrets in HTTP responses" src="https://github.com/user-attachments/assets/27cc1fa3-60aa-4aa2-bea0-1131d8bfaf6e" />
 
 ## Chrome Browser Extension for Secret Scanning
 
