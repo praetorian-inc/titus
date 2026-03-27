@@ -226,32 +226,12 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                 return;
             }
 
-            // No cached findings - scan the response
-            try {
-                TitusProcessScanner scanner = processManager.getScanner();
-                String content = currentResponse.toString();
-
-                List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
-                this.currentMatches = matches;
-                this.cachedFindings = null;
-                this.hasSecrets = !matches.isEmpty();
-
-                if (hasSecrets) {
-                    displaySecrets(matches);
-                    statusLabel.setText(matches.size() + " secret(s) found");
-                    statusLabel.setForeground(new Color(200, 50, 50));
-                } else {
-                    tableModel.setRowCount(0);
-                    detailsArea.setText("No secrets detected in this response.");
-                    statusLabel.setText("Clean");
-                    statusLabel.setForeground(new Color(50, 150, 50));
-                }
-            } catch (Exception e) {
-                tableModel.setRowCount(0);
-                detailsArea.setText("Error scanning for secrets: " + e.getMessage());
-                statusLabel.setText("Error");
-                statusLabel.setForeground(Color.RED);
-            }
+            // No cached findings — do NOT scan synchronously (this may run on the EDT).
+            // The passive scan will populate the DedupCache; re-select the request to see results.
+            tableModel.setRowCount(0);
+            detailsArea.setText("No cached findings for this URL.\nThe passive scan will populate findings automatically.\nRe-select this request after traffic has been scanned.");
+            statusLabel.setText("Not yet scanned");
+            statusLabel.setForeground(new Color(150, 150, 150));
         }
 
         private void displayCachedFindings(List<DedupCache.FindingRecord> findings) {
@@ -364,25 +344,11 @@ public class SecretEditorProvider implements HttpResponseEditorProvider {
                 return true;
             }
 
-            // No cached findings - scan the response
-            try {
-                TitusProcessScanner scanner = processManager.getScanner();
-                String content = requestResponse.response().toString();
-
-                List<TitusProcessScanner.Match> matches = scanner.scan(content, url);
-
-                lastCheckedRequestResponse = requestResponse;
-                lastCheckHadSecrets = !matches.isEmpty();
-
-                if (lastCheckHadSecrets) {
-                    this.currentMatches = matches;
-                }
-
-                return lastCheckHadSecrets;
-            } catch (Exception e) {
-                api.logging().logToError("Error checking for secrets: " + e.getMessage());
-                return false;
-            }
+            // No cached findings — do NOT scan synchronously here (this runs on the EDT).
+            // The passive scan will eventually populate the DedupCache for this URL.
+            lastCheckedRequestResponse = requestResponse;
+            lastCheckHadSecrets = false;
+            return false;
         }
 
         @Override

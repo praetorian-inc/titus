@@ -94,7 +94,9 @@ public class TitusExtension implements BurpExtension {
             // Save messages before unload
             if (settingsTab != null) {
                 settingsTab.saveMessages();
+                settingsTab.close();
             }
+            if (validationManager != null) validationManager.close();
             if (scanQueue != null) scanQueue.close();
             if (processManager != null) processManager.close();
         });
@@ -257,7 +259,7 @@ public class TitusExtension implements BurpExtension {
                     + "If secrets are found, they will also appear in the Titus response\n"
                     + "tab and the Titus extension tab.";
                 javax.swing.JOptionPane.showMessageDialog(
-                    null, msg, "Titus Scan", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+                    api.userInterface().swingUtils().suiteFrame(), msg, "Titus Scan", javax.swing.JOptionPane.INFORMATION_MESSAGE);
             }
 
             api.logging().logToOutput("Queued " + queued + " items for Titus scanning");

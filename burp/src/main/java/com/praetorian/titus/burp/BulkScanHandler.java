@@ -127,7 +127,7 @@ public class BulkScanHandler {
                     api.logging().logToOutput(message);
 
                     JOptionPane.showMessageDialog(
-                        null,
+                        api.userInterface().swingUtils().suiteFrame(),
                         message,
                         "Bulk Scan Complete",
                         JOptionPane.INFORMATION_MESSAGE
@@ -135,7 +135,7 @@ public class BulkScanHandler {
                 } catch (Exception e) {
                     api.logging().logToError("Bulk scan failed: " + e.getMessage());
                     JOptionPane.showMessageDialog(
-                        null,
+                        api.userInterface().swingUtils().suiteFrame(),
                         "Bulk scan failed: " + e.getMessage(),
                         "Bulk Scan Error",
                         JOptionPane.ERROR_MESSAGE

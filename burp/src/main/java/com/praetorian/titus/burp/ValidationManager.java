@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
@@ -25,6 +27,8 @@ public class ValidationManager {
 
     private volatile boolean validationEnabled = false;
     private final Map<String, DedupCache.ValidationStatus> validationCache = new ConcurrentHashMap<>();
+    private final ExecutorService validationExecutor = Executors.newFixedThreadPool(2,
+        r -> { Thread t = new Thread(r, "titus-validator"); t.setDaemon(true); return t; });
 
     public ValidationManager(MontoyaApi api, ProcessManager processManager, DedupCache dedupCache) {
         this.api = api;
@@ -86,7 +90,7 @@ public class ValidationManager {
         SwingUtilities.invokeLater(() -> callback.accept(record));
 
         // Perform validation in background
-        new Thread(() -> {
+        validationExecutor.submit(() -> {
             try {
                 ValidationResult result = validate(record.ruleId, record.secretContent, record.getNamedGroups());
 
@@ -119,7 +123,7 @@ public class ValidationManager {
                 }
                 SwingUtilities.invokeLater(() -> callback.accept(record));
             }
-        }, "titus-validator").start();
+        });
     }
 
     /**
@@ -193,6 +197,13 @@ public class ValidationManager {
         } catch (Exception e) {
             api.logging().logToError("Failed to save validation settings: " + e.getMessage());
         }
+    }
+
+    /**
+     * Shut down the validation executor on extension unload.
+     */
+    public void close() {
+        validationExecutor.shutdownNow();
     }
 
     /**

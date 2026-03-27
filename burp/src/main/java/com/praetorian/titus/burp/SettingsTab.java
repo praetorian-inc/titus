@@ -239,7 +239,7 @@ public class SettingsTab extends JPanel {
                 }
                 if (!validationManager.isValidationEnabled()) {
                     javax.swing.JOptionPane.showMessageDialog(
-                        secretsView,
+                        api.userInterface().swingUtils().suiteFrame(),
                         "Validation is not enabled.\n\nGo to Settings tab and check 'Enable secret validation' to use this feature.",
                         "Validation Disabled",
                         javax.swing.JOptionPane.WARNING_MESSAGE
@@ -453,7 +453,7 @@ public class SettingsTab extends JPanel {
         JButton clearCacheButton = new JButton("Clear Findings");
         clearCacheButton.addActionListener(e -> {
             int result = JOptionPane.showConfirmDialog(
-                this,
+                api.userInterface().swingUtils().suiteFrame(),
                 "This will permanently delete all findings, stored requests, and statistics.\nThe extension will start fresh as if no secrets were ever found.",
                 "Clear All Findings",
                 JOptionPane.YES_NO_OPTION,
@@ -655,6 +655,15 @@ public class SettingsTab extends JPanel {
                 SwingUtilities.invokeLater(() -> updateStats());
             }
         }, 1000, 1000); // Update every second
+    }
+
+    /**
+     * Clean up resources on extension unload.
+     */
+    public void close() {
+        if (statsTimer != null) {
+            statsTimer.cancel();
+        }
     }
 
     private int lastSeverityTableSize = 0;

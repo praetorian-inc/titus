@@ -61,7 +61,7 @@ public class FindingsExporter {
 
         if (findings.isEmpty()) {
             JOptionPane.showMessageDialog(
-                parent,
+                api.userInterface().swingUtils().suiteFrame(),
                 "No findings to export.",
                 "Export Findings",
                 JOptionPane.INFORMATION_MESSAGE
@@ -74,7 +74,7 @@ public class FindingsExporter {
         fileChooser.setDialogTitle("Export Findings to JSON");
         fileChooser.setSelectedFile(new File("titus-findings.json"));
 
-        int result = fileChooser.showSaveDialog(parent);
+        int result = fileChooser.showSaveDialog(api.userInterface().swingUtils().suiteFrame());
         if (result != JFileChooser.APPROVE_OPTION) {
             return;
         }
@@ -89,7 +89,7 @@ public class FindingsExporter {
         // Check if file exists
         if (file.exists()) {
             int overwrite = JOptionPane.showConfirmDialog(
-                parent,
+                api.userInterface().swingUtils().suiteFrame(),
                 "File already exists. Overwrite?",
                 "Confirm Overwrite",
                 JOptionPane.YES_NO_OPTION
@@ -126,7 +126,7 @@ public class FindingsExporter {
             api.logging().logToOutput("Exported " + exportedFindings.size() + " findings to " + file.getPath());
 
             JOptionPane.showMessageDialog(
-                parent,
+                api.userInterface().swingUtils().suiteFrame(),
                 "Exported " + exportedFindings.size() + " findings to:\n" + file.getPath(),
                 "Export Complete",
                 JOptionPane.INFORMATION_MESSAGE
@@ -135,7 +135,7 @@ public class FindingsExporter {
         } catch (Exception e) {
             api.logging().logToError("Export failed: " + e.getMessage());
             JOptionPane.showMessageDialog(
-                parent,
+                api.userInterface().swingUtils().suiteFrame(),
                 "Export failed: " + e.getMessage(),
                 "Export Error",
                 JOptionPane.ERROR_MESSAGE

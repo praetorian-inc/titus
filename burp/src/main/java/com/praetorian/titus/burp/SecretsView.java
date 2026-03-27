@@ -532,7 +532,7 @@ public class SecretsView extends JPanel {
         }
 
         int result = javax.swing.JOptionPane.showConfirmDialog(
-            this, message, "Delete Finding" + (toDelete.size() > 1 ? "s" : ""),
+            api.userInterface().swingUtils().suiteFrame(), message, "Delete Finding" + (toDelete.size() > 1 ? "s" : ""),
             javax.swing.JOptionPane.YES_NO_OPTION,
             javax.swing.JOptionPane.WARNING_MESSAGE
         );
@@ -1259,7 +1259,7 @@ public class SecretsView extends JPanel {
 
         // Confirm revalidation
         if (anyAlreadyValidated) {
-            int result = javax.swing.JOptionPane.showConfirmDialog(this,
+            int result = javax.swing.JOptionPane.showConfirmDialog(api.userInterface().swingUtils().suiteFrame(),
                 "This will re-check the secret and send new requests to the target. Current results may change.",
                 "Revalidate Secret", javax.swing.JOptionPane.OK_CANCEL_OPTION, javax.swing.JOptionPane.QUESTION_MESSAGE);
             if (result != javax.swing.JOptionPane.OK_OPTION) {
