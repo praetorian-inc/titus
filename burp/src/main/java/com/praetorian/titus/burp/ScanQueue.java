@@ -1,7 +1,6 @@
 package com.praetorian.titus.burp;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.http.message.HttpHeader;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -349,56 +348,15 @@ public class ScanQueue implements AutoCloseable {
         }
 
         private String buildRequestContent(ScanJob job) {
-            StringBuilder sb = new StringBuilder();
-
-            // Request line
-            sb.append(job.request().method()).append(" ");
-            sb.append(job.request().path()).append(" ");
-            sb.append(job.request().httpVersion()).append("\n");
-
-            // Request headers
-            for (HttpHeader header : job.request().headers()) {
-                sb.append(header.name()).append(": ").append(header.value()).append("\n");
-            }
-
-            sb.append("\n");
-
-            // Request body
-            if (job.request().body() != null && job.request().body().length() > 0) {
-                sb.append(job.request().body().toString());
-            }
-
-            return sb.toString();
+            // Return the raw request bytes as a string
+            // ScanJob extracts and stores the full HTTP request on creation
+            return job.requestContent();
         }
 
         private String buildResponseContent(ScanJob job) {
-            StringBuilder sb = new StringBuilder();
-
-            // Response status line
-            // httpVersion() may return "HTTP/1.1" or just "1.1" depending on Burp version
-            String httpVersion = job.response().httpVersion();
-            if (httpVersion.startsWith("HTTP/")) {
-                sb.append(httpVersion);
-            } else {
-                sb.append("HTTP/").append(httpVersion);
-            }
-            sb.append(" ");
-            sb.append(job.response().statusCode()).append(" ");
-            sb.append(job.response().reasonPhrase()).append("\n");
-
-            // Response headers
-            for (HttpHeader header : job.response().headers()) {
-                sb.append(header.name()).append(": ").append(header.value()).append("\n");
-            }
-
-            sb.append("\n");
-
-            // Response body
-            if (job.response().body() != null) {
-                sb.append(job.response().body().toString());
-            }
-
-            return sb.toString();
+            // Return the raw response bytes as a string
+            // ScanJob extracts and stores the full HTTP response on creation
+            return job.responseContent();
         }
 
         @Override

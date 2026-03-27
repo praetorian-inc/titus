@@ -1,6 +1,9 @@
 package com.praetorian.titus.burp;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.core.ByteArray;
+import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
 
@@ -163,8 +166,12 @@ public class RequestsView extends JPanel {
         if (selectedRow >= 0) {
             ScanJob job = tableModel.getJobAt(selectedRow);
             if (job != null) {
-                requestEditor.setRequest(job.request());
-                responseEditor.setResponse(job.response());
+                // Reconstruct HttpRequest/HttpResponse from stored byte arrays
+                // (ScanJob stores extracted data, not Burp API objects, for BApp compliance)
+                HttpRequest request = HttpRequest.httpRequest(ByteArray.byteArray(job.requestBytes()));
+                HttpResponse response = HttpResponse.httpResponse(ByteArray.byteArray(job.responseBytes()));
+                requestEditor.setRequest(request);
+                responseEditor.setResponse(response);
             }
         }
     }

@@ -1,7 +1,10 @@
 package com.praetorian.titus.burp;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.core.ByteArray;
 import burp.api.montoya.http.message.HttpRequestResponse;
+import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.scanner.audit.issues.AuditIssue;
 import burp.api.montoya.scanner.audit.issues.AuditIssueConfidence;
 import burp.api.montoya.scanner.audit.issues.AuditIssueSeverity;
@@ -27,6 +30,11 @@ public class IssueReporter {
      */
     public void reportIssue(ScanJob job, TitusProcessScanner.Match match) {
         try {
+            // Reconstruct HttpRequest/HttpResponse from stored byte arrays
+            // (ScanJob stores extracted data, not Burp API objects, for BApp compliance)
+            HttpRequest request = HttpRequest.httpRequest(ByteArray.byteArray(job.requestBytes()));
+            HttpResponse response = HttpResponse.httpResponse(ByteArray.byteArray(job.responseBytes()));
+
             // Create the audit issue
             AuditIssue issue = AuditIssue.auditIssue(
                 "Secret Detected: " + match.ruleName(),
@@ -38,7 +46,7 @@ public class IssueReporter {
                 buildBackground(match),
                 buildRemediationBackground(),
                 mapSeverity(match.ruleId()),
-                HttpRequestResponse.httpRequestResponse(job.request(), job.response())
+                HttpRequestResponse.httpRequestResponse(request, response)
             );
 
             // Add to site map
