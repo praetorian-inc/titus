@@ -20,6 +20,7 @@ public class RequestsFilterPanel extends JPanel {
     private final JButton clearButton;
 
     private Consumer<FilterCriteria> filterChangeListener;
+    private javax.swing.Timer searchDebounceTimer;
 
     // Known hosts and secret types (dynamically populated)
     private final Set<String> knownHosts = new TreeSet<>();
@@ -70,7 +71,6 @@ public class RequestsFilterPanel extends JPanel {
         searchField.addActionListener(e -> notifyFilterChange());
         // Also listen for text changes with a delay
         searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            private javax.swing.Timer timer;
             @Override
             public void insertUpdate(javax.swing.event.DocumentEvent e) { scheduleUpdate(); }
             @Override
@@ -78,10 +78,10 @@ public class RequestsFilterPanel extends JPanel {
             @Override
             public void changedUpdate(javax.swing.event.DocumentEvent e) { scheduleUpdate(); }
             private void scheduleUpdate() {
-                if (timer != null) timer.stop();
-                timer = new javax.swing.Timer(300, evt -> notifyFilterChange());
-                timer.setRepeats(false);
-                timer.start();
+                if (searchDebounceTimer != null) searchDebounceTimer.stop();
+                searchDebounceTimer = new javax.swing.Timer(300, evt -> notifyFilterChange());
+                searchDebounceTimer.setRepeats(false);
+                searchDebounceTimer.start();
             }
         });
         add(searchField);
@@ -178,6 +178,15 @@ public class RequestsFilterPanel extends JPanel {
     private void notifyFilterChange() {
         if (filterChangeListener != null) {
             filterChangeListener.accept(getFilterCriteria());
+        }
+    }
+
+    /**
+     * Cancel any pending debounce timer on extension unload.
+     */
+    public void close() {
+        if (searchDebounceTimer != null) {
+            searchDebounceTimer.stop();
         }
     }
 

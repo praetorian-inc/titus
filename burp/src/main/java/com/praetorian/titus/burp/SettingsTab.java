@@ -664,6 +664,9 @@ public class SettingsTab extends JPanel {
         if (statsTimer != null) {
             statsTimer.cancel();
         }
+        if (requestsView != null) {
+            requestsView.getFilterPanel().close();
+        }
     }
 
     private int lastSeverityTableSize = 0;
