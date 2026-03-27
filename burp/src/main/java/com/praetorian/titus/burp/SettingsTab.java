@@ -50,7 +50,7 @@ public class SettingsTab extends JPanel {
     private Timer statsTimer;
 
     // Callback for annotating scanned items (URL, secretsFound) -> annotation
-    private BiConsumer<String, Integer> annotationCallback;
+    private volatile BiConsumer<String, Integer> annotationCallback;
 
     public SettingsTab(MontoyaApi api, SeverityConfig severityConfig,
                        ScanQueue scanQueue, DedupCache dedupCache) {
@@ -140,11 +140,13 @@ public class SettingsTab extends JPanel {
 
             @Override
             public void onUrlScanned(String url, int secretsFound, ScanJob.Source source) {
-                // Forward to annotation callback (for Proxy history annotations)
-                BiConsumer<String, Integer> cb = annotationCallback;
-                if (cb != null) {
-                    cb.accept(url, secretsFound);
-                }
+                // Forward to annotation callback on EDT (for Proxy history annotations)
+                SwingUtilities.invokeLater(() -> {
+                    BiConsumer<String, Integer> cb = annotationCallback;
+                    if (cb != null) {
+                        cb.accept(url, secretsFound);
+                    }
+                });
             }
         });
 

@@ -27,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DedupCache {
 
     private static final String SETTINGS_KEY = "titus.dedup_cache";
+    private static final String SCHEMA_VERSION_KEY = "titus.dedup_schema_version";
+    private static final int CURRENT_SCHEMA_VERSION = 2; // v2: key = SHA-256(ruleId + secretContent), no URL in key
     private static final Gson GSON = new GsonBuilder()
         .registerTypeAdapter(Instant.class, new InstantTypeAdapter())
         .create();
@@ -89,6 +91,15 @@ public class DedupCache {
     }
 
     /**
+     * Atomically check-and-mark a URL+contentHash as processed.
+     * Returns true if it was NOT already processed (i.e., this call marked it).
+     * Eliminates TOCTOU race between hasProcessedUrl/markUrlProcessed.
+     */
+    public boolean markUrlProcessedIfNew(String url, String contentHash) {
+        return processedUrls.add(url + ":" + contentHash);
+    }
+
+    /**
      * Clear the processed URLs set (e.g., when clearing cache).
      */
     public void clearProcessedUrls() {
@@ -120,6 +131,63 @@ public class DedupCache {
     public boolean isNewFinding(String url, String secretContent, String ruleId) {
         String key = computeKey(secretContent, ruleId);
         return !cache.containsKey(key);
+    }
+
+    /**
+     * Atomically record an occurrence and return whether this is a new finding.
+     * This eliminates the TOCTOU race between isNewFinding() and recordOccurrence().
+     *
+     * @return true if this was a NEW finding (first time seen)
+     */
+    public boolean recordIfNew(String url, String secretContent, String ruleId, String ruleName,
+                               String requestContent, String responseContent,
+                               Map<String, String> namedGroups) {
+        String key = computeKey(secretContent, ruleId);
+        String normalizedUrl = normalizeUrl(url);
+        String host = SecretCategoryMapper.extractHost(url);
+
+        // Evict oldest entries if at max capacity before adding new
+        if (!cache.containsKey(key) && cache.size() >= MAX_CACHE_SIZE) {
+            evictOldest();
+        }
+
+        boolean[] isNew = { false };
+
+        cache.compute(key, (k, existing) -> {
+            if (existing == null) {
+                isNew[0] = true;
+                FindingRecord newRecord = new FindingRecord(
+                    ruleId,
+                    ruleName != null ? ruleName : SecretCategoryMapper.getDisplayName(ruleId, null),
+                    createPreview(secretContent, namedGroups),
+                    secretContent,
+                    host,
+                    new HashSet<>(Set.of(normalizedUrl)),
+                    1,
+                    Instant.now(),
+                    namedGroups
+                );
+                if (requestContent != null || responseContent != null) {
+                    newRecord.setHttpContent(requestContent, responseContent);
+                }
+                return newRecord;
+            } else {
+                isNew[0] = false;
+                existing.urls.add(normalizedUrl);
+                existing.hosts.add(host);
+                existing.occurrenceCount++;
+                if ((existing.namedGroups == null || existing.namedGroups.isEmpty()) && namedGroups != null) {
+                    existing.namedGroups = namedGroups;
+                }
+                return existing;
+            }
+        });
+
+        if (cache.size() % 10 == 0) {
+            saveToSettings();
+        }
+
+        return isNew[0];
     }
 
     /**
@@ -280,9 +348,6 @@ public class DedupCache {
     }
 
     /**
-     * Clear the cache.
-     */
-    /**
      * Remove a specific finding from the cache.
      *
      * @param record The finding record to remove
@@ -300,6 +365,7 @@ public class DedupCache {
     public void clear() {
         cache.clear();
         scannedUrls.clear();
+        processedUrls.clear();
         saveToSettings();
     }
 
@@ -310,6 +376,7 @@ public class DedupCache {
         try {
             String json = GSON.toJson(new ArrayList<>(cache.values()));
             api.persistence().extensionData().setString(SETTINGS_KEY, json);
+            api.persistence().extensionData().setString(SCHEMA_VERSION_KEY, String.valueOf(CURRENT_SCHEMA_VERSION));
         } catch (Exception e) {
             api.logging().logToError("Failed to save dedup cache: " + e.getMessage());
         }
@@ -320,6 +387,19 @@ public class DedupCache {
      */
     private void loadFromSettings() {
         try {
+            // Check schema version — clear stale data from older key formats
+            String versionStr = api.persistence().extensionData().getString(SCHEMA_VERSION_KEY);
+            int storedVersion = 0;
+            if (versionStr != null) {
+                try { storedVersion = Integer.parseInt(versionStr); } catch (NumberFormatException ignored) {}
+            }
+            if (storedVersion < CURRENT_SCHEMA_VERSION) {
+                api.logging().logToOutput("Dedup cache schema upgraded (v" + storedVersion + " -> v" + CURRENT_SCHEMA_VERSION + "), clearing old entries");
+                api.persistence().extensionData().setString(SETTINGS_KEY, "");
+                api.persistence().extensionData().setString(SCHEMA_VERSION_KEY, String.valueOf(CURRENT_SCHEMA_VERSION));
+                return;
+            }
+
             String json = api.persistence().extensionData().getString(SETTINGS_KEY);
             if (json != null && !json.isEmpty()) {
                 Type listType = new TypeToken<List<FindingRecord>>(){}.getType();
@@ -328,14 +408,21 @@ public class DedupCache {
                     for (FindingRecord record : records) {
                         String secretForKey = record.secretContent != null ? record.secretContent : record.secretPreview;
                         String key = computeKey(secretForKey, record.ruleId);
+
+                        // Gson deserializes as plain HashSet — upgrade to concurrent sets
+                        Set<String> concurrentUrls = ConcurrentHashMap.newKeySet();
+                        if (record.urls != null) concurrentUrls.addAll(record.urls);
+                        record.urls = concurrentUrls;
+
+                        Set<String> concurrentHosts = ConcurrentHashMap.newKeySet();
+                        if (record.hosts != null) concurrentHosts.addAll(record.hosts);
+                        record.hosts = concurrentHosts;
+
                         String url = !record.urls.isEmpty() ? record.urls.iterator().next() : null;
 
                         // Fix missing host data from older cache versions
                         if (record.primaryHost == null || record.primaryHost.isEmpty()) {
                             record.primaryHost = url != null ? SecretCategoryMapper.extractHost(url) : "unknown";
-                        }
-                        if (record.hosts == null) {
-                            record.hosts = new HashSet<>();
                         }
                         if (record.hosts.isEmpty()) {
                             for (String u : record.urls) {
@@ -465,23 +552,23 @@ public class DedupCache {
         public String primaryHost;    // Host where first seen
         public Set<String> urls;
         public Set<String> hosts;     // All hosts where seen
-        public int occurrenceCount;
+        public volatile int occurrenceCount;
         public Instant firstSeen;
-        public ValidationStatus validationStatus;
-        public String validationMessage;
-        public Instant validatedAt;
+        public volatile ValidationStatus validationStatus;
+        public volatile String validationMessage;
+        public volatile Instant validatedAt;
         public String responseSnippet; // Snippet of response around the secret
         public String requestContent;  // Full request content for display
         public String responseContent; // Full response content for display
-        public Map<String, String> validationDetails;
-        public Map<String, String> namedGroups;  // Named capture groups from regex match
-        public boolean hidden;  // User can hide secrets they don't want to see
-        public ValidationStatus preMarkFPStatus;  // Validation status before FP marking
-        public String severityOverride;  // Per-finding severity override (HIGH/MEDIUM/LOW/INFORMATION), null = use config default
+        public volatile Map<String, String> validationDetails;
+        public volatile Map<String, String> namedGroups;  // Named capture groups from regex match
+        public volatile boolean hidden;  // User can hide secrets they don't want to see
+        public volatile ValidationStatus preMarkFPStatus;  // Validation status before FP marking
+        public volatile String severityOverride;  // Per-finding severity override (HIGH/MEDIUM/LOW/INFORMATION), null = use config default
 
         public FindingRecord() {
-            this.urls = new HashSet<>();
-            this.hosts = new HashSet<>();
+            this.urls = ConcurrentHashMap.newKeySet();
+            this.hosts = ConcurrentHashMap.newKeySet();
             this.validationStatus = ValidationStatus.NOT_CHECKED;
             this.validationDetails = new HashMap<>();
             this.namedGroups = new HashMap<>();
@@ -502,8 +589,9 @@ public class DedupCache {
             this.secretPreview = secretPreview;
             this.secretContent = secretContent;
             this.primaryHost = primaryHost;
-            this.urls = urls;
-            this.hosts = new HashSet<>();
+            this.urls = ConcurrentHashMap.newKeySet();
+            this.urls.addAll(urls);
+            this.hosts = ConcurrentHashMap.newKeySet();
             if (primaryHost != null && !primaryHost.isEmpty()) {
                 this.hosts.add(primaryHost);
             }

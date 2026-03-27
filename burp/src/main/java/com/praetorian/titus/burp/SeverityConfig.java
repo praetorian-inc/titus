@@ -8,6 +8,7 @@ import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Configurable severity mapping for Titus rules.
@@ -49,8 +50,8 @@ public class SeverityConfig {
     }
 
     private final MontoyaApi api;
-    private final Map<String, AuditIssueSeverity> ruleOverrides = new HashMap<>();
-    private final Map<String, AuditIssueSeverity> categoryDefaults = new HashMap<>();
+    private final Map<String, AuditIssueSeverity> ruleOverrides = new ConcurrentHashMap<>();
+    private final Map<String, AuditIssueSeverity> categoryDefaults = new ConcurrentHashMap<>();
 
     public SeverityConfig(MontoyaApi api) {
         this.api = api;

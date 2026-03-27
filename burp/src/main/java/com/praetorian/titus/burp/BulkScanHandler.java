@@ -76,8 +76,8 @@ public class BulkScanHandler {
                     String contentHash = hashContent(item.response().body().toString());
                     String url = item.request().url();
 
-                    // Use dedup cache to check if already processed
-                    if (dedupCache.hasProcessedUrl(url, contentHash)) {
+                    // Atomic check-and-mark to avoid TOCTOU race on double bulk scan
+                    if (!dedupCache.markUrlProcessedIfNew(url, contentHash)) {
                         alreadyScanned++;
                         continue;
                     }
@@ -92,7 +92,6 @@ public class BulkScanHandler {
 
                     if (scanQueue.enqueue(job)) {
                         queued++;
-                        dedupCache.markUrlProcessed(url, contentHash);
                     } else {
                         skipped++;
                     }

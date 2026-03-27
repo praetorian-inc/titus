@@ -261,11 +261,9 @@ public class ScanQueue implements AutoCloseable {
                     SecretCategoryMapper.Category primaryCategory = null;
 
                     for (TitusProcessScanner.Match match : matches) {
-                        boolean isNew = dedupCache.isNewFinding(url, match.matchedContent(), match.ruleId());
-
-                        // Always record occurrence to track URLs and increment count
-                        dedupCache.recordOccurrence(url, match.matchedContent(), match.ruleId(), match.ruleName(),
-                                                   requestContent, responseContent, match.namedGroups());
+                        // Atomic check-and-record: eliminates TOCTOU race between isNewFinding/recordOccurrence
+                        boolean isNew = dedupCache.recordIfNew(url, match.matchedContent(), match.ruleId(), match.ruleName(),
+                                                              requestContent, responseContent, match.namedGroups());
 
                         if (!isNew) {
                             log("Worker " + id + " duplicate at new URL: " + match.ruleId());
@@ -317,6 +315,13 @@ public class ScanQueue implements AutoCloseable {
             } catch (IOException e) {
                 logError("Worker " + id + " batch scan error: " + e.getMessage());
                 e.printStackTrace();
+                // Ensure per-URL callbacks fire even on error, to prevent pendingAnnotations leaks
+                ScanQueueListener l = listener;
+                if (l != null) {
+                    for (ScanJob job : batch) {
+                        l.onUrlScanned(job.url(), 0, job.source());
+                    }
+                }
             }
         }
 

@@ -10,7 +10,9 @@ import burp.api.montoya.ui.contextmenu.ContextMenuItemsProvider;
 import java.awt.Component;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.swing.JMenuItem;
 
 /**
@@ -31,6 +33,7 @@ public class TitusExtension implements BurpExtension {
     private SettingsTab settingsTab;
     private BulkScanHandler bulkScanHandler;
     private ValidationManager validationManager;
+    private final AtomicBoolean initialized = new AtomicBoolean(false);
 
     @Override
     public void initialize(MontoyaApi api) {
@@ -44,8 +47,6 @@ public class TitusExtension implements BurpExtension {
             api.logging().logToOutput("Found titus binary at: " + titusPath);
 
             this.processManager = new ProcessManager(api, titusPath);
-            this.processManager.initialize();
-
             this.severityConfig = new SeverityConfig(api);
             this.dedupCache = new DedupCache(api);
             this.issueReporter = new IssueReporter(api, severityConfig);
@@ -79,10 +80,20 @@ public class TitusExtension implements BurpExtension {
                 new SecretEditorProvider(api, processManager, dedupCache)
             );
 
-            api.logging().logToOutput("Titus Secret Scanner initialized successfully");
-            api.logging().logToOutput("  - Titus version: " + processManager.getScanner().getVersion());
-            api.logging().logToOutput("  - Passive scanning: ENABLED");
-            api.logging().logToOutput("  - Active scanning: Right-click context menu");
+            // Initialize the titus subprocess off-EDT to avoid blocking the UI
+            CompletableFuture.runAsync(() -> {
+                try {
+                    processManager.initialize();
+                    initialized.set(true);
+                    api.logging().logToOutput("Titus Secret Scanner initialized successfully");
+                    api.logging().logToOutput("  - Titus version: " + processManager.getScanner().getVersion());
+                    api.logging().logToOutput("  - Passive scanning: ENABLED");
+                    api.logging().logToOutput("  - Active scanning: Right-click context menu");
+                } catch (Exception e) {
+                    api.logging().logToError("Failed to initialize Titus process: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            });
 
         } catch (Exception e) {
             api.logging().logToError("Failed to initialize Titus: " + e.getMessage());
@@ -240,14 +251,16 @@ public class TitusExtension implements BurpExtension {
 
                 try {
                     String url = item.request().url();
-                    pendingAnnotations.put(url, item);
-                    scanQueue.enqueue(new ScanJob(
+                    boolean enqueued = scanQueue.enqueue(new ScanJob(
                         item.request(),
                         item.response(),
                         ScanJob.Source.ACTIVE,
                         scanRequest
                     ));
-                    queued++;
+                    if (enqueued) {
+                        pendingAnnotations.put(url, item);
+                        queued++;
+                    }
                 } catch (Exception e) {
                     api.logging().logToError("Failed to queue item for scanning: " + e.getMessage());
                 }
