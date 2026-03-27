@@ -24,6 +24,7 @@ public class SettingsTab extends JPanel {
 
     private static final String SETTINGS_PASSIVE_ENABLED = "titus.passive_enabled";
     private static final String SETTINGS_SCAN_REQUESTS = "titus.scan_requests";
+    private static final String SETTINGS_SCOPE_ONLY = "titus.scope_only";
 
     private final MontoyaApi api;
     private final SeverityConfig severityConfig;
@@ -32,6 +33,7 @@ public class SettingsTab extends JPanel {
 
     private JCheckBox passiveScanCheckbox;
     private JCheckBox scanRequestsCheckbox;
+    private JCheckBox scopeOnlyCheckbox;
     private JCheckBox validationEnabledCheckbox;
     private ScanParametersPanel parametersPanel;
     private RequestsTableModel requestsTableModel;
@@ -195,6 +197,10 @@ public class SettingsTab extends JPanel {
         return scanRequestsCheckbox != null && scanRequestsCheckbox.isSelected();
     }
 
+    public boolean isScopeOnlyEnabled() {
+        return scopeOnlyCheckbox != null && scopeOnlyCheckbox.isSelected();
+    }
+
     /**
      * Get the scan parameters panel for accessing current settings.
      */
@@ -318,6 +324,11 @@ public class SettingsTab extends JPanel {
         passiveScanCheckbox.setSelected(true);
         passiveScanCheckbox.addActionListener(e -> saveSettings());
 
+        scopeOnlyCheckbox = new JCheckBox("Scan only in-scope traffic");
+        scopeOnlyCheckbox.setSelected(false);
+        scopeOnlyCheckbox.setToolTipText("When enabled, passive scanning only processes requests whose URL is in Burp's Target scope");
+        scopeOnlyCheckbox.addActionListener(e -> saveSettings());
+
         scanRequestsCheckbox = new JCheckBox("Scan request bodies (in addition to responses)");
         scanRequestsCheckbox.setSelected(false);
         scanRequestsCheckbox.addActionListener(e -> saveSettings());
@@ -339,6 +350,8 @@ public class SettingsTab extends JPanel {
         validationWarning.setFont(validationWarning.getFont().deriveFont(Font.ITALIC, 10f));
 
         panel.add(passiveScanCheckbox);
+        panel.add(Box.createVerticalStrut(3));
+        panel.add(scopeOnlyCheckbox);
         panel.add(Box.createVerticalStrut(3));
         panel.add(scanRequestsCheckbox);
         panel.add(Box.createVerticalStrut(5));
@@ -465,8 +478,8 @@ public class SettingsTab extends JPanel {
                 dedupCache.clear();
                 requestsView.clear();
                 messagePersistence.clear();
-                if (secretsTableModel != null) {
-                    secretsTableModel.refresh();
+                if (secretsView != null) {
+                    secretsView.refresh();
                 }
                 api.logging().logToOutput("Findings and requests cleared");
                 updateStats();
@@ -629,6 +642,11 @@ public class SettingsTab extends JPanel {
             if (scanRequests != null) {
                 scanRequestsCheckbox.setSelected(Boolean.parseBoolean(scanRequests));
             }
+
+            String scopeOnly = api.persistence().extensionData().getString(SETTINGS_SCOPE_ONLY);
+            if (scopeOnly != null) {
+                scopeOnlyCheckbox.setSelected(Boolean.parseBoolean(scopeOnly));
+            }
         } catch (Exception e) {
             api.logging().logToError("Failed to load settings: " + e.getMessage());
         }
@@ -643,6 +661,10 @@ public class SettingsTab extends JPanel {
             api.persistence().extensionData().setString(
                 SETTINGS_SCAN_REQUESTS,
                 String.valueOf(scanRequestsCheckbox.isSelected())
+            );
+            api.persistence().extensionData().setString(
+                SETTINGS_SCOPE_ONLY,
+                String.valueOf(scopeOnlyCheckbox.isSelected())
             );
         } catch (Exception e) {
             api.logging().logToError("Failed to save settings: " + e.getMessage());

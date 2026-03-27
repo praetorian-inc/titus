@@ -184,6 +184,11 @@ public class TitusExtension implements BurpExtension {
                 return ResponseReceivedAction.continueWith(response);
             }
 
+            // Scope filter: skip out-of-scope traffic when enabled
+            if (settingsTab.isScopeOnlyEnabled() && !api.scope().isInScope(response.initiatingRequest().url())) {
+                return ResponseReceivedAction.continueWith(response);
+            }
+
             // Fast-path filter: skip non-scannable content
             if (!fastPathFilter.shouldScan(response)) {
                 return ResponseReceivedAction.continueWith(response);
