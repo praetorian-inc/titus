@@ -1,0 +1,19 @@
+# pkg/validator/validators/google-maps.yaml
+# Google Maps API keys validated against the Geocoding API
+# The generic google.yaml validator uses the YouTube Data API, which returns
+# 403 for keys restricted to Maps Platform APIs — causing false negatives.
+# This validator targets Maps-restricted keys specifically.
+validators:
+  - name: google-maps-api-key
+    rule_ids:
+      - np.google.8
+    http:
+      method: GET
+      url: https://maps.googleapis.com/maps/api/geocode/json?address=1
+      auth:
+        type: query
+        secret_group: "key"
+        query_param: "key"
+      success_codes: [200]
+      failure_codes: [400, 403]
+      failure_body_contains: "REQUEST_DENIED"
