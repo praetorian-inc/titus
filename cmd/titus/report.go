@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/praetorian-inc/titus/pkg/rule"
@@ -18,6 +21,7 @@ var (
 	reportDatastore string
 	reportFormat    string
 	reportColor     string
+	summaryFormat   string
 )
 
 // styles holds color formatters matching NoseyParker color scheme
@@ -71,10 +75,124 @@ var reportCmd = &cobra.Command{
 	RunE:  runReport,
 }
 
+var summaryCmd = &cobra.Command{
+	Use:   "summary",
+	Short: "Show a summary of findings by rule type",
+	Long:  "Display total counts and per-rule breakdown of findings and matches",
+	RunE:  runSummary,
+}
+
+// summaryResult holds the aggregated summary data for output.
+type summaryResult struct {
+	TotalFindings int           `json:"total_findings"`
+	TotalMatches  int           `json:"total_matches"`
+	Rules         []ruleSummary `json:"rules"`
+}
+
+// ruleSummary holds per-rule aggregated counts.
+type ruleSummary struct {
+	RuleID   string `json:"rule_id"`
+	RuleName string `json:"rule_name"`
+	Findings int    `json:"findings"`
+	Matches  int    `json:"matches"`
+}
+
+// aggregateSummary builds per-rule summary stats from findings and their matches.
+func aggregateSummary(findings []*types.Finding, matchesByFinding map[string][]*types.Match, ruleMap map[string]*types.Rule) summaryResult {
+	type stats struct {
+		name     string
+		findings int
+		matches  int
+	}
+	statsMap := make(map[string]*stats)
+
+	for _, f := range findings {
+		if _, exists := statsMap[f.RuleID]; !exists {
+			name := f.RuleID
+			if r, ok := ruleMap[f.RuleID]; ok {
+				name = r.Name
+			}
+			statsMap[f.RuleID] = &stats{name: name}
+		}
+		statsMap[f.RuleID].findings++
+		statsMap[f.RuleID].matches += len(matchesByFinding[f.ID])
+	}
+
+	// Build sorted slice
+	result := summaryResult{}
+	for ruleID, s := range statsMap {
+		result.Rules = append(result.Rules, ruleSummary{
+			RuleID:   ruleID,
+			RuleName: s.name,
+			Findings: s.findings,
+			Matches:  s.matches,
+		})
+		result.TotalFindings += s.findings
+		result.TotalMatches += s.matches
+	}
+
+	sort.Slice(result.Rules, func(i, j int) bool {
+		if result.Rules[i].Findings != result.Rules[j].Findings {
+			return result.Rules[i].Findings > result.Rules[j].Findings
+		}
+		return result.Rules[i].RuleID < result.Rules[j].RuleID
+	})
+
+	return result
+}
+
+func outputSummaryHuman(out io.Writer, summary summaryResult, colorEnabled bool) error {
+	if summary.TotalFindings == 0 {
+		fmt.Fprintf(out, "No findings.\n")
+		return nil
+	}
+
+	s := newStyles(colorEnabled)
+
+	fmt.Fprintf(out, "%s %d findings, %d matches\n\n",
+		s.heading.Sprint("Total:"), summary.TotalFindings, summary.TotalMatches)
+
+	// Find longest rule name for column width
+	maxNameLen := len("Rule")
+	for _, r := range summary.Rules {
+		if len(r.RuleName) > maxNameLen {
+			maxNameLen = len(r.RuleName)
+		}
+	}
+
+	// Print header
+	fmt.Fprintf(out, " %s   %s   %s \n",
+		s.heading.Sprintf("%-*s", maxNameLen, "Rule"),
+		s.heading.Sprint("Findings"),
+		s.heading.Sprint("Matches"))
+
+	// Print separator line
+	separatorLen := maxNameLen + 3 + 10 + 3 + 8
+	fmt.Fprintf(out, "%s\n", strings.Repeat("─", separatorLen))
+
+	// Print data rows
+	for _, r := range summary.Rules {
+		fmt.Fprintf(out, " %s   %8d   %7d \n",
+			s.ruleName.Sprintf("%-*s", maxNameLen, r.RuleName), r.Findings, r.Matches)
+	}
+
+	return nil
+}
+
+func outputSummaryJSON(out io.Writer, summary summaryResult) error {
+	encoder := json.NewEncoder(out)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(summary)
+}
+
 func init() {
-	reportCmd.Flags().StringVar(&reportDatastore, "datastore", "titus.ds", "Path to datastore directory or file")
+	reportCmd.PersistentFlags().StringVar(&reportDatastore, "datastore", "titus.ds", "Path to datastore directory or file")
 	reportCmd.Flags().StringVar(&reportFormat, "format", "human", "Output format: human, json, sarif")
-	reportCmd.Flags().StringVar(&reportColor, "color", "auto", "Color output: auto, always, never")
+	reportCmd.PersistentFlags().StringVar(&reportColor, "color", "auto", "Color output: auto, always, never")
+	reportCmd.PersistentFlags().Lookup("color").NoOptDefVal = "always"
+
+	reportCmd.AddCommand(summaryCmd)
+	summaryCmd.Flags().StringVar(&summaryFormat, "format", "human", "Output format: human, json")
 }
 
 func runReport(cmd *cobra.Command, args []string) error {
@@ -138,6 +256,77 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("SARIF output not yet implemented")
 	default:
 		return fmt.Errorf("unknown output format: %s", reportFormat)
+	}
+}
+
+func runSummary(cmd *cobra.Command, args []string) error {
+	// Determine store path (inherited from parent report command)
+	storePath := reportDatastore
+
+	if storePath == ":memory:" {
+		return fmt.Errorf("cannot report from in-memory store")
+	}
+
+	info, err := os.Stat(storePath)
+	if err != nil {
+		return fmt.Errorf("datastore not found: %s", storePath)
+	}
+	if info.IsDir() {
+		storePath = filepath.Join(storePath, "datastore.db")
+	}
+
+	s, err := store.New(store.Config{
+		Path: storePath,
+	})
+	if err != nil {
+		return fmt.Errorf("opening datastore: %w", err)
+	}
+	defer s.Close()
+
+	findings, err := s.GetFindings()
+	if err != nil {
+		return fmt.Errorf("retrieving findings: %w", err)
+	}
+
+	matches, err := s.GetAllMatches()
+	if err != nil {
+		return fmt.Errorf("retrieving matches: %w", err)
+	}
+
+	loader := rule.NewLoader()
+	rules, err := loader.LoadBuiltinRules()
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
+	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
+	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
+
+	// Determine color setting (inherited from parent)
+	switch reportColor {
+	case "always":
+		color.NoColor = false
+	case "never":
+		color.NoColor = true
+	default:
+		if !term.IsTerminal(int(os.Stdout.Fd())) || os.Getenv("NO_COLOR") != "" {
+			color.NoColor = true
+		} else {
+			color.NoColor = false
+		}
+	}
+
+	switch summaryFormat {
+	case "json":
+		return outputSummaryJSON(cmd.OutOrStdout(), summary)
+	case "human":
+		return outputSummaryHuman(cmd.OutOrStdout(), summary, !color.NoColor)
+	default:
+		return fmt.Errorf("unknown output format: %s", summaryFormat)
 	}
 }
 

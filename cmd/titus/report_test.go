@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -313,5 +315,193 @@ func TestSnippetParts_Truncation(t *testing.T) {
 	}
 	if !strings.Contains(parts.matching, "MATCH") {
 		t.Error("Expected matching to contain 'MATCH'")
+	}
+}
+
+func TestAggregateSummary_MultipleRules(t *testing.T) {
+	findings := []*types.Finding{
+		{ID: "f1", RuleID: "rule-a", Groups: [][]byte{[]byte("secret1")}},
+		{ID: "f2", RuleID: "rule-a", Groups: [][]byte{[]byte("secret2")}},
+		{ID: "f3", RuleID: "rule-a", Groups: [][]byte{[]byte("secret3")}},
+		{ID: "f4", RuleID: "rule-b", Groups: [][]byte{[]byte("token1")}},
+		{ID: "f5", RuleID: "rule-c", Groups: [][]byte{[]byte("key1")}},
+		{ID: "f6", RuleID: "rule-c", Groups: [][]byte{[]byte("key2")}},
+	}
+
+	// 2 matches per finding for rule-a, 3 for rule-b, 1 for rule-c
+	matchesByFinding := map[string][]*types.Match{
+		"f1": {{RuleID: "rule-a"}, {RuleID: "rule-a"}},
+		"f2": {{RuleID: "rule-a"}, {RuleID: "rule-a"}},
+		"f3": {{RuleID: "rule-a"}, {RuleID: "rule-a"}},
+		"f4": {{RuleID: "rule-b"}, {RuleID: "rule-b"}, {RuleID: "rule-b"}},
+		"f5": {{RuleID: "rule-c"}},
+		"f6": {{RuleID: "rule-c"}},
+	}
+
+	ruleMap := map[string]*types.Rule{
+		"rule-a": {ID: "rule-a", Name: "AWS API Key"},
+		"rule-b": {ID: "rule-b", Name: "GitHub Token"},
+		"rule-c": {ID: "rule-c", Name: "Slack Webhook"},
+	}
+
+	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
+
+	// Check totals
+	if summary.TotalFindings != 6 {
+		t.Errorf("Expected 6 total findings, got %d", summary.TotalFindings)
+	}
+	if summary.TotalMatches != 11 {
+		t.Errorf("Expected 11 total matches, got %d", summary.TotalMatches)
+	}
+
+	// Check sorted by finding count descending
+	if len(summary.Rules) != 3 {
+		t.Fatalf("Expected 3 rules, got %d", len(summary.Rules))
+	}
+	if summary.Rules[0].RuleName != "AWS API Key" {
+		t.Errorf("Expected first rule to be 'AWS API Key', got %q", summary.Rules[0].RuleName)
+	}
+	if summary.Rules[0].Findings != 3 {
+		t.Errorf("Expected 3 findings for AWS API Key, got %d", summary.Rules[0].Findings)
+	}
+	if summary.Rules[0].Matches != 6 {
+		t.Errorf("Expected 6 matches for AWS API Key, got %d", summary.Rules[0].Matches)
+	}
+	if summary.Rules[1].RuleName != "Slack Webhook" {
+		t.Errorf("Expected second rule to be 'Slack Webhook', got %q", summary.Rules[1].RuleName)
+	}
+	if summary.Rules[2].RuleName != "GitHub Token" {
+		t.Errorf("Expected third rule to be 'GitHub Token', got %q", summary.Rules[2].RuleName)
+	}
+}
+
+func TestAggregateSummary_Empty(t *testing.T) {
+	summary := aggregateSummary(nil, nil, nil)
+
+	if summary.TotalFindings != 0 {
+		t.Errorf("Expected 0 total findings, got %d", summary.TotalFindings)
+	}
+	if summary.TotalMatches != 0 {
+		t.Errorf("Expected 0 total matches, got %d", summary.TotalMatches)
+	}
+	if len(summary.Rules) != 0 {
+		t.Errorf("Expected 0 rules, got %d", len(summary.Rules))
+	}
+}
+
+func TestAggregateSummary_UnknownRule(t *testing.T) {
+	findings := []*types.Finding{
+		{ID: "f1", RuleID: "unknown-rule", Groups: [][]byte{[]byte("secret1")}},
+	}
+	matchesByFinding := map[string][]*types.Match{
+		"f1": {{RuleID: "unknown-rule"}},
+	}
+	// ruleMap does not contain "unknown-rule"
+	ruleMap := map[string]*types.Rule{}
+
+	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
+
+	if len(summary.Rules) != 1 {
+		t.Fatalf("Expected 1 rule, got %d", len(summary.Rules))
+	}
+	// Should fall back to raw RuleID as display name
+	if summary.Rules[0].RuleName != "unknown-rule" {
+		t.Errorf("Expected rule name fallback to 'unknown-rule', got %q", summary.Rules[0].RuleName)
+	}
+}
+
+func TestOutputSummaryHuman(t *testing.T) {
+	summary := summaryResult{
+		TotalFindings: 6,
+		TotalMatches:  11,
+		Rules: []ruleSummary{
+			{RuleID: "rule-a", RuleName: "AWS API Key", Findings: 3, Matches: 6},
+			{RuleID: "rule-c", RuleName: "Slack Webhook", Findings: 2, Matches: 2},
+			{RuleID: "rule-b", RuleName: "GitHub Token", Findings: 1, Matches: 3},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := outputSummaryHuman(&buf, summary, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+
+	// Check total line
+	if !strings.Contains(output, "Total: 6 findings, 11 matches") {
+		t.Errorf("Expected total line, got:\n%s", output)
+	}
+
+	// Check all rule names appear
+	for _, name := range []string{"AWS API Key", "Slack Webhook", "GitHub Token"} {
+		if !strings.Contains(output, name) {
+			t.Errorf("Expected output to contain %q, got:\n%s", name, output)
+		}
+	}
+
+	// Check header row
+	if !strings.Contains(output, "Rule") || !strings.Contains(output, "Findings") || !strings.Contains(output, "Matches") {
+		t.Errorf("Expected table headers, got:\n%s", output)
+	}
+
+	// Check separator line
+	if !strings.Contains(output, "─") {
+		t.Errorf("Expected separator line with box-drawing chars, got:\n%s", output)
+	}
+}
+
+func TestOutputSummaryHuman_Empty(t *testing.T) {
+	summary := summaryResult{}
+
+	var buf bytes.Buffer
+	err := outputSummaryHuman(&buf, summary, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "No findings") {
+		t.Errorf("Expected 'No findings' message, got:\n%s", output)
+	}
+}
+
+func TestOutputSummaryJSON(t *testing.T) {
+	summary := summaryResult{
+		TotalFindings: 4,
+		TotalMatches:  10,
+		Rules: []ruleSummary{
+			{RuleID: "rule-a", RuleName: "AWS API Key", Findings: 3, Matches: 7},
+			{RuleID: "rule-b", RuleName: "GitHub Token", Findings: 1, Matches: 3},
+		},
+	}
+
+	var buf bytes.Buffer
+	err := outputSummaryJSON(&buf, summary)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Parse the output as JSON
+	var parsed summaryResult
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON output: %v\nOutput:\n%s", err, buf.String())
+	}
+
+	if parsed.TotalFindings != 4 {
+		t.Errorf("Expected total_findings=4, got %d", parsed.TotalFindings)
+	}
+	if parsed.TotalMatches != 10 {
+		t.Errorf("Expected total_matches=10, got %d", parsed.TotalMatches)
+	}
+	if len(parsed.Rules) != 2 {
+		t.Fatalf("Expected 2 rules, got %d", len(parsed.Rules))
+	}
+	if parsed.Rules[0].RuleID != "rule-a" {
+		t.Errorf("Expected first rule_id='rule-a', got %q", parsed.Rules[0].RuleID)
+	}
+	if parsed.Rules[0].RuleName != "AWS API Key" {
+		t.Errorf("Expected first rule_name='AWS API Key', got %q", parsed.Rules[0].RuleName)
 	}
 }
