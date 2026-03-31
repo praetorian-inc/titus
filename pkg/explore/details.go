@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -99,9 +100,22 @@ func (dp detailsPane) View() string {
 
 		// Groups with named groups if available
 		for i, g := range f.Groups {
-			lines = append(lines, fmt.Sprintf("  %s %s",
-				fieldLabelStyle.Render(fmt.Sprintf("Group %d:", i+1)),
-				snippetMatchStyle.Render(sanitizeForDisplay(g))))
+			label := fmt.Sprintf("Group %d:", i+1)
+			val := sanitizeForDisplay(g)
+			labelWidth := len(label) + 3 // "  " + label + " "
+			wrapWidth := contentWidth - labelWidth
+			if wrapWidth < 20 {
+				wrapWidth = 20
+			}
+			wrapped := wrapLine(val, wrapWidth)
+			indent := strings.Repeat(" ", labelWidth)
+			for j, line := range wrapped {
+				if j == 0 {
+					lines = append(lines, "  "+fieldLabelStyle.Render(label)+" "+snippetMatchStyle.Render(line))
+				} else {
+					lines = append(lines, indent+snippetMatchStyle.Render(line))
+				}
+			}
 		}
 
 		if f.AnnotationStatus != "" {
@@ -146,7 +160,7 @@ func (dp detailsPane) View() string {
 
 	var b strings.Builder
 	for i, line := range visibleLines {
-		b.WriteString(padRight(truncateString(line, contentWidth), contentWidth))
+		b.WriteString(padRight(ansi.Truncate(line, contentWidth, ""), contentWidth))
 		if i < len(visibleLines)-1 {
 			b.WriteString("\n")
 		}
@@ -239,9 +253,22 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 	if len(m.NamedGroups) > 0 {
 		lines = append(lines, fmt.Sprintf("  %s", fieldLabelStyle.Render("Named Groups:")))
 		for name, val := range m.NamedGroups {
-			lines = append(lines, fmt.Sprintf("    %s: %s",
-				fieldLabelStyle.Render(name),
-				snippetMatchStyle.Render(truncateString(sanitizeForDisplay(val), 60))))
+			label := name + ":"
+			sanitized := sanitizeForDisplay(val)
+			labelWidth := len(label) + 5 // "    " + label + " "
+			wrapWidth := maxWidth - labelWidth
+			if wrapWidth < 20 {
+				wrapWidth = 20
+			}
+			wrapped := wrapLine(sanitized, wrapWidth)
+			indent := strings.Repeat(" ", labelWidth)
+			for j, line := range wrapped {
+				if j == 0 {
+					lines = append(lines, "    "+fieldLabelStyle.Render(label)+" "+snippetMatchStyle.Render(line))
+				} else {
+					lines = append(lines, indent+snippetMatchStyle.Render(line))
+				}
+			}
 		}
 	}
 
@@ -282,6 +309,25 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 	}
 
 	return lines
+}
+
+// wrapLine splits a string into lines of at most maxWidth characters.
+// Existing newlines in the input are respected. Assumes s contains only
+// single-byte characters (ASCII); call sanitizeForDisplay first for
+// user-controlled input.
+func wrapLine(s string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		return []string{s}
+	}
+	var result []string
+	for _, line := range strings.Split(s, "\n") {
+		for len(line) > maxWidth {
+			result = append(result, line[:maxWidth])
+			line = line[maxWidth:]
+		}
+		result = append(result, line)
+	}
+	return result
 }
 
 func (dp detailsPane) visibleRows() int {
