@@ -210,7 +210,7 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 	// Blob
 	lines = append(lines, fmt.Sprintf("  %s %s",
 		fieldLabelStyle.Render("Blob:"),
-		fieldValueStyle.Render(m.BlobID.Hex()[:12]+"...")))
+		fieldValueStyle.Render(m.BlobID.Hex())))
 
 	// Location
 	if m.Location.Source.Start.Line > 0 {
