@@ -174,6 +174,9 @@ func (s *SQLiteStore) FindingExists(structuralID string) (bool, error) {
 
 func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) error {
 	var provType, path, repoPath, commitHash string
+	var authorName, authorEmail, authorTimestamp string
+	var committerName, committerEmail, committerTimestamp string
+	var commitMessage string
 	switch p := prov.(type) {
 	case types.FileProvenance:
 		provType, path = "file", p.FilePath
@@ -181,6 +184,17 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 		provType, path, repoPath = "git", p.BlobPath, p.RepoPath
 		if p.Commit != nil {
 			commitHash = p.Commit.CommitID
+			authorName = p.Commit.AuthorName
+			authorEmail = p.Commit.AuthorEmail
+			if !p.Commit.AuthorTimestamp.IsZero() {
+				authorTimestamp = p.Commit.AuthorTimestamp.Format(time.RFC3339)
+			}
+			committerName = p.Commit.CommitterName
+			committerEmail = p.Commit.CommitterEmail
+			if !p.Commit.CommitterTimestamp.IsZero() {
+				committerTimestamp = p.Commit.CommitterTimestamp.Format(time.RFC3339)
+			}
+			commitMessage = p.Commit.Message
 		}
 	case types.ExtendedProvenance:
 		provType = "extended"
@@ -189,11 +203,86 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	default:
 		return fmt.Errorf("unknown provenance type: %T", prov)
 	}
-	_, err := s.e.Exec("INSERT OR IGNORE INTO provenance (blob_id, type, path, repo_path, commit_hash) VALUES (?, ?, ?, ?, ?)", blobID.Hex(), provType, path, repoPath, commitHash)
+	_, err := s.e.Exec(`INSERT OR IGNORE INTO provenance
+		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		blobID.Hex(), provType, path, repoPath, commitHash,
+		authorName, authorEmail, authorTimestamp,
+		committerName, committerEmail, committerTimestamp,
+		commitMessage)
 	return err
 }
 
 func (s *SQLiteStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance, error) {
+	// Try full query with commit metadata columns (new schema)
+	result, err := s.getAllProvenanceFull(blobID)
+	if err != nil {
+		// Fall back to legacy query (old schema without metadata columns)
+		return s.getAllProvenanceLegacy(blobID)
+	}
+	return result, nil
+}
+
+func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provenance, error) {
+	rows, err := s.e.Query(`SELECT type, path, repo_path, commit_hash,
+		author_name, author_email, author_timestamp,
+		committer_name, committer_email, committer_timestamp,
+		commit_message FROM provenance WHERE blob_id = ?`, blobID.Hex())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []types.Provenance
+	for rows.Next() {
+		var provType string
+		var path, repoPath, commitHash sql.NullString
+		var authorName, authorEmail, authorTS sql.NullString
+		var committerName, committerEmail, committerTS sql.NullString
+		var commitMessage sql.NullString
+		if err := rows.Scan(&provType, &path, &repoPath, &commitHash,
+			&authorName, &authorEmail, &authorTS,
+			&committerName, &committerEmail, &committerTS,
+			&commitMessage); err != nil {
+			return nil, err
+		}
+		switch provType {
+		case "file":
+			result = append(result, types.FileProvenance{FilePath: path.String})
+		case "git":
+			prov := types.GitProvenance{RepoPath: repoPath.String, BlobPath: path.String}
+			if commitHash.Valid && commitHash.String != "" {
+				meta := &types.CommitMetadata{
+					CommitID:      commitHash.String,
+					AuthorName:    authorName.String,
+					AuthorEmail:   authorEmail.String,
+					CommitterName: committerName.String,
+					CommitterEmail: committerEmail.String,
+					Message:       commitMessage.String,
+				}
+				if authorTS.Valid && authorTS.String != "" {
+					meta.AuthorTimestamp, _ = time.Parse(time.RFC3339, authorTS.String)
+				}
+				if committerTS.Valid && committerTS.String != "" {
+					meta.CommitterTimestamp, _ = time.Parse(time.RFC3339, committerTS.String)
+				}
+				prov.Commit = meta
+			}
+			result = append(result, prov)
+		case "extended":
+			var payload map[string]interface{}
+			if path.Valid {
+				json.Unmarshal([]byte(path.String), &payload)
+			}
+			result = append(result, types.ExtendedProvenance{Payload: payload})
+		}
+	}
+	if result == nil {
+		return []types.Provenance{}, nil
+	}
+	return result, rows.Err()
+}
+
+func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Provenance, error) {
 	rows, err := s.e.Query("SELECT type, path, repo_path, commit_hash FROM provenance WHERE blob_id = ?", blobID.Hex())
 	if err != nil {
 		return nil, err

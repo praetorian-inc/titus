@@ -139,11 +139,33 @@ func createProvenanceTable(db *sql.DB) error {
 			path TEXT,
 			repo_path TEXT,
 			commit_hash TEXT,
+			author_name TEXT,
+			author_email TEXT,
+			author_timestamp TEXT,
+			committer_name TEXT,
+			committer_email TEXT,
+			committer_timestamp TEXT,
+			commit_message TEXT,
 			UNIQUE(blob_id, type, path, repo_path, commit_hash)
 		)
 	`)
 	if err != nil {
 		return err
+	}
+
+	// Migrate old datastores: add commit metadata columns if missing.
+	// ALTER TABLE ADD COLUMN is safe in SQLite — it's a no-op if the column exists
+	// only in newer SQLite versions, so we ignore errors (column already exists).
+	for _, col := range []string{
+		"author_name TEXT",
+		"author_email TEXT",
+		"author_timestamp TEXT",
+		"committer_name TEXT",
+		"committer_email TEXT",
+		"committer_timestamp TEXT",
+		"commit_message TEXT",
+	} {
+		db.Exec("ALTER TABLE provenance ADD COLUMN " + col)
 	}
 
 	// Create index for efficient provenance lookup by blob_id

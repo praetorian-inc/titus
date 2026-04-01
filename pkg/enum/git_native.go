@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -27,14 +28,17 @@ func gitBinaryAvailable() bool {
 
 // enumerateAllHistoryNative uses native git commands for fast history enumeration.
 // Phase 1: git rev-list --all --objects → collect unique blob hashes with paths.
-// Phase 2: git cat-file --batch → stream content, filter, and invoke callback.
+// Phase 2: git log → collect commit metadata keyed by file path.
+// Phase 3: git cat-file --batch → stream content, filter, and invoke callback.
 func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	blobs, err := e.collectBlobEntries(ctx)
 	if err != nil {
 		return err
 	}
 
-	return e.streamBlobContents(ctx, blobs, callback)
+	commitMap, _ := e.collectCommitMetadata(ctx) // best-effort; nil map is safe
+
+	return e.streamBlobContentsWithMeta(ctx, blobs, commitMap, callback)
 }
 
 // collectBlobEntries runs git rev-list --all --objects and returns deduplicated blob entries.
@@ -98,8 +102,69 @@ func (e *GitEnumerator) collectBlobEntries(ctx context.Context) ([]blobEntry, er
 	return blobs, nil
 }
 
-// streamBlobContents feeds hashes to git cat-file --batch and invokes callback for text blobs.
-func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntry, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+// collectCommitMetadata runs git log to build a map of file path → first commit metadata.
+// Uses --diff-filter=A to find the commit that first added each path.
+func (e *GitEnumerator) collectCommitMetadata(ctx context.Context) (map[string]*types.CommitMetadata, error) {
+	// Format: fields separated by null bytes to avoid conflicts with pipes in names/subjects
+	cmd := exec.CommandContext(ctx, "git", "log", "--all", "--diff-filter=A",
+		"--format=%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s", "--name-only")
+	cmd.Dir = e.config.Root
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("git log: pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("git log: start: %w", err)
+	}
+
+	result := make(map[string]*types.CommitMetadata)
+	scanner := bufio.NewScanner(stdout)
+
+	var current *types.CommitMetadata
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		// Lines with 7 null-byte separators are commit headers
+		parts := strings.SplitN(line, "\x00", 8)
+		if len(parts) == 8 && len(parts[0]) == 40 {
+			authorTS, _ := time.Parse(time.RFC3339, parts[3])
+			committerTS, _ := time.Parse(time.RFC3339, parts[6])
+			current = &types.CommitMetadata{
+				CommitID:           parts[0],
+				AuthorName:         parts[1],
+				AuthorEmail:        parts[2],
+				AuthorTimestamp:    authorTS,
+				CommitterName:      parts[4],
+				CommitterEmail:     parts[5],
+				CommitterTimestamp: committerTS,
+				Message:            parts[7],
+			}
+			continue
+		}
+
+		// File path line — only record the first commit that added this path
+		if current != nil {
+			if _, exists := result[line]; !exists {
+				result[line] = current
+			}
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return result, fmt.Errorf("git log: wait: %w", err)
+	}
+
+	return result, nil
+}
+
+// streamBlobContentsWithMeta feeds hashes to git cat-file --batch and invokes callback for text blobs.
+// If commitMap is non-nil, attaches commit metadata to git provenance records.
+func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []blobEntry, commitMap map[string]*types.CommitMetadata, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	if len(blobs) == 0 {
 		return nil
 	}
@@ -228,7 +293,7 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntr
 
 		prov := types.GitProvenance{
 			RepoPath: e.config.Root,
-			Commit:   nil,
+			Commit:   commitMap[blob.path],
 			BlobPath: blob.path,
 		}
 

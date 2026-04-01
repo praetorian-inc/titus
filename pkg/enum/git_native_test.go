@@ -86,9 +86,15 @@ func TestNativeGitEnumerator_Basic(t *testing.T) {
 		if gitProv.RepoPath != repoPath {
 			t.Errorf("unexpected repo path: %s", gitProv.RepoPath)
 		}
-		// Native mode does not track commit metadata.
-		if gitProv.Commit != nil {
-			t.Error("expected nil commit metadata in native mode")
+		// Native mode now collects commit metadata via git log.
+		if gitProv.Commit == nil {
+			t.Fatal("expected non-nil commit metadata")
+		}
+		if gitProv.Commit.CommitID == "" {
+			t.Error("expected non-empty commit ID")
+		}
+		if gitProv.Commit.CommitterTimestamp.IsZero() {
+			t.Error("expected non-zero committer timestamp")
 		}
 		return nil
 	})

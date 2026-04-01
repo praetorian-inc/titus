@@ -5,6 +5,7 @@ package store
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -194,4 +195,54 @@ func TestSQLite_NullLocationValues(t *testing.T) {
 	assert.Equal(t, 0, retrieved.Location.Source.Start.Column)
 	assert.Equal(t, 0, retrieved.Location.Source.End.Line)
 	assert.Equal(t, 0, retrieved.Location.Source.End.Column)
+}
+
+func TestSQLite_ProvenanceWithCommitMetadata(t *testing.T) {
+	dir := t.TempDir()
+	store, err := New(Config{Path: filepath.Join(dir, "test.db")})
+	require.NoError(t, err)
+	defer store.Close()
+
+	blobID := types.ComputeBlobID([]byte("secret content"))
+	err = store.AddBlob(blobID, 14)
+	require.NoError(t, err)
+
+	authorTS := time.Date(2024, 3, 15, 10, 30, 0, 0, time.UTC)
+	committerTS := time.Date(2024, 3, 15, 11, 0, 0, 0, time.UTC)
+
+	prov := types.GitProvenance{
+		RepoPath: "/tmp/repo",
+		BlobPath: "config.yml",
+		Commit: &types.CommitMetadata{
+			CommitID:           "abc123def456",
+			AuthorName:         "John Doe",
+			AuthorEmail:        "john@example.com",
+			AuthorTimestamp:    authorTS,
+			CommitterName:      "Jane Smith",
+			CommitterEmail:     "jane@example.com",
+			CommitterTimestamp: committerTS,
+			Message:            "add config",
+		},
+	}
+
+	err = store.AddProvenance(blobID, prov)
+	require.NoError(t, err)
+
+	provs, err := store.GetAllProvenance(blobID)
+	require.NoError(t, err)
+	require.Len(t, provs, 1)
+
+	got, ok := provs[0].(types.GitProvenance)
+	require.True(t, ok)
+	assert.Equal(t, "/tmp/repo", got.RepoPath)
+	assert.Equal(t, "config.yml", got.BlobPath)
+	require.NotNil(t, got.Commit)
+	assert.Equal(t, "abc123def456", got.Commit.CommitID)
+	assert.Equal(t, "John Doe", got.Commit.AuthorName)
+	assert.Equal(t, "john@example.com", got.Commit.AuthorEmail)
+	assert.Equal(t, authorTS, got.Commit.AuthorTimestamp)
+	assert.Equal(t, "Jane Smith", got.Commit.CommitterName)
+	assert.Equal(t, "jane@example.com", got.Commit.CommitterEmail)
+	assert.Equal(t, committerTS, got.Commit.CommitterTimestamp)
+	assert.Equal(t, "add config", got.Commit.Message)
 }

@@ -202,6 +202,11 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 							fieldValueStyle.Render(p.Commit.AuthorName),
 							p.Commit.AuthorEmail))
 					}
+					if !p.Commit.CommitterTimestamp.IsZero() {
+						lines = append(lines, fmt.Sprintf("  %s %s",
+							fieldLabelStyle.Render("Date:"),
+							fieldValueStyle.Render(p.Commit.CommitterTimestamp.Format("2006-01-02 15:04:05"))))
+					}
 				}
 			}
 		}
