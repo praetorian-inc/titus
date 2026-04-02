@@ -34,6 +34,9 @@ type keyMap struct {
 	ToggleHelp    key.Binding
 	ToggleFilters key.Binding
 
+	// Clipboard
+	CopySecret key.Binding
+
 	// Sort
 	SortNext key.Binding
 
@@ -126,6 +129,10 @@ var defaultKeys = keyMap{
 	ToggleFilters: key.NewBinding(
 		key.WithKeys("f7"),
 		key.WithHelp("F7", "filters"),
+	),
+	CopySecret: key.NewBinding(
+		key.WithKeys("y"),
+		key.WithHelp("y", "copy secret"),
 	),
 	SortNext: key.NewBinding(
 		key.WithKeys("s"),

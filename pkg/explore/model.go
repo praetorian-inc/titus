@@ -5,9 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -33,6 +35,9 @@ const (
 // pagerFinishedMsg is sent when an external pager process exits.
 type pagerFinishedMsg struct{ err error }
 
+// clearFlashMsg clears the flash status message after a delay.
+type clearFlashMsg struct{}
+
 // Model is the root Bubble Tea model for the explore TUI.
 type Model struct {
 	data     *exploreData
@@ -56,6 +61,12 @@ type Model struct {
 	commentInput  string
 	commentTarget string // "finding" or "match"
 	commentID     string
+
+	// Flash message (temporary status)
+	flashMsg string
+
+	// Pending clipboard data (written via OSC 52 on next render)
+	pendingClipboard string
 
 	width  int
 	height int
@@ -96,6 +107,9 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Clear pending clipboard after one render cycle
+	m.pendingClipboard = ""
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -107,8 +121,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Pager exited, TUI resumes automatically
 		return m, nil
 
+	case clearFlashMsg:
+		m.flashMsg = ""
+		return m, nil
+
 	case tea.MouseMsg:
 		if m.activeOverlay != overlayNone {
+			return m, nil
+		}
+		// Handle scroll wheel
+		if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+			m.handleMouseScroll(msg.X, msg.Y, msg.Button == tea.MouseButtonWheelUp)
 			return m, nil
 		}
 		if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
@@ -171,6 +194,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case keyMatches(msg, defaultKeys.OpenSource):
 				cmd := m.openSource()
+				return m, cmd
+			case keyMatches(msg, defaultKeys.CopySecret):
+				cmd := m.copySecretToClipboard()
 				return m, cmd
 			}
 		}
@@ -305,18 +331,31 @@ func (m Model) View() string {
 		mainContent = lipgloss.JoinVertical(lipgloss.Left, findingsView, detailsView)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, mainContent, statusBar)
+	result := lipgloss.JoinVertical(lipgloss.Left, mainContent, statusBar)
+
+	// Emit OSC 52 clipboard sequence if pending (terminal intercepts, not visible)
+	if m.pendingClipboard != "" {
+		result += ansi.SetSystemClipboard(m.pendingClipboard)
+	}
+
+	return result
 }
 
 func (m *Model) renderStatusBar() string {
-	left := statusBarStyle.Render(fmt.Sprintf(" %d findings | %d filtered",
-		len(m.data.findings), len(m.findings.rows)))
+	var left string
+	if m.flashMsg != "" {
+		left = statusBarStyle.Render(" " + m.flashMsg)
+	} else {
+		left = statusBarStyle.Render(fmt.Sprintf(" %d findings | %d filtered",
+			len(m.data.findings), len(m.findings.rows)))
+	}
 
-	right := fmt.Sprintf("%s:%s  %s:%s  %s:%s  %s:%s  %s:%s  %s:%s  %s:%s  %s:%s",
+	right := fmt.Sprintf("%s:%s  %s:%s  %s:%s  %s:%s  %s:%s  %s:%s  %s:%s  %s:%s  %s:%s",
 		helpKeyStyle.Render("j/k"), helpDescStyle.Render("nav"),
 		helpKeyStyle.Render("f/d"), helpDescStyle.Render("focus"),
 		helpKeyStyle.Render("a/r"), helpDescStyle.Render("accept/reject"),
 		helpKeyStyle.Render("c"), helpDescStyle.Render("comment"),
+		helpKeyStyle.Render("y"), helpDescStyle.Render("copy"),
 		helpKeyStyle.Render("s"), helpDescStyle.Render("sort"),
 		helpKeyStyle.Render("o"), helpDescStyle.Render("source"),
 		helpKeyStyle.Render("F7"), helpDescStyle.Render("filters"),
@@ -458,6 +497,80 @@ func (m *Model) handleMouseClick(x, y int) {
 	}
 }
 
+func (m *Model) handleMouseScroll(x, y int, up bool) {
+	scrollLines := 3
+	contentHeight := m.height - 2
+
+	// Determine which pane the mouse is over
+	pane := m.hitTestPane(x, y, contentHeight)
+
+	switch pane {
+	case paneFilters:
+		for i := 0; i < scrollLines; i++ {
+			if up {
+				if m.filters.cursor > 0 {
+					m.filters.cursor--
+				}
+			} else {
+				if m.filters.cursor < len(m.filters.items)-1 {
+					m.filters.cursor++
+				}
+			}
+		}
+		m.filters.ensureVisible()
+
+	case paneFindings:
+		prevCursor := m.findings.cursor
+		for i := 0; i < scrollLines; i++ {
+			if up {
+				if m.findings.cursor > 0 {
+					m.findings.cursor--
+				}
+			} else {
+				if m.findings.cursor < len(m.findings.rows)-1 {
+					m.findings.cursor++
+				}
+			}
+		}
+		m.findings.ensureVisible()
+		if m.findings.cursor != prevCursor {
+			if f := m.findings.selectedFinding(); f != nil {
+				m.details.setFinding(f)
+			}
+		}
+
+	case paneDetails:
+		for i := 0; i < scrollLines; i++ {
+			if up {
+				if m.details.offset > 0 {
+					m.details.offset--
+				}
+			} else {
+				m.details.offset++
+			}
+		}
+	}
+}
+
+// hitTestPane determines which pane the given coordinates fall in.
+func (m *Model) hitTestPane(x, y, contentHeight int) focusedPane {
+	if m.showFilters {
+		filtersWidth := min(m.width*30/100, 50)
+		findingsHeight := contentHeight * 40 / 100
+		if x < filtersWidth {
+			return paneFilters
+		} else if y < findingsHeight {
+			return paneFindings
+		}
+		return paneDetails
+	}
+	findingsHeight := contentHeight * 40 / 100
+	if y < findingsHeight {
+		return paneFindings
+	}
+	return paneDetails
+}
+
 func (m *Model) applyFilters() {
 	if !m.filters.facets.hasActiveFilters() {
 		m.findings.setFilteredRows(m.data.findings)
@@ -479,6 +592,41 @@ func (m *Model) applyFilters() {
 	} else {
 		m.details.setFinding(nil)
 	}
+}
+
+func (m *Model) copySecretToClipboard() tea.Cmd {
+	var secret string
+
+	// If viewing a match in details, copy the match's highlighted value
+	if m.focus == paneDetails && m.details.finding != nil {
+		matches := m.details.finding.Matches
+		if m.details.matchCursor < len(matches) {
+			match := matches[m.details.matchCursor]
+			secret = string(match.Snippet.Matching)
+		}
+	}
+
+	// Fall back to finding's first group
+	if secret == "" {
+		f := m.findings.selectedFinding()
+		if f == nil || len(f.Groups) == 0 {
+			m.flashMsg = "No secret to copy"
+			return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearFlashMsg{} })
+		}
+		secret = string(f.Groups[0])
+	}
+
+	// Set clipboard via OSC 52 (written to terminal on next render)
+	m.pendingClipboard = secret
+
+	// Flash message
+	display := secret
+	if len(display) > 40 {
+		display = display[:40] + "..."
+	}
+	m.flashMsg = fmt.Sprintf("Copied: %s", display)
+
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearFlashMsg{} })
 }
 
 func (m *Model) setAnnotation(status string) {
