@@ -596,6 +596,11 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				fmt.Fprintf(out, "    %s %s\n",
 					s.heading.Sprint("File:"),
 					s.metadata.Sprint(prov.Path()))
+				if gp, ok := prov.(types.GitProvenance); ok && gp.Commit != nil && !gp.Commit.CommitterTimestamp.IsZero() {
+					fmt.Fprintf(out, "    %s %s\n",
+						s.heading.Sprint("Date:"),
+						s.metadata.Sprint(gp.Commit.CommitterTimestamp.Format("2006-01-02 15:04:05")))
+				}
 			}
 
 			// Blob info - "Blob:" in heading style, ID in metadata style
