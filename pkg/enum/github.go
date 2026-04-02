@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"net/url"
+
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
 
@@ -14,12 +16,13 @@ import (
 
 // GitHubConfig configures GitHub API enumeration.
 type GitHubConfig struct {
-	Token  string // GitHub API token (optional; unauthenticated if empty)
-	Owner  string // Repository owner (for single repo)
-	Repo   string // Repository name (for single repo)
-	Org    string // Organization name (list all org repos)
-	User   string // User name (list all user repos)
-	Config        // Embedded base config
+	Token   string // GitHub API token (optional; unauthenticated if empty)
+	BaseURL string // GitHub Enterprise base URL (optional; defaults to github.com)
+	Owner   string // Repository owner (for single repo)
+	Repo    string // Repository name (for single repo)
+	Org     string // Organization name (list all org repos)
+	User    string // User name (list all user repos)
+	Config         // Embedded base config
 }
 
 // GitHubEnumerator enumerates blobs from GitHub via API.
@@ -41,6 +44,23 @@ func NewGitHubEnumerator(cfg GitHubConfig) (*GitHubEnumerator, error) {
 	} else {
 		// Unauthenticated client (60 req/hour, public repos only)
 		client = github.NewClient(nil)
+	}
+
+	// Configure custom base URL for GitHub Enterprise
+	if cfg.BaseURL != "" {
+		if _, err := ValidateBaseURL(cfg.BaseURL); err != nil {
+			return nil, fmt.Errorf("GitHub Enterprise URL: %w", err)
+		}
+		baseURL, err := url.Parse(strings.TrimSuffix(cfg.BaseURL, "/") + "/api/v3/")
+		if err != nil {
+			return nil, fmt.Errorf("parsing GitHub Enterprise URL: %w", err)
+		}
+		uploadURL, err := url.Parse(strings.TrimSuffix(cfg.BaseURL, "/") + "/api/uploads/")
+		if err != nil {
+			return nil, fmt.Errorf("parsing GitHub Enterprise upload URL: %w", err)
+		}
+		client.BaseURL = baseURL
+		client.UploadURL = uploadURL
 	}
 
 	return &GitHubEnumerator{
