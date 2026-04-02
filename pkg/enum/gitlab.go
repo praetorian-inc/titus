@@ -35,6 +35,9 @@ func NewGitLabEnumerator(cfg GitLabConfig) (*GitLabEnumerator, error) {
 	var err error
 
 	if cfg.BaseURL != "" {
+		if _, err := ValidateBaseURL(cfg.BaseURL); err != nil {
+			return nil, fmt.Errorf("GitLab URL: %w", err)
+		}
 		client, err = gitlab.NewClient(cfg.Token, gitlab.WithBaseURL(cfg.BaseURL))
 	} else {
 		client, err = gitlab.NewClient(cfg.Token)

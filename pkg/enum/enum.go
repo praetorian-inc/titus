@@ -2,6 +2,9 @@ package enum
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -52,4 +55,26 @@ type Config struct {
 	// If empty, the embedded default ignore.conf is used.
 	// Use "/dev/null" to disable all ignore patterns.
 	IgnoreFile string
+}
+
+// ValidateBaseURL checks that a user-supplied base URL uses HTTP(S).
+// Returns an error for non-HTTP(S) schemes to prevent token leakage via file://, ftp://, etc.
+// Returns true if the scheme is plaintext HTTP (caller should warn about token security).
+func ValidateBaseURL(rawURL string) (insecure bool, err error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	scheme := strings.ToLower(u.Scheme)
+	switch scheme {
+	case "https":
+		return false, nil
+	case "http":
+		return true, nil
+	case "":
+		return false, fmt.Errorf("base URL must include scheme (e.g., https://github.example.com)")
+	default:
+		return false, fmt.Errorf("base URL scheme %q is not supported; use https:// (or http:// for testing)", scheme)
+	}
 }
