@@ -606,6 +606,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		IgnoreFile:  scanIgnoreFile,
 	})
 	cloneEnum.Git = scanGit
+	cloneEnum.Token = token
 
 	// Load rules
 	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)

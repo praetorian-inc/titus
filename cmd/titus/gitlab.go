@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
@@ -21,6 +22,7 @@ var (
 	gitlabOutputFormat string
 	gitlabNoClone      bool
 	gitlabGit          bool
+	gitlabRateLimit    float64
 )
 
 var gitlabCmd = &cobra.Command{
@@ -54,6 +56,7 @@ func init() {
 	gitlabScanCmd.Flags().StringVar(&gitlabOutputFormat, "format", "human", "Output format: json, human")
 	gitlabScanCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabScanCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
+	gitlabScanCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
 
 	gitlabCmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
 	gitlabCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
@@ -63,6 +66,7 @@ func init() {
 	gitlabCmd.Flags().StringVar(&gitlabOutputFormat, "format", "human", "Output format: json, human")
 	gitlabCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
+	gitlabCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
 
 	gitlabCmd.AddCommand(gitlabScanCmd)
 }
@@ -80,6 +84,16 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	if token == "" {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Note: No GitLab token provided. Using unauthenticated access (public projects only).\n")
 		fmt.Fprintf(cmd.ErrOrStderr(), "Set GITLAB_TOKEN or use --token for private project access.\n\n")
+	}
+
+	if gitlabBaseURL != "" {
+		insecure, err := enum.ValidateBaseURL(gitlabBaseURL)
+		if err != nil {
+			return fmt.Errorf("invalid --url: %w", err)
+		}
+		if insecure && token != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: Using HTTP with an API token. Your token will be sent in plaintext.\n")
+		}
 	}
 
 	var project string
@@ -151,6 +165,10 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 			MaxFileSize: 10 * 1024 * 1024,
 		})
 		cloneEnum.Git = gitlabGit
+		cloneEnum.Token = token
+		if gitlabRateLimit > 0 {
+			cloneEnum.Delay = time.Duration(gitlabRateLimit * float64(time.Second))
+		}
 		enumerator = cloneEnum
 	}
 
