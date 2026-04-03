@@ -116,7 +116,7 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 }
 
 func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
-	rows, err := s.e.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches WHERE blob_id = ?`, blobID.Hex())
+	rows, err := s.e.Query(`SELECT m.blob_id, m.rule_id, r.name, m.structural_id, m.offset_start, m.offset_end, m.snippet_before, m.snippet_matching, m.snippet_after, m.groups_json, m.validation_status, m.validation_confidence, m.validation_message, m.validation_timestamp, m.finding_id, m.start_line, m.start_column, m.end_line, m.end_column FROM matches m JOIN rules r ON m.rule_id = r.id WHERE m.blob_id = ?`, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 }
 
 func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
-	rows, err := s.e.Query(`SELECT blob_id, rule_id, structural_id, offset_start, offset_end, snippet_before, snippet_matching, snippet_after, groups_json, validation_status, validation_confidence, validation_message, validation_timestamp, finding_id, start_line, start_column, end_line, end_column FROM matches`)
+	rows, err := s.e.Query(`SELECT m.blob_id, m.rule_id, r.name, m.structural_id, m.offset_start, m.offset_end, m.snippet_before, m.snippet_matching, m.snippet_after, m.groups_json, m.validation_status, m.validation_confidence, m.validation_message, m.validation_timestamp, m.finding_id, m.start_line, m.start_column, m.end_line, m.end_column FROM matches m JOIN rules r ON m.rule_id = r.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +392,7 @@ func scanMatches(rows *sql.Rows) ([]*types.Match, error) {
 		var validationStatus, validationMessage, validationTimestamp sql.NullString
 		var validationConfidence sql.NullFloat64
 		var findingID, startLine, startColumn, endLine, endColumn sql.NullInt64
-		err := rows.Scan(&blobIDHex, &m.RuleID, &m.StructuralID, &m.Location.Offset.Start, &m.Location.Offset.End,
+		err := rows.Scan(&blobIDHex, &m.RuleID, &m.RuleName, &m.StructuralID, &m.Location.Offset.Start, &m.Location.Offset.End,
 			&snippetBefore, &snippetMatching, &snippetAfter, &groupsJSON,
 			&validationStatus, &validationConfidence, &validationMessage, &validationTimestamp,
 			&findingID, &startLine, &startColumn, &endLine, &endColumn)
