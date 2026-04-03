@@ -84,7 +84,8 @@ func (e *GitLabEnumerator) listProjects(ctx context.Context) ([]*gitlab.Project,
 	// List group projects
 	if e.config.Group != "" {
 		opts := &gitlab.ListGroupProjectsOptions{
-			ListOptions: gitlab.ListOptions{PerPage: 100},
+			IncludeSubGroups: gitlab.Ptr(true),
+			ListOptions:      gitlab.ListOptions{PerPage: 100},
 		}
 		var allProjects []*gitlab.Project
 		for {
