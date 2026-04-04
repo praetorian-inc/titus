@@ -808,6 +808,11 @@ VIEWS
   o                 Open source (pager for files, overlay for git)
   ?                 Toggle this help screen
 
+CLIPBOARD
+  y                 Copy secret value to clipboard
+
+TIP: Hold Shift to select text with your mouse in the TUI.
+
 QUIT
   q                 Quit
   Ctrl+c            Force quit
