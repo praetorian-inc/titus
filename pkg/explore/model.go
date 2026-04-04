@@ -234,7 +234,8 @@ func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch {
 		case keyMatches(msg, defaultKeys.Quit),
 			keyMatches(msg, defaultKeys.ForceQuit),
-			keyMatches(msg, defaultKeys.ToggleHelp):
+			keyMatches(msg, defaultKeys.ToggleHelp),
+			keyMatches(msg, defaultKeys.Escape):
 			m.activeOverlay = overlayNone
 		case keyMatches(msg, defaultKeys.Down):
 			m.helpOffset++
@@ -807,6 +808,11 @@ VIEWS
   s                 Cycle sort column
   o                 Open source (pager for files, overlay for git)
   ?                 Toggle this help screen
+
+CLIPBOARD
+  y                 Copy secret value to clipboard
+
+TIP: Hold Shift to select text with your mouse in the TUI.
 
 QUIT
   q                 Quit
