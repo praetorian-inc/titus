@@ -68,7 +68,7 @@ func init() {
 	githubScanCmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
 	githubScanCmd.Flags().StringVar(&githubOrg, "org", "", "Scan all repositories in organization")
 	githubScanCmd.Flags().StringVar(&githubUser, "user", "", "Scan all repositories for user")
-	githubScanCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path")
+	githubScanCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path (auto to derive from target name)")
 	githubScanCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
 	githubScanCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	githubScanCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
@@ -78,7 +78,7 @@ func init() {
 	githubCmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
 	githubCmd.Flags().StringVar(&githubOrg, "org", "", "Scan all repositories in organization")
 	githubCmd.Flags().StringVar(&githubUser, "user", "", "Scan all repositories for user")
-	githubCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path")
+	githubCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path (auto to derive from target name)")
 	githubCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
 	githubCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	githubCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
@@ -125,6 +125,10 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid repository format, expected owner/repo (e.g., praetorian-inc/titus)")
 		}
 		owner, repo = parts[0], parts[1]
+	}
+
+	if githubOutputPath == "auto" {
+		githubOutputPath = resolveAutoName(githubOrg, githubUser, repo)
 	}
 
 	if repo == "" && githubOrg == "" && githubUser == "" {

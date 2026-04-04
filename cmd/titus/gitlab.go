@@ -52,7 +52,7 @@ func init() {
 	gitlabScanCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
 	gitlabScanCmd.Flags().StringVar(&gitlabUser, "user", "", "Scan all projects for user")
 	gitlabScanCmd.Flags().StringVar(&gitlabBaseURL, "url", "", "GitLab base URL (default: gitlab.com)")
-	gitlabScanCmd.Flags().StringVar(&gitlabOutputPath, "output", "titus.db", "Output database path")
+	gitlabScanCmd.Flags().StringVar(&gitlabOutputPath, "output", "titus.db", "Output database path (auto to derive from target name)")
 	gitlabScanCmd.Flags().StringVar(&gitlabOutputFormat, "format", "human", "Output format: json, human")
 	gitlabScanCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabScanCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
@@ -62,7 +62,7 @@ func init() {
 	gitlabCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
 	gitlabCmd.Flags().StringVar(&gitlabUser, "user", "", "Scan all projects for user")
 	gitlabCmd.Flags().StringVar(&gitlabBaseURL, "url", "", "GitLab base URL (default: gitlab.com)")
-	gitlabCmd.Flags().StringVar(&gitlabOutputPath, "output", "titus.db", "Output database path")
+	gitlabCmd.Flags().StringVar(&gitlabOutputPath, "output", "titus.db", "Output database path (auto to derive from target name)")
 	gitlabCmd.Flags().StringVar(&gitlabOutputFormat, "format", "human", "Output format: json, human")
 	gitlabCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
@@ -94,6 +94,14 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		if insecure && token != "" {
 			fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: Using HTTP with an API token. Your token will be sent in plaintext.\n")
 		}
+	}
+
+	if gitlabOutputPath == "auto" {
+		var project string
+		if len(args) > 0 {
+			project = args[0]
+		}
+		gitlabOutputPath = resolveAutoName(gitlabGroup, gitlabUser, project)
 	}
 
 	var project string

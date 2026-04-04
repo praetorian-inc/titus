@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -75,7 +76,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	scanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	scanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
-	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.ds", "Output datastore path (use :memory: for in-memory only)")
+	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.ds", "Output datastore path (:memory: for in-memory, auto to derive from target name)")
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
@@ -102,6 +103,10 @@ type blobJob struct {
 
 func runScan(cmd *cobra.Command, args []string) error {
 	target := args[0]
+
+	if scanOutputPath == "auto" {
+		scanOutputPath = resolveAutoOutput(target)
+	}
 
 	// Check if target is a GitHub or GitLab URL
 	if repoTarget, ok := parseRepoURL(target); ok {
@@ -974,4 +979,62 @@ func validateMatches(ctx context.Context, engine *validator.Engine, matches []*t
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[validate] Validation complete\n")
 	}
+}
+
+// resolveAutoName picks the best name for auto output from the available identifiers.
+// Priority: group/org > user > project/repo argument > fallback "output".
+func resolveAutoName(group, user, project string) string {
+	if group != "" {
+		// Use last segment of group path (e.g. "ctp1/tmna-ct/tmna-ev" → "tmna-ev")
+		parts := strings.Split(group, "/")
+		return parts[len(parts)-1] + ".db"
+	}
+	if user != "" {
+		return user + ".db"
+	}
+	if project != "" {
+		// project may be "owner/repo" — take repo part
+		parts := strings.Split(project, "/")
+		return parts[len(parts)-1] + ".db"
+	}
+	return "output.db"
+}
+
+// resolveAutoOutput derives a datastore name from a scan target.
+// For repo URLs (github.com/ or gitlab.com/), it extracts the repo name.
+// For filesystem paths, it uses the base name of the path.
+func resolveAutoOutput(target string) string {
+	// Strip scheme prefix (e.g. "https://")
+	cleaned := target
+	if idx := strings.Index(cleaned, "://"); idx >= 0 {
+		cleaned = cleaned[idx+3:]
+	}
+
+	// Strip trailing slashes before domain matching so that
+	// "https://github.com/org/repo.git/" resolves correctly.
+	cleaned = strings.TrimRight(cleaned, "/")
+
+	// Check for known git hosting domains
+	for _, prefix := range []string{"github.com/", "gitlab.com/"} {
+		if strings.HasPrefix(cleaned, prefix) {
+			rest := cleaned[len(prefix):]
+			// rest is "owner/repo" or "owner/repo.git"
+			parts := strings.SplitN(rest, "/", 2)
+			if len(parts) == 2 {
+				repo := strings.TrimSuffix(parts[1], ".git")
+				return repo + ".ds"
+			}
+		}
+	}
+
+	// Filesystem path: strip trailing slash then take base name.
+	path := strings.TrimRight(target, "/")
+	if path == "." || path == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "output.ds"
+		}
+		path = wd
+	}
+	return filepath.Base(path) + ".ds"
 }

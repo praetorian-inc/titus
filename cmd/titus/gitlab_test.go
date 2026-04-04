@@ -117,3 +117,70 @@ func TestGitLabScanCommand_GitFlag(t *testing.T) {
 	require.NotNil(t, flag, "--git flag should exist")
 	assert.Equal(t, "false", flag.DefValue)
 }
+
+func TestGitLabScanCmd_OutputFlagMentionsAuto(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"gitlab", "scan"})
+	require.NoError(t, err)
+	flag := cmd.Flags().Lookup("output")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, "auto")
+}
+
+func TestResolveAutoName(t *testing.T) {
+	tests := []struct {
+		name     string
+		group    string
+		user     string
+		project  string
+		expected string
+	}{
+		{
+			name:     "group with nested path",
+			group:    "ctp1/tmna-ct/tmna-ev",
+			expected: "tmna-ev.db",
+		},
+		{
+			name:     "simple group",
+			group:    "mygroup",
+			expected: "mygroup.db",
+		},
+		{
+			name:     "user",
+			user:     "octocat",
+			expected: "octocat.db",
+		},
+		{
+			name:     "project with owner",
+			project:  "owner/repo",
+			expected: "repo.db",
+		},
+		{
+			name:     "project without owner",
+			project:  "myrepo",
+			expected: "myrepo.db",
+		},
+		{
+			name:     "group takes priority over user",
+			group:    "mygroup",
+			user:     "myuser",
+			expected: "mygroup.db",
+		},
+		{
+			name:     "nothing provided",
+			expected: "output.db",
+		},
+		{
+			name:     "user takes priority over project",
+			user:     "myuser",
+			project:  "owner/repo",
+			expected: "myuser.db",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := resolveAutoName(tt.group, tt.user, tt.project)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

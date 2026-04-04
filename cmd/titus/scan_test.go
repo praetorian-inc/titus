@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
@@ -22,6 +24,22 @@ func TestScanCommand_DefaultOutputIsDatastore(t *testing.T) {
 	require.NotNil(t, flag, "--output flag should exist")
 	assert.Equal(t, "titus.ds", flag.DefValue,
 		"default --output should be titus.ds datastore directory")
+}
+
+func TestScanCommand_OutputFlagMentionsAuto(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"scan"})
+	require.NoError(t, err)
+	flag := cmd.Flags().Lookup("output")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, "auto")
+}
+
+func TestGitHubScanCmd_OutputFlagMentionsAuto(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"github", "scan"})
+	require.NoError(t, err)
+	flag := cmd.Flags().Lookup("output")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, "auto")
 }
 
 func TestCreateEnumerator_GitReturnsCombined(t *testing.T) {
@@ -112,6 +130,81 @@ func TestScanCommand_IgnoreFlag(t *testing.T) {
 	flag := cmd.Flags().Lookup("ignore")
 	require.NotNil(t, flag, "--ignore flag should exist")
 	assert.Equal(t, "", flag.DefValue, "default --ignore should be empty (uses embedded defaults)")
+}
+
+func TestResolveAutoOutput(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	cwdBase := filepath.Base(cwd)
+
+	tests := []struct {
+		name     string
+		target   string
+		expected string
+	}{
+		{
+			name:     "github url",
+			target:   "https://github.com/org/repo",
+			expected: "repo.ds",
+		},
+		{
+			name:     "github url with .git suffix",
+			target:   "https://github.com/org/repo.git",
+			expected: "repo.ds",
+		},
+		{
+			name:     "gitlab url with .git suffix",
+			target:   "gitlab.com/ns/project.git",
+			expected: "project.ds",
+		},
+		{
+			name:     "absolute path",
+			target:   "/home/user/myproject",
+			expected: "myproject.ds",
+		},
+		{
+			name:     "dot path",
+			target:   ".",
+			expected: cwdBase + ".ds",
+		},
+		{
+			name:     "file path",
+			target:   "/tmp/secrets.env",
+			expected: "secrets.env.ds",
+		},
+		{
+			name:     "path with trailing slash",
+			target:   "/home/user/myproject/",
+			expected: "myproject.ds",
+		},
+		{
+			name:     "github url with .git suffix and trailing slash",
+			target:   "https://github.com/org/repo.git/",
+			expected: "repo.ds",
+		},
+		{
+			name:     "github url without scheme",
+			target:   "github.com/org/repo",
+			expected: "repo.ds",
+		},
+		{
+			name:     "github enterprise url falls back to path",
+			target:   "https://github.corp.com/org/repo",
+			expected: "repo.ds",
+		},
+		{
+			name:     "relative path",
+			target:   "myproject",
+			expected: "myproject.ds",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveAutoOutput(tt.target)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
 }
 
 func init() {
