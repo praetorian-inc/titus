@@ -13,6 +13,7 @@ const (
 	facetRuleName facetID = iota
 	facetCategory
 	facetValidation
+	facetRepository
 )
 
 // facetDef defines a facet category.
@@ -25,6 +26,7 @@ var facetDefs = []facetDef{
 	{facetRuleName, "Rule Name"},
 	{facetCategory, "Category"},
 	{facetValidation, "Validation"},
+	{facetRepository, "Repository"},
 }
 
 // facetValue is a single selectable value within a facet.
@@ -54,6 +56,7 @@ func buildFacets(findings []*findingRow) *facetState {
 	ruleNames := make(map[string]int)
 	categories := make(map[string]int)
 	validations := make(map[string]int)
+	repositories := make(map[string]int)
 
 	for _, f := range findings {
 		ruleNames[f.RuleName]++
@@ -67,11 +70,16 @@ func buildFacets(findings []*findingRow) *facetState {
 		} else {
 			validations["-"]++
 		}
+
+		for _, repo := range f.Repositories {
+			repositories[repo]++
+		}
 	}
 
 	fs.Values[facetRuleName] = mapToFacetValues(facetRuleName, ruleNames)
 	fs.Values[facetCategory] = mapToFacetValues(facetCategory, categories)
 	fs.Values[facetValidation] = mapToFacetValues(facetValidation, validations)
+	fs.Values[facetRepository] = mapToFacetValues(facetRepository, repositories)
 
 	return fs
 }
@@ -152,6 +160,17 @@ func (fs *facetState) matchesFinding(f *findingRow) bool {
 			if !selected[status] {
 				return false
 			}
+		case facetRepository:
+			found := false
+			for _, repo := range f.Repositories {
+				if selected[repo] {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
 		}
 	}
 	return true
@@ -193,6 +212,14 @@ func (fs *facetState) updateCounts(findings []*findingRow) {
 				v.Count++
 			}
 		}
+		for _, v := range fs.Values[facetRepository] {
+			for _, repo := range f.Repositories {
+				if v.Value == repo {
+					v.Count++
+					break
+				}
+			}
+		}
 	}
 }
 
@@ -203,6 +230,7 @@ type findingRow struct {
 	RuleID           string
 	RuleName         string
 	Categories       []string
+	Repositories     []string // unique repo paths from match provenance
 	Groups           [][]byte
 	MatchCount       int
 	ValidationStatus string  // aggregated: "valid", "invalid", "undetermined", or ""
