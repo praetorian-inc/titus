@@ -234,7 +234,8 @@ func (m *Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch {
 		case keyMatches(msg, defaultKeys.Quit),
 			keyMatches(msg, defaultKeys.ForceQuit),
-			keyMatches(msg, defaultKeys.ToggleHelp):
+			keyMatches(msg, defaultKeys.ToggleHelp),
+			keyMatches(msg, defaultKeys.Escape):
 			m.activeOverlay = overlayNone
 		case keyMatches(msg, defaultKeys.Down):
 			m.helpOffset++

@@ -43,6 +43,7 @@ type keyMap struct {
 	// Quit
 	Quit      key.Binding
 	ForceQuit key.Binding
+	Escape    key.Binding
 }
 
 var defaultKeys = keyMap{
@@ -145,5 +146,9 @@ var defaultKeys = keyMap{
 	ForceQuit: key.NewBinding(
 		key.WithKeys("ctrl+c"),
 		key.WithHelp("C-c", "quit"),
+	),
+	Escape: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "close overlay"),
 	),
 }
