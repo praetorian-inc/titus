@@ -442,7 +442,7 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 	matches := make([]*types.Match, 0)
 	ruleStats := make(map[string]RuleStat)
 	dedup := NewDeduplicator()
-	contentStr := string(content)
+	contentRunes := []rune(string(content))
 
 	// For each Hyperscan-identified rule, use regexp2 to find precise match locations.
 	for ruleIdx := range matchedRuleIDs {
@@ -466,7 +466,7 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 		}
 
 		// Find all precise matches using regexp2
-		match, err := re.FindStringMatch(contentStr)
+		match, err := re.FindRunesMatch(contentRunes)
 		if err != nil {
 			if strings.Contains(err.Error(), "match timeout") {
 				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
@@ -697,7 +697,7 @@ func (m *VectorscanMatcher) extractGroupsFromMatch(match *regexp2.Match, rule *t
 // It applies prefiltering to only check patterns whose keywords are found in content.
 func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.BlobID) []*types.Match {
 	var matches []*types.Match
-	contentStr := string(content)
+	contentRunes := []rune(string(content))
 
 	// Use prefilter to determine which fallback rules might match
 	// This dramatically reduces the number of regex executions
@@ -721,7 +721,7 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 		}
 
 		// Find all matches for this rule
-		match, err := re.FindStringMatch(contentStr)
+		match, err := re.FindRunesMatch(contentRunes)
 		if err != nil {
 			if strings.Contains(err.Error(), "match timeout") {
 				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)

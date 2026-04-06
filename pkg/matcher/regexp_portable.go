@@ -107,7 +107,7 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 	}
 	matches := make([]*types.Match, 0, estimatedMatches)
 	m.dedup.Reset()
-	contentStr := string(content)
+	contentRunes := []rune(string(content))
 
 	for _, rule := range m.rules {
 		re := m.regexCache[rule.Pattern]
@@ -116,7 +116,7 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 		}
 
 		// Find first match
-		match, err := re.FindStringMatch(contentStr)
+		match, err := re.FindRunesMatch(contentRunes)
 		if err != nil {
 			if strings.Contains(err.Error(), "match timeout") {
 				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
@@ -160,7 +160,7 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 // matchParallel performs parallel matching with worker pool.
 func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobID) ([]*types.Match, error) {
 	numWorkers := runtime.GOMAXPROCS(0)
-	contentStr := string(content)
+	contentRunes := []rune(string(content))
 
 	// Job channel for distributing rules to workers
 	type job struct {
@@ -206,7 +206,7 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 				re := j.re
 
 				// Find first match
-				match, err := re.FindStringMatch(contentStr)
+				match, err := re.FindRunesMatch(contentRunes)
 				if err != nil {
 					if strings.Contains(err.Error(), "match timeout") {
 						fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)

@@ -1,6 +1,8 @@
 package matcher
 
 import (
+	"unicode/utf8"
+
 	"github.com/dlclark/regexp2"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -9,24 +11,29 @@ import (
 // regexp2 returns Match.Index and Match.Length as rune counts, not byte counts.
 // See: https://github.com/dlclark/regexp2/blob/master/match.go (Capture struct documentation)
 func runeSpanToByteSpan(content []byte, runeStart, runeLength int) (byteStart, byteEnd int) {
-	runes := []rune(string(content))
-
-	// Bounds check
-	if runeStart >= len(runes) {
-		return len(content), len(content)
-	}
 	runeEnd := runeStart + runeLength
-	if runeEnd > len(runes) {
-		runeEnd = len(runes)
+	byteStart = len(content)
+	byteEnd = len(content)
+
+	runeIdx := 0
+	byteIdx := 0
+	for byteIdx < len(content) {
+		if runeIdx == runeStart {
+			byteStart = byteIdx
+		}
+		if runeIdx == runeEnd {
+			byteEnd = byteIdx
+			return
+		}
+		_, size := utf8.DecodeRune(content[byteIdx:])
+		byteIdx += size
+		runeIdx++
 	}
-
-	// Convert prefix runes to string to get byte length (= start position)
-	byteStart = len(string(runes[:runeStart]))
-
-	// Convert prefix + match runes to string to get byte length (= end position)
-	byteEnd = len(string(runes[:runeEnd]))
-
-	return byteStart, byteEnd
+	// If runeEnd lands exactly at the end of content
+	if runeIdx == runeEnd {
+		byteEnd = byteIdx
+	}
+	return
 }
 
 // extractCaptureGroups extracts positional capture groups from a regexp2 match.
