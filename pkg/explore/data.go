@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/store"
@@ -145,6 +146,22 @@ func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[strin
 		mr := buildMatchRow(m, s)
 		row.Matches = append(row.Matches, mr)
 	}
+
+	// Extract unique repository paths from match provenance
+	repoSet := make(map[string]struct{})
+	for _, mr := range row.Matches {
+		for _, prov := range mr.Provenance {
+			if gp, ok := prov.(types.GitProvenance); ok && gp.RepoPath != "" {
+				repoSet[gp.RepoPath] = struct{}{}
+			}
+		}
+	}
+	repos := make([]string, 0, len(repoSet))
+	for r := range repoSet {
+		repos = append(repos, r)
+	}
+	sort.Strings(repos)
+	row.Repositories = repos
 
 	return row
 }

@@ -40,6 +40,13 @@ type keyMap struct {
 	// Sort
 	SortNext key.Binding
 
+	// Exclusion filter
+	Exclude key.Binding
+
+	// Filter pane resize
+	FilterWider    key.Binding
+	FilterNarrower key.Binding
+
 	// Quit
 	Quit      key.Binding
 	ForceQuit key.Binding
@@ -138,6 +145,18 @@ var defaultKeys = keyMap{
 	SortNext: key.NewBinding(
 		key.WithKeys("s"),
 		key.WithHelp("s", "sort"),
+	),
+	Exclude: key.NewBinding(
+		key.WithKeys("/"),
+		key.WithHelp("/", "exclude"),
+	),
+	FilterWider: key.NewBinding(
+		key.WithKeys("]"),
+		key.WithHelp("]", "wider filters"),
+	),
+	FilterNarrower: key.NewBinding(
+		key.WithKeys("["),
+		key.WithHelp("[", "narrower filters"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q"),
