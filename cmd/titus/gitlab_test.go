@@ -123,7 +123,7 @@ func TestGitLabScanCmd_OutputFlagMentionsAuto(t *testing.T) {
 	require.NoError(t, err)
 	flag := cmd.Flags().Lookup("output")
 	require.NotNil(t, flag)
-	assert.Contains(t, flag.Usage, "auto")
+	assert.Contains(t, flag.Usage, ":auto:")
 }
 
 func TestResolveAutoName(t *testing.T) {

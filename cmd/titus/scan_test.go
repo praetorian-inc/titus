@@ -31,7 +31,7 @@ func TestScanCommand_OutputFlagMentionsAuto(t *testing.T) {
 	require.NoError(t, err)
 	flag := cmd.Flags().Lookup("output")
 	require.NotNil(t, flag)
-	assert.Contains(t, flag.Usage, "auto")
+	assert.Contains(t, flag.Usage, ":auto:")
 }
 
 func TestGitHubScanCmd_OutputFlagMentionsAuto(t *testing.T) {
@@ -39,7 +39,7 @@ func TestGitHubScanCmd_OutputFlagMentionsAuto(t *testing.T) {
 	require.NoError(t, err)
 	flag := cmd.Flags().Lookup("output")
 	require.NotNil(t, flag)
-	assert.Contains(t, flag.Usage, "auto")
+	assert.Contains(t, flag.Usage, ":auto:")
 }
 
 func TestCreateEnumerator_GitReturnsCombined(t *testing.T) {
