@@ -134,6 +134,9 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 	}
 
 	// Filesystem mode (default): fast scan of working tree
+	// Collect commit metadata for current files (best-effort; nil map is safe)
+	commitMap, _ := collectCommitMetadataForRepo(ctx, clonePath, false)
+
 	return NewFilesystemEnumerator(cloneConfig).Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		// Rewrite file provenance to include repo name
 		if fp, ok := prov.(types.FileProvenance); ok {
@@ -142,10 +145,14 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 			if err != nil {
 				relPath = fp.FilePath
 			}
-			return callback(content, blobID, types.GitProvenance{
+			gp := types.GitProvenance{
 				RepoPath: repo.Name,
 				BlobPath: relPath,
-			})
+			}
+			if commitMap != nil {
+				gp.Commit = commitMap[relPath]
+			}
+			return callback(content, blobID, gp)
 		}
 		return callback(content, blobID, prov)
 	})
