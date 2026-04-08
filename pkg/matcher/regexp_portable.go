@@ -59,7 +59,7 @@ func NewPortableRegexp(rules []*types.Rule, contextLines int) (*PortableRegexpMa
 		rules:          rules,
 		regexCache:     make(map[string]*regexp2.Regexp),
 		groupNameCache: make(map[string][]string),
-		dedup:          NewContentDeduplicator(),
+		dedup:          NewDeduplicator(),
 		contextLines:   contextLines,
 	}
 
