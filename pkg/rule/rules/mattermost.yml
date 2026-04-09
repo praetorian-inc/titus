@@ -5,7 +5,10 @@ rules:
     pattern: |
       (?xi)
       \b
-      (?:mattermost|mm)
+      (?:
+        mattermost
+        | mm [_.\-] (?:url|server|host|endpoint|api|site|domain|addr|base|webhook)
+      )
       (?:.|[\n\r]){0,32}?
       (
         https?:\/\/[a-z0-9.-]+
@@ -17,25 +20,34 @@ rules:
     visible: false
     min_entropy: 2.0
     description: >
-      A URL was found near a 'mattermost' or 'mm' keyword.
+      A URL was found near a 'mattermost' or 'mm_url'/'mm_server'/etc keyword.
       This is a helper rule used for token validation against the detected Mattermost instance.
+      The 'mm' prefix requires a separator followed by a URL-related keyword to avoid
+      matching unrelated text that happens to start with 'mm' (e.g., tweet content, date formats).
     examples:
       - mattermost_url = "https://community.mattermost.com"
       - mattermost_url='http://localhost:8065'
       - 'mattermost_url: https://intra.example.com/mattermost'
       - 'mm_url=http://localhost:8065'
+      - 'mm.url=http://localhost:8065'
+      - 'mm-server: https://chat.example.com'
+      - 'mm_host=https://mattermost.internal.io'
     negative_examples:
       - slack_url = "https://hooks.slack.com"
       - 'discord_url: https://discord.com/api'
+      - 'MMO7BIDU0C https://t.co/A1QyX2Z3tX'
+      - 'MM-DDThh:mm:ss.sTZD https://www.w3.org/TR/NOTE-datetime'
+      - 'mmmiched https://t.co/lNxkIfSZH6'
+      - 'mmadsen@uwaterloo.ca https://flix.dev'
 
   - name: Mattermost Access Token
     id: kingfisher.mattermost.2
     pattern: |
       (?xi)
       \b
-      (?:mattermost|mm)
+      (?:mattermost|mm[_.\-])
       (?:.|[\n\r]){0,32}?
-      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN)
+      (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN|PAT|AUTH)
       (?:.|[\n\r]){0,32}?
       \b
       (?P<token>
