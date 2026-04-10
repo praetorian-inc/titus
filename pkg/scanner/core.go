@@ -150,6 +150,42 @@ func (c *Core) SetCanValidate(fn func(ruleID string) bool) {
 	matcher.SetCanValidate(c.matcher, fn)
 }
 
+// NewCoreWithRules creates a new Core scanner with pre-loaded rules.
+// This avoids JSON round-tripping when the caller already has []*types.Rule.
+func NewCoreWithRules(rules []*types.Rule, logger DebugLogger, warnFunc func(string, ...any)) (*Core, error) {
+	if logger == nil {
+		logger = NoopLogger{}
+	}
+
+	logger.Log("NewCoreWithRules starting with %d rules...", len(rules))
+
+	m, err := matcher.New(matcher.Config{
+		Rules:        rules,
+		ContextLines: 2,
+		WarnFunc:     warnFunc,
+	})
+	if err != nil {
+		logger.Log("matcher.New failed: %v", err)
+		return nil, err
+	}
+	logger.Log("Matcher created successfully")
+
+	s, err := store.New(store.Config{Path: ":memory:"})
+	if err != nil {
+		logger.Log("store.New failed: %v", err)
+		m.Close()
+		return nil, err
+	}
+	logger.Log("Store created successfully")
+
+	logger.Log("NewCoreWithRules complete")
+	return &Core{
+		matcher: m,
+		store:   s,
+		logger:  logger,
+	}, nil
+}
+
 // GetBuiltinRules returns the built-in rules (cached)
 func GetBuiltinRules() ([]*types.Rule, error) {
 	return loadBuiltinRulesCached()

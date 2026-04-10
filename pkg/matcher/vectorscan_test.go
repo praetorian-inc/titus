@@ -20,7 +20,7 @@ func TestVectorscanMatcher_BasicMatch(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -40,7 +40,7 @@ func TestVectorscanMatcher_NoMatch(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -63,7 +63,7 @@ func TestVectorscanMatcher_ExtendedMode(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -82,7 +82,7 @@ func TestVectorscanMatcher_CaseInsensitive(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -110,7 +110,7 @@ func TestVectorscanMatcher_DefaultFlagsConfiguration(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 0)
+	matcher, err := NewVectorscan(rules, 0, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -137,7 +137,7 @@ func TestVectorscanMatcher_MultipleRules(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -166,7 +166,7 @@ func TestVectorscanMatcher_Close(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 
 	// Close should not error
@@ -185,7 +185,7 @@ func TestVectorscanMatcher_CloseDoesNotHang(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 
 	// Perform some matches to populate the scratch pool
@@ -210,7 +210,7 @@ func TestVectorscanMatcher_CloseDoesNotHang(t *testing.T) {
 
 func TestVectorscanMatcher_EmptyRules(t *testing.T) {
 	rules := []*types.Rule{}
-	_, err := NewVectorscan(rules, 2)
+	_, err := NewVectorscan(rules, 2, nil)
 	assert.Error(t, err)
 }
 
@@ -223,7 +223,7 @@ func TestVectorscanMatcher_DotAllMode(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -242,7 +242,7 @@ func TestVectorscanMatcher_MultilineMode(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -261,7 +261,7 @@ func TestVectorscanMatcher_CaptureGroups(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -284,7 +284,7 @@ func TestVectorscanMatcher_NamedCaptureGroups(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -308,7 +308,7 @@ func TestVectorscanMatcher_ContextExtraction(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -333,7 +333,7 @@ func TestVectorscanMatcher_Deduplication(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -359,7 +359,7 @@ func TestVectorscanMatcher_LargeContent(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -381,7 +381,7 @@ func TestVectorscanMatcher_InvalidPattern(t *testing.T) {
 		},
 	}
 
-	_, err := NewVectorscan(rules, 2)
+	_, err := NewVectorscan(rules, 2, nil)
 	assert.Error(t, err)
 }
 
@@ -394,7 +394,7 @@ func TestVectorscanMatcher_UTF8Content(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -414,7 +414,7 @@ func TestVectorscanMatcher_ConcurrentMatching(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -485,7 +485,7 @@ func TestVectorscanMatcher_BlobIDConsistency(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -509,7 +509,7 @@ func TestVectorscanMatcher_LocationAccuracy(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 
@@ -568,7 +568,7 @@ func TestVectorscanMatcher_CombinedFlagsCaseInsensitive(t *testing.T) {
 		},
 	}
 
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	defer matcher.Close()
 

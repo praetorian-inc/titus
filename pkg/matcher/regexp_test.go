@@ -36,7 +36,7 @@ func TestMatchParallel_Correctness(t *testing.T) {
 	content := []byte(contentBuilder.String())
 	require.Greater(t, len(content), 10000, "Content must be >10KB to trigger parallel path")
 
-	matcher, err := NewPortableRegexp(rules, 0)
+	matcher, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
 
 	matches, err := matcher.Match(content)
@@ -94,7 +94,7 @@ func TestMatchParallel_vs_Sequential_Equivalence(t *testing.T) {
 			}
 			content := []byte(contentBuilder.String())
 
-			matcher, err := NewPortableRegexp(rules, 2)
+			matcher, err := NewPortableRegexp(rules, 2, nil)
 			require.NoError(t, err)
 
 			matches, err := matcher.Match(content)
@@ -128,7 +128,7 @@ func TestMatch_FindingID_Populated(t *testing.T) {
 
 	content := []byte("aws_access_key=AKIAZ52KNG5GARBXTEST\n")
 
-	matcher, err := NewPortableRegexp(rules, 0)
+	matcher, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
 
 	matches, err := matcher.Match(content)
@@ -171,7 +171,7 @@ func TestPortableRegexp_TimeoutIsTolerated(t *testing.T) {
 	catastrophicContent := strings.Repeat("a", 5000) + "c" // no 'b' → triggers timeout on rule 1
 	content := []byte(catastrophicContent + "\n" + `password = "secret123"`)
 
-	m, err := NewPortableRegexp(rules, 0)
+	m, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
 
 	// This must NOT return an error even though catastrophic-rule times out.
@@ -212,7 +212,7 @@ func TestPortableRegexp_TimeoutIsTolerated_Parallel(t *testing.T) {
 	content := []byte(sb.String())
 	require.Greater(t, len(content), parallelThreshold, "must trigger parallel path")
 
-	m, err := NewPortableRegexp(rules, 0)
+	m, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
 
 	matches, err := m.MatchWithBlobID(content, types.ComputeBlobID(content))
@@ -253,7 +253,7 @@ func TestMatchParallel_RaceDetector(t *testing.T) {
 	content := []byte(contentBuilder.String())
 	require.Greater(t, len(content), 10000)
 
-	matcher, err := NewPortableRegexp(rules, 1)
+	matcher, err := NewPortableRegexp(rules, 1, nil)
 	require.NoError(t, err)
 
 	// Run multiple times to increase chance of detecting races
@@ -279,7 +279,7 @@ func TestMatch_SnippetAndOffset_ASCII(t *testing.T) {
 	//                 0123456789...
 	//                        ^-- "secret_key" starts at byte 7
 
-	matcher, err := NewPortableRegexp(rules, 0)
+	matcher, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
 
 	matches, err := matcher.Match(content)
@@ -362,7 +362,7 @@ func TestMatch_SnippetAndOffset_UTF8(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			content := []byte(tc.content)
 
-			matcher, err := NewPortableRegexp(rules, 0)
+			matcher, err := NewPortableRegexp(rules, 0, nil)
 			require.NoError(t, err)
 
 			matches, err := matcher.Match(content)
@@ -405,7 +405,7 @@ func TestMatch_SnippetContext_UTF8(t *testing.T) {
 	// Content with multi-byte chars before and after the match
 	content := []byte("café secret_key 🔑end")
 
-	matcher, err := NewPortableRegexp(rules, 3) // 3 lines of context
+	matcher, err := NewPortableRegexp(rules, 3, nil) // 3 lines of context
 	require.NoError(t, err)
 
 	matches, err := matcher.Match(content)

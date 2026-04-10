@@ -5,6 +5,7 @@ package matcher
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -48,6 +49,8 @@ type VectorscanMatcher struct {
 	// Hybrid approach: track which rules use Hyperscan vs regexp2 fallback
 	hsRules       []*types.Rule // Rules compiled into Hyperscan
 	fallbackRules []*types.Rule // Rules that require regexp2 fallback
+
+	warnf func(string, ...any)
 }
 
 // knownIncompatiblePatterns contains rule IDs that are known to be
@@ -63,6 +66,11 @@ var knownIncompatiblePatterns = map[string]bool{
 	// Currently empty - all rules are Hyperscan-compatible
 }
 
+// namedGroupRegex matches named capture group openings in both Python (?P<name>)
+// and .NET (?<name>) syntax. Used to convert them to non-capturing groups for
+// Hyperscan compatibility.
+var namedGroupRegex = regexp.MustCompile(`\(\?P?<[^>]+>`)
+
 // NewVectorscan creates a new Hyperscan/Vectorscan-based matcher.
 // This is the high-performance option requiring CGO and the Hyperscan library.
 //
@@ -70,7 +78,7 @@ var knownIncompatiblePatterns = map[string]bool{
 // - Maximum performance is required (10-100x faster than regexp2)
 // - CGO is available and acceptable
 // - Scanning large files or many files
-func NewVectorscan(rules []*types.Rule, contextLines int) (*VectorscanMatcher, error) {
+func NewVectorscan(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*VectorscanMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
 	}
@@ -82,6 +90,7 @@ func NewVectorscan(rules []*types.Rule, contextLines int) (*VectorscanMatcher, e
 		regexCache:     make(map[string]*regexp2.Regexp),
 		groupNameCache: make(map[string][]string),
 		prefilter:      prefilter.New(rules),
+		warnf:          warnf,
 	}
 
 	// Compile patterns into Hyperscan database
@@ -295,7 +304,7 @@ func findIncompatiblePatterns(patterns []*hyperscan.Pattern) []int {
 }
 
 // preprocessPatternForHyperscan modifies a pattern for Hyperscan compatibility.
-// Hyperscan doesn't support extended mode ((?x)) so we strip it.
+// Hyperscan doesn't support extended mode ((?x)) or named capture groups so we strip/convert them.
 func preprocessPatternForHyperscan(pattern string) string {
 	// Strip extended mode if present
 	if hasExtendedMode(pattern) {
@@ -306,6 +315,12 @@ func preprocessPatternForHyperscan(pattern string) string {
 	pattern = strings.ReplaceAll(pattern, "(?i)", "")
 	pattern = strings.ReplaceAll(pattern, "(?s)", "")
 	pattern = strings.ReplaceAll(pattern, "(?m)", "")
+
+	// Convert named capture groups to non-capturing groups.
+	// Hyperscan does not support named captures ((?P<name>...) or (?<name>...)).
+	// Since Hyperscan is only used as a prefilter and regexp2 handles actual
+	// capture extraction, converting to (?:...) preserves matching semantics.
+	pattern = namedGroupRegex.ReplaceAllString(pattern, "(?:")
 
 	return pattern
 }
@@ -468,10 +483,12 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 		// Find all precise matches using regexp2
 		match, err := re.FindRunesMatch(contentRunes)
 		if err != nil {
-			if strings.Contains(err.Error(), "match timeout") {
-				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-			} else {
-				fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+			if m.warnf != nil {
+				if strings.Contains(err.Error(), "match timeout") {
+					m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+				} else {
+					m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				}
 			}
 			stat.Duration = time.Since(startTime)
 			ruleStats[rule.ID] = stat
@@ -491,10 +508,12 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 			if start < 0 || end > len(content) || start > end {
 				match, err = re.FindNextMatch(match)
 				if err != nil {
-					if strings.Contains(err.Error(), "match timeout") {
-						fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-					} else {
-						fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					if m.warnf != nil {
+						if strings.Contains(err.Error(), "match timeout") {
+							m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+						} else {
+							m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+						}
 					}
 					break
 				}
@@ -514,10 +533,12 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 
 			match, err = re.FindNextMatch(match)
 			if err != nil {
-				if strings.Contains(err.Error(), "match timeout") {
-					fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-				} else {
-					fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				if m.warnf != nil {
+					if strings.Contains(err.Error(), "match timeout") {
+						m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					} else {
+						m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					}
 				}
 				break
 			}
@@ -723,10 +744,12 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 		// Find all matches for this rule
 		match, err := re.FindRunesMatch(contentRunes)
 		if err != nil {
-			if strings.Contains(err.Error(), "match timeout") {
-				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-			} else {
-				fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+			if m.warnf != nil {
+				if strings.Contains(err.Error(), "match timeout") {
+					m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+				} else {
+					m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				}
 			}
 			continue
 		}
@@ -744,10 +767,12 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 			if start < 0 || end > len(content) || start > end {
 				match, err = re.FindNextMatch(match)
 				if err != nil {
-					if strings.Contains(err.Error(), "match timeout") {
-						fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-					} else {
-						fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					if m.warnf != nil {
+						if strings.Contains(err.Error(), "match timeout") {
+							m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+						} else {
+							m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+						}
 					}
 					break
 				}
@@ -761,10 +786,12 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 
 			match, err = re.FindNextMatch(match)
 			if err != nil {
-				if strings.Contains(err.Error(), "match timeout") {
-					fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-				} else {
-					fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				if m.warnf != nil {
+					if strings.Contains(err.Error(), "match timeout") {
+						m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					} else {
+						m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					}
 				}
 				break
 			}

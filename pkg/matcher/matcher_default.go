@@ -8,7 +8,7 @@ package matcher
 // - High detection accuracy: finds 20% more secrets than NoseyParker v0.24.0
 // - Performance: comparable on small files, sufficient for most use cases
 func New(cfg Config) (Matcher, error) {
-	inner, err := NewPortableRegexp(cfg.Rules, cfg.ContextLines)
+	inner, err := NewPortableRegexp(cfg.Rules, cfg.ContextLines, cfg.WarnFunc)
 	if err != nil {
 		return nil, err
 	}

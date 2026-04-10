@@ -27,7 +27,7 @@ func TestDatadogRUMToken_Detection(t *testing.T) {
 	require.NotNil(t, rumRule, "kingfisher.datadog.4 rule should exist")
 
 	// Create matcher with just this rule
-	m, err := matcher.NewPortableRegexp([]*types.Rule{rumRule}, 0)
+	m, err := matcher.NewPortableRegexp([]*types.Rule{rumRule}, 0, nil)
 	require.NoError(t, err)
 
 	testCases := []struct {
@@ -104,7 +104,7 @@ func TestLaunchDarklyClientSideID_Detection(t *testing.T) {
 	require.NotNil(t, ldRule, "kingfisher.launchdarkly.2 rule should exist")
 
 	// Create matcher with just this rule
-	m, err := matcher.NewPortableRegexp([]*types.Rule{ldRule}, 0)
+	m, err := matcher.NewPortableRegexp([]*types.Rule{ldRule}, 0, nil)
 	require.NoError(t, err)
 
 	testCases := []struct {
@@ -181,7 +181,7 @@ func TestSentryDSN_Detection(t *testing.T) {
 	require.NotNil(t, dsnRule, "kingfisher.sentry.4 rule should exist")
 
 	// Create matcher with just this rule
-	m, err := matcher.NewPortableRegexp([]*types.Rule{dsnRule}, 0)
+	m, err := matcher.NewPortableRegexp([]*types.Rule{dsnRule}, 0, nil)
 	require.NoError(t, err)
 
 	testCases := []struct {

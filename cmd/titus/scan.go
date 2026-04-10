@@ -134,6 +134,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 	m, err := matcher.New(matcher.Config{
 		Rules:        rules,
 		ContextLines: scanContextLines,
+		WarnFunc: func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format, args...)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
@@ -628,6 +631,9 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	m, err := matcher.New(matcher.Config{
 		Rules:        rules,
 		ContextLines: scanContextLines,
+		WarnFunc: func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format, args...)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)

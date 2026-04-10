@@ -39,7 +39,7 @@ func TestNoseyParkerParity_HTMLTestFile(t *testing.T) {
 	require.NotEmpty(t, rules)
 
 	// Create portable matcher (non-CGO)
-	m, err := NewPortableRegexp(rules, 0)
+	m, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -104,7 +104,7 @@ func TestNoseyParkerParity_MixedSecrets(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create portable matcher
-	m, err := NewPortableRegexp(rules, 0)
+	m, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
 	defer m.Close()
 
@@ -159,7 +159,7 @@ func BenchmarkTitusVsNoseyParkerSpeed(b *testing.B) {
 	}
 
 	// Create matcher once
-	m, err := NewPortableRegexp(rules, 0)
+	m, err := NewPortableRegexp(rules, 0, nil)
 	if err != nil {
 		b.Fatalf("Failed to create matcher: %v", err)
 	}

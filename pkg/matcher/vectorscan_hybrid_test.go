@@ -33,7 +33,7 @@ func TestVectorscanMatcher_HybridApproach(t *testing.T) {
 	}
 
 	// Should successfully create matcher despite complex pattern
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err, "matcher should be created even with complex patterns")
 	// Skip defer matcher.Close() - pre-existing bug in hyperscan cleanup causes hangs
 
@@ -76,7 +76,7 @@ func TestVectorscanMatcher_AllPatternsFallback(t *testing.T) {
 	}
 
 	// Should create matcher even if all patterns require fallback
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err, "matcher should be created with only fallback patterns")
 	// Skip defer matcher.Close() - pre-existing bug in hyperscan cleanup causes hangs
 
@@ -113,7 +113,7 @@ func TestVectorscanMatcher_DiagnosticOutput(t *testing.T) {
 
 	// Capture stderr to verify diagnostic output
 	// (We'll just test that it doesn't panic for now)
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err)
 	// Skip defer matcher.Close() - pre-existing bug in hyperscan cleanup causes hangs
 

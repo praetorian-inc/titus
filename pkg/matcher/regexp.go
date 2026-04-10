@@ -4,7 +4,6 @@ package matcher
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -20,10 +19,11 @@ type RegexpMatcher struct {
 	rules        []*types.Rule
 	regexCache   map[string]*regexp2.Regexp
 	contextLines int
+	warnf        func(string, ...any)
 }
 
 // NewRegexp creates a new regexp-based matcher.
-func NewRegexp(rules []*types.Rule, contextLines int) (*RegexpMatcher, error) {
+func NewRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*RegexpMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
 	}
@@ -32,6 +32,7 @@ func NewRegexp(rules []*types.Rule, contextLines int) (*RegexpMatcher, error) {
 		rules:        rules,
 		regexCache:   make(map[string]*regexp2.Regexp),
 		contextLines: contextLines,
+		warnf:        warnf,
 	}
 
 	// Pre-compile all patterns to catch errors early
@@ -74,10 +75,12 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 		// Find first match
 		match, err := re.FindStringMatch(contentStr)
 		if err != nil {
-			if strings.Contains(err.Error(), "match timeout") {
-				fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-			} else {
-				fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+			if m.warnf != nil {
+				if strings.Contains(err.Error(), "match timeout") {
+					m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+				} else {
+					m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				}
 			}
 			continue
 		}
@@ -153,10 +156,12 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 			// Find next match
 			match, err = re.FindNextMatch(match)
 			if err != nil {
-				if strings.Contains(err.Error(), "match timeout") {
-					fmt.Fprintf(os.Stderr, "[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
-				} else {
-					fmt.Fprintf(os.Stderr, "[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+				if m.warnf != nil {
+					if strings.Contains(err.Error(), "match timeout") {
+						m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					} else {
+						m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					}
 				}
 				break
 			}

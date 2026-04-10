@@ -25,4 +25,8 @@ type Config struct {
 
 	// ContextLines is the number of lines of context to extract before/after matches (0 = none)
 	ContextLines int
+
+	// WarnFunc, if non-nil, is called for non-fatal regex warnings
+	// (timeouts, pattern errors). If nil, warnings are silently discarded.
+	WarnFunc func(format string, args ...any)
 }

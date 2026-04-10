@@ -4,7 +4,7 @@ package matcher
 
 // New creates a regexp-based matcher for WASM builds.
 func New(cfg Config) (Matcher, error) {
-	inner, err := NewRegexp(cfg.Rules, cfg.ContextLines)
+	inner, err := NewRegexp(cfg.Rules, cfg.ContextLines, cfg.WarnFunc)
 	if err != nil {
 		return nil, err
 	}

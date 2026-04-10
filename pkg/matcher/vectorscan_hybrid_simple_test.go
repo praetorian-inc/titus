@@ -28,7 +28,7 @@ func TestVectorscanMatcher_HybridSimple(t *testing.T) {
 
 	// Should successfully create matcher
 	t.Log("Creating matcher...")
-	matcher, err := NewVectorscan(rules, 2)
+	matcher, err := NewVectorscan(rules, 2, nil)
 	require.NoError(t, err, "matcher should be created")
 	t.Log("Matcher created successfully")
 
