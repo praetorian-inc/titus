@@ -6,14 +6,17 @@ validators:
 
   http:
     method: GET
-    url: "https://api.anthropic.com/v1/messages"
+    url: "https://api.anthropic.com/v1/models"
     auth:
       type: header
       secret_group: "token"
       header_name: "x-api-key"
+    headers:
+      - name: "anthropic-version"
+        value: "2023-06-01"
 
     # Success codes indicate valid API key
-    success_codes: [200, 400]  # 200 = valid + proper request, 400 = valid key but malformed request body
+    success_codes: [200]  # 200 = valid key, returns list of available models
 
     # Failure codes indicate invalid or unauthorized key
     failure_codes: [401, 403]
