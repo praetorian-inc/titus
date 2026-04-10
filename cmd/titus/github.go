@@ -22,6 +22,7 @@ var (
 	githubOutputFormat string
 	githubNoClone      bool
 	githubGit          bool
+	githubSkipForks    bool
 	githubRateLimit    float64
 )
 
@@ -72,6 +73,7 @@ func init() {
 	githubScanCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
 	githubScanCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	githubScanCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
+	githubScanCmd.Flags().BoolVar(&githubSkipForks, "skip-forks", false, "Skip forked repositories when scanning orgs or users")
 	githubScanCmd.Flags().Float64Var(&githubRateLimit, "rate-limit", 0, "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)")
 
 	githubCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
@@ -82,6 +84,7 @@ func init() {
 	githubCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
 	githubCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	githubCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
+	githubCmd.Flags().BoolVar(&githubSkipForks, "skip-forks", false, "Skip forked repositories when scanning orgs or users")
 	githubCmd.Flags().Float64Var(&githubRateLimit, "rate-limit", 0, "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)")
 
 	githubCmd.AddCommand(githubScanCmd)
@@ -136,12 +139,13 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	}
 
 	ghEnum, err := enum.NewGitHubEnumerator(enum.GitHubConfig{
-		Token:   token,
-		BaseURL: baseURL,
-		Owner:   owner,
-		Repo:    repo,
-		Org:     githubOrg,
-		User:    githubUser,
+		Token:     token,
+		BaseURL:   baseURL,
+		Owner:     owner,
+		Repo:      repo,
+		Org:       githubOrg,
+		User:      githubUser,
+		SkipForks: githubSkipForks,
 		Config: enum.Config{
 			MaxFileSize: 10 * 1024 * 1024,
 		},

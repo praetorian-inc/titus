@@ -16,13 +16,14 @@ import (
 
 // GitHubConfig configures GitHub API enumeration.
 type GitHubConfig struct {
-	Token   string // GitHub API token (optional; unauthenticated if empty)
-	BaseURL string // GitHub Enterprise base URL (optional; defaults to github.com)
-	Owner   string // Repository owner (for single repo)
-	Repo    string // Repository name (for single repo)
-	Org     string // Organization name (list all org repos)
-	User    string // User name (list all user repos)
-	Config         // Embedded base config
+	Token     string // GitHub API token (optional; unauthenticated if empty)
+	BaseURL   string // GitHub Enterprise base URL (optional; defaults to github.com)
+	Owner     string // Repository owner (for single repo)
+	Repo      string // Repository name (for single repo)
+	Org       string // Organization name (list all org repos)
+	User      string // User name (list all user repos)
+	SkipForks bool   // Skip forked repositories when scanning orgs/users
+	Config           // Embedded base config
 }
 
 // GitHubEnumerator enumerates blobs from GitHub via API.
@@ -78,6 +79,9 @@ func (e *GitHubEnumerator) Enumerate(ctx context.Context, callback func(content 
 
 	// Enumerate each repository
 	for _, repo := range repos {
+		if e.config.SkipForks && repo.GetFork() {
+			continue
+		}
 		if err := e.enumerateRepo(ctx, repo, callback); err != nil {
 			return fmt.Errorf("enumerating %s: %w", repo.GetFullName(), err)
 		}
@@ -171,6 +175,9 @@ func (e *GitHubEnumerator) ListRepoURLs(ctx context.Context) ([]RepoInfo, error)
 
 	var urls []RepoInfo
 	for _, repo := range repos {
+		if e.config.SkipForks && repo.GetFork() {
+			continue
+		}
 		urls = append(urls, RepoInfo{
 			Name:          repo.GetFullName(),
 			CloneURL:      repo.GetCloneURL(),
