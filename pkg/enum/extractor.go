@@ -59,7 +59,15 @@ func ExtractText(path string, content []byte, limits ExtractionLimits) ([]Extrac
 }
 
 // extractWithState performs extraction with depth and size tracking.
-func extractWithState(path string, content []byte, state *extractState) ([]ExtractedContent, error) {
+func extractWithState(path string, content []byte, state *extractState) (result []ExtractedContent, err error) {
+	// Third-party libraries (pdf, sqlite, 7z) may panic on malformed files.
+	defer func() {
+		if r := recover(); r != nil {
+			result = nil
+			err = fmt.Errorf("extraction panic for %s: %v", filepath.Base(path), r)
+		}
+	}()
+
 	// Check depth limit
 	if state.depth > state.limits.MaxDepth {
 		return nil, nil // Silently skip - too deep
