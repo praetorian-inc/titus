@@ -115,6 +115,70 @@ rules:
   - '	url := "https://slack.com/api/channels.history?token=xoxp-113726990690-113803571044-155105854433-53ffb9d16ace50aa79aa1c425a68b131&channel=C4D8D3XMX&count=1&pretty=1"'
 
 
+- name: Slack Workflow Webhook
+  id: np.slack.7
+  pattern: '(?i)(?P<webhook>https://hooks\.slack\.com/workflows/[TE][a-z0-9]{5,14}/A[a-z0-9]{5,14}/[0-9]{6,20}/[a-zA-Z0-9]{8,40})'
+
+  categories:
+  - api
+  - secret
+
+  references:
+  - https://slack.com/help/articles/360041352714-Create-more-advanced-workflows-using-webhooks
+  - https://api.slack.com/workflows
+
+  description: >
+    A Slack Workflow Webhook URL was found.
+    These URLs are used by Workflow Builder automations to trigger multi-step workflows.
+    An attacker with this URL can invoke the workflow and potentially exfiltrate data,
+    send messages, or trigger other automated actions without authentication.
+
+  examples:
+  - 'WORKFLOW_URL=https://hooks.slack.com/workflows/T00EXAMPLE1/A00EXAMPLE1/123456789012345678/aBcDeFgHiJkLmNoPqRsTuVwX'
+  - 'curl -X POST https://hooks.slack.com/workflows/E00EXAMPLE2/A00EXAMPLE2/987654321098765432/xYzAbCdEfGhIjKlM'
+  - |
+      # Trigger Slack workflow
+      webhook_url = "https://hooks.slack.com/workflows/T00EXAMPLE3/A00EXAMPLE3/111222333444555666/qWeRtYuIoPaSdFgH"
+
+  negative_examples:
+  - 'https://hooks.slack.com/services/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'
+  - 'https://hooks.slack.com/triggers/T00EXAMPLE/1234567890123/abcdef1234567890abcdef1234567890'
+  - 'https://slack.com/workflows/T00EXAMPLE1'
+
+
+- name: Slack Trigger URL
+  id: np.slack.8
+  pattern: '(?i)(?P<webhook>https://hooks\.slack\.com/triggers/[TE][a-z0-9]{5,14}/[0-9]{10,16}(?:/[a-f0-9]{32})?)'
+
+  categories:
+  - api
+  - secret
+
+  references:
+  - https://api.slack.com/automation/triggers/webhook
+  - https://api.slack.com/automation/functions
+
+  description: >
+    A Slack Trigger URL was found.
+    These URLs invoke custom automation functions with app-level permissions using Slack's
+    next-generation automation platform. An attacker with this URL can trigger arbitrary
+    custom functions, potentially exfiltrating data or performing privileged actions
+    within the workspace without requiring user authentication.
+
+  examples:
+  - 'TRIGGER_URL=https://hooks.slack.com/triggers/T00EXAMPLE1/1234567890123/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
+  - 'TRIGGER_URL=https://hooks.slack.com/triggers/E00EXAMPLE2/9876543210987/abcdef0123456789abcdef0123456789'
+  - 'curl -X POST https://hooks.slack.com/triggers/TEXAMPLE9/5551234567890/0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d'
+  - |
+      # Invoke Slack automation trigger
+      trigger_url = "https://hooks.slack.com/triggers/T00EXAMPLE3/8157378790976/f0e1d2c3b4a5968778695a4b3c2d1e0f"
+
+  negative_examples:
+  - 'https://hooks.slack.com/services/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'
+  - 'https://hooks.slack.com/workflows/T00EXAMPLE1/A00EXAMPLE1/123456789012345678/aBcDeFgHiJkLmNoPqRsTuVwX'
+  - 'https://hooks.slack.com/triggers/T00EXAMPLE1/1234567890123/NOT_HEX_TOKEN_zzzz'
+
+
 - name: Slack Webhook
   id: np.slack.3
   pattern: '(?i)(?P<webhook>https://hooks.slack.com/services/T[a-z0-9_]{8,12}/B[a-z0-9_]{8,12}/[a-z0-9_]{24})'

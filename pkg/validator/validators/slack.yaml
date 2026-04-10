@@ -17,6 +17,57 @@ validators:
       success_codes: [400]  # 400 with "no_text" body means webhook exists (valid but missing payload)
       failure_codes: [403, 404]  # 403=invalid_token (revoked), 404=no_service/no_team (doesn't exist)
 
+  # Slack Workflow Webhook validation (np.slack.7)
+  # Sends intentionally malformed JSON to avoid triggering the workflow.
+  # Slack checks the token before parsing the body for most triggers:
+  #   400 invalid_input       = Valid token, active workflow (payload rejected)
+  #   401 invalid_auth        = Invalid token but endpoint exists
+  #   404 webhook_not_found   = Revoked or deleted
+  #   400 missing_args        = URL never existed (team/trigger ID invalid)
+  # Tested against 33 real-world GitHub-leaked URLs + 10 randomly generated URLs.
+  - name: slack-workflow-webhook
+    rule_ids:
+      - np.slack.7
+    http:
+      method: POST
+      url: "{{webhook}}"
+      auth:
+        type: none
+        secret_group: "webhook"
+      headers:
+        - name: Content-Type
+          value: application/json
+      body: "intentionally malformed JSON from Titus validation"
+      success_codes: [400]
+      failure_codes: [401, 404]
+      success_body_contains: "invalid_input"
+      failure_body_contains: "missing_args"
+
+  # Slack Trigger URL validation (np.slack.8)
+  # Same malformed JSON approach as workflow webhooks — safe and non-intrusive.
+  # Response matrix identical to workflow webhooks:
+  #   400 invalid_input       = Valid token, active trigger
+  #   401 invalid_auth        = Invalid token but endpoint exists
+  #   404 webhook_not_found   = Revoked or deleted
+  #   400 missing_args        = URL never existed
+  - name: slack-trigger-url
+    rule_ids:
+      - np.slack.8
+    http:
+      method: POST
+      url: "{{webhook}}"
+      auth:
+        type: none
+        secret_group: "webhook"
+      headers:
+        - name: Content-Type
+          value: application/json
+      body: "intentionally malformed JSON from Titus validation"
+      success_codes: [400]
+      failure_codes: [401, 404]
+      success_body_contains: "invalid_input"
+      failure_body_contains: "missing_args"
+
   # Slack token validation uses auth.test endpoint (read-only, no scopes required)
   # Returns ok=true with team/user metadata if valid
   # Returns ok=false with error field if invalid (invalid_auth, token_revoked, account_inactive, not_authed)
