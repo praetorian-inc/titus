@@ -1,0 +1,16 @@
+name: Claude PR Assistant
+
+on:
+  pull_request:
+    types: [synchronize, opened]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  claude-code-action:
+    uses: praetorian-inc/public-workflows/.github/workflows/claude-code.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
