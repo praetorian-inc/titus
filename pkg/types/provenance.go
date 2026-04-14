@@ -63,7 +63,10 @@ func (e ExtendedProvenance) Kind() string {
 	return "extended"
 }
 
-// Path returns empty string as extended provenance has no standard path.
+// Path returns the "path" value from the payload if present.
 func (e ExtendedProvenance) Path() string {
+	if p, ok := e.Payload["path"].(string); ok {
+		return p
+	}
 	return ""
 }

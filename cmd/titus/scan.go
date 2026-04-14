@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,6 +60,7 @@ var (
 	extractMaxDepth         int
 	scanSQLiteRowLimit      int
 	scanWorkers             int
+	scanReaders             int
 	scanRuleset             string
 	scanIgnoreFile          string
 )
@@ -91,6 +93,7 @@ func init() {
 	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
 	scanCmd.Flags().IntVar(&scanSQLiteRowLimit, "sqlite-row-limit", 1000, "Max rows per table for SQLite extraction (0 for unlimited)")
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
+	scanCmd.Flags().IntVar(&scanReaders, "readers", 0, "Number of parallel file readers (0 = NumCPU)")
 	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
 }
 
@@ -111,6 +114,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Check if target is a GitHub or GitLab URL
 	if repoTarget, ok := parseRepoURL(target); ok {
 		return runRepoScan(cmd, repoTarget)
+	}
+
+	// Check if target is an S3 URL
+	if bucket, prefix, ok := enum.ParseS3URL(target); ok {
+		return runS3Scan(cmd, bucket, prefix)
 	}
 
 	// Validate target exists (filesystem path)
@@ -188,6 +196,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if numWorkers < 1 {
 		numWorkers = 1
 	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[scan] Starting scan with %d workers and %d rules\n", numWorkers, len(rules))
+	}
+
 	jobs := make(chan blobJob, 2*numWorkers)
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -195,9 +208,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Producer: enumerate blobs and send to workers (NO DB writes)
 	g.Go(func() error {
 		defer close(jobs)
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[enumerate] Starting enumeration of %s\n", target)
+		}
 		return enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 			totalBytes.Add(int64(len(content)))
-			blobCount.Add(1)
+			count := blobCount.Add(1)
+			if verbose && count%1000 == 0 {
+				fmt.Fprintf(os.Stderr, "[enumerate] %d files discovered (%d bytes)\n", count, totalBytes.Load())
+			}
 
 			// Check for incremental scanning
 			if scanIncremental {
@@ -312,7 +331,15 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("scanning: %w", err)
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			// Normal shutdown, not an error
+		} else {
+			return fmt.Errorf("scanning: %w", err)
+		}
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[scan] Scan complete: %d blobs, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
 	}
 
 	duration := time.Since(startTime)
@@ -333,12 +360,16 @@ func loadRules(path, include, exclude, rulesetID string) ([]*types.Rule, error) 
 	var err error
 
 	if path != "" {
-		// Custom rules from file — skip ruleset filtering
-		r, err := loader.LoadRuleFile(path)
+		// Custom rules merged with builtins
+		builtins, err := loader.LoadBuiltinRules()
 		if err != nil {
 			return nil, err
 		}
-		rules = []*types.Rule{r}
+		custom, err := loader.LoadRuleFile(path)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(builtins, custom)
 	} else {
 		// Builtin rules
 		rules, err = loader.LoadBuiltinRules()
@@ -518,6 +549,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 		ExtractArchives: string(scanExtractArchivesFlag),
 		ExtractLimits:   limits,
 		IgnoreFile:      scanIgnoreFile,
+		NumReaders:      scanReaders,
 	}
 
 	if useGit {
@@ -797,7 +829,246 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	}
 
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("scanning: %w", err)
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			// Normal shutdown via Ctrl+C, not an error
+		} else {
+			return fmt.Errorf("scanning: %w", err)
+		}
+	}
+
+	duration := time.Since(startTime)
+	printScanStats(cmd, scanOutputFormat, scanOutputPath,
+		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
+
+	return outputScanResults(cmd, s, rules, ruleMap)
+}
+
+// runS3Scan handles scanning of S3 buckets detected from s3:// URLs.
+func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
+	// Load rules
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
+	// Create matcher
+	m, err := matcher.New(matcher.Config{
+		Rules:        rules,
+		ContextLines: scanContextLines,
+		WarnFunc: func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format, args...)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("creating matcher: %w", err)
+	}
+	defer m.Close()
+
+	// Create store
+	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
+	if err != nil {
+		return err
+	}
+	if ds != nil {
+		defer ds.Close()
+	} else {
+		defer s.Close()
+	}
+
+	// Store rules for foreign key constraints
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return fmt.Errorf("storing rule: %w", err)
+		}
+	}
+
+	validationEngine := initValidationEngine()
+	if validationEngine != nil {
+		matcher.SetCanValidate(m, validationEngine.CanValidate)
+	}
+
+	// Parse extraction limits
+	limits := enum.DefaultExtractionLimits()
+	if extractMaxSize != "" {
+		size, err := parseSize(extractMaxSize)
+		if err != nil {
+			return fmt.Errorf("parsing extract-max-size: %w", err)
+		}
+		limits.MaxSize = size
+	}
+	if extractMaxTotal != "" {
+		size, err := parseSize(extractMaxTotal)
+		if err != nil {
+			return fmt.Errorf("parsing extract-max-total: %w", err)
+		}
+		limits.MaxTotal = size
+	}
+	limits.MaxDepth = extractMaxDepth
+	limits.SQLiteRowLimit = scanSQLiteRowLimit
+
+	s3Enum := enum.NewS3Enumerator(bucket, prefix, enum.Config{
+		MaxFileSize:     scanMaxFileSize,
+		ExtractArchives: string(scanExtractArchivesFlag),
+		ExtractLimits:   limits,
+	})
+
+	ctx := context.Background()
+	var matchCount atomic.Int64
+	var findingCount atomic.Int64
+	var skippedCount atomic.Int64
+	var totalBytes atomic.Int64
+	var blobCount atomic.Int64
+	startTime := time.Now()
+
+	numWorkers := scanWorkers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[scan] Starting S3 scan of s3://%s/%s with %d workers and %d rules\n", bucket, prefix, numWorkers, len(rules))
+	}
+
+	jobs := make(chan blobJob, 2*numWorkers)
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Producer
+	g.Go(func() error {
+		defer close(jobs)
+		return s3Enum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			totalBytes.Add(int64(len(content)))
+			count := blobCount.Add(1)
+			if verbose && count%1000 == 0 {
+				fmt.Fprintf(os.Stderr, "[enumerate] %d objects processed (%d bytes)\n", count, totalBytes.Load())
+			}
+
+			if scanIncremental {
+				exists, err := s.BlobExists(blobID)
+				if err != nil {
+					return fmt.Errorf("checking blob: %w", err)
+				}
+				if exists {
+					skippedCount.Add(1)
+					return nil
+				}
+			}
+
+			select {
+			case jobs <- blobJob{content: content, blobID: blobID, prov: prov}:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	})
+
+	// Consumer workers
+	const batchSize = 64
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			type batchItem struct {
+				blobID  types.BlobID
+				prov    types.Provenance
+				size    int64
+				matches []*types.Match
+			}
+			var batch []batchItem
+
+			flush := func() error {
+				if len(batch) == 0 {
+					return nil
+				}
+				err := s.ExecBatch(func(tx store.Store) error {
+					for _, item := range batch {
+						if err := tx.AddBlob(item.blobID, item.size); err != nil {
+							return fmt.Errorf("storing blob: %w", err)
+						}
+						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
+							return fmt.Errorf("storing provenance: %w", err)
+						}
+						for _, match := range item.matches {
+							if err := tx.AddMatch(match); err != nil {
+								return fmt.Errorf("storing match: %w", err)
+							}
+							rule, ok := ruleMap[match.RuleID]
+							if !ok {
+								return fmt.Errorf("rule not found: %s", match.RuleID)
+							}
+							findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+							exists, err := tx.FindingExists(findingID)
+							if err != nil {
+								return fmt.Errorf("checking finding: %w", err)
+							}
+							if !exists {
+								findingCount.Add(1)
+								if err := tx.AddFinding(&types.Finding{
+									ID:     findingID,
+									RuleID: match.RuleID,
+									Groups: match.Groups,
+								}); err != nil {
+									return fmt.Errorf("storing finding: %w", err)
+								}
+							}
+						}
+					}
+					return nil
+				})
+				batch = batch[:0]
+				return err
+			}
+
+			for job := range jobs {
+				matches, err := m.MatchWithBlobID(job.content, job.blobID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[warn] match error (skipping blob %s): %v\n", job.blobID.Hex(), err)
+					continue
+				}
+
+				for _, match := range matches {
+					startLine, startCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.Start))
+					endLine, endCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.End))
+					match.Location.Source.Start.Line = startLine
+					match.Location.Source.Start.Column = startCol
+					match.Location.Source.End.Line = endLine
+					match.Location.Source.End.Column = endCol
+				}
+
+				validateMatches(ctx, validationEngine, matches, verbose)
+				matchCount.Add(int64(len(matches)))
+
+				batch = append(batch, batchItem{
+					blobID:  job.blobID,
+					prov:    job.prov,
+					size:    int64(len(job.content)),
+					matches: matches,
+				})
+				if len(batch) >= batchSize {
+					if err := flush(); err != nil {
+						return err
+					}
+				}
+			}
+			return flush()
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		// Suppress context.Canceled errors during shutdown
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			// Normal shutdown via Ctrl+C, not an error
+		} else {
+			return fmt.Errorf("scanning: %w", err)
+		}
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[scan] S3 scan complete: %d objects, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
 	}
 
 	duration := time.Since(startTime)

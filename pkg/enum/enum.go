@@ -55,6 +55,9 @@ type Config struct {
 	// If empty, the embedded default ignore.conf is used.
 	// Use "/dev/null" to disable all ignore patterns.
 	IgnoreFile string
+
+	// NumReaders is the number of parallel file readers (0 = runtime.NumCPU()).
+	NumReaders int
 }
 
 // ValidateBaseURL checks that a user-supplied base URL uses HTTP(S).

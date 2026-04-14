@@ -593,8 +593,13 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 			// File path from provenance - "File:" in heading style, path in metadata style
 			prov, err := store.GetProvenance(match.BlobID)
 			if err == nil && prov != nil {
+				label := "File:"
+				switch prov.Kind() {
+				case "archive", "extended":
+					label = "Source:"
+				}
 				fmt.Fprintf(out, "    %s %s\n",
-					s.heading.Sprint("File:"),
+					s.heading.Sprint(label),
 					s.metadata.Sprint(prov.Path()))
 				if gp, ok := prov.(types.GitProvenance); ok && gp.Commit != nil && !gp.Commit.CommitterTimestamp.IsZero() {
 					fmt.Fprintf(out, "    %s %s\n",

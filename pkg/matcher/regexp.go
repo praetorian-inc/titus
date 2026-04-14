@@ -77,9 +77,9 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 		if err != nil {
 			if m.warnf != nil {
 				if strings.Contains(err.Error(), "match timeout") {
-					m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
 				} else {
-					m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 				}
 			}
 			continue
@@ -158,9 +158,9 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 			if err != nil {
 				if m.warnf != nil {
 					if strings.Contains(err.Error(), "match timeout") {
-						m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+						m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
 					} else {
-						m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 					}
 				}
 				break
