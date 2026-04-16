@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadEmbeddedValidators(t *testing.T) {
@@ -21,4 +22,18 @@ func TestLoadEmbeddedValidators(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "github-token validator should be embedded")
+
+	// Verify np.github.3 and np.github.7 are registered
+	var githubValidator Validator
+	for _, v := range validators {
+		if v.Name() == "github-token" {
+			githubValidator = v
+			break
+		}
+	}
+	require.NotNil(t, githubValidator, "github-token validator should exist")
+	assert.True(t, githubValidator.CanValidate("np.github.1"))
+	assert.True(t, githubValidator.CanValidate("np.github.2"))
+	assert.True(t, githubValidator.CanValidate("np.github.3"))
+	assert.True(t, githubValidator.CanValidate("np.github.7"))
 }
