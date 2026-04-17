@@ -122,6 +122,51 @@ func TestProvenance_InterfaceUsage(t *testing.T) {
 	assert.Equal(t, "", provs[2].Path())
 }
 
+func TestArchiveProvenance(t *testing.T) {
+	prov := ArchiveProvenance{
+		ArchivePath: "/tmp/app.zip",
+		MemberPath:  "config/secrets.yml",
+	}
+
+	assert.Equal(t, "archive", prov.Kind())
+	assert.Equal(t, "/tmp/app.zip:config/secrets.yml", prov.Path())
+
+	// implements Provenance interface
+	var p Provenance = ArchiveProvenance{ArchivePath: "/tmp/app.zip", MemberPath: "config/secrets.yml"}
+	assert.Equal(t, "archive", p.Kind())
+
+	// empty paths produce ":"
+	assert.Equal(t, ":", ArchiveProvenance{}.Path())
+}
+
+func TestExtendedProvenance_PathFromPayload(t *testing.T) {
+	t.Run("path key present", func(t *testing.T) {
+		prov := ExtendedProvenance{
+			Payload: map[string]interface{}{"path": "s3://bucket/key"},
+		}
+		assert.Equal(t, "s3://bucket/key", prov.Path())
+	})
+
+	t.Run("path key wrong type", func(t *testing.T) {
+		prov := ExtendedProvenance{
+			Payload: map[string]interface{}{"path": 42},
+		}
+		assert.Equal(t, "", prov.Path())
+	})
+
+	t.Run("path key absent", func(t *testing.T) {
+		prov := ExtendedProvenance{
+			Payload: map[string]interface{}{"source": "s3"},
+		}
+		assert.Equal(t, "", prov.Path())
+	})
+
+	t.Run("nil payload", func(t *testing.T) {
+		prov := ExtendedProvenance{Payload: nil}
+		assert.Equal(t, "", prov.Path())
+	})
+}
+
 func TestCommitMetadata(t *testing.T) {
 	authorTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
 	committerTime := time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC)

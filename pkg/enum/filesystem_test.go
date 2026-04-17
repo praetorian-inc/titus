@@ -1,6 +1,7 @@
 package enum
 
 import (
+	"archive/zip"
 	"context"
 	"os"
 	"path/filepath"
@@ -426,4 +427,124 @@ func TestFilesystemEnumerator_ContextCancellation(t *testing.T) {
 	if err != context.Canceled {
 		t.Errorf("expected context.Canceled error, got %v", err)
 	}
+}
+
+// TestFilesystemEnumerator_ArchiveProvenance verifies extracted archive members get ArchiveProvenance.
+func TestFilesystemEnumerator_ArchiveProvenance(t *testing.T) {
+	tmpDir := t.TempDir()
+	zipPath := filepath.Join(tmpDir, "bundle.zip")
+
+	// Build a zip with a single text member
+	if err := buildZipWithMember(t, zipPath, "config/secrets.txt", "password=hunter2"); err != nil {
+		t.Fatalf("failed to create zip: %v", err)
+	}
+
+	config := Config{
+		Root:            tmpDir,
+		ExtractArchives: "all",
+		ExtractLimits:   DefaultExtractionLimits(),
+	}
+	enumerator := NewFilesystemEnumerator(config)
+
+	var mu sync.Mutex
+	var archiveProvs []types.ArchiveProvenance
+	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if ap, ok := prov.(types.ArchiveProvenance); ok {
+			archiveProvs = append(archiveProvs, ap)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("enumerate failed: %v", err)
+	}
+
+	if len(archiveProvs) == 0 {
+		t.Fatal("expected at least one ArchiveProvenance callback, got none")
+	}
+
+	// Find the callback for config/secrets.txt
+	var found *types.ArchiveProvenance
+	for i := range archiveProvs {
+		if archiveProvs[i].MemberPath == "config/secrets.txt" {
+			found = &archiveProvs[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no ArchiveProvenance with MemberPath 'config/secrets.txt'; got: %v", archiveProvs)
+	}
+	if found.ArchivePath != zipPath {
+		t.Errorf("ArchivePath = %q, want %q", found.ArchivePath, zipPath)
+	}
+	wantPath := zipPath + ":config/secrets.txt"
+	if found.Path() != wantPath {
+		t.Errorf("Path() = %q, want %q", found.Path(), wantPath)
+	}
+}
+
+// TestFilesystemEnumerator_NumReaders verifies NumReaders is honored (correctness, not parallelism).
+func TestFilesystemEnumerator_NumReaders(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	const numFiles = 20
+	for i := 0; i < numFiles; i++ {
+		name := filepath.Join(tmpDir, filepath.FromSlash(filepath.Join("sub", "file"+string(rune('a'+i))+".txt")))
+		if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte("content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	countFiles := func(t *testing.T, numReaders int) int {
+		t.Helper()
+		config := Config{Root: tmpDir, NumReaders: numReaders}
+		enumerator := NewFilesystemEnumerator(config)
+		var mu sync.Mutex
+		var count int
+		err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			mu.Lock()
+			count++
+			mu.Unlock()
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("enumerate failed: %v", err)
+		}
+		return count
+	}
+
+	if n := countFiles(t, 1); n != numFiles {
+		t.Errorf("NumReaders=1: expected %d files, got %d", numFiles, n)
+	}
+	if n := countFiles(t, 4); n != numFiles {
+		t.Errorf("NumReaders=4: expected %d files, got %d", numFiles, n)
+	}
+	// 0 defaults to runtime.NumCPU() — should still return all files
+	if n := countFiles(t, 0); n != numFiles {
+		t.Errorf("NumReaders=0: expected %d files, got %d", numFiles, n)
+	}
+}
+
+// buildZipWithMember creates a zip file at dst containing one member with the given content.
+func buildZipWithMember(t *testing.T, dst, memberName, memberContent string) error {
+	t.Helper()
+	f, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := zip.NewWriter(f)
+	defer w.Close()
+
+	entry, err := w.Create(memberName)
+	if err != nil {
+		return err
+	}
+	_, err = entry.Write([]byte(memberContent))
+	return err
 }
