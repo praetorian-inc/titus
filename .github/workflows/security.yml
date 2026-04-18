@@ -1,0 +1,21 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Mondays 06:00 UTC — weekly baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    uses: praetorian-inc/public-workflows/.github/workflows/go-security.yml@d805693c16ea002e098e5520592959a8e98e12ac  # v1.1.0
+    permissions:
+      contents: read
+      security-events: write
+    secrets: inherit
