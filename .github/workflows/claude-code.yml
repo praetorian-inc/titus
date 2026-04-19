@@ -2,15 +2,19 @@ name: Claude PR Assistant
 
 on:
   pull_request:
-    types: [synchronize, opened]
+    types: [opened, synchronize, reopened]
   pull_request_review_comment:
     types: [created]
 
+concurrency:
+  group: claude-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   claude-code-action:
-    uses: praetorian-inc/public-workflows/.github/workflows/claude-code.yml@main
+    uses: praetorian-inc/public-workflows/.github/workflows/claude-code.yml@4900fbd3aaf1992181e2ebfb108c71fee8250c67  # v2.0.1
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
