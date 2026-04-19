@@ -6,21 +6,20 @@ on:
   pull_request_target:
     types: [opened, assigned, closed]
 
-# Permissions are declared explicitly at the caller. Reusable workflows
-# cannot elevate GITHUB_TOKEN beyond what the caller grants, so if this
-# block is omitted the notify job falls back to org/repo default token
-# permissions — which may be read-only, causing Linear/GitHub comment
-# writes to fail with "Resource not accessible by integration".
-permissions:
-  contents: read
-  issues: write
-  pull-requests: write
-
 jobs:
   notify:
-    uses: praetorian-inc/public-workflows/.github/workflows/external-contrib-notify.yml@4900fbd3aaf1992181e2ebfb108c71fee8250c67  # v2.0.1
+    uses: praetorian-inc/public-workflows/.github/workflows/external-contrib-notify.yml@faa2e42989736cf9b3f47e5377dd5f2e0327517f  # v2.0.2
     permissions:
       contents: read
       issues: write
       pull-requests: write
-    secrets: inherit
+    secrets:
+      EXTERNAL_CONTRIB_APP_ID: ${{ secrets.EXTERNAL_CONTRIB_APP_ID }}
+      EXTERNAL_CONTRIB_APP_PRIVATE_KEY: ${{ secrets.EXTERNAL_CONTRIB_APP_PRIVATE_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      LINEAR_ASSIGNEE_ID: ${{ secrets.LINEAR_ASSIGNEE_ID }}
+      LINEAR_PARENT_ISSUE_ID: ${{ secrets.LINEAR_PARENT_ISSUE_ID }}
+      LINEAR_PROJECT_ID: ${{ secrets.LINEAR_PROJECT_ID }}
