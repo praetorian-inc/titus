@@ -13,4 +13,13 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-    secrets: inherit
+    secrets:
+      EXTERNAL_CONTRIB_APP_ID: ${{ secrets.EXTERNAL_CONTRIB_APP_ID }}
+      EXTERNAL_CONTRIB_APP_PRIVATE_KEY: ${{ secrets.EXTERNAL_CONTRIB_APP_PRIVATE_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      LINEAR_ASSIGNEE_ID: ${{ secrets.LINEAR_ASSIGNEE_ID }}
+      LINEAR_PARENT_ISSUE_ID: ${{ secrets.LINEAR_PARENT_ISSUE_ID }}
+      LINEAR_PROJECT_ID: ${{ secrets.LINEAR_PROJECT_ID }}
