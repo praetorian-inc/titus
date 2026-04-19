@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   claude-code-action:
-    uses: praetorian-inc/public-workflows/.github/workflows/claude-code.yml@faa2e42989736cf9b3f47e5377dd5f2e0327517f  # v2.0.2
+    uses: praetorian-inc/public-workflows/.github/workflows/claude-code.yml@c4e898f83b9c4008cc3dbe295cc420e53ec6b16b  # v2.0.9
     permissions:
       contents: read
       pull-requests: write
