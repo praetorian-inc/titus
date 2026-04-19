@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   ci:
-    uses: praetorian-inc/public-workflows/.github/workflows/go-ci.yml@f89bda45e8073b1b6ac20198164de2b71ebf0c69  # v1.0.2
+    uses: praetorian-inc/public-workflows/.github/workflows/go-ci.yml@135c50049eeef6e664bd7ea4aacaa33118083e30  # v2.0.10
     permissions:
       contents: read
     with:

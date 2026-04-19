@@ -8,7 +8,7 @@ on:
 
 jobs:
   notify:
-    uses: praetorian-inc/public-workflows/.github/workflows/external-contrib-notify.yml@faa2e42989736cf9b3f47e5377dd5f2e0327517f  # v2.0.2
+    uses: praetorian-inc/public-workflows/.github/workflows/external-contrib-notify.yml@135c50049eeef6e664bd7ea4aacaa33118083e30  # v2.0.10
     permissions:
       contents: read
       issues: write
