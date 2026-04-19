@@ -6,7 +6,21 @@ on:
   pull_request_target:
     types: [opened, assigned, closed]
 
+# Permissions are declared explicitly at the caller. Reusable workflows
+# cannot elevate GITHUB_TOKEN beyond what the caller grants, so if this
+# block is omitted the notify job falls back to org/repo default token
+# permissions — which may be read-only, causing Linear/GitHub comment
+# writes to fail with "Resource not accessible by integration".
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   notify:
     uses: praetorian-inc/public-workflows/.github/workflows/external-contrib-notify.yml@4900fbd3aaf1992181e2ebfb108c71fee8250c67  # v2.0.1
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     secrets: inherit
