@@ -18,29 +18,3 @@ jobs:
       pull-requests: write
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-  debug-context:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Echo event context
-        run: |
-          echo "event_name: ${{ github.event_name }}"
-          echo "action: ${{ github.event.action }}"
-          echo "actor: ${{ github.actor }}"
-          echo "triggering_actor: ${{ github.triggering_actor }}"
-          echo "draft: ${{ github.event.pull_request.draft }}"
-          echo "pr.author_association: ${{ github.event.pull_request.author_association }}"
-          echo "pr.user.login: ${{ github.event.pull_request.user.login }}"
-          echo "comment.author_association: ${{ github.event.comment.author_association }}"
-          echo "comment.body: ${{ github.event.comment.body }}"
-          echo ""
-          echo "=== Manual if: check ==="
-          # Manually test each piece of the if:
-          echo "draft == false: ${{ github.event.pull_request.draft == false }}"
-          echo "not coderabbit: ${{ !contains(github.actor, 'coderabbit') }}"
-          echo "not bot: ${{ !contains(github.actor, '[bot]') }}"
-          echo "is pull_request: ${{ github.event_name == 'pull_request' }}"
-          echo "action opened: ${{ github.event.action == 'opened' }}"
-          echo "action synchronize: ${{ github.event.action == 'synchronize' }}"
-          echo "pr author is OWNER: ${{ github.event.pull_request.author_association == 'OWNER' }}"
-          echo "pr author is MEMBER: ${{ github.event.pull_request.author_association == 'MEMBER' }}"
-          echo "pr author is COLLABORATOR: ${{ github.event.pull_request.author_association == 'COLLABORATOR' }}"
