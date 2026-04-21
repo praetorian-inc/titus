@@ -82,8 +82,8 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if token == "" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Note: No GitLab token provided. Using unauthenticated access (public projects only).\n")
-		fmt.Fprintf(cmd.ErrOrStderr(), "Set GITLAB_TOKEN or use --token for private project access.\n\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Note: No GitLab token provided. Using unauthenticated access (public projects only).\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Set GITLAB_TOKEN or use --token for private project access.\n\n")
 	}
 
 	if gitlabBaseURL != "" {
@@ -92,7 +92,7 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid --url: %w", err)
 		}
 		if insecure && token != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: Using HTTP with an API token. Your token will be sent in plaintext.\n")
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: Using HTTP with an API token. Your token will be sent in plaintext.\n")
 		}
 	}
 
@@ -141,13 +141,13 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	s, err := store.New(store.Config{Path: gitlabOutputPath})
 	if err != nil {
 		return fmt.Errorf("creating store: %w", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	for _, r := range rules {
 		if err := s.AddRule(r); err != nil {
@@ -161,13 +161,13 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	if gitlabNoClone {
 		enumerator = glEnum
 	} else {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Enumerating projects...\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Enumerating projects...\n")
 		projects, err := glEnum.ListProjectURLs(ctx)
 		if err != nil {
 			return fmt.Errorf("listing projects: %w", err)
 		}
 
-		fmt.Fprintf(cmd.ErrOrStderr(), "Found %d projects to scan\n\n", len(projects))
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Found %d projects to scan\n\n", len(projects))
 
 		cloneEnum := enum.NewCloneEnumerator(projects, enum.Config{
 			MaxFileSize: 10 * 1024 * 1024,
@@ -243,8 +243,8 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "GitLab scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", gitlabOutputPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "GitLab scan complete: %d matches, %d findings\n", matchCount, findingCount)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", gitlabOutputPath)
 
 	if gitlabOutputFormat == "json" {
 		matches, err := s.GetAllMatches()

@@ -217,7 +217,7 @@ func TestTrueNASValidator_Validate_ValidToken(t *testing.T) {
 		assert.Contains(t, r.URL.Path, "/api/v2.0/system/info")
 		assert.Contains(t, r.Header.Get("Authorization"), "Bearer ")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"version":"TrueNAS-SCALE-24.04"}`))
+		_, _ = w.Write([]byte(`{"version":"TrueNAS-SCALE-24.04"}`))
 	}))
 	defer server.Close()
 

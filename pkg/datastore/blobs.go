@@ -34,7 +34,7 @@ func (b *BlobStore) Store(content []byte) (types.BlobID, error) {
 	}
 
 	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath) // Clean up temp file on failure
+		_ = os.Remove(tempPath) // Clean up temp file on failure
 		return types.BlobID{}, fmt.Errorf("renaming blob: %w", err)
 	}
 

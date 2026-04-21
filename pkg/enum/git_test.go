@@ -653,7 +653,7 @@ func TestGitEnumerator_WalkAll_MultipleBranches(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		cmd = exec.Command("git", "checkout", "main")
 		cmd.Dir = tmpDir
-		cmd.Run() // Ignore error - one should work
+		_ = cmd.Run() // Ignore error - one should work
 	}
 
 	// Enumerate with WalkAll=true (should see both branches)
@@ -692,10 +692,10 @@ func TestGitEnumerator_DoesNotApplyIgnorePatterns(t *testing.T) {
 	}
 	cmd = exec.Command("git", "config", "user.email", "test@example.com")
 	cmd.Dir = tmpDir
-	cmd.Run()
+	_ = cmd.Run()
 	cmd = exec.Command("git", "config", "user.name", "Test User")
 	cmd.Dir = tmpDir
-	cmd.Run()
+	_ = cmd.Run()
 
 	// Create a file that matches default ignore patterns
 	if err := os.WriteFile(filepath.Join(tmpDir, "package-lock.json"), []byte(`{"lockfileVersion": 3}`), 0644); err != nil {
@@ -707,10 +707,10 @@ func TestGitEnumerator_DoesNotApplyIgnorePatterns(t *testing.T) {
 
 	cmd = exec.Command("git", "add", ".")
 	cmd.Dir = tmpDir
-	cmd.Run()
+	_ = cmd.Run()
 	cmd = exec.Command("git", "commit", "-m", "Add files")
 	cmd.Dir = tmpDir
-	cmd.Run()
+	_ = cmd.Run()
 
 	// Ignore patterns are NOT applied to git history — see git_native_test.go
 	// for rationale (git rev-list dedup makes ignore unsafe).

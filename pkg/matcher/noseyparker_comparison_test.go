@@ -41,7 +41,7 @@ func TestNoseyParkerParity_HTMLTestFile(t *testing.T) {
 	// Create portable matcher (non-CGO)
 	m, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	// Read test file
 	content, err := os.ReadFile("../../extension/test/test-secrets.html")
@@ -106,7 +106,7 @@ func TestNoseyParkerParity_MixedSecrets(t *testing.T) {
 	// Create portable matcher
 	m, err := NewPortableRegexp(rules, 0, nil)
 	require.NoError(t, err)
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	// Read test file
 	content, err := os.ReadFile("../../testdata/secrets/mixed-secrets.txt")
@@ -163,7 +163,7 @@ func BenchmarkTitusVsNoseyParkerSpeed(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create matcher: %v", err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	// Read test content
 	content, err := os.ReadFile("../../extension/test/test-secrets.html")

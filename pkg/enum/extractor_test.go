@@ -706,14 +706,14 @@ func buildSQLiteWithRows(t *testing.T, n int) []byte {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	t.Cleanup(func() { os.Remove(tmpPath) })
+	_ = tmpFile.Close()
+	t.Cleanup(func() { _ = os.Remove(tmpPath) })
 
 	db, err := sql.Open("sqlite", tmpPath)
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(`CREATE TABLE secrets (val TEXT)`); err != nil {
 		t.Fatalf("failed to create table: %v", err)
@@ -723,7 +723,7 @@ func buildSQLiteWithRows(t *testing.T, n int) []byte {
 			t.Fatalf("failed to insert row %d: %v", i, err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	content, err := os.ReadFile(tmpPath)
 	if err != nil {

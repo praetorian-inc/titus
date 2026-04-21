@@ -80,7 +80,6 @@ type Model struct {
 
 	width  int
 	height int
-	err    error
 }
 
 // New creates a new Model by loading data from the given datastore path.
@@ -528,18 +527,18 @@ func (m *Model) renderExcludeContent() string {
 	sb.WriteString("\n  Enter pattern (case-sensitive substring match on repo paths):\n")
 
 	if !m.excludeInListMode {
-		sb.WriteString(fmt.Sprintf("  > %s_\n", m.excludeInput))
+		fmt.Fprintf(&sb, "  > %s_\n", m.excludeInput)
 	} else {
-		sb.WriteString(fmt.Sprintf("    %s\n", m.excludeInput))
+		fmt.Fprintf(&sb, "    %s\n", m.excludeInput)
 	}
 
 	if len(m.excludePatterns) > 0 {
 		sb.WriteString("\n  Active patterns (tab to switch, x to delete):\n")
 		for i, p := range m.excludePatterns {
 			if m.excludeInListMode && i == m.excludeCursor {
-				sb.WriteString(fmt.Sprintf("  > %s\n", rejectStyle.Render(p)))
+				fmt.Fprintf(&sb, "  > %s\n", rejectStyle.Render(p))
 			} else {
-				sb.WriteString(fmt.Sprintf("    %s\n", p))
+				fmt.Fprintf(&sb, "    %s\n", p)
 			}
 		}
 	}
@@ -761,7 +760,8 @@ func (m *Model) copySecretToClipboard() tea.Cmd {
 }
 
 func (m *Model) setAnnotation(status string) {
-	if m.focus == paneFindings {
+	switch m.focus {
+	case paneFindings:
 		f := m.findings.selectedFinding()
 		if f == nil {
 			return
@@ -774,7 +774,7 @@ func (m *Model) setAnnotation(status string) {
 			f.AnnotationStatus = status
 			_ = m.data.setFindingAnnotation(f.FindingID, status, f.Comment)
 		}
-	} else if m.focus == paneDetails {
+	case paneDetails:
 		match := m.details.selectedMatch()
 		if match == nil {
 			return
@@ -790,7 +790,8 @@ func (m *Model) setAnnotation(status string) {
 }
 
 func (m *Model) moveNext() {
-	if m.focus == paneFindings {
+	switch m.focus {
+	case paneFindings:
 		if m.findings.cursor < len(m.findings.rows)-1 {
 			m.findings.cursor++
 			m.findings.ensureVisible()
@@ -798,7 +799,7 @@ func (m *Model) moveNext() {
 				m.details.setFinding(f)
 			}
 		}
-	} else if m.focus == paneDetails {
+	case paneDetails:
 		if m.finding() != nil && m.details.matchCursor < len(m.finding().Matches)-1 {
 			m.details.matchCursor++
 		}
@@ -810,7 +811,8 @@ func (m *Model) finding() *findingRow {
 }
 
 func (m *Model) startComment() {
-	if m.focus == paneFindings {
+	switch m.focus {
+	case paneFindings:
 		f := m.findings.selectedFinding()
 		if f == nil {
 			return
@@ -818,7 +820,7 @@ func (m *Model) startComment() {
 		m.commentTarget = "finding"
 		m.commentID = f.FindingID
 		m.commentInput = f.Comment
-	} else if m.focus == paneDetails {
+	case paneDetails:
 		match := m.details.selectedMatch()
 		if match == nil {
 			return
@@ -831,13 +833,14 @@ func (m *Model) startComment() {
 }
 
 func (m *Model) saveComment() {
-	if m.commentTarget == "finding" {
+	switch m.commentTarget {
+	case "finding":
 		f := m.findings.selectedFinding()
 		if f != nil {
 			f.Comment = m.commentInput
 			_ = m.data.setFindingAnnotation(f.FindingID, f.AnnotationStatus, f.Comment)
 		}
-	} else if m.commentTarget == "match" {
+	case "match":
 		match := m.details.selectedMatch()
 		if match != nil {
 			match.Comment = m.commentInput

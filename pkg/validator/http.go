@@ -81,7 +81,7 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("request failed: %v", err)), nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body if needed for body-based validation
 	var respBody []byte
@@ -91,7 +91,7 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 			return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
 		}
 	} else {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 	}
 
 	// Check response code and body

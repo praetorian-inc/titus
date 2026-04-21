@@ -46,7 +46,7 @@ func TestServeCommand_Integration(t *testing.T) {
 	// Send close command
 	_, err := pw.Write([]byte(`{"type":"close","payload":{}}` + "\n"))
 	require.NoError(t, err)
-	pw.Close()
+	_ = pw.Close()
 
 	select {
 	case err := <-done:

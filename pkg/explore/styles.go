@@ -40,8 +40,6 @@ var (
 				Background(lipgloss.Color("17")).
 				Foreground(colorHighlight)
 
-	normalRowStyle = lipgloss.NewStyle()
-
 	headerRowStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorAccent)

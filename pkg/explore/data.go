@@ -41,7 +41,7 @@ func loadData(storePath string) (*exploreData, error) {
 	loader := rule.NewLoader()
 	rules, err := loader.LoadBuiltinRules()
 	if err != nil {
-		s.Close()
+		_ = s.Close()
 		return nil, fmt.Errorf("loading rules: %w", err)
 	}
 	ruleMap := make(map[string]*types.Rule)
@@ -52,14 +52,14 @@ func loadData(storePath string) (*exploreData, error) {
 	// Load findings (same as report.go:109-111)
 	findings, err := s.GetFindings()
 	if err != nil {
-		s.Close()
+		_ = s.Close()
 		return nil, fmt.Errorf("retrieving findings: %w", err)
 	}
 
 	// Load all matches (same as report.go:114-116)
 	matches, err := s.GetAllMatches()
 	if err != nil {
-		s.Close()
+		_ = s.Close()
 		return nil, fmt.Errorf("retrieving matches: %w", err)
 	}
 

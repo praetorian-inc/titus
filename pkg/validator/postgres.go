@@ -67,7 +67,7 @@ func (v *PostgresValidator) Validate(ctx context.Context, match *types.Match) (*
 		// Analyze error to determine if it's auth failure or network issue
 		return v.analyzeConnectionError(err)
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 
 	// Connection successful - credentials are valid
 	return types.NewValidationResult(

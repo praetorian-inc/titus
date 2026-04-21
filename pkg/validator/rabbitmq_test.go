@@ -147,7 +147,7 @@ func TestRabbitMQValidator_ValidCredentials(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"name":"admin","tags":"administrator"}`))
+		_, _ = w.Write([]byte(`{"name":"admin","tags":"administrator"}`))
 	}))
 	defer server.Close()
 
@@ -176,7 +176,7 @@ func TestRabbitMQValidator_InvalidCredentials(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"not_authorised","reason":"Login failed"}`))
+		_, _ = w.Write([]byte(`{"error":"not_authorised","reason":"Login failed"}`))
 	}))
 	defer server.Close()
 

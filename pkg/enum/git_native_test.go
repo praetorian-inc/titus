@@ -300,7 +300,7 @@ func TestNativeGitEnumerator_MultipleCommits(t *testing.T) {
 
 	// Commit 3: modify file1, delete file2
 	writeFile(t, filepath.Join(tmpDir, "file1.txt"), "content1-modified")
-	os.Remove(filepath.Join(tmpDir, "file2.txt"))
+	_ = os.Remove(filepath.Join(tmpDir, "file2.txt"))
 	gitAddCommit(t, tmpDir, "Commit 3")
 
 	config := Config{Root: tmpDir}

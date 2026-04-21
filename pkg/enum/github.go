@@ -144,25 +144,38 @@ func (e *GitHubEnumerator) listOrgRepos(ctx context.Context) ([]*github.Reposito
 
 // listUserRepos lists all repositories for a user.
 func (e *GitHubEnumerator) listUserRepos(ctx context.Context) ([]*github.Repository, error) {
-	opts := &github.RepositoryListOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
-	}
-
 	var allRepos []*github.Repository
-	for {
-		repos, resp, err := e.client.Repositories.List(ctx, e.config.User, opts)
-		if err != nil {
-			return nil, fmt.Errorf("listing user repositories: %w", err)
+	if e.config.User != "" {
+		opts := &github.RepositoryListByUserOptions{
+			ListOptions: github.ListOptions{PerPage: 100},
 		}
-
-		allRepos = append(allRepos, repos...)
-
-		if resp.NextPage == 0 {
-			break
+		for {
+			repos, resp, err := e.client.Repositories.ListByUser(ctx, e.config.User, opts)
+			if err != nil {
+				return nil, fmt.Errorf("listing user repositories: %w", err)
+			}
+			allRepos = append(allRepos, repos...)
+			if resp.NextPage == 0 {
+				break
+			}
+			opts.Page = resp.NextPage
 		}
-		opts.Page = resp.NextPage
+	} else {
+		opts := &github.RepositoryListByAuthenticatedUserOptions{
+			ListOptions: github.ListOptions{PerPage: 100},
+		}
+		for {
+			repos, resp, err := e.client.Repositories.ListByAuthenticatedUser(ctx, opts)
+			if err != nil {
+				return nil, fmt.Errorf("listing user repositories: %w", err)
+			}
+			allRepos = append(allRepos, repos...)
+			if resp.NextPage == 0 {
+				break
+			}
+			opts.Page = resp.NextPage
+		}
 	}
-
 	return allRepos, nil
 }
 

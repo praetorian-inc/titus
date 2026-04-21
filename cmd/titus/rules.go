@@ -95,10 +95,10 @@ func outputRulesJSON(cmd *cobra.Command, rules []*types.Rule) error {
 
 func outputRulesTable(cmd *cobra.Command, rules []*types.Rule) error {
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-	defer w.Flush()
+	defer func() { _ = w.Flush() }()
 
-	fmt.Fprintf(w, "ID\tName\tCategories\n")
-	fmt.Fprintf(w, "--\t----\t----------\n")
+	_, _ = fmt.Fprintf(w, "ID\tName\tCategories\n")
+	_, _ = fmt.Fprintf(w, "--\t----\t----------\n")
 
 	for _, r := range rules {
 		categories := ""
@@ -108,7 +108,7 @@ func outputRulesTable(cmd *cobra.Command, rules []*types.Rule) error {
 				categories += fmt.Sprintf(" (+%d)", len(r.Categories)-1)
 			}
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", r.ID, r.Name, categories)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", r.ID, r.Name, categories)
 	}
 
 	return nil

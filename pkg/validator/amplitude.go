@@ -82,7 +82,7 @@ func (v *AmplitudeValidator) Validate(ctx context.Context, match *types.Match) (
 			fmt.Sprintf("request failed: %v", err),
 		), nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	// Evaluate response
 	switch resp.StatusCode {

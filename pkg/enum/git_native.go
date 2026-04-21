@@ -137,7 +137,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		if i%1000 == 0 {
 			select {
 			case <-ctx.Done():
-				stdin.Close()
+				_ = stdin.Close()
 				_ = cmd.Wait()
 				return ctx.Err()
 			default:
@@ -146,7 +146,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 
 		hexStr := hex.EncodeToString(blob.hash[:])
 		if _, err := fmt.Fprintf(stdin, "%s\n", hexStr); err != nil {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -157,7 +157,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		// Read response header: "<hash> <type> <size>\n"
 		headerLine, err := reader.ReadString('\n')
 		if err != nil {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -175,7 +175,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		objType := parts[1]
 		size, err := strconv.ParseInt(parts[2], 10, 64)
 		if err != nil {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			return fmt.Errorf("git cat-file: parse size %q: %w", parts[2], err)
 		}
@@ -183,7 +183,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		// Non-blob objects: discard content + trailing newline.
 		if objType != "blob" {
 			if _, err := io.CopyN(io.Discard, reader, size+1); err != nil {
-				stdin.Close()
+				_ = stdin.Close()
 				_ = cmd.Wait()
 				if ctx.Err() != nil {
 					return ctx.Err()
@@ -196,7 +196,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		// Oversized blobs: discard.
 		if e.config.MaxFileSize > 0 && size > e.config.MaxFileSize {
 			if _, err := io.CopyN(io.Discard, reader, size+1); err != nil {
-				stdin.Close()
+				_ = stdin.Close()
 				_ = cmd.Wait()
 				if ctx.Err() != nil {
 					return ctx.Err()
@@ -209,7 +209,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		// Read blob content.
 		content := make([]byte, size)
 		if _, err := io.ReadFull(reader, content); err != nil {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -219,7 +219,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 
 		// Consume trailing newline.
 		if _, err := reader.ReadByte(); err != nil {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -242,13 +242,13 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		}
 
 		if err := callback(content, blobID, prov); err != nil {
-			stdin.Close()
+			_ = stdin.Close()
 			_ = cmd.Wait()
 			return err
 		}
 	}
 
-	stdin.Close()
+	_ = stdin.Close()
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {

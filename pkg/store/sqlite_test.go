@@ -19,7 +19,7 @@ func TestSQLite_SchemaWithLocationColumns(t *testing.T) {
 
 	store, err := NewSQLite(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	blobID := types.ComputeBlobID([]byte("test content"))
 	err = store.AddBlob(blobID, 12)
@@ -76,7 +76,7 @@ func TestSQLite_GetAllMatchesWithLocation(t *testing.T) {
 
 	store, err := NewSQLite(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	blobID1 := types.ComputeBlobID([]byte("content1"))
 	blobID2 := types.ComputeBlobID([]byte("content2"))
@@ -149,7 +149,7 @@ func TestSQLite_GetMatchesRuleName(t *testing.T) {
 
 	store, err := NewSQLite(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	blobID := types.ComputeBlobID([]byte("test content"))
 	err = store.AddBlob(blobID, 12)
@@ -192,7 +192,7 @@ func TestSQLite_GetAllMatchesRuleName(t *testing.T) {
 
 	store, err := NewSQLite(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	blobID1 := types.ComputeBlobID([]byte("content1"))
 	blobID2 := types.ComputeBlobID([]byte("content2"))
@@ -263,7 +263,7 @@ func TestSQLite_NullLocationValues(t *testing.T) {
 
 	store, err := NewSQLite(dbPath)
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	blobID := types.ComputeBlobID([]byte("test content"))
 	err = store.AddBlob(blobID, 12)
@@ -312,7 +312,7 @@ func TestSQLite_ProvenanceWithCommitMetadata(t *testing.T) {
 	dir := t.TempDir()
 	store, err := New(Config{Path: filepath.Join(dir, "test.db")})
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	blobID := types.ComputeBlobID([]byte("secret content"))
 	err = store.AddBlob(blobID, 14)

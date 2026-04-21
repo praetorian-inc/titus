@@ -6,23 +6,20 @@ on:
   pull_request_target:
     types: [opened, assigned, closed]
 
-permissions:
-  issues: write
-  pull-requests: write
-
 jobs:
   notify:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: praetorian-inc/external-contrib-action@v2
-        with:
-          linear-team-id: ${{ secrets.LINEAR_TEAM_ID }}
-          linear-assignee-id: ${{ secrets.LINEAR_ASSIGNEE_ID }}
-          linear-parent-issue-id: ${{ secrets.LINEAR_PARENT_ISSUE_ID }}
-          slack-channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-          dry-run: "false"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ORG_MEMBER_CHECK_PAT: ${{ secrets.ORG_MEMBER_CHECK_PAT }}
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+    uses: praetorian-inc/public-workflows/.github/workflows/external-contrib-notify.yml@e7c1f39e9219a3256df321445d558e18cf3027c0  # v2.0.11
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    secrets:
+      EXTERNAL_CONTRIB_APP_ID: ${{ secrets.EXTERNAL_CONTRIB_APP_ID }}
+      EXTERNAL_CONTRIB_APP_PRIVATE_KEY: ${{ secrets.EXTERNAL_CONTRIB_APP_PRIVATE_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      LINEAR_ASSIGNEE_ID: ${{ secrets.LINEAR_ASSIGNEE_ID }}
+      LINEAR_PARENT_ISSUE_ID: ${{ secrets.LINEAR_PARENT_ISSUE_ID }}
+      LINEAR_PROJECT_ID: ${{ secrets.LINEAR_PROJECT_ID }}

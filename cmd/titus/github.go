@@ -106,8 +106,8 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if token == "" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Note: No GitHub token provided. Using unauthenticated access (60 requests/hour, public repos only).\n")
-		fmt.Fprintf(cmd.ErrOrStderr(), "Set GITHUB_TOKEN or use --token for higher rate limits and private repo access.\n\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Note: No GitHub token provided. Using unauthenticated access (60 requests/hour, public repos only).\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Set GITHUB_TOKEN or use --token for higher rate limits and private repo access.\n\n")
 	}
 
 	if baseURL != "" {
@@ -116,9 +116,9 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid --url: %w", err)
 		}
 		if insecure && token != "" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: Using HTTP with an API token. Your token will be sent in plaintext.\n")
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: Using HTTP with an API token. Your token will be sent in plaintext.\n")
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Using GitHub Enterprise: %s\n", baseURL)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using GitHub Enterprise: %s\n", baseURL)
 	}
 
 	var owner, repo string
@@ -171,7 +171,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	s, err := store.New(store.Config{
 		Path: githubOutputPath,
@@ -179,7 +179,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating store: %w", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	for _, r := range rules {
 		if err := s.AddRule(r); err != nil {
@@ -193,13 +193,13 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	if githubNoClone {
 		enumerator = ghEnum
 	} else {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Enumerating repositories...\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Enumerating repositories...\n")
 		repos, err := ghEnum.ListRepoURLs(ctx)
 		if err != nil {
 			return fmt.Errorf("listing repositories: %w", err)
 		}
 
-		fmt.Fprintf(cmd.ErrOrStderr(), "Found %d repositories to scan\n\n", len(repos))
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Found %d repositories to scan\n\n", len(repos))
 
 		cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
 			MaxFileSize: 10 * 1024 * 1024,
@@ -275,8 +275,8 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning GitHub: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "GitHub scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", githubOutputPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "GitHub scan complete: %d matches, %d findings\n", matchCount, findingCount)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", githubOutputPath)
 
 	if githubOutputFormat == "json" {
 		matches, err := s.GetAllMatches()

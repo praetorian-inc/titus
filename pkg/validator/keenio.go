@@ -141,7 +141,7 @@ func (v *KeenIOValidator) tryEndpoint(ctx context.Context, ep keenEndpoint, apiK
 			fmt.Sprintf("request failed: %v", err),
 		), false, nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated:

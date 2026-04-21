@@ -268,7 +268,7 @@ func (s *Scanner) Close() error {
 	defer s.mu.Unlock()
 
 	if s.matcher != nil {
-		s.matcher.Close()
+		_ = s.matcher.Close()
 	}
 	return nil
 }

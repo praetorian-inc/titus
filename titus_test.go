@@ -11,7 +11,7 @@ import (
 func TestNewScanner(t *testing.T) {
 	scanner, err := NewScanner()
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	// Should have loaded builtin rules
 	assert.Greater(t, scanner.RuleCount(), 100, "should have loaded many builtin rules")
@@ -24,7 +24,7 @@ func TestNewScannerWithOptions(t *testing.T) {
 		WithValidationWorkers(2),
 	)
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	assert.True(t, scanner.ValidationEnabled())
 }
@@ -32,7 +32,7 @@ func TestNewScannerWithOptions(t *testing.T) {
 func TestScanString(t *testing.T) {
 	scanner, err := NewScanner()
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	// Test content with a fake AWS key pattern
 	content := `aws_access_key_id = AKIADEADBEEFDEADBEEF`
@@ -55,7 +55,7 @@ func TestScanString(t *testing.T) {
 func TestScanBytes(t *testing.T) {
 	scanner, err := NewScanner()
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	// Test with a realistic AWS access key pattern that's in the builtin rules
 	content := []byte(`AWS_ACCESS_KEY_ID=AKIADEADBEEFDEADBEEF`)
@@ -77,7 +77,7 @@ func TestScanBytes(t *testing.T) {
 func TestScanStringWithContext(t *testing.T) {
 	scanner, err := NewScanner()
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	ctx := context.Background()
 	content := `password = "super_secret_password_12345"`
@@ -93,7 +93,7 @@ func TestScanStringWithContext(t *testing.T) {
 func TestScanStringNoMatches(t *testing.T) {
 	scanner, err := NewScanner()
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	// Content with no secrets
 	content := `Hello, world! This is just regular text.`
@@ -119,7 +119,7 @@ func TestWithCustomRules(t *testing.T) {
 
 	scanner, err := NewScanner(WithRules(subset))
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	assert.Equal(t, 10, scanner.RuleCount())
 }
@@ -139,7 +139,7 @@ func TestLoadBuiltinRules(t *testing.T) {
 func TestRules(t *testing.T) {
 	scanner, err := NewScanner()
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	rules := scanner.Rules()
 	assert.Equal(t, scanner.RuleCount(), len(rules))
@@ -156,7 +156,7 @@ func TestMultipleScanners(t *testing.T) {
 		go func(idx int) {
 			scanner, err := NewScanner()
 			require.NoError(t, err)
-			defer scanner.Close()
+			defer func() { _ = scanner.Close() }()
 
 			_, err = scanner.ScanString("test content with aws_access_key_id=AKIAIOSFODNN7EXAMPLE")
 			assert.NoError(t, err)
@@ -174,7 +174,7 @@ func TestSequentialScanning(t *testing.T) {
 	// Single scanner - sequential scans are safe
 	scanner, err := NewScanner()
 	require.NoError(t, err)
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	for i := range 5 {
 		_, err := scanner.ScanString("test content with aws_access_key_id=AKIAIOSFODNN7EXAMPLE")

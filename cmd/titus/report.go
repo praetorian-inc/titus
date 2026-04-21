@@ -143,13 +143,13 @@ func aggregateSummary(findings []*types.Finding, matchesByFinding map[string][]*
 
 func outputSummaryHuman(out io.Writer, summary summaryResult, colorEnabled bool) error {
 	if summary.TotalFindings == 0 {
-		fmt.Fprintf(out, "No findings.\n")
+		_, _ = fmt.Fprintf(out, "No findings.\n")
 		return nil
 	}
 
 	s := newStyles(colorEnabled)
 
-	fmt.Fprintf(out, "%s %d findings, %d matches\n\n",
+	_, _ = fmt.Fprintf(out, "%s %d findings, %d matches\n\n",
 		s.heading.Sprint("Total:"), summary.TotalFindings, summary.TotalMatches)
 
 	// Find longest rule name for column width
@@ -161,18 +161,18 @@ func outputSummaryHuman(out io.Writer, summary summaryResult, colorEnabled bool)
 	}
 
 	// Print header
-	fmt.Fprintf(out, " %s   %s   %s \n",
+	_, _ = fmt.Fprintf(out, " %s   %s   %s \n",
 		s.heading.Sprintf("%-*s", maxNameLen, "Rule"),
 		s.heading.Sprint("Findings"),
 		s.heading.Sprint("Matches"))
 
 	// Print separator line
 	separatorLen := maxNameLen + 3 + 10 + 3 + 8
-	fmt.Fprintf(out, "%s\n", strings.Repeat("─", separatorLen))
+	_, _ = fmt.Fprintf(out, "%s\n", strings.Repeat("─", separatorLen))
 
 	// Print data rows
 	for _, r := range summary.Rules {
-		fmt.Fprintf(out, " %s   %8d   %7d \n",
+		_, _ = fmt.Fprintf(out, " %s   %8d   %7d \n",
 			s.ruleName.Sprintf("%-*s", maxNameLen, r.RuleName), r.Findings, r.Matches)
 	}
 
@@ -221,7 +221,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("opening datastore: %w", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	// Get findings
 	findings, err := s.GetFindings()
@@ -281,7 +281,7 @@ func runSummary(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("opening datastore: %w", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	findings, err := s.GetFindings()
 	if err != nil {
@@ -547,7 +547,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 	if err != nil {
 		return fmt.Errorf("opening datastore for provenance: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Build content-based finding-to-match map
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
@@ -557,7 +557,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 	// Output each finding in noseyparker format with colors
 	for i, f := range findings {
 		// Finding header - "Finding N/M" in findingHeading style, "(id xyz)" with ID in id style
-		fmt.Fprintf(out, "%s (%s %s)\n",
+		_, _ = fmt.Fprintf(out, "%s (%s %s)\n",
 			s.findingHeading.Sprintf("Finding %d/%d", i+1, totalFindings),
 			s.heading.Sprint("id"),
 			s.id.Sprint(f.ID))
@@ -567,11 +567,11 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 		if r, ok := ruleMap[f.RuleID]; ok {
 			ruleName = r.Name
 		}
-		fmt.Fprintf(out, "%s %s\n", s.heading.Sprint("Rule:"), s.ruleName.Sprint(ruleName))
+		_, _ = fmt.Fprintf(out, "%s %s\n", s.heading.Sprint("Rule:"), s.ruleName.Sprint(ruleName))
 
 		// Capture groups - "Group N:" in heading style, value in match style
 		for j, group := range f.Groups {
-			fmt.Fprintf(out, "%s %s\n",
+			_, _ = fmt.Fprintf(out, "%s %s\n",
 				s.heading.Sprintf("Group %d:", j+1),
 				s.match.Sprint(string(group)))
 		}
@@ -579,13 +579,13 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 		// Matches for this finding
 		findingMatches := matchesByFinding[f.ID]
 		if len(findingMatches) > 3 {
-			fmt.Fprintf(out, "Showing 3/%d matches:\n", len(findingMatches))
+			_, _ = fmt.Fprintf(out, "Showing 3/%d matches:\n", len(findingMatches))
 			findingMatches = findingMatches[:3]
 		}
 
 		for k, match := range findingMatches {
 			// Match header - "Match N/M" in heading style, "(id xyz)" with ID in id style
-			fmt.Fprintf(out, "\n    %s (%s %s)\n",
+			_, _ = fmt.Fprintf(out, "\n    %s (%s %s)\n",
 				s.heading.Sprintf("Match %d/%d", k+1, len(matchesByFinding[f.ID])),
 				s.heading.Sprint("id"),
 				s.id.Sprint(match.StructuralID))
@@ -598,24 +598,24 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				case "archive", "extended":
 					label = "Source:"
 				}
-				fmt.Fprintf(out, "    %s %s\n",
+				_, _ = fmt.Fprintf(out, "    %s %s\n",
 					s.heading.Sprint(label),
 					s.metadata.Sprint(prov.Path()))
 				if gp, ok := prov.(types.GitProvenance); ok && gp.Commit != nil && !gp.Commit.CommitterTimestamp.IsZero() {
-					fmt.Fprintf(out, "    %s %s\n",
+					_, _ = fmt.Fprintf(out, "    %s %s\n",
 						s.heading.Sprint("Date:"),
 						s.metadata.Sprint(gp.Commit.CommitterTimestamp.Format("2006-01-02 15:04:05")))
 				}
 			}
 
 			// Blob info - "Blob:" in heading style, ID in metadata style
-			fmt.Fprintf(out, "    %s %s\n",
+			_, _ = fmt.Fprintf(out, "    %s %s\n",
 				s.heading.Sprint("Blob:"),
 				s.metadata.Sprint(match.BlobID.Hex()))
 
 			// Line info - "Lines:" in heading style
 			if match.Location.Source.Start.Line > 0 {
-				fmt.Fprintf(out, "    %s %d:%d-%d:%d\n",
+				_, _ = fmt.Fprintf(out, "    %s %d:%d-%d:%d\n",
 					s.heading.Sprint("Lines:"),
 					match.Location.Source.Start.Line, match.Location.Source.Start.Column,
 					match.Location.Source.End.Line, match.Location.Source.End.Column)
@@ -624,7 +624,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 			// Context snippet with colored matching portion
 			parts := formatSnippetWithParts(match.Snippet.Before, match.Snippet.Matching, match.Snippet.After, 500)
 			if parts.prefix != "" || parts.before != "" || parts.matching != "" || parts.after != "" || parts.suffix != "" {
-				fmt.Fprintf(out, "\n        %s%s%s%s%s\n",
+				_, _ = fmt.Fprintf(out, "\n        %s%s%s%s%s\n",
 					parts.prefix,
 					parts.before,
 					s.match.Sprint(parts.matching),
@@ -633,7 +633,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 			}
 		}
 
-		fmt.Fprintf(out, "\n\n")
+		_, _ = fmt.Fprintf(out, "\n\n")
 	}
 
 	return nil

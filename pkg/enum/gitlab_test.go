@@ -163,7 +163,7 @@ func TestGitLabConfig_Structure(t *testing.T) {
 	if config.User != "username" {
 		t.Error("User field not accessible")
 	}
-	if config.Config.MaxFileSize != 1000 {
+	if config.MaxFileSize != 1000 {
 		t.Error("Config.MaxFileSize not accessible")
 	}
 }

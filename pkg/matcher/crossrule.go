@@ -65,8 +65,7 @@ func (d *CrossRuleDeduplicator) clusterBySharedValues(matches []*types.Match) []
 		parent[i] = i
 	}
 
-	var find func(int) int
-	find = func(x int) int {
+	find := func(x int) int {
 		for parent[x] != x {
 			parent[x] = parent[parent[x]] // path compression
 			x = parent[x]

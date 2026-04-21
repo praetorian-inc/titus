@@ -89,7 +89,7 @@ func TestServer_GracefulShutdownOnContext(t *testing.T) {
 
 	// Cancel context
 	cancel()
-	pw.Close()
+	_ = pw.Close()
 
 	select {
 	case err := <-done:

@@ -13,7 +13,7 @@ func TestNew_MemoryPath(t *testing.T) {
 	s, err := New(Config{Path: ":memory:"})
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 }
 
 func TestNew_EmptyPath(t *testing.T) {
@@ -28,5 +28,5 @@ func TestNew_FilePath(t *testing.T) {
 	s, err := New(Config{Path: tmpFile})
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 }

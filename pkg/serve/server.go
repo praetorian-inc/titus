@@ -109,7 +109,7 @@ func (s *Server) processRequest(ctx context.Context, req Request) bool {
 
 func (s *Server) sendReady() {
 	data, _ := json.Marshal(ReadyData{Version: Version})
-	s.encoder.Encode(Response{
+	_ = s.encoder.Encode(Response{
 		Success: true,
 		Type:    "ready",
 		Data:    data,
@@ -130,7 +130,7 @@ func (s *Server) handleScan(payload json.RawMessage) {
 	}
 
 	data, _ := json.Marshal(result)
-	s.encoder.Encode(Response{
+	_ = s.encoder.Encode(Response{
 		Success: true,
 		Type:    "scan",
 		Data:    data,
@@ -151,7 +151,7 @@ func (s *Server) handleScanBatch(payload json.RawMessage) {
 	}
 
 	data, _ := json.Marshal(result)
-	s.encoder.Encode(Response{
+	_ = s.encoder.Encode(Response{
 		Success: true,
 		Type:    "scan_batch",
 		Data:    data,
@@ -203,7 +203,7 @@ func (s *Server) handleValidate(ctx context.Context, payload json.RawMessage) {
 	}
 
 	data, _ := json.Marshal(result)
-	s.encoder.Encode(Response{
+	_ = s.encoder.Encode(Response{
 		Success: true,
 		Type:    "validate",
 		Data:    data,
@@ -211,7 +211,7 @@ func (s *Server) handleValidate(ctx context.Context, payload json.RawMessage) {
 }
 
 func (s *Server) sendError(reqType, msg string) {
-	s.encoder.Encode(Response{
+	_ = s.encoder.Encode(Response{
 		Success: false,
 		Type:    reqType,
 		Error:   msg,

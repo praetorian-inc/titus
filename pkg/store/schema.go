@@ -165,7 +165,7 @@ func createProvenanceTable(db *sql.DB) error {
 		"committer_timestamp TEXT",
 		"commit_message TEXT",
 	} {
-		db.Exec("ALTER TABLE provenance ADD COLUMN " + col)
+		_, _ = db.Exec("ALTER TABLE provenance ADD COLUMN " + col)
 	}
 
 	// Create index for efficient provenance lookup by blob_id

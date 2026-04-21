@@ -52,7 +52,7 @@ func NewSQLite(path string) (*SQLiteStore, error) {
 	}
 	db.SetMaxOpenConns(1)
 	if err := CreateSchema(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("creating schema: %w", err)
 	}
 	return &SQLiteStore{db: db, e: db}, nil
@@ -120,7 +120,7 @@ func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanMatches(rows)
 }
 
@@ -129,7 +129,7 @@ func (s *SQLiteStore) GetAllMatches() ([]*types.Match, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanMatches(rows)
 }
 
@@ -147,7 +147,7 @@ func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []*types.Finding
 	for rows.Next() {
 		var f types.Finding
@@ -231,7 +231,7 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []types.Provenance
 	for rows.Next() {
 		var provType string
@@ -271,7 +271,7 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 		case "extended":
 			var payload map[string]interface{}
 			if path.Valid {
-				json.Unmarshal([]byte(path.String), &payload)
+				_ = json.Unmarshal([]byte(path.String), &payload)
 			}
 			result = append(result, types.ExtendedProvenance{Payload: payload})
 		}
@@ -287,7 +287,7 @@ func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Prove
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var result []types.Provenance
 	for rows.Next() {
 		var provType string
@@ -307,7 +307,7 @@ func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Prove
 		case "extended":
 			var payload map[string]interface{}
 			if path.Valid {
-				json.Unmarshal([]byte(path.String), &payload)
+				_ = json.Unmarshal([]byte(path.String), &payload)
 			}
 			result = append(result, types.ExtendedProvenance{Payload: payload})
 		}
@@ -336,7 +336,7 @@ func (s *SQLiteStore) ExecBatch(fn func(Store) error) error {
 	}
 	txStore := &SQLiteStore{e: tx} // db is nil; ExecBatch on txStore would panic, which is correct
 	if err := fn(txStore); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 	return tx.Commit()

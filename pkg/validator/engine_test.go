@@ -88,7 +88,7 @@ func TestEngine_ValidateAsync_CacheHitFastPath(t *testing.T) {
 	}
 
 	// Warm cache
-	engine.ValidateMatch(context.Background(), match)
+	_, _ = engine.ValidateMatch(context.Background(), match)
 
 	// Async should return from cache immediately
 	resultCh := engine.ValidateAsync(context.Background(), match)

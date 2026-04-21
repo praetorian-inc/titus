@@ -149,7 +149,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	// Create store (memory or datastore)
 	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
@@ -157,9 +157,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if ds != nil {
-		defer ds.Close()
+		defer func() { _ = ds.Close() }()
 	} else {
-		defer s.Close()
+		defer func() { _ = s.Close() }()
 	}
 
 	// Store rules for foreign key constraints
@@ -437,13 +437,13 @@ func printScanStats(cmd *cobra.Command, format, outputPath string, totalBytes, b
 		totalBytes, blobCount, int(duration.Seconds()), speed, newMatches, matchCount)
 
 	if format == "json" || format == "sarif" {
-		fmt.Fprint(cmd.ErrOrStderr(), statsLine)
+		_, _ = fmt.Fprint(cmd.ErrOrStderr(), statsLine)
 		if outputPath != ":memory:" {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s/datastore.db\n\n", outputPath)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s/datastore.db\n\n", outputPath)
 		}
 	} else {
-		fmt.Fprint(cmd.OutOrStdout(), statsLine)
-		fmt.Fprintf(cmd.OutOrStdout(), "\n")
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), statsLine)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n")
 	}
 }
 
@@ -624,7 +624,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	}
 
 	if token == "" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Note: No %s token provided. Using unauthenticated access (public repos only).\n\n", rt.Platform)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Note: No %s token provided. Using unauthenticated access (public repos only).\n\n", rt.Platform)
 	}
 
 	// Build clone URL
@@ -670,7 +670,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	// Create store
 	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
@@ -678,9 +678,9 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		return err
 	}
 	if ds != nil {
-		defer ds.Close()
+		defer func() { _ = ds.Close() }()
 	} else {
-		defer s.Close()
+		defer func() { _ = s.Close() }()
 	}
 
 	for _, r := range rules {
@@ -1081,7 +1081,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 // outputNoseyParkerSummary outputs findings in noseyparker table format
 func outputNoseyParkerSummary(cmd *cobra.Command, findings []*types.Finding, ruleMap map[string]*types.Rule) error {
 	if len(findings) == 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "No findings.\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "No findings.\n")
 		return nil
 	}
 
@@ -1116,20 +1116,20 @@ func outputNoseyParkerSummary(cmd *cobra.Command, findings []*types.Finding, rul
 	}
 
 	// Print header
-	fmt.Fprintf(cmd.OutOrStdout(), " %-*s   Findings   Matches \n", maxNameLen, "Rule")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), " %-*s   Findings   Matches \n", maxNameLen, "Rule")
 
 	// Print separator line using box-drawing character
 	separatorLen := maxNameLen + 3 + 10 + 3 + 8
-	fmt.Fprintf(cmd.OutOrStdout(), "%s\n", strings.Repeat("─", separatorLen))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\n", strings.Repeat("─", separatorLen))
 
 	// Print data rows
 	for _, stats := range statsMap {
-		fmt.Fprintf(cmd.OutOrStdout(), " %-*s   %8d   %7d \n",
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), " %-*s   %8d   %7d \n",
 			maxNameLen, stats.name, stats.findings, stats.matches)
 	}
 
 	// Print footer
-	fmt.Fprintf(cmd.OutOrStdout(), "\nRun the `report` command next to show finding details.\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nRun the `report` command next to show finding details.\n")
 
 	return nil
 }
@@ -1148,20 +1148,20 @@ func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {
 		return encoder.Encode(findings)
 	case "human":
 		if len(findings) == 0 {
-			fmt.Fprintf(cmd.OutOrStdout(), "\nNo findings.\n")
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nNo findings.\n")
 			return nil
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "\nFindings:\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nFindings:\n")
 		for i, f := range findings {
-			fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s", i+1, f.RuleID)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s", i+1, f.RuleID)
 
 			// Show validation status if available
 			if len(f.Matches) > 0 && f.Matches[0].ValidationResult != nil {
 				vr := f.Matches[0].ValidationResult
-				fmt.Fprintf(cmd.OutOrStdout(), " [%s]", vr.Status)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), " [%s]", vr.Status)
 			}
-			fmt.Fprintln(cmd.OutOrStdout())
+			_, _ = fmt.Fprintln(cmd.OutOrStdout())
 		}
 		return nil
 	default:

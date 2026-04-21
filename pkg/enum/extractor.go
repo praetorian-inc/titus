@@ -127,7 +127,7 @@ func extractXLSX(content []byte) ([]ExtractedContent, error) {
 				continue
 			}
 			data, err := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if err != nil {
 				continue
 			}
@@ -148,7 +148,7 @@ func extractXLSX(content []byte) ([]ExtractedContent, error) {
 				continue
 			}
 			data, err := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if err != nil {
 				continue
 			}
@@ -184,7 +184,7 @@ func extractDOCX(content []byte) ([]ExtractedContent, error) {
 				continue
 			}
 			data, err := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if err != nil {
 				continue
 			}
@@ -220,7 +220,7 @@ func extractPPTX(content []byte) ([]ExtractedContent, error) {
 				continue
 			}
 			data, err := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if err != nil {
 				continue
 			}
@@ -245,8 +245,8 @@ func extractPDF(content []byte) ([]ExtractedContent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
 
 	// Write the PDF content to the temp file
 	if _, err := tmpFile.Write(content); err != nil {
@@ -254,14 +254,14 @@ func extractPDF(content []byte) ([]ExtractedContent, error) {
 	}
 
 	// Close the file so pdf.Open can read it
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Open the PDF file
 	f, r, err := pdf.Open(tmpFile.Name())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PDF: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Extract text from all pages
 	var text strings.Builder
@@ -336,7 +336,7 @@ func extractTar(content []byte, isGzipped bool, state *extractState) ([]Extracte
 		if err != nil {
 			return nil, fmt.Errorf("failed to open gzip: %w", err)
 		}
-		defer gzr.Close()
+		defer func() { _ = gzr.Close() }()
 		reader = gzr
 	}
 
@@ -549,7 +549,7 @@ func extractZIPWithState(content []byte, state *extractState) ([]ExtractedConten
 		}
 		limited := io.LimitReader(rc, state.limits.MaxSize+1)
 		data, err := io.ReadAll(limited)
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			continue
 		}
@@ -625,7 +625,7 @@ func extractOpenDocument(content []byte) ([]ExtractedContent, error) {
 				continue
 			}
 			data, err := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if err != nil {
 				continue
 			}
@@ -690,20 +690,20 @@ func extractSQLite(content []byte, state *extractState) ([]ExtractedContent, err
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	defer func() { _ = tmpFile.Close() }()
 
 	if _, err := tmpFile.Write(content); err != nil {
 		return nil, err
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	db, err := sql.Open("sqlite", tmpFile.Name())
 	if err != nil {
 		// Silently skip files that aren't valid SQLite databases
 		return nil, nil
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var text strings.Builder
 
@@ -713,7 +713,7 @@ func extractSQLite(content []byte, state *extractState) ([]ExtractedContent, err
 		// Silently skip non-SQLite files (e.g., BerkeleyDB, LevelDB with .db extension)
 		return nil, nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []string
 	for rows.Next() {
@@ -753,7 +753,7 @@ func extractSQLite(content []byte, state *extractState) ([]ExtractedContent, err
 			}
 			text.WriteString("\n")
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	result := text.String()
@@ -791,7 +791,7 @@ func extract7z(content []byte, state *extractState) ([]ExtractedContent, error) 
 		}
 		limited := io.LimitReader(rc, state.limits.MaxSize+1)
 		data, err := io.ReadAll(limited)
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			continue
 		}

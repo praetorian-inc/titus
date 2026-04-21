@@ -175,7 +175,7 @@ func TestMattermostValidator_AccessToken_Valid(t *testing.T) {
 		assert.Contains(t, r.URL.Path, "/api/v4/users/me")
 		assert.Equal(t, "Bearer testtoken12345678901234", r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"id":"abc123","username":"testuser"}`))
+		_, _ = w.Write([]byte(`{"id":"abc123","username":"testuser"}`))
 	}))
 	defer server.Close()
 

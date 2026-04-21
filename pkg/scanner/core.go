@@ -81,7 +81,7 @@ func NewCore(rulesJSON string, logger DebugLogger) (*Core, error) {
 	s, err := store.New(store.Config{Path: ":memory:"})
 	if err != nil {
 		logger.Log("store.New failed: %v", err)
-		m.Close()
+		_ = m.Close()
 		return nil, err
 	}
 	logger.Log("Store created successfully")
@@ -135,10 +135,10 @@ func (c *Core) ScanBatch(items []ContentItem) (*BatchScanResult, error) {
 // Close releases scanner resources
 func (c *Core) Close() {
 	if c.matcher != nil {
-		c.matcher.Close()
+		_ = c.matcher.Close()
 	}
 	if c.store != nil {
-		c.store.Close()
+		_ = c.store.Close()
 	}
 }
 
@@ -173,7 +173,7 @@ func NewCoreWithRules(rules []*types.Rule, logger DebugLogger, warnFunc func(str
 	s, err := store.New(store.Config{Path: ":memory:"})
 	if err != nil {
 		logger.Log("store.New failed: %v", err)
-		m.Close()
+		_ = m.Close()
 		return nil, err
 	}
 	logger.Log("Store created successfully")
