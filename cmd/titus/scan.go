@@ -149,7 +149,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
 	}
-	defer func() { _ = m.Close() }()
+	defer m.Close()
 
 	// Create store (memory or datastore)
 	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
@@ -157,9 +157,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if ds != nil {
-		defer func() { _ = ds.Close() }()
+		defer ds.Close()
 	} else {
-		defer func() { _ = s.Close() }()
+		defer s.Close()
 	}
 
 	// Store rules for foreign key constraints
@@ -670,7 +670,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	if err != nil {
 		return fmt.Errorf("creating matcher: %w", err)
 	}
-	defer func() { _ = m.Close() }()
+	defer m.Close()
 
 	// Create store
 	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
@@ -678,9 +678,9 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		return err
 	}
 	if ds != nil {
-		defer func() { _ = ds.Close() }()
+		defer ds.Close()
 	} else {
-		defer func() { _ = s.Close() }()
+		defer s.Close()
 	}
 
 	for _, r := range rules {
