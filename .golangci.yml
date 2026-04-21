@@ -1,7 +1,8 @@
 version: "2"
 
-linters-settings:
-  errcheck:
+linters:
+  settings:
+    errcheck:
     check-type-assertions: false
     check-blank: false
     exclude-functions:
