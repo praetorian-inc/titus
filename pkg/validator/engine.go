@@ -31,6 +31,7 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewRabbitMQValidator())
 	validators = append(validators, NewMattermostValidator())
 	validators = append(validators, NewTrueNASValidator())
+	validators = append(validators, NewGitHubAppTokenValidator())
 
 	// Embedded YAML validators
 	embedded, err := LoadEmbeddedValidators()

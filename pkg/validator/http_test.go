@@ -25,13 +25,15 @@ func TestHTTPValidator_Name(t *testing.T) {
 func TestHTTPValidator_CanValidate(t *testing.T) {
 	def := ValidatorDef{
 		Name:    "github-token",
-		RuleIDs: []string{"np.github.1", "np.github.2"},
+		RuleIDs: []string{"np.github.1", "np.github.2", "np.github.3", "np.github.7"},
 	}
 
 	v := NewHTTPValidator(def, nil)
 
 	assert.True(t, v.CanValidate("np.github.1"))
 	assert.True(t, v.CanValidate("np.github.2"))
+	assert.True(t, v.CanValidate("np.github.3"))
+	assert.True(t, v.CanValidate("np.github.7"))
 	assert.False(t, v.CanValidate("np.slack.1"))
 }
 
