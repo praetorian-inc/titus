@@ -6,7 +6,7 @@ validators:
     rule_ids:
       - np.github.1
       - np.github.2
-      - np.github.3  # ghu_ (user-to-server) and ghs_ (server-to-server) app tokens
+      # np.github.3 handled by Go validator (ghu_ vs ghs_ need different endpoints)
       - np.github.7  # github_pat_ (fine-grained PATs)
     http:
       method: GET

@@ -34,6 +34,7 @@ func TestLoadEmbeddedValidators(t *testing.T) {
 	require.NotNil(t, githubValidator, "github-token validator should exist")
 	assert.True(t, githubValidator.CanValidate("np.github.1"))
 	assert.True(t, githubValidator.CanValidate("np.github.2"))
-	assert.True(t, githubValidator.CanValidate("np.github.3"))
+	// np.github.3 is handled by the Go GitHubAppTokenValidator (ghu_ vs ghs_ need different endpoints)
+	assert.False(t, githubValidator.CanValidate("np.github.3"))
 	assert.True(t, githubValidator.CanValidate("np.github.7"))
 }
