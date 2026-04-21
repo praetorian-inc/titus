@@ -66,7 +66,7 @@ func (v *GitHubAppTokenValidator) validateUserToken(ctx context.Context, token s
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("request failed: %v", err)), nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -97,7 +97,7 @@ func (v *GitHubAppTokenValidator) validateInstallationToken(ctx context.Context,
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("request failed: %v", err)), nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusOK:

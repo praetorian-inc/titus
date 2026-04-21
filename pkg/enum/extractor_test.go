@@ -784,8 +784,8 @@ func TestExtractText_GZ_Standalone(t *testing.T) {
 	t.Run("binary content skipped", func(t *testing.T) {
 		var buf bytes.Buffer
 		w := gzip.NewWriter(&buf)
-		w.Write([]byte{0x00, 0x01, 0x02, 0x03})
-		w.Close()
+		_, _ = w.Write([]byte{0x00, 0x01, 0x02, 0x03})
+		_ = w.Close()
 		results, err := ExtractText("data.gz", buf.Bytes(), limits)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
