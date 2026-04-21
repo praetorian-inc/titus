@@ -1,0 +1,14 @@
+version: "2"
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+    exclude-functions:
+      # Deferred close/cleanup calls — errors are intentionally discarded
+      - (io.Closer).Close
+      - (*os.File).Close
+      - (io.ReadCloser).Close
+      - (*compress/gzip.Reader).Close
+      - (*compress/gzip.Writer).Close
+      - (*archive/zip.Writer).Close
