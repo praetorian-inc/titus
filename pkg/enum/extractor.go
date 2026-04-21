@@ -86,6 +86,8 @@ func extractWithState(path string, content []byte, state *extractState) (result 
 		return extractPDF(content)
 	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".crx":
 		return extractZIPWithState(content, state)
+	case ".gz":
+		return extractGZ(content, state)
 	case ".tar":
 		return extractTar(content, false, state)
 	case ".tar.gz", ".tgz":
@@ -363,8 +365,13 @@ func extractTar(content []byte, isGzipped bool, state *extractState) ([]Extracte
 			break // Stop extraction
 		}
 
-		data, err := io.ReadAll(tarReader)
+		limited := io.LimitReader(tarReader, state.limits.MaxSize+1)
+		data, err := io.ReadAll(limited)
 		if err != nil {
+			continue
+		}
+		// Skip if we hit the size limit (read more than MaxSize)
+		if int64(len(data)) > state.limits.MaxSize {
 			continue
 		}
 
@@ -404,6 +411,64 @@ func extractTar(content []byte, isGzipped bool, state *extractState) ([]Extracte
 	}
 
 	return results, nil
+}
+
+// extractGZ extracts text from standalone gzip files (not .tar.gz).
+func extractGZ(content []byte, state *extractState) ([]ExtractedContent, error) {
+	reader := bytes.NewReader(content)
+	gzr, err := gzip.NewReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open gzip: %w", err)
+	}
+	defer gzr.Close()
+
+	// Use gzip header name if available, otherwise derive from context
+	name := gzr.Name
+	if name == "" {
+		name = "content"
+	}
+
+	// Read with size limit (+1 to detect overflow)
+	limited := io.LimitReader(gzr, state.limits.MaxSize+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decompress gzip: %w", err)
+	}
+	// Skip if decompressed size exceeds limit
+	if int64(len(data)) > state.limits.MaxSize {
+		return nil, nil
+	}
+
+	state.total += int64(len(data))
+
+	// Check for nested extractable files
+	ext := getExtension(name)
+	if isExtractable(ext) {
+		nestedState := &extractState{
+			depth:  state.depth + 1,
+			total:  state.total,
+			limits: state.limits,
+		}
+		nested, err := extractWithState(name, data, nestedState)
+		if err == nil {
+			var results []ExtractedContent
+			for _, n := range nested {
+				results = append(results, ExtractedContent{
+					Name:    name + ":" + n.Name,
+					Content: n.Content,
+				})
+			}
+			state.total = nestedState.total
+			return results, nil
+		}
+	}
+
+	// Skip binary content
+	if isBinaryContent(data) {
+		return nil, nil
+	}
+
+	return []ExtractedContent{{Name: name, Content: data}}, nil
 }
 
 // extractXMLText extracts text content from XML data.
@@ -482,7 +547,8 @@ func extractZIPWithState(content []byte, state *extractState) ([]ExtractedConten
 		if err != nil {
 			continue
 		}
-		data, err := io.ReadAll(rc)
+		limited := io.LimitReader(rc, state.limits.MaxSize+1)
+		data, err := io.ReadAll(limited)
 		_ = rc.Close()
 		if err != nil {
 			continue
@@ -529,7 +595,7 @@ func extractZIPWithState(content []byte, state *extractState) ([]ExtractedConten
 // isExtractable checks if a file extension is extractable.
 func isExtractable(ext string) bool {
 	switch ext {
-	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".crx", ".xlsx", ".docx", ".pptx", ".pdf", ".tar", ".tar.gz", ".tgz", ".ipynb", ".odt", ".ods", ".odp", ".eml", ".rtf", ".sqlite", ".db", ".7z":
+	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".crx", ".gz", ".xlsx", ".docx", ".pptx", ".pdf", ".tar", ".tar.gz", ".tgz", ".ipynb", ".odt", ".ods", ".odp", ".eml", ".rtf", ".sqlite", ".db", ".7z":
 		return true
 	}
 	return false
@@ -634,16 +700,18 @@ func extractSQLite(content []byte, state *extractState) ([]ExtractedContent, err
 
 	db, err := sql.Open("sqlite", tmpFile.Name())
 	if err != nil {
-		return nil, err
+		// Silently skip files that aren't valid SQLite databases
+		return nil, nil
 	}
 	defer func() { _ = db.Close() }()
 
 	var text strings.Builder
 
-	// Get all table names
+	// Get all table names — if this fails, the file is not a valid SQLite database
 	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table'")
 	if err != nil {
-		return nil, err
+		// Silently skip non-SQLite files (e.g., BerkeleyDB, LevelDB with .db extension)
+		return nil, nil
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -721,7 +789,8 @@ func extract7z(content []byte, state *extractState) ([]ExtractedContent, error) 
 		if err != nil {
 			continue
 		}
-		data, err := io.ReadAll(rc)
+		limited := io.LimitReader(rc, state.limits.MaxSize+1)
+		data, err := io.ReadAll(limited)
 		_ = rc.Close()
 		if err != nil {
 			continue

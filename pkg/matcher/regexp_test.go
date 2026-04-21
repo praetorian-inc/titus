@@ -3,6 +3,7 @@
 package matcher
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -185,6 +186,75 @@ func TestPortableRegexp_TimeoutIsTolerated(t *testing.T) {
 	}
 	assert.True(t, ruleIDs["good-rule"], "good-rule should still match despite other rule timing out")
 	assert.False(t, ruleIDs["catastrophic-rule"], "catastrophic-rule should not produce matches (timed out)")
+}
+
+// TestPortableRegexp_BlobIDInWarning verifies that regex timeout and error warnings
+// include the blob ID hex so that the problematic blob can be identified.
+func TestPortableRegexp_BlobIDInWarning(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:      "catastrophic-rule",
+			Name:    "Catastrophic Backtracking",
+			Pattern: `(a+)+b`,
+		},
+		{
+			ID:      "good-rule",
+			Name:    "Good Pattern",
+			Pattern: `password\s*=\s*"([^"]+)"`,
+		},
+	}
+
+	content := []byte(strings.Repeat("a", 5000) + "c\n" + `password = "secret123"`)
+	blobID := types.ComputeBlobID(content)
+
+	var warnings []string
+	warnf := func(format string, args ...any) {
+		warnings = append(warnings, fmt.Sprintf(format, args...))
+	}
+
+	m, err := NewPortableRegexp(rules, 0, warnf)
+	require.NoError(t, err)
+
+	_, err = m.MatchWithBlobID(content, blobID)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, warnings, "should have emitted at least one timeout warning")
+	for _, w := range warnings {
+		assert.Contains(t, w, blobID.Hex(), "warning should include the blob ID hex")
+		assert.Contains(t, w, "on blob", "warning should use 'on blob' prefix")
+	}
+}
+
+// TestPortableRegexp_BlobIDInWarning_NoHint verifies that warnings always include
+// the blob ID hex even when no source path context is available.
+func TestPortableRegexp_BlobIDInWarning_NoHint(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:      "catastrophic-rule",
+			Name:    "Catastrophic Backtracking",
+			Pattern: `(a+)+b`,
+		},
+	}
+
+	content := []byte(strings.Repeat("a", 5000) + "c")
+	blobID := types.ComputeBlobID(content)
+
+	var warnings []string
+	warnf := func(format string, args ...any) {
+		warnings = append(warnings, fmt.Sprintf(format, args...))
+	}
+
+	m, err := NewPortableRegexp(rules, 0, warnf)
+	require.NoError(t, err)
+
+	_, err = m.MatchWithBlobID(content, blobID)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, warnings, "should have emitted at least one timeout warning")
+	for _, w := range warnings {
+		assert.Contains(t, w, blobID.Hex(), "warning should include the blob ID hex")
+		assert.Contains(t, w, "on blob", "warning should use 'on blob' prefix")
+	}
 }
 
 // TestPortableRegexp_TimeoutIsTolerated_Parallel is the same test but for large content

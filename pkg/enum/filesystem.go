@@ -83,9 +83,9 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 	}
 
 	// Phase 2: Read and process files in parallel
-	numReaders := runtime.NumCPU()
-	if numReaders < 1 {
-		numReaders = 1
+	numReaders := e.config.NumReaders
+	if numReaders <= 0 {
+		numReaders = runtime.NumCPU()
 	}
 
 	origCtx := ctx

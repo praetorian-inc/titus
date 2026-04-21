@@ -1,6 +1,8 @@
 package enum
 
 import (
+	"bytes"
+	"compress/gzip"
 	"database/sql"
 	"fmt"
 	"os"
@@ -730,6 +732,110 @@ func buildSQLiteWithRows(t *testing.T, n int) []byte {
 	return content
 }
 
+// TestExtractText_GZ_Standalone tests standalone .gz file extraction.
+func TestExtractText_GZ_Standalone(t *testing.T) {
+	limits := DefaultExtractionLimits()
+
+	t.Run("plain payload no header name", func(t *testing.T) {
+		payload := "hello world " + testSecret
+		gz := gzipBytes(t, payload, "")
+		results, err := ExtractText("data.gz", gz, limits)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(results))
+		}
+		if results[0].Name != "content" {
+			t.Errorf("expected name %q, got %q", "content", results[0].Name)
+		}
+		if !strings.Contains(string(results[0].Content), payload) {
+			t.Errorf("content does not contain payload: %q", string(results[0].Content))
+		}
+	})
+
+	t.Run("gzip header name propagated", func(t *testing.T) {
+		gz := gzipBytes(t, "secret="+testSecret, "secrets.log")
+		results, err := ExtractText("data.gz", gz, limits)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(results))
+		}
+		if results[0].Name != "secrets.log" {
+			t.Errorf("expected name %q, got %q", "secrets.log", results[0].Name)
+		}
+	})
+
+	t.Run("decompressed size exceeds MaxSize returns nil nil", func(t *testing.T) {
+		big := strings.Repeat("a", 1024)
+		gz := gzipBytes(t, big, "")
+		tinyLimits := ExtractionLimits{MaxSize: 16, MaxTotal: 100 * 1024 * 1024, MaxDepth: 5}
+		results, err := ExtractText("data.gz", gz, tinyLimits)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("expected no results when payload exceeds MaxSize, got %d", len(results))
+		}
+	})
+
+	t.Run("binary content skipped", func(t *testing.T) {
+		var buf bytes.Buffer
+		w := gzip.NewWriter(&buf)
+		w.Write([]byte{0x00, 0x01, 0x02, 0x03})
+		w.Close()
+		results, err := ExtractText("data.gz", buf.Bytes(), limits)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("expected no results for binary content, got %d", len(results))
+		}
+	})
+
+	t.Run("malformed gzip returns error", func(t *testing.T) {
+		_, err := ExtractText("data.gz", []byte("not gzipped"), limits)
+		if err == nil {
+			t.Fatal("expected error for malformed gzip, got nil")
+		}
+		if !strings.Contains(err.Error(), "failed to open gzip") {
+			t.Errorf("expected 'failed to open gzip' in error, got: %v", err)
+		}
+	})
+}
+
+// TestExtractText_SQLite_NonSQLiteDB verifies non-SQLite .db/.sqlite files are silently skipped.
+func TestExtractText_SQLite_NonSQLiteDB(t *testing.T) {
+	limits := DefaultExtractionLimits()
+	nonSQLite := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+		0x11, 0x12, 0x13, 0x14}
+
+	for _, ext := range []string{".db", ".sqlite"} {
+		t.Run(ext, func(t *testing.T) {
+			results, err := ExtractText("foo"+ext, nonSQLite, limits)
+			if err != nil {
+				t.Fatalf("unexpected error for non-SQLite %s: %v", ext, err)
+			}
+			if len(results) != 0 {
+				t.Errorf("expected no results for non-SQLite %s, got %d", ext, len(results))
+			}
+		})
+	}
+
+	t.Run("empty content", func(t *testing.T) {
+		results, err := ExtractText("foo.db", []byte{}, limits)
+		if err != nil {
+			t.Fatalf("unexpected error for empty .db: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("expected no results for empty .db, got %d", len(results))
+		}
+	})
+}
+
 // TestCleanText tests the cleanText helper function.
 func TestCleanText(t *testing.T) {
 	tests := []struct {
@@ -767,4 +873,21 @@ func TestCleanText(t *testing.T) {
 			}
 		})
 	}
+}
+
+// gzipBytes compresses s into gzip format. If name is non-empty it is set in the gzip header.
+func gzipBytes(t *testing.T, s string, name string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if name != "" {
+		w.Name = name
+	}
+	if _, err := w.Write([]byte(s)); err != nil {
+		t.Fatalf("gzipBytes write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("gzipBytes close: %v", err)
+	}
+	return buf.Bytes()
 }

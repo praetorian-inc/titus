@@ -121,9 +121,9 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 		if err != nil {
 			if m.warnf != nil {
 				if strings.Contains(err.Error(), "match timeout") {
-					m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+					m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
 				} else {
-					m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 				}
 			}
 			continue
@@ -149,9 +149,9 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 			if err != nil {
 				if m.warnf != nil {
 					if strings.Contains(err.Error(), "match timeout") {
-						m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+						m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
 					} else {
-						m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 					}
 				}
 				break
@@ -215,9 +215,9 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 				if err != nil {
 					if m.warnf != nil {
 						if strings.Contains(err.Error(), "match timeout") {
-							m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+							m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
 						} else {
-							m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+							m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 						}
 					}
 					continue
@@ -236,9 +236,9 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 					if err != nil {
 						if m.warnf != nil {
 							if strings.Contains(err.Error(), "match timeout") {
-								m.warnf("[warn] rule %s regex timeout on content (skipping rule for this blob)\n", rule.ID)
+								m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
 							} else {
-								m.warnf("[warn] rule %s regex error (skipping rule for this blob): %v\n", rule.ID, err)
+								m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 							}
 						}
 						break
