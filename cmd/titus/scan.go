@@ -1135,6 +1135,10 @@ func outputNoseyParkerSummary(cmd *cobra.Command, findings []*types.Finding, rul
 	return nil
 }
 
+// outputMatches emits the scan's raw matches as JSON for `titus scan --format=json`.
+// This is NOT the score-bearing output — findings (with their Score) are persisted
+// in the datastore and surfaced via `titus report --format=json`. Downstream
+// consumers (Chariot, CI) that need severity should use the report output.
 func outputMatches(cmd *cobra.Command, matches []*types.Match) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
