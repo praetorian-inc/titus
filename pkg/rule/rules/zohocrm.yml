@@ -1,6 +1,7 @@
 rules:
   - name: Zoho CRM API Access Token
     id: kingfisher.zohocrm.1
+    base_score: 70
     pattern: |
       (?xi)
       \b

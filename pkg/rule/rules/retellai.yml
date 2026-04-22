@@ -1,6 +1,7 @@
 rules:
   - name: Retell AI API Key
     id: kingfisher.retellai.api_key.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: AI21 Studio API Key
     id: kingfisher.ai21studio.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

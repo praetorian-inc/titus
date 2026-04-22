@@ -1,6 +1,7 @@
 rules:
   - name: Pulumi API Key
     id: kingfisher.pulumi.1
+    base_score: 70
     pattern: |
       (?x)
       \b

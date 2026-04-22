@@ -2,6 +2,7 @@ rules:
 
 - name: Zapier Webhook URL
   id: np.zapier.1
+  base_score: 50
 
   pattern: 'https?://(?:www\.)?hooks\.zapier\.com/hooks/catch/(?P<user_id>[0-9]{5,10})/(?P<hook_id>[a-z0-9]{5,10})/?'
 

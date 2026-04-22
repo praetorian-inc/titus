@@ -1,6 +1,7 @@
 rules:
   - name: Ionic API token
     id: kingfisher.ionic.1
+    base_score: 55
     pattern: |
       (?xi)
       \b                     

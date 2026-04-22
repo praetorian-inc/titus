@@ -1,6 +1,7 @@
 rules:
   - name: Vast.ai API Key
     id: kingfisher.vastai.1
+    base_score: 70
     pattern: |
       (?xi)
       \b

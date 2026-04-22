@@ -16,6 +16,7 @@ rules:
 
 - name: ThingsBoard Access Token
   id: np.thingsboard.1
+  base_score: 70
 
   pattern: |
     (?x)
@@ -38,6 +39,7 @@ rules:
 
 - name: ThingsBoard Provision Device Key
   id: np.thingsboard.2
+  base_score: 75
 
   pattern: |
     (?x)
@@ -58,6 +60,7 @@ rules:
 
 - name: ThingsBoard Provision Device Secret
   id: np.thingsboard.3
+  base_score: 75
 
   pattern: |
     (?x)

@@ -1,6 +1,7 @@
 rules:
   - name: LarkSuite Tenant Access Token
     id: kingfisher.lark.1
+    base_score: 65
     pattern: |
       (?xi)
       (?:lark|larksuite)
@@ -47,6 +48,7 @@ rules:
 
   - name: LarkSuite User Access Token
     id: kingfisher.lark.2
+    base_score: 62
     pattern: |
       (?xi)
       (?:lark|larksuite)
@@ -91,6 +93,7 @@ rules:
 
   - name: LarkSuite App Access Token
     id: kingfisher.lark.3
+    base_score: 58
     pattern: |
       (?xi)
       (?:lark|larksuite)

@@ -2,6 +2,7 @@ rules:
 
 - name: Docker Hub Personal Access Token
   id: np.dockerhub.1
+  base_score: 70
 
   pattern: |
     (?x)

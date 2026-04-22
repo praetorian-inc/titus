@@ -1,6 +1,7 @@
 rules:
   - name: Owlbot API Key
     id: kingfisher.owlbot.1
+    base_score: 25
     pattern: |
       (?xi)
       \b

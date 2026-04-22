@@ -5,6 +5,7 @@ rules:
 
 - name: Firebase Cloud Messaging Server Key
   id: np.firebase.1
+  base_score: 70
 
   pattern: |
     (?x)
@@ -41,6 +42,7 @@ rules:
 
 - name: Firebase Cloud Messaging Device Token
   id: np.firebase.2
+  base_score: 30
 
   pattern: |
     (?x)

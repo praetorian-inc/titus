@@ -2,6 +2,7 @@ rules:
 
 - name: Bitbucket App Password
   id: np.bitbucket.1
+  base_score: 65
 
   pattern: |
     (?x)

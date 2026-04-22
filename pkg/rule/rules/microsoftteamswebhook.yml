@@ -1,6 +1,7 @@
 rules:
   - name: Microsoft Teams Webhook
     id: kingfisher.microsoftteamswebhook.1
+    base_score: 45
     pattern: |
       (?xi)
       \b

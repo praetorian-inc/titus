@@ -2,6 +2,7 @@ rules:
 
 - name: Blynk Device Access Token
   id: np.blynk.1
+  base_score: 60
 
   pattern: |
     (?x)
@@ -29,6 +30,7 @@ rules:
 
 - name: Blynk Organization Access Token
   id: np.blynk.2
+  base_score: 75
 
   pattern: |
     (?x)
@@ -52,6 +54,7 @@ rules:
 
 - name: Blynk Organization Access Token
   id: np.blynk.3
+  base_score: 75
 
   pattern: |
     (?x)
@@ -75,6 +78,7 @@ rules:
 
 - name: Blynk Organization Client Credentials
   id: np.blynk.8
+  base_score: 85
 
   pattern: |
     (?x)
@@ -99,6 +103,7 @@ rules:
 
 - name: Blynk Organization Client Credentials
   id: np.blynk.9
+  base_score: 85
 
   pattern: |
     (?x)

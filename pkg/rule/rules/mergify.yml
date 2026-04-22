@@ -1,6 +1,7 @@
 rules:
   - name: Mergify Application API Key
     id: kingfisher.mergify.1
+    base_score: 55
     pattern: |
       (?x)
       \b

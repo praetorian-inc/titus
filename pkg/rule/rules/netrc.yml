@@ -2,6 +2,7 @@ rules:
 
 - name: netrc Credentials
   id: np.netrc.1
+  base_score: 70
 
   pattern: |
     (?x)

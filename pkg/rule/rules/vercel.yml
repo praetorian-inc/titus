@@ -1,6 +1,7 @@
 rules:
   - name: Vercel API Token
     id: kingfisher.vercel.1
+    base_score: 85
     pattern: |
       (?xi)
       \b

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "kingfisher.datagov.1",
+    "name": "Data.gov API Key",
+    "yaml_file": "pkg/rule/rules/datagov.yml"
+  },
+  {
+    "id": "np.deviantart.1",
+    "name": "DeviantArt Access Token",
+    "yaml_file": "pkg/rule/rules/deviantart.yml"
+  },
+  {
+    "id": "kingfisher.deviantart.1",
+    "name": "DeviantArt OAuth Client Secret",
+    "yaml_file": "pkg/rule/rules/deviantart.yml"
+  },
+  {
+    "id": "np.facebook.1",
+    "name": "Facebook Secret Key",
+    "yaml_file": "pkg/rule/rules/facebook.yml"
+  },
+  {
+    "id": "np.facebook.2",
+    "name": "Facebook Access Token",
+    "yaml_file": "pkg/rule/rules/facebook.yml"
+  },
+  {
+    "id": "np.facebook.3",
+    "name": "Facebook App Credentials",
+    "yaml_file": "pkg/rule/rules/facebook.yml"
+  },
+  {
+    "id": "kingfisher.flickr.1",
+    "name": "Flickr API Key",
+    "yaml_file": "pkg/rule/rules/flickr.yml"
+  },
+  {
+    "id": "kingfisher.flickr.2",
+    "name": "Flickr OAuth Token",
+    "yaml_file": "pkg/rule/rules/flickr.yml"
+  },
+  {
+    "id": "kingfisher.foursquare.1",
+    "name": "Foursquare Client ID",
+    "yaml_file": "pkg/rule/rules/foursquare.yml"
+  },
+  {
+    "id": "kingfisher.foursquare.2",
+    "name": "Foursquare Client Secret",
+    "yaml_file": "pkg/rule/rules/foursquare.yml"
+  },
+  {
+    "id": "kingfisher.guardian.1",
+    "name": "Guardian API Key",
+    "yaml_file": "pkg/rule/rules/guardian.yml"
+  },
+  {
+    "id": "np.instagram.1",
+    "name": "Instagram Graph API Access Token",
+    "yaml_file": "pkg/rule/rules/instagram.yml"
+  },
+  {
+    "id": "np.linkedin.1",
+    "name": "LinkedIn Client ID",
+    "yaml_file": "pkg/rule/rules/linkedin.yml"
+  },
+  {
+    "id": "np.linkedin.2",
+    "name": "LinkedIn Secret Key",
+    "yaml_file": "pkg/rule/rules/linkedin.yml"
+  },
+  {
+    "id": "np.linkedin.3",
+    "name": "LinkedIn Access Token",
+    "yaml_file": "pkg/rule/rules/linkedin.yml"
+  },
+  {
+    "id": "np.nasa.1",
+    "name": "NASA API Key",
+    "yaml_file": "pkg/rule/rules/nasa.yml"
+  },
+  {
+    "id": "kingfisher.nytimes.1",
+    "name": "New York Times API Key",
+    "yaml_file": "pkg/rule/rules/nytimes.yml"
+  },
+  {
+    "id": "np.twitch.1",
+    "name": "Twitch Stream Key",
+    "yaml_file": "pkg/rule/rules/twitch.yml"
+  },
+  {
+    "id": "np.twitter.1",
+    "name": "Twitter/X Client ID",
+    "yaml_file": "pkg/rule/rules/twitter.yml"
+  },
+  {
+    "id": "np.twitter.2",
+    "name": "Twitter/X Secret Key",
+    "yaml_file": "pkg/rule/rules/twitter.yml"
+  },
+  {
+    "id": "np.twitter.3",
+    "name": "Twitter/X Bearer Token",
+    "yaml_file": "pkg/rule/rules/twitter.yml"
+  },
+  {
+    "id": "np.twitter.4",
+    "name": "Twitter/X Access Token",
+    "yaml_file": "pkg/rule/rules/twitter.yml"
+  },
+  {
+    "id": "kingfisher.yelp.1",
+    "name": "Yelp API Key",
+    "yaml_file": "pkg/rule/rules/yelp.yml"
+  },
+  {
+    "id": "np.youtube.1",
+    "name": "YouTube API Key",
+    "yaml_file": "pkg/rule/rules/youtube.yml"
+  }
+]

@@ -1,6 +1,7 @@
 rules:
   - name: Alchemy API Key
     id: kingfisher.alchemy.1
+    base_score: 68
     pattern: |
       (?xi)
       \balchemy

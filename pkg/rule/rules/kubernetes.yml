@@ -2,6 +2,7 @@ rules:
 
 - name: Kubernetes Bootstrap Token
   id: np.kubernetes.1
+  base_score: 85
 
   description: |
     A Kubernetes Boostrap Token was found.
@@ -32,6 +33,7 @@ rules:
 
 - name: Kubernetes Bootstrap Token
   id: np.kubernetes.2
+  base_score: 85
 
   description: |
     A Kubernetes Boostrap Token was found.

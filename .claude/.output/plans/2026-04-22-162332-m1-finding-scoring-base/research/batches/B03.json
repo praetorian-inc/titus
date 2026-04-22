@@ -1,0 +1,122 @@
+[
+  {
+    "id": "kingfisher.bitly.1",
+    "name": "Bitly Access Token",
+    "yaml_file": "pkg/rule/rules/bitly.yml"
+  },
+  {
+    "id": "kingfisher.duffel.1",
+    "name": "Duffel API Token",
+    "yaml_file": "pkg/rule/rules/duffel.yml"
+  },
+  {
+    "id": "kingfisher.easypost.1",
+    "name": "EasyPost API token",
+    "yaml_file": "pkg/rule/rules/easypost.yml"
+  },
+  {
+    "id": "kingfisher.finicity.1",
+    "name": "Finicity API token",
+    "yaml_file": "pkg/rule/rules/finicity.yml"
+  },
+  {
+    "id": "kingfisher.finicity.2",
+    "name": "Finicity client secret",
+    "yaml_file": "pkg/rule/rules/finicity.yml"
+  },
+  {
+    "id": "kingfisher.gocardless.1",
+    "name": "GoCardless API Token",
+    "yaml_file": "pkg/rule/rules/gocardless.yml"
+  },
+  {
+    "id": "kingfisher.gumroad.1",
+    "name": "Gumroad Access Token",
+    "yaml_file": "pkg/rule/rules/gumroad.yml"
+  },
+  {
+    "id": "kingfisher.lob.1",
+    "name": "Lob API Key",
+    "yaml_file": "pkg/rule/rules/lob.yml"
+  },
+  {
+    "id": "kingfisher.lob.2",
+    "name": "Lob Publishable API Key",
+    "yaml_file": "pkg/rule/rules/lob.yml"
+  },
+  {
+    "id": "kingfisher.paypal.1",
+    "name": "PayPal OAuth Client ID",
+    "yaml_file": "pkg/rule/rules/paypal.yml"
+  },
+  {
+    "id": "kingfisher.paypal.2",
+    "name": "PayPal OAuth Secret",
+    "yaml_file": "pkg/rule/rules/paypal.yml"
+  },
+  {
+    "id": "kingfisher.paystack.1",
+    "name": "Paystack API Key",
+    "yaml_file": "pkg/rule/rules/paystack.yml"
+  },
+  {
+    "id": "kingfisher.plaid.1",
+    "name": "Plaid Client ID (helper)",
+    "yaml_file": "pkg/rule/rules/plaid.yml"
+  },
+  {
+    "id": "kingfisher.plaid.2",
+    "name": "Plaid Secret (Production)",
+    "yaml_file": "pkg/rule/rules/plaid.yml"
+  },
+  {
+    "id": "kingfisher.plaid.3",
+    "name": "Plaid Secret (Sandbox)",
+    "yaml_file": "pkg/rule/rules/plaid.yml"
+  },
+  {
+    "id": "kingfisher.plaid.4",
+    "name": "Plaid Access Token (Production)",
+    "yaml_file": "pkg/rule/rules/plaid.yml"
+  },
+  {
+    "id": "kingfisher.plaid.5",
+    "name": "Plaid Access Token (Sandbox)",
+    "yaml_file": "pkg/rule/rules/plaid.yml"
+  },
+  {
+    "id": "np.razorpay.1",
+    "name": "Razorpay API Key",
+    "yaml_file": "pkg/rule/rules/razorpay.yml"
+  },
+  {
+    "id": "np.razorpay.2",
+    "name": "Razorpay Test API Key",
+    "yaml_file": "pkg/rule/rules/razorpay.yml"
+  },
+  {
+    "id": "kingfisher.shippo.1",
+    "name": "Shippo API Token",
+    "yaml_file": "pkg/rule/rules/shippo.yml"
+  },
+  {
+    "id": "np.square.1",
+    "name": "Square Access Token",
+    "yaml_file": "pkg/rule/rules/square.yml"
+  },
+  {
+    "id": "np.square.2",
+    "name": "Square OAuth Secret",
+    "yaml_file": "pkg/rule/rules/square.yml"
+  },
+  {
+    "id": "np.stripe.1",
+    "name": "Stripe API Key",
+    "yaml_file": "pkg/rule/rules/stripe.yml"
+  },
+  {
+    "id": "np.stripe.2",
+    "name": "Stripe API Test Key",
+    "yaml_file": "pkg/rule/rules/stripe.yml"
+  }
+]

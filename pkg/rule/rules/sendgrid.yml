@@ -2,6 +2,7 @@ rules:
 
 - name: SendGrid API Key
   id: np.sendgrid.1
+  base_score: 65
 
   pattern: '\b(?P<token>SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43})\b'
 

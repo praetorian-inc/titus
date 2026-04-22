@@ -1,6 +1,7 @@
 rules:
   - name: Lob API Key
     id: kingfisher.lob.1
+    base_score: 55
     pattern: |
       (?xi)
       lob
@@ -35,6 +36,7 @@ rules:
                 - 200
   - name: Lob Publishable API Key
     id: kingfisher.lob.2
+    base_score: 30
     pattern: |
       (?xi)
       lob

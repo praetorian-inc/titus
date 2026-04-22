@@ -2,6 +2,7 @@ rules:
 
 - name: Groq API Key
   id: np.groq.1
+  base_score: 50
   pattern: '\b(gsk_[a-zA-Z0-9]{50,54})\b'
 
   categories: [api, secret]

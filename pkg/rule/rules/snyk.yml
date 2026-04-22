@@ -1,6 +1,7 @@
 rules:
   - name: Snyk API Key
     id: kingfisher.snyk.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

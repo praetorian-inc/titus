@@ -1,6 +1,7 @@
 rules:
   - name: Travis CI Token
     id: kingfisher.travisci.1
+    base_score: 65
     pattern: |
       (?xi)
       \b
@@ -35,6 +36,7 @@ rules:
                 status: [200]
   - name: Travis CI Encrypted Variable
     id: kingfisher.travisci.2
+    base_score: 65
     pattern: |
       (?xis)
       (?:language|env|deploy|script):[\r\n]
@@ -51,4 +53,3 @@ rules:
           global:
             # This sets FOO=super-secret, but the plaintext never appears here.
             - secure: "VJh0l9gOb+6AVNDk6cziZSs1AqVM8CqtZU6ot9ZQeJ+KfL1pxnGQ4qQF8Cz9\M1q85c3l1N1+qkQ0uV12QG6O6ylq6Qq1l3VjAJM3h2pY3jdmrA8kX2ZIxRjC/\8+Xj1wVtKQ0R+owM/6i5Y6cyx4hRb3VvSeYlC0lD1iTzQ2vgMyE="
-

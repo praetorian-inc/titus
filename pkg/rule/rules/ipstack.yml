@@ -1,6 +1,7 @@
 rules:
   - name: IpStack API Key
     id: kingfisher.ipstack.1
+    base_score: 45
     pattern: |
       (?xi)
       \b

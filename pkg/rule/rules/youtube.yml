@@ -2,6 +2,7 @@ rules:
 
 - name: YouTube API Key
   id: np.youtube.1
+  base_score: 30
   pattern: '\b(?P<key>AIza[0-9A-Za-z_-]{35})\b'
   categories: [api, secret]
 

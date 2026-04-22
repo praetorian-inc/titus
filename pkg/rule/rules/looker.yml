@@ -1,6 +1,7 @@
 rules:
   - name: Looker Base URL
     id: kingfisher.looker.1
+    base_score: 15
     visible: false
     confidence: low
     min_entropy: 2.0
@@ -24,6 +25,7 @@ rules:
 
   - name: Looker Client ID
     id: kingfisher.looker.2
+    base_score: 20
     confidence: medium
     min_entropy: 3.0
     pattern: |
@@ -45,6 +47,7 @@ rules:
 
   - name: Looker Client Secret
     id: kingfisher.looker.3
+    base_score: 60
     confidence: medium
     min_entropy: 3.5
     pattern: |

@@ -1,6 +1,7 @@
 rules:
   - name: Scalingo API Token
     id: kingfisher.scalingo.1
+    base_score: 70
     pattern: |
       (?xi)
       \b

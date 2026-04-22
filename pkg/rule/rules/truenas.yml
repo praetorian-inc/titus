@@ -2,6 +2,7 @@ rules:
 
 - name: TrueNAS API Key (WebSocket)
   id: np.truenas.1
+  base_score: 85
 
   pattern: |
     (?x)
@@ -38,6 +39,7 @@ rules:
 
 - name: TrueNAS API Key (REST API)
   id: np.truenas.2
+  base_score: 85
 
   pattern: |
     (?x)
@@ -64,6 +66,7 @@ rules:
 
 - name: TrueNAS API Key (keyword proximity)
   id: np.truenas.3
+  base_score: 55
 
   pattern: |
     (?xi)

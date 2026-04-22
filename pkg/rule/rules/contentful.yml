@@ -1,6 +1,7 @@
 rules:
   - name: Contentful Delivery API Token
     id: kingfisher.contentful.1
+    base_score: 40
     pattern: |
       (?xi)
       \b
@@ -30,6 +31,7 @@ rules:
 
   - name: Contentful Personal Access Token
     id: kingfisher.contentful.2
+    base_score: 55
     pattern: '\b(?P<token>CFPAT-[A-Za-z0-9_-]{43})\b'
 
     categories: [api, secret]

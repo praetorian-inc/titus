@@ -15,6 +15,7 @@ rules:
 
 - name: React App Username
   id: np.reactapp.1
+  base_score: 50
 
   pattern: |
     (?x)(?i)
@@ -45,6 +46,7 @@ rules:
 
 - name: React App Password
   id: np.reactapp.2
+  base_score: 50
 
   pattern: |
     (?x)(?i)

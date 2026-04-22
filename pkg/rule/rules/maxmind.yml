@@ -1,6 +1,7 @@
 rules:
   - name: MaxMind License Key
     id: kingfisher.maxmind.1
+    base_score: 55
     pattern: |
       (?xi)
       \b
@@ -36,6 +37,7 @@ rules:
                 - 200
   - name: MaxMind Account ID
     id: kingfisher.maxmind.2
+    base_score: 15
     pattern: |
       (?xi)
       (?:maxmind|geoip|geolite)

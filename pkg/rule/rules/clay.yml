@@ -1,6 +1,7 @@
 rules:
   - name: Clay API Key
     id: kingfisher.clay.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

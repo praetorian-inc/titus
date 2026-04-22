@@ -1,6 +1,7 @@
 rules:
   - name: Baseten API Key
     id: kingfisher.baseten.1
+    base_score: 55
     pattern: |
       (?x)
       \b

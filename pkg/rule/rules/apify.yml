@@ -1,6 +1,7 @@
 rules:
   - name: Apify API Token
     id: kingfisher.apify.1
+    base_score: 50
     pattern: |
       (?xi)
       (?P<token>

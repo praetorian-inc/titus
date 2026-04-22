@@ -2,6 +2,7 @@ rules:
 
 - name: NASA API Key
   id: np.nasa.1
+  base_score: 25
 
   pattern: |
     (?x)

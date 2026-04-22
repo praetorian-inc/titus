@@ -2,6 +2,7 @@ rules:
 
 - name: AWS API Key
   id: np.aws.1
+  base_score: 48
 
   pattern: '\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b'
 
@@ -33,6 +34,7 @@ rules:
 
 - name: AWS Secret Access Key
   id: np.aws.2
+  base_score: 88
 
   pattern: |
     (?x)(?i)
@@ -80,6 +82,7 @@ rules:
 
 - name: AWS Account ID
   id: np.aws.3
+  base_score: 12
 
   pattern: '(?i)aws_?(?:account)_?(?:id)?["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?(?P<account_id>[0-9]{4}-?[0-9]{4}-?[0-9]{4})'
 
@@ -126,6 +129,7 @@ rules:
 
 - name: AWS Session Token
   id: np.aws.4
+  base_score: 80
   pattern: '(?i)(?:aws.?session|aws.?session.?token|aws.?token)["''`]?\s{0,30}(?::|=>|=)\s{0,30}["''`]?(?P<session_token>[a-z0-9/+=]{16,200})[^a-z0-9/+=]'
 
   categories:
@@ -152,6 +156,7 @@ rules:
 # Note that this service is being deprecated on March 31, 2024
 - name: Amazon MWS Auth Token
   id: np.aws.5
+  base_score: 35
   pattern: '(?i)(?P<mws_token>amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
 
   categories:
@@ -169,6 +174,7 @@ rules:
 
 - name: AWS S3 Bucket
   id: np.s3.1
+  base_score: 22
 
   pattern: |
     (?x)
@@ -228,6 +234,7 @@ rules:
 
 - name: AWS S3 Bucket
   id: np.s3.2
+  base_score: 22
 
   pattern: |
     (?x)
@@ -291,6 +298,7 @@ rules:
 
 - name: Amazon Resource Name
   id: np.arn.1
+  base_score: 10
 
   pattern: |
     (?x)
@@ -362,6 +370,7 @@ rules:
 # "AWS AppSync is an enterprise-level, fully managed GraphQL service with real-time data synchronization and offline programming features."
 - name: AWS AppSync API Key
   id: np.appsync.1
+  base_score: 52
   pattern: |
     (?x)
     \b
@@ -396,6 +405,7 @@ rules:
 # This matches an API key followed closely by a secret access key
 - name: AWS API Credentials
   id: np.aws.6
+  base_score: 95
 
   pattern: |
     (?x)

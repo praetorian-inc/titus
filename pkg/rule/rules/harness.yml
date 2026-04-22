@@ -1,6 +1,7 @@
 rules:
   - name: Harness Personal Access Token (PAT)
     id: kingfisher.harness.pat.1
+    base_score: 70
     pattern: |
       (?xi)
       \b

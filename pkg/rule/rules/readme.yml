@@ -1,6 +1,7 @@
 rules:
   - name: ReadMe API Key
     id: kingfisher.readme.1
+    base_score: 35
     pattern: |
       (?xi)
       \b

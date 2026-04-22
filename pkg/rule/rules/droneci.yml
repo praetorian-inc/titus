@@ -1,6 +1,7 @@
 rules:
   - name: DroneCI Access Token
     id:   kingfisher.drone.1
+    base_score: 65
     pattern: |
       (?xi)
       \b                                    

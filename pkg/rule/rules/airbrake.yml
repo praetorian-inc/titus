@@ -1,6 +1,7 @@
 rules:
   - name: Airbrake User Key
     id: kingfisher.airbrake.1
+    base_score: 45
     pattern: |
       (?xi)
       \b

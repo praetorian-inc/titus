@@ -1,6 +1,7 @@
 rules:
   - name: Codecov Access Token
     id: kingfisher.codecov.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

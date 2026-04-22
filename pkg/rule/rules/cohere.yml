@@ -1,6 +1,7 @@
 rules:
   - name: Cohere API Key
     id: kingfisher.cohere.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

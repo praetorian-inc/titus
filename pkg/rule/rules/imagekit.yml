@@ -1,6 +1,7 @@
 rules:
   - name: ImageKit Private API Key
     id: kingfisher.imagekit.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

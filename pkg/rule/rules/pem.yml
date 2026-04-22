@@ -4,6 +4,7 @@ rules:
 
 - name: PEM-Encoded Private Key
   id: np.pem.1
+  base_score: 92
 
   # Note: This is intended to match many PEM-encoded base64 payloads
   pattern: |
@@ -70,6 +71,7 @@ rules:
 # regular PEM encoding.
 - name: Base64-PEM-Encoded Private Key
   id: np.pem.2
+  base_score: 90
 
   pattern: |
     (?x)

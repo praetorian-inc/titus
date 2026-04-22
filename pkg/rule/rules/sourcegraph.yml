@@ -2,6 +2,7 @@ rules:
 
 - name: Sourcegraph Access Token
   id: np.sourcegraph.1
+  base_score: 68
 
   pattern: '\b(sgp_(?:[a-fA-F0-9]{16}_|local_)?[a-fA-F0-9]{40})\b'
 

@@ -1,6 +1,7 @@
 rules:
   - name: Coinbase Access Token
     id: kingfisher.coinbase.1
+    base_score: 85
     pattern: |
       (?xi)
       \b
@@ -34,6 +35,7 @@ rules:
               status: [200]
   - name: Coinbase CDP API Key (ECDSA)
     id: kingfisher.coinbase.2
+    base_score: 90
     pattern: |
       (?xims)
         "name"\s*:\s*"
@@ -69,6 +71,7 @@ rules:
         }
   - name: Coinbase CDP API Key (Ed25519)
     id: kingfisher.coinbase.3
+    base_score: 90
     pattern: |
       (?xis)
       "id"\s*:\s*"(?P<CRED_NAME>[0-9a-f-]{36})"[^{]*?"privateKey"\s*:\s*"(?P<PRIVATE_KEY>[A-Za-z0-9+/=]{88})"

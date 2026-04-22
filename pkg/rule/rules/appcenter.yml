@@ -2,6 +2,7 @@ rules:
 
 - name: Visual Studio App Center API Token
   id: np.appcenter.1
+  base_score: 65
 
   pattern: |
     (?xi)

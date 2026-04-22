@@ -2,6 +2,7 @@ rules:
 
 - name: Spotify Access Token
   id: np.spotify.1
+  base_score: 40
 
   pattern: |
     (?xi)

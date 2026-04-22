@@ -1,6 +1,7 @@
 rules:
   - name: Alibaba Access Key ID
     id: kingfisher.alibabacloud.1
+    base_score: 45
     pattern: |
       (?xi)
       (?P<akid>
@@ -19,6 +20,7 @@ rules:
       - LTAI5GqyJGhp12ad31L5hpix
   - name: Alibaba Access Key Secret
     id: kingfisher.alibabacloud.2
+    base_score: 88
     pattern: |
       (?xi)
       \b

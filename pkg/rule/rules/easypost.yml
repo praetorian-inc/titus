@@ -1,6 +1,7 @@
 rules:
   - name: EasyPost API token
     id: kingfisher.easypost.1
+    base_score: 80
     pattern: |
       (?x)
       \b

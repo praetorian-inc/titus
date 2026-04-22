@@ -1,6 +1,7 @@
 rules:
   - name: Friendli.ai API Key
     id: kingfisher.friendli.1
+    base_score: 55
     pattern: | 
       (?xi)
       \b

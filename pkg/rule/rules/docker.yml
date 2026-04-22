@@ -1,6 +1,7 @@
 rules:
   - name: Docker Registry Credentials (auths JSON)
     id: kingfisher.docker.1
+    base_score: 70
     pattern: |
       (?xis)
       "auths"\s*:\s*\{

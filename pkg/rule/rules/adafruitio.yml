@@ -2,6 +2,7 @@ rules:
 
 - name: Adafruit IO Key
   id: np.adafruit.1
+  base_score: 55
 
   pattern: |
     (?x)

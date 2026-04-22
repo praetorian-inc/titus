@@ -10,6 +10,7 @@ rules:
 
 - name: Generic Secret
   id: np.generic.1
+  base_score: 50
 
   pattern: |
     (?x)(?i)
@@ -33,6 +34,7 @@ rules:
 
 - name: Generic API Key
   id: np.generic.2
+  base_score: 50
 
   pattern: |
     (?x)(?i)
@@ -56,6 +58,7 @@ rules:
 
 - name: Generic Username and Password
   id: np.generic.3
+  base_score: 50
 
   pattern: |
     (?x)
@@ -117,6 +120,7 @@ rules:
 
 - name: Generic Username and Password
   id: np.generic.4
+  base_score: 50
   pattern: |
     (?x)
     (?: username | USERNAME | Username | UserName | user | USER)    (?# username context keyword )
@@ -169,6 +173,7 @@ rules:
 
 - name: Generic Password
   id: np.generic.5
+  base_score: 50
 
   pattern: |
     (?x)(?i)
@@ -248,6 +253,7 @@ rules:
 
 - name: Generic Password
   id: np.generic.6
+  base_score: 50
 
   pattern: |
     (?x)(?i)
@@ -284,6 +290,7 @@ rules:
 
 - name: Credentials in .NET System.Net.NetworkCredential
   id: np.generic.7
+  base_score: 85
 
   pattern: |
     (?x)
@@ -315,6 +322,7 @@ rules:
 
 - name: Credentials in .NET System.DirectoryServices.DirectoryEntry
   id: np.generic.8
+  base_score: 85
 
   pattern: |
     (?x)
@@ -349,6 +357,7 @@ rules:
 
 - name: Sensitive Value in .NET Configuration
   id: np.generic.9
+  base_score: 55
 
   pattern: |
     (?x)
@@ -390,6 +399,7 @@ rules:
 
 - name: Connection String in .NET Configuration
   id: np.generic.10
+  base_score: 85
 
   pattern: |
     (?x)
@@ -424,6 +434,7 @@ rules:
 
 - name: Generic Password
   id: np.generic.11
+  base_score: 45
 
   pattern: |
     (?x)(?i)
@@ -451,6 +462,7 @@ rules:
 
 - name: Generic Password
   id: np.generic.12
+  base_score: 45
 
   pattern: |
     (?x)(?i)
@@ -473,6 +485,7 @@ rules:
 
 - name: Generic Username and Password
   id: np.generic.13
+  base_score: 45
 
   pattern: |
     (?x)(?i)
@@ -500,6 +513,7 @@ rules:
 
 - name: Generic Username and Password
   id: np.generic.14
+  base_score: 45
 
   pattern: |
     (?x)(?i)
@@ -527,6 +541,7 @@ rules:
 
 - name: Generic Secret
   id: np.generic.15
+  base_score: 50
 
   pattern: |
     (?x)(?i)
@@ -565,6 +580,7 @@ rules:
 
 - name: Generic Secret
   id: np.generic.16
+  base_score: 50
 
   pattern: |
     (?x)(?i)

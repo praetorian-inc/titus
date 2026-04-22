@@ -1,6 +1,7 @@
 rules:
   - name: DeviantArt Access Token
     id: np.deviantart.1
+    base_score: 45
     pattern: |
       (?xi)
       \b(?:deviantart|deviant_art)
@@ -40,6 +41,7 @@ rules:
 
   - name: DeviantArt OAuth Client Secret
     id: kingfisher.deviantart.1
+    base_score: 45
 
     pattern: |
       (?xi)

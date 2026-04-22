@@ -5,6 +5,7 @@ rules:
 # Format: 18-25 alphanumeric characters
 - name: Twitter/X Client ID
   id: np.twitter.1
+  base_score: 20
 
   pattern: |
     (?x)(?i)
@@ -39,6 +40,7 @@ rules:
 # Format: 35-50 alphanumeric characters
 - name: Twitter/X Secret Key
   id: np.twitter.2
+  base_score: 60
 
   pattern: |
     (?x)(?i)
@@ -79,6 +81,7 @@ rules:
 # Format: Long base64 string, typically starts with 'AAAA'
 - name: Twitter/X Bearer Token
   id: np.twitter.3
+  base_score: 55
 
   pattern: |
     (?x)(?i)
@@ -113,6 +116,7 @@ rules:
 # Format: numeric-alphanumeric separated by hyphen
 - name: Twitter/X Access Token
   id: np.twitter.4
+  base_score: 50
 
   pattern: |
     (?x)(?i)

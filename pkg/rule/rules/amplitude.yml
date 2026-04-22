@@ -1,6 +1,7 @@
 rules:
   - name: Amplitude API Key
     id: np.amplitude.1
+    base_score: 40
     pattern: |
       (?xi)
       \b(?:amplitude)

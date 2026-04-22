@@ -1,6 +1,7 @@
 rules:
  - name: Azure Search Query Key
    id: kingfisher.azuresearch.key.1
+   base_score: 55
    pattern: |
       (?xi)
       \b
@@ -40,6 +41,7 @@ rules:
        variable: AZUREURL
  - name: Azure Search URL
    id: kingfisher.azuresearch.url.1
+   base_score: 10
    pattern: |
      (?xi)
      \b

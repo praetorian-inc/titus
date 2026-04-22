@@ -1,6 +1,7 @@
 rules:
   - name: Azure DevOps Organization
     id: kingfisher.azure.devops.1
+    base_score: 8
     pattern: |
       (?xi)
       \b
@@ -17,6 +18,7 @@ rules:
 
   - name: Azure DevOps Personal Access Token
     id: kingfisher.azure.devops.2
+    base_score: 72
     pattern: |
       (?xi)
       \b

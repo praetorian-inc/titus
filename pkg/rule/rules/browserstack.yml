@@ -1,6 +1,7 @@
 rules:
   - name: BrowserStack Access Key
     id: np.browserstack.1
+    base_score: 50
     pattern: |
       (?xi)
       \b(?:browserstack|BROWSERSTACK)

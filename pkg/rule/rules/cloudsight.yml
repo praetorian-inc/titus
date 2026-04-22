@@ -1,6 +1,7 @@
 rules:
   - name: CloudSight API Key
     id: kingfisher.cloudsight.1
+    base_score: 40
     pattern: |
       (?xi)                   
       \b                     

@@ -3,6 +3,7 @@ rules:
 - name: TeamCity API Token
 
   id: np.teamcity.1
+  base_score: 65
 
   # This is a JWT-like format that always seems to have the same `{"typ": "TCV2"}` header.
   # Note that the payload part does not decode as a JSON object, and hence makes this an invalid JWT.

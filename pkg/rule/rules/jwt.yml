@@ -2,6 +2,7 @@ rules:
 
 - name: JSON Web Token (base64url-encoded)
   id: np.jwt.1
+  base_score: 55
 
   # `header . payload . signature`, all base64-encoded
   # Unencoded, the header and payload are JSON objects, usually starting with
@@ -42,6 +43,7 @@ rules:
 # This kind of thing is often seen in spring config files and other configs
 - name: JSON Web Token Secret
   id: np.jwt.2
+  base_score: 75
 
   pattern: |
     (?x)(?m)(?i)
@@ -73,6 +75,7 @@ rules:
 # This kind of thing is often seen in spring config files and other configs
 - name: JSON Web Token Secret
   id: np.jwt.3
+  base_score: 75
 
   pattern: |
     (?x)(?m)(?i)

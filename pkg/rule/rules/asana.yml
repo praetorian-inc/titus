@@ -1,6 +1,7 @@
 rules:
   - name: Asana Client ID
     id: kingfisher.asana.1
+    base_score: 15
     pattern: |
       (?xi)
       \b
@@ -23,6 +24,7 @@ rules:
 
   - name: Asana Client Secret
     id: kingfisher.asana.2
+    base_score: 60
     pattern: |
       (?xi)
       \b
@@ -45,6 +47,7 @@ rules:
 
   - name: Asana OAuth / Personal Access Token
     id: kingfisher.asana.3
+    base_score: 62
     pattern: |
       (?xi)
       \b

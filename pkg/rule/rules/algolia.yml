@@ -1,6 +1,7 @@
 rules:
   - name: Algolia Admin API Key
     id: kingfisher.algolia.1
+    base_score: 55
     pattern: |
       (?xi)
       algolia
@@ -34,6 +35,7 @@ rules:
   
   - name: Algolia Application ID
     id: kingfisher.algolia.2
+    base_score: 20
     pattern: |
       (?xi)
       algolia

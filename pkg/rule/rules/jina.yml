@@ -2,6 +2,7 @@ rules:
 
 - name: Jina Search Foundation API Key
   id: np.jina.1
+  base_score: 45
 
   pattern: |
     (?x)

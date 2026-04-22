@@ -2,6 +2,7 @@ rules:
 
 - name: Mailgun API Key
   id: np.mailgun.1
+  base_score: 65
 
   pattern: '(?i)(?:mailgun|mg).{0,20}key-(?P<token>[a-z0-9]{32})\b'
 

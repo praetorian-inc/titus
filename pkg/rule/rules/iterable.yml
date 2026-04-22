@@ -2,6 +2,7 @@ rules:
 
 - name: Iterable API Key
   id: np.iterable.1
+  base_score: 60
 
   # Key format evidence:
   #   - Census/Fivetran docs state 32 characters

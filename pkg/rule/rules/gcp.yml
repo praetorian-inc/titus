@@ -1,6 +1,7 @@
 rules:
   - name: GCP API Token
     id: kingfisher.gcp.1
+    base_score: 92
     pattern: |
       (?xims)
       (?P<service_account>
@@ -45,6 +46,7 @@ rules:
       type: GCP
   - name: GCP Private Key ID
     id: kingfisher.gcp.3
+    base_score: 45
     pattern: |
       (?xi)
       \b

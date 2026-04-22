@@ -1,0 +1,162 @@
+[
+  {
+    "id": "kingfisher.credentials.1",
+    "name": "Credentials in a URL",
+    "yaml_file": "pkg/rule/rules/credentials.yml"
+  },
+  {
+    "id": "kingfisher.curl.1",
+    "name": "Curl Basic Authentication Credentials",
+    "yaml_file": "pkg/rule/rules/curl.yml"
+  },
+  {
+    "id": "kingfisher.curl.2",
+    "name": "Curl Header Authentication",
+    "yaml_file": "pkg/rule/rules/curl.yml"
+  },
+  {
+    "id": "kingfisher.filezilla.1",
+    "name": "FileZilla base64 encoded password",
+    "yaml_file": "pkg/rule/rules/filezilla.yml"
+  },
+  {
+    "id": "kingfisher.filezilla.2",
+    "name": "FileZilla stored password (Pass plaintext)",
+    "yaml_file": "pkg/rule/rules/filezilla.yml"
+  },
+  {
+    "id": "np.generic.1",
+    "name": "Generic Secret",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.2",
+    "name": "Generic API Key",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.3",
+    "name": "Generic Username and Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.4",
+    "name": "Generic Username and Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.5",
+    "name": "Generic Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.6",
+    "name": "Generic Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.7",
+    "name": "Credentials in .NET System.Net.NetworkCredential",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.8",
+    "name": "Credentials in .NET System.DirectoryServices.DirectoryEntry",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.9",
+    "name": "Sensitive Value in .NET Configuration",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.10",
+    "name": "Connection String in .NET Configuration",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.11",
+    "name": "Generic Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.12",
+    "name": "Generic Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.13",
+    "name": "Generic Username and Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.14",
+    "name": "Generic Username and Password",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.15",
+    "name": "Generic Secret",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.generic.16",
+    "name": "Generic Secret",
+    "yaml_file": "pkg/rule/rules/generic.yml"
+  },
+  {
+    "id": "np.http.1",
+    "name": "HTTP Basic Authentication",
+    "yaml_file": "pkg/rule/rules/http.yml"
+  },
+  {
+    "id": "np.http.2",
+    "name": "HTTP Bearer Token",
+    "yaml_file": "pkg/rule/rules/http.yml"
+  },
+  {
+    "id": "np.jwt.1",
+    "name": "JSON Web Token (base64url-encoded)",
+    "yaml_file": "pkg/rule/rules/jwt.yml"
+  },
+  {
+    "id": "np.jwt.2",
+    "name": "JSON Web Token Secret",
+    "yaml_file": "pkg/rule/rules/jwt.yml"
+  },
+  {
+    "id": "np.jwt.3",
+    "name": "JSON Web Token Secret",
+    "yaml_file": "pkg/rule/rules/jwt.yml"
+  },
+  {
+    "id": "np.netrc.1",
+    "name": "netrc Credentials",
+    "yaml_file": "pkg/rule/rules/netrc.yml"
+  },
+  {
+    "id": "np.phpmailer.1",
+    "name": "PHPMailer Credentials",
+    "yaml_file": "pkg/rule/rules/phpmailer.yml"
+  },
+  {
+    "id": "np.psexec.1",
+    "name": "Credentials in PsExec Invocation",
+    "yaml_file": "pkg/rule/rules/psexec.yml"
+  },
+  {
+    "id": "np.reactapp.1",
+    "name": "React App Username",
+    "yaml_file": "pkg/rule/rules/react.yml"
+  },
+  {
+    "id": "np.reactapp.2",
+    "name": "React App Password",
+    "yaml_file": "pkg/rule/rules/react.yml"
+  },
+  {
+    "id": "kingfisher.uri.1",
+    "name": "URI with Username and Secret",
+    "yaml_file": "pkg/rule/rules/uri.yml"
+  }
+]

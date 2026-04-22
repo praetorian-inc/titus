@@ -1,6 +1,7 @@
 rules:
   - name: Notion Legacy Token
     id: kingfisher.notion.1
+    base_score: 55
     pattern: |
       (?xi)
       notion
@@ -36,6 +37,7 @@ rules:
           url: https://api.notion.com/v1/users/me
   - name: Notion Token
     id: kingfisher.notion.2
+    base_score: 58
     pattern: |
       (?xi)
       \b
@@ -69,6 +71,7 @@ rules:
 
   - name: Notion OAuth Refresh Token
     id: kingfisher.notion.3
+    base_score: 62
     pattern: |
       (?xi)
       notion

@@ -1,6 +1,7 @@
 rules:
   - name: Sendinblue API Token
     id: kingfisher.sendinblue.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

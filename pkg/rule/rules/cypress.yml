@@ -2,6 +2,7 @@ rules:
 
 - name: Cypress Record Key
   id: np.cypress.1
+  base_score: 50
 
   pattern: |
     (?xi)

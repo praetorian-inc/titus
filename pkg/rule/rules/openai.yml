@@ -2,6 +2,7 @@ rules:
 
 - name: OpenAI API Key
   id: np.openai.1
+  base_score: 70
 
   pattern: |
     (?x)

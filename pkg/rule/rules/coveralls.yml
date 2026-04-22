@@ -1,6 +1,7 @@
 rules:
   - name: Coveralls Repo Identifier
     id: kingfisher.coveralls.1
+    base_score: 20
     visible: false
     confidence: medium
     min_entropy: 2.0
@@ -38,6 +39,7 @@ rules:
 
   - name: Coveralls Personal API Token
     id: kingfisher.coveralls.2
+    base_score: 50
     pattern: |
       (?xi)
       \b

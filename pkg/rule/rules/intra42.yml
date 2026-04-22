@@ -1,6 +1,7 @@
 rules:
   - name: Intra42 Client ID
     id: kingfisher.intra42.1
+    base_score: 15
     visible: false
     pattern: |
       (?xi)
@@ -18,6 +19,7 @@ rules:
 
   - name: Intra42 Client Secret (s-s4t2ud/af)
     id: kingfisher.intra42.2
+    base_score: 65
     pattern: |
       (?xi)
       \b

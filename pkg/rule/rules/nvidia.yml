@@ -1,6 +1,7 @@
 rules:
   - name: NVIDIA NIM API Key
     id: kingfisher.nvidia.nim.1
+    base_score: 55
     pattern: |
       (?xi)
       (?P<token>

@@ -1,0 +1,87 @@
+[
+  {
+    "id": "kingfisher.assemblyai.1",
+    "name": "AssemblyAI API Key",
+    "yaml_file": "pkg/rule/rules/assemblyai.yml"
+  },
+  {
+    "id": "kingfisher.clarifai.1",
+    "name": "Clarifai API Key",
+    "yaml_file": "pkg/rule/rules/clarifai.yml"
+  },
+  {
+    "id": "kingfisher.cursor.1",
+    "name": "Cursor Integrations (User) API Key",
+    "yaml_file": "pkg/rule/rules/cursor.yml"
+  },
+  {
+    "id": "kingfisher.deepgram.1",
+    "name": "Deepgram API Key",
+    "yaml_file": "pkg/rule/rules/deepgram.yml"
+  },
+  {
+    "id": "kingfisher.elevenlabs.1",
+    "name": "ElevenLabs API Key",
+    "yaml_file": "pkg/rule/rules/elevenlabs.yml"
+  },
+  {
+    "id": "kingfisher.exa.1",
+    "name": "Exa AI API Key",
+    "yaml_file": "pkg/rule/rules/exaai.yml"
+  },
+  {
+    "id": "kingfisher.imagekit.1",
+    "name": "ImageKit Private API Key",
+    "yaml_file": "pkg/rule/rules/imagekit.yml"
+  },
+  {
+    "id": "np.jina.1",
+    "name": "Jina Search Foundation API Key",
+    "yaml_file": "pkg/rule/rules/jina.yml"
+  },
+  {
+    "id": "kingfisher.klingai.1",
+    "name": "Kling AI Secret Key",
+    "yaml_file": "pkg/rule/rules/klingai.yml"
+  },
+  {
+    "id": "kingfisher.langchain.1",
+    "name": "LangSmith Personal Access Token",
+    "yaml_file": "pkg/rule/rules/langchain.yml"
+  },
+  {
+    "id": "kingfisher.langchain.2",
+    "name": "LangSmith Service Key",
+    "yaml_file": "pkg/rule/rules/langchain.yml"
+  },
+  {
+    "id": "kingfisher.pdflayer.1",
+    "name": "PdfLayer API Key",
+    "yaml_file": "pkg/rule/rules/pdflayer.yml"
+  },
+  {
+    "id": "kingfisher.retellai.api_key.1",
+    "name": "Retell AI API Key",
+    "yaml_file": "pkg/rule/rules/retellai.yml"
+  },
+  {
+    "id": "kingfisher.scraperapi.1",
+    "name": "ScraperAPI Key",
+    "yaml_file": "pkg/rule/rules/scraperapi.yml"
+  },
+  {
+    "id": "np.tavily.1",
+    "name": "Tavily API Key",
+    "yaml_file": "pkg/rule/rules/tavily.yml"
+  },
+  {
+    "id": "kingfisher.voyageai.api_key",
+    "name": "Voyage AI API Key",
+    "yaml_file": "pkg/rule/rules/voyageai.yml"
+  },
+  {
+    "id": "kingfisher.wandb.1",
+    "name": "Weights and Biases API Key",
+    "yaml_file": "pkg/rule/rules/weightsandbiases.yml"
+  }
+]

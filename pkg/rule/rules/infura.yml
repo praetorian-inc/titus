@@ -1,6 +1,7 @@
 rules:
   - name: Infura API Key
     id: kingfisher.infura.1
+    base_score: 68
     pattern: '(?i)\binfura(?:.|[\n\r]){0,32}?\b(?P<token>[0-9a-z]{32})\b'
 
     categories: [api, secret, blockchain]

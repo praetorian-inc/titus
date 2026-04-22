@@ -1,6 +1,7 @@
 rules:
   - name: CodeRabbit API Key
     id: kingfisher.coderabbit.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

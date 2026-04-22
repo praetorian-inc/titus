@@ -1,6 +1,7 @@
 rules:
   - name: MongoDB API Private Key
     id: kingfisher.mongodb.1
+    base_score: 85
     pattern: |
       (?xi)                     
       (?:                     
@@ -54,6 +55,7 @@ rules:
 
   - name: MongoDB API PUBLIC Key
     id: kingfisher.mongodb.2
+    base_score: 15
     pattern: |
       (?xi)
       (?:
@@ -74,6 +76,7 @@ rules:
       - 'mongodb-public: qj4Zrh8e6A'
   - name: MongoDB URI Connection String
     id: kingfisher.mongodb.3
+    base_score: 85
     pattern: |
       (?xi)                    
       \b                      
@@ -95,6 +98,7 @@ rules:
       type: MongoDB
   - name: MongoDB Atlas Service Account Token
     id: kingfisher.mongodb.4
+    base_score: 95
     pattern: |
       (?xi)                    
       \b                      

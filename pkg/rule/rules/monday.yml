@@ -1,6 +1,7 @@
 rules:
   - name: Monday.com API Key
     id: kingfisher.monday.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

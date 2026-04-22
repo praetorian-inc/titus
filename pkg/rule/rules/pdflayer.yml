@@ -1,6 +1,7 @@
 rules:
   - name: PdfLayer API Key
     id: kingfisher.pdflayer.1
+    base_score: 40
     pattern: |
       (?xi)
       (?:

@@ -1,6 +1,7 @@
 rules:
   - name: Yelp API Key
     id: kingfisher.yelp.1
+    base_score: 30
     pattern: |
       (?xi)
       \b

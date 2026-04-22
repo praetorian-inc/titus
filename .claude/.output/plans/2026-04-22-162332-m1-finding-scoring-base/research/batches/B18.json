@@ -1,0 +1,67 @@
+[
+  {
+    "id": "kingfisher.airtable.1",
+    "name": "Airtable Personal Access Token",
+    "yaml_file": "pkg/rule/rules/airtable.yml"
+  },
+  {
+    "id": "kingfisher.airtable.2",
+    "name": "Airtable OAuth Token",
+    "yaml_file": "pkg/rule/rules/airtable.yml"
+  },
+  {
+    "id": "kingfisher.apify.1",
+    "name": "Apify API Token",
+    "yaml_file": "pkg/rule/rules/apify.yml"
+  },
+  {
+    "id": "kingfisher.apollo.1",
+    "name": "Apollo API Key",
+    "yaml_file": "pkg/rule/rules/apollo.yml"
+  },
+  {
+    "id": "kingfisher.clay.1",
+    "name": "Clay API Key",
+    "yaml_file": "pkg/rule/rules/clay.yml"
+  },
+  {
+    "id": "kingfisher.diffbot.1",
+    "name": "Diffbot API Key",
+    "yaml_file": "pkg/rule/rules/diffbot.yml"
+  },
+  {
+    "id": "kingfisher.fastly.1",
+    "name": "Fastly API token",
+    "yaml_file": "pkg/rule/rules/fastly.yml"
+  },
+  {
+    "id": "np.figma.1",
+    "name": "Figma Personal Access Token",
+    "yaml_file": "pkg/rule/rules/figma.yml"
+  },
+  {
+    "id": "kingfisher.frame.io.1",
+    "name": "Frame.io API token",
+    "yaml_file": "pkg/rule/rules/frame.io.yml"
+  },
+  {
+    "id": "kingfisher.frameio.1",
+    "name": "Frame.io API Token",
+    "yaml_file": "pkg/rule/rules/frameio.yml"
+  },
+  {
+    "id": "np.krb5.asrep.23.1",
+    "name": "Password Hash (Kerberos 5",
+    "yaml_file": " etype 23, AS-REP),pkg/rule/rules/hashes.yml"
+  },
+  {
+    "id": "kingfisher.ionic.1",
+    "name": "Ionic API token",
+    "yaml_file": "pkg/rule/rules/ionic.yml"
+  },
+  {
+    "id": "np.postman.1",
+    "name": "Postman API Key",
+    "yaml_file": "pkg/rule/rules/postman.yml"
+  }
+]

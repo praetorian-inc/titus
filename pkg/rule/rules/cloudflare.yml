@@ -1,6 +1,7 @@
 rules:
   - name: Cloudflare API Token
     id: kingfisher.cloudflare.1
+    base_score: 82
     pattern: |
       (?xi)                   
       \b                     
@@ -43,6 +44,7 @@ rules:
 
   - name: Cloudflare CA Key
     id: kingfisher.cloudflare.2
+    base_score: 75
     pattern: |
       (?xi)
       \b                     

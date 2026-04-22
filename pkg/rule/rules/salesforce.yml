@@ -2,6 +2,7 @@ rules:
 
 - name: Salesforce Access Token
   id: np.salesforce.1
+  base_score: 85
   pattern: |
     (?x)
     \b

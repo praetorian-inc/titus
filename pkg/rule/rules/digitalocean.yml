@@ -2,6 +2,7 @@ rules:
 
 - name: DigitalOcean Application Access Token
   id: np.digitalocean.1
+  base_score: 85
 
   pattern: |
     (?x)(?i)
@@ -20,6 +21,7 @@ rules:
 
 - name: DigitalOcean Personal Access Token
   id: np.digitalocean.2
+  base_score: 85
 
   pattern: |
     (?x)(?i)
@@ -38,6 +40,7 @@ rules:
 
 - name: DigitalOcean Refresh Token
   id: np.digitalocean.3
+  base_score: 82
 
   pattern: |
     (?x)(?i)

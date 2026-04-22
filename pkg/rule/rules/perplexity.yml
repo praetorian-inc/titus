@@ -1,6 +1,7 @@
 rules:
   - name: Perplexity AI API Key
     id: kingfisher.perplexity.1
+    base_score: 58
     pattern: |
       (?x)
       \b

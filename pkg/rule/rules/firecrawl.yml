@@ -2,6 +2,7 @@ rules:
 
 - name: Firecrawl API Key
   id: np.firecrawl.1
+  base_score: 40
   pattern: '\b(fc-[a-f0-9]{32})\b'
 
   categories: [api, secret]

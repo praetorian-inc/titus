@@ -1,6 +1,7 @@
 rules:
   - name: Discord Webhook URL
     id: kingfisher.discord.1
+    base_score: 40
     pattern: |
       (?xi)
       (?P<webhook_base>
@@ -33,6 +34,7 @@ rules:
           url: '{{ TOKEN }}'
   - name: Discord Bot Token
     id: kingfisher.discord.2
+    base_score: 65
     pattern: |
       (?xi)
       (?P<token>
@@ -63,6 +65,7 @@ rules:
         variable: BOTID
   - name: Discord Bot ID
     id: kingfisher.discord.3
+    base_score: 10
     pattern: |
       (?xi)
       (?:discord|botid|bot_id)

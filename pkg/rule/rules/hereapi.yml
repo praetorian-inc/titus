@@ -1,6 +1,7 @@
 rules:
   - name: HERE API Key
     id: kingfisher.hereapi.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

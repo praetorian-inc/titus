@@ -1,6 +1,7 @@
 rules:
   - name: Deepgram API Key
     id: kingfisher.deepgram.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

@@ -1,0 +1,3 @@
+rule_id,base_score,tier,reasoning
+np.dropbox.1,85,critical,"Dropbox Access Token grants full read/write access to every file in the authenticated user's Dropbox; file-sync services holding all user files carry the same blast radius as cloud-infra breaches."
+kingfisher.fileio.1,55,medium,"FileIO Secret Key controls a temporary file-hosting service; can upload malicious files (phishing payloads, malware distribution) but service is ephemeral by design."

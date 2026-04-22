@@ -1,6 +1,7 @@
 rules:
   - name: RapidAPI Key
     id: kingfisher.rapidapi.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

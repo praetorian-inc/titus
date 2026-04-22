@@ -1,6 +1,7 @@
 rules:
   - name: Ollama API Key
     id: kingfisher.ollama.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

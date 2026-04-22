@@ -1,6 +1,7 @@
 rules:
   - name: Fastly API token
     id: kingfisher.fastly.1
+    base_score: 75
     pattern: |
       (?xi)
       \b

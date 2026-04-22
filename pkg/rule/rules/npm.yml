@@ -2,6 +2,7 @@ rules:
 
 - name: NPM Access Token (fine-grained)
   id: np.npm.1
+  base_score: 75
 
   pattern: |
     (?x)

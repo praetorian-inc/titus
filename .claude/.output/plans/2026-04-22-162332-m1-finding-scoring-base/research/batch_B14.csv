@@ -1,0 +1,12 @@
+rule_id,base_score,tier,reasoning
+kingfisher.hereapi.1,55,medium,HERE API keys are per-call billed with request quotas for mapping/geocoding services; exposure enables quota exhaustion and unauthorized usage but limited blast radius beyond billing impact
+kingfisher.ipstack.1,45,medium,IPStack API keys enable IP geolocation lookups with per-call billing; exposure causes quota exhaustion and data harvesting but read-only with limited blast radius
+np.mapbox.1,25,low,Mapbox public token (pk.*) is intentionally client-side and designed to be embedded in frontend code; exposure has minimal impact beyond potential quota abuse
+np.mapbox.2,65,high,Mapbox secret token (sk.*) is server-side with full account access; exposure enables quota exhaustion style/tileset manipulation and potential billing impact
+np.mapbox.3,50,medium,Mapbox temporary token (tk.*) has time-limited scope and restricted permissions; exposure risk is bounded by token expiry and scope constraints
+kingfisher.maxmind.1,55,medium,MaxMind license key grants access to GeoIP database downloads and queries; exposure enables unauthorized data access and quota exhaustion
+kingfisher.maxmind.2,15,info,MaxMind Account ID is a non-secret identifier used for account reference; alone it grants no API access and poses minimal security risk
+kingfisher.ngrok.1,70,high,Ngrok API key can create tunnels exposing internal network services to the public internet; significant risk of unauthorized network access and lateral movement
+kingfisher.openweather.1,45,medium,OpenWeather API keys provide weather data access with per-call billing; exposure enables quota exhaustion and data harvesting but entirely read-only with low blast radius
+kingfisher.shodan.1,55,medium,Shodan API key provides read-only internet scanning and search capabilities; exposure enables reconnaissance against targets using attacker quota but no write access
+kingfisher.tailscale.1,85,critical,Tailscale API key can add devices to a private mesh network modify ACLs and access internal services; full network compromise potential makes this critical severity

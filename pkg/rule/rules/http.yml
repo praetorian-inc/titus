@@ -3,6 +3,7 @@ rules:
 
 - name: HTTP Basic Authentication
   id: np.http.1
+  base_score: 55
 
   pattern: |
     (?x)(?i)
@@ -22,6 +23,7 @@ rules:
 
 - name: HTTP Bearer Token
   id: np.http.2
+  base_score: 55
 
   pattern: |
     (?x)(?i)

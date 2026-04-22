@@ -2,6 +2,7 @@ rules:
 
 - name: Keen.io API Key
   id: np.keenio.1
+  base_score: 45
 
   pattern: |
     (?xi)

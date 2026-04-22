@@ -1,6 +1,7 @@
 rules:
   - name: Statuspage API Key
     id: kingfisher.statuspage.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

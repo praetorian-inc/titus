@@ -1,6 +1,7 @@
 rules:
   - name: Authress Service Client Access Key
     id: kingfisher.authress.1
+    base_score: 70
     pattern: |
       (?xi)
       (?P<TOKEN>

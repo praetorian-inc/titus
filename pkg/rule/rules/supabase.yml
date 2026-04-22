@@ -1,6 +1,7 @@
 rules:
   - name: Supabase Management Token
     id: kingfisher.supabase.1
+    base_score: 90
     pattern: |
       (?xi)
       (
@@ -30,6 +31,7 @@ rules:
                 - 200
   - name: Supabase Project API Key
     id: kingfisher.supabase.2
+    base_score: 70
     pattern: |
       (?xi)
       (
@@ -65,6 +67,7 @@ rules:
         variable: SBPROJECTURL
   - name: Supabase Project URL
     id: kingfisher.supabase.3
+    base_score: 15
     pattern: 
       (?xi)
       \b

@@ -2,6 +2,7 @@ rules:
 
 - name: PyPI Upload Token
   id: np.pypi.1
+  base_score: 75
 
   # NOTE: these can actually be arbitrarily long
   pattern: |

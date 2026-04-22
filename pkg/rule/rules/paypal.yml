@@ -1,6 +1,7 @@
 rules:
   - name: PayPal OAuth Client ID
     id: kingfisher.paypal.1
+    base_score: 15
     pattern: |
       (?xi)
       paypal
@@ -20,6 +21,7 @@ rules:
 
   - name: PayPal OAuth Secret
     id: kingfisher.paypal.2
+    base_score: 85
     pattern: |
       (?xi)
       paypal

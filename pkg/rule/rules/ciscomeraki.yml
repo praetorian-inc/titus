@@ -1,6 +1,7 @@
 rules:
   - name: Cisco Meraki API Key
     id: kingfisher.ciscomeraki.1
+    base_score: 65
     pattern: |
       (?xi)
       meraki

@@ -7,6 +7,7 @@ rules:
 
 - name: Slack Bot Token
   id: np.slack.2
+  base_score: 70
   pattern: '\b(?P<token>xoxb-[0-9]{10,12}-[0-9]{10,14}-[a-zA-Z0-9]{23,25})\b'
 
   references:
@@ -42,6 +43,7 @@ rules:
 
 - name: Slack User Token
   id: np.slack.4
+  base_score: 75
   pattern: '\b(?P<token>xoxp-[0-9]{12}-[0-9]{12}-[0-9]{12}-[a-f0-9]{32})\b'
 
   references:
@@ -71,6 +73,7 @@ rules:
 
 - name: Slack App Token
   id: np.slack.5
+  base_score: 55
   pattern: '\b(?P<token>xapp-[0-9]{12}-[a-zA-Z0-9/+]{24})\b'
 
   categories:
@@ -87,6 +90,7 @@ rules:
 
 - name: Slack Legacy Bot Token
   id: np.slack.6
+  base_score: 65
   pattern: '\b(?P<token>xoxb-[0-9]{10,13}-[a-zA-Z0-9]{24})\b'
 
   categories:
@@ -117,6 +121,7 @@ rules:
 
 - name: Slack Workflow Webhook
   id: np.slack.7
+  base_score: 45
   pattern: '(?i)(?P<webhook>https://hooks\.slack\.com/workflows/[TE][a-z0-9]{5,14}/A[a-z0-9]{5,14}/[0-9]{6,20}/[a-zA-Z0-9]{8,40})'
 
   categories:
@@ -148,6 +153,7 @@ rules:
 
 - name: Slack Trigger URL
   id: np.slack.8
+  base_score: 45
   pattern: '(?i)(?P<webhook>https://hooks\.slack\.com/triggers/[TE][a-z0-9]{5,14}/[0-9]{10,16}(?:/[a-f0-9]{32})?)'
 
   categories:
@@ -181,6 +187,7 @@ rules:
 
 - name: Slack Webhook
   id: np.slack.3
+  base_score: 45
   pattern: '(?i)(?P<webhook>https://hooks.slack.com/services/T[a-z0-9_]{8,12}/B[a-z0-9_]{8,12}/[a-z0-9_]{24})'
 
   categories:

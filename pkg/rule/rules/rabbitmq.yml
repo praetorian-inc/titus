@@ -4,6 +4,7 @@ rules:
   # Regex sourced from TruffleHog detector (detector ID 903) with named groups added.
   - name: RabbitMQ Credential
     id: kingfisher.rabbitmq.1
+    base_score: 75
     pattern: |
       (?xi)
       amqps?

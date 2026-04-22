@@ -2,6 +2,7 @@ rules:
 
 - name: WakaTime API Key
   id: np.wakatime.1
+  base_score: 30
 
   pattern: |
     (?xi)
@@ -43,6 +44,7 @@ rules:
 
 - name: WakaTime Prefixed API Key
   id: np.wakatime.2
+  base_score: 30
 
   pattern: '(?i)\b(?P<key>waka_[a-z0-9]{36,})\b'
 

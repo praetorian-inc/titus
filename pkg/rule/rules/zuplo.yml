@@ -1,6 +1,7 @@
 rules:
   - name: Zuplo API Key
     id: kingfisher.zuplo.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

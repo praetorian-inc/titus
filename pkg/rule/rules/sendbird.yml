@@ -1,6 +1,7 @@
 rules:
   - name: Sendbird Application ID
     id: kingfisher.sendbird.1
+    base_score: 15
     pattern: |
       (?xi)
       sendbird
@@ -22,6 +23,7 @@ rules:
 
   - name: Sendbird API Token
     id: kingfisher.sendbird.2
+    base_score: 65
     pattern: |
       (?xi)
       sendbird

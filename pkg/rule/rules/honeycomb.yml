@@ -1,6 +1,7 @@
 rules:
   - name: Honeycomb API Key
     id: kingfisher.honeycomb.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

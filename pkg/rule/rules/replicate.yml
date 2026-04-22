@@ -1,6 +1,7 @@
 rules:
   - name: Replicate API Token
     id: kingfisher.replicate.1
+    base_score: 65
     pattern: |
       (?x)
       \b        

@@ -2,6 +2,7 @@ rules:
 
 - name: Segment Public API Token
   id: np.segment.1
+  base_score: 55
 
   pattern: |
     (?x)

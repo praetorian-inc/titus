@@ -1,6 +1,7 @@
 rules:
   - name: Curl Basic Authentication Credentials
     id: kingfisher.curl.1
+    base_score: 55
     pattern: '(?i)\bcurl\s.*(?:-u|--user)\s+[''"]?(?P<TOKEN>[^:''"\s]+:[^''"\s]+)[''"]?'
     confidence: low
     min_entropy: 3.0
@@ -13,6 +14,7 @@ rules:
 
   - name: Curl Header Authentication
     id: kingfisher.curl.2
+    base_score: 55
     pattern: '(?i)\bcurl\s.*(?:-H|--header)\s+[''"]Authorization:\s*(?:Bearer|Basic|Token)\s+(?P<TOKEN>[a-zA-Z0-9+/=_-]{20,})[''"]'
     confidence: low
     min_entropy: 3.5

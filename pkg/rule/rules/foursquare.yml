@@ -1,6 +1,7 @@
 rules:
   - name: Foursquare Client ID
     id: kingfisher.foursquare.1
+    base_score: 20
     visible: false
     confidence: low
     min_entropy: 0.0
@@ -21,6 +22,7 @@ rules:
 
   - name: Foursquare Client Secret
     id: kingfisher.foursquare.2
+    base_score: 45
     pattern: |
       (?xi)
       \b

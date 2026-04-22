@@ -1,6 +1,7 @@
 rules:
   - name: Fly.io API Token
     id: kingfisher.flyio.1
+    base_score: 75
     pattern: |
       (?x)
       \b

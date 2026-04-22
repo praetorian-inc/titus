@@ -1,6 +1,7 @@
 rules:
   - name: FileZilla base64 encoded password
     id: kingfisher.filezilla.1
+    base_score: 70
     pattern: <Pass\b[^>]*\bencoding\s*=\s*"(?:base64|radix64)"[^>]*>\s*(?P<token>[A-Za-z0-9+/]{8,}={0,2})\s*</Pass>
     min_entropy: 3.2
     confidence: low
@@ -19,6 +20,7 @@ rules:
 
   - name: FileZilla stored password (Pass plaintext)
     id: kingfisher.filezilla.2
+    base_score: 70
     pattern: <Pass>\s*(?P<token>[^<\r\n]{4,128})\s*</Pass>
     min_entropy: 2.8
     confidence: low

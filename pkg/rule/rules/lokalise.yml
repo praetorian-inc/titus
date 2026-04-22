@@ -2,6 +2,7 @@ rules:
 
 - name: Lokalise API Token
   id: np.lokalise.1
+  base_score: 45
 
   pattern: |
     (?xi)

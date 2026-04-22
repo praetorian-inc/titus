@@ -1,6 +1,7 @@
 rules:
   - name: LaunchDarkly Access Token
     id: kingfisher.launchdarkly.1
+    base_score: 70
     pattern: |
       (?xi)
       launchdarkly
@@ -35,6 +36,7 @@ rules:
 
   - name: LaunchDarkly Client-side ID
     id: kingfisher.launchdarkly.2
+    base_score: 15
     pattern: |
       (?xi)
       ["']?(?:LD|LAUNCHDARKLY)[_-]?CLIENT[_-]?(?:SIDE[_-]?)?ID["']?

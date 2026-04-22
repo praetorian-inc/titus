@@ -1,6 +1,7 @@
 rules:
   - name: PackageCloud API Key
     id: kingfisher.packagecloud.1
+    base_score: 65
     pattern: |
       (?xi)
       \b

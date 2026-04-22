@@ -1,6 +1,7 @@
 rules:
   - name: Azure OpenAI API Key
     id: kingfisher.azureopenai.1
+    base_score: 60
     pattern: |
       (?xi)
       \b
@@ -45,6 +46,7 @@ rules:
         variable: AZUREHOST
   - name: Azure OpenAI API Key (Extended Format)
     id: kingfisher.azureopenai.2
+    base_score: 65
     pattern: |
       (?xi)
       (?:
@@ -91,6 +93,7 @@ rules:
 
   - name: Azure OpenAI Host
     id: kingfisher.azureopenai.host.1
+    base_score: 10
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: Cerebras AI API Key
     id: kingfisher.cerebras.1
+    base_score: 55
     pattern: |
       (?xi)
       (?P<token>

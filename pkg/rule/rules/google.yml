@@ -2,6 +2,7 @@ rules:
 
 - name: Google Client ID
   id: np.google.1
+  base_score: 15
 
   pattern: '(?i)\b([0-9]+-[a-z0-9_]{32})\.apps\.googleusercontent\.com'
 
@@ -16,6 +17,7 @@ rules:
 
 - name: Google OAuth Client Secret
   id: np.google.2
+  base_score: 65
 
   pattern: |
     (?x)
@@ -31,6 +33,7 @@ rules:
 
 - name: Google OAuth Client Secret
   id: np.google.3
+  base_score: 55
 
   pattern: |
     (?x)(?i)
@@ -49,6 +52,7 @@ rules:
 
 - name: Google OAuth Access Token
   id: np.google.4
+  base_score: 70
 
   pattern: |
     (?x)
@@ -76,6 +80,7 @@ rules:
 
 - name: Google API Key
   id: np.google.5
+  base_score: 55
 
   pattern: |
     (?x)
@@ -115,6 +120,7 @@ rules:
 
 - name: Google Cloud Storage Bucket
   id: np.gcs.1
+  base_score: 20
 
   pattern: |
     (?x)
@@ -140,6 +146,7 @@ rules:
 
 - name: Google Cloud Storage Bucket
   id: np.gcs.2
+  base_score: 20
 
   pattern: |
     (?x)
@@ -167,6 +174,7 @@ rules:
 # This matches an OAuth client ID followed closely by a client secret
 - name: Google OAuth Credentials
   id: np.google.6
+  base_score: 68
 
   pattern: |
     (?x)
@@ -202,6 +210,7 @@ rules:
 
 - name: Google API Key (Base64 Encoded)
   id: np.google.7
+  base_score: 55
 
   pattern: |
     (?x)
@@ -232,6 +241,7 @@ rules:
 
 - name: Google Maps API Key
   id: np.google.8
+  base_score: 50
 
   pattern: |
     (?xi)

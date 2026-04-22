@@ -1,6 +1,7 @@
 rules:
   - name: Google OAuth2 Access Token
     id: kingfisher.google.oauth2.1
+    base_score: 70
     pattern: |
       (?xi)
       \b

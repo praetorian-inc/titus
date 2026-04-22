@@ -2,6 +2,7 @@ rules:
 
 - name: Facebook Secret Key
   id: np.facebook.1
+  base_score: 60
 
   pattern: |
     (?x)(?i)
@@ -30,6 +31,7 @@ rules:
 
 - name: Facebook Access Token
   id: np.facebook.2
+  base_score: 45
 
   pattern: '\b(?P<token>EAACEdEose0cBA[a-zA-Z0-9]+)\b'
 
@@ -44,6 +46,7 @@ rules:
 
 - name: Facebook App Credentials
   id: np.facebook.3
+  base_score: 65
 
   pattern: |
     (?x)(?i)

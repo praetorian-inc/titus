@@ -1,0 +1,57 @@
+[
+  {
+    "id": "kingfisher.hubspot.1",
+    "name": "HubSpot Private App Token",
+    "yaml_file": "pkg/rule/rules/hubspot.yml"
+  },
+  {
+    "id": "kingfisher.jotform.1",
+    "name": "Jotform API Key",
+    "yaml_file": "pkg/rule/rules/jotform.yml"
+  },
+  {
+    "id": "np.salesforce.1",
+    "name": "Salesforce Access Token",
+    "yaml_file": "pkg/rule/rules/salesforce.yml"
+  },
+  {
+    "id": "np.shopify.1",
+    "name": "Shopify Domain",
+    "yaml_file": "pkg/rule/rules/shopify.yml"
+  },
+  {
+    "id": "np.shopify.2",
+    "name": "Shopify App Secret",
+    "yaml_file": "pkg/rule/rules/shopify.yml"
+  },
+  {
+    "id": "np.shopify.3",
+    "name": "Shopify Access Token (Public App)",
+    "yaml_file": "pkg/rule/rules/shopify.yml"
+  },
+  {
+    "id": "np.shopify.4",
+    "name": "Shopify Access Token (Custom App)",
+    "yaml_file": "pkg/rule/rules/shopify.yml"
+  },
+  {
+    "id": "np.shopify.5",
+    "name": "Shopify Access Token (Legacy Private App)",
+    "yaml_file": "pkg/rule/rules/shopify.yml"
+  },
+  {
+    "id": "kingfisher.typeform.1",
+    "name": "Typeform API Token",
+    "yaml_file": "pkg/rule/rules/typeform.yml"
+  },
+  {
+    "id": "kingfisher.zohocrm.1",
+    "name": "Zoho CRM API Access Token",
+    "yaml_file": "pkg/rule/rules/zohocrm.yml"
+  },
+  {
+    "id": "kingfisher.zuplo.1",
+    "name": "Zuplo API Key",
+    "yaml_file": "pkg/rule/rules/zuplo.yml"
+  }
+]

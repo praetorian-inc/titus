@@ -1,6 +1,7 @@
 rules:
   - name: OpsGenie API Key
     id: kingfisher.opsgenie.1
+    base_score: 58
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: Clarifai API Key
     id: kingfisher.clarifai.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

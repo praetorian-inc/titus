@@ -1,6 +1,7 @@
 rules:
   - name: Clojars Username
     id: kingfisher.clojars.1
+    base_score: 40
     pattern: |
       (?xi)
       \b
@@ -23,6 +24,7 @@ rules:
 
   - name: Clojars API Token
     id: kingfisher.clojars.2
+    base_score: 65
     pattern: |
       (?xi)
       \b

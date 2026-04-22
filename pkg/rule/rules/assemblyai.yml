@@ -1,6 +1,7 @@
 rules:
   - name: AssemblyAI API Key
     id: kingfisher.assemblyai.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

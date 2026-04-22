@@ -2,6 +2,7 @@ rules:
 
 - name: Kagi API Key
   id: np.kagi.1
+  base_score: 35
 
   pattern: |
     (?x)(?s)
