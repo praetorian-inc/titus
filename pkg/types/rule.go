@@ -1,7 +1,7 @@
 package types
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- SHA1 is required for compatibility with NoseyParker rule structural IDs; not used as a cryptographic primitive.
 	"encoding/hex"
 	"regexp"
 )
@@ -52,6 +52,7 @@ var namedGroupRe = regexp.MustCompile(`\(\?P<[^>]+>`)
 // groups to unnamed groups for compatibility with NoseyParker's structural IDs.
 func (r *Rule) ComputeStructuralID() string {
 	normalized := namedGroupRe.ReplaceAllString(r.Pattern, "(")
+	// #nosec G401 -- SHA1 is used for content-addressing, not cryptographic integrity. Required for NoseyParker datastore compatibility.
 	h := sha1.New()
 	h.Write([]byte(normalized))
 	return hex.EncodeToString(h.Sum(nil))

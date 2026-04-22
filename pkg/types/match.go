@@ -1,7 +1,7 @@
 package types
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- SHA1 is required for compatibility with NoseyParker match structural IDs; not used as a cryptographic primitive.
 	"encoding/hex"
 	"fmt"
 )
@@ -23,6 +23,7 @@ type Match struct {
 // ComputeStructuralID computes content-based unique ID.
 // Format: SHA-1(rule_structural_id + '\0' + blob_id + '\0' + start + '\0' + end)
 func (m *Match) ComputeStructuralID(ruleStructuralID string) string {
+	// #nosec G401 -- SHA1 is used for content-addressing, not cryptographic integrity. Required for NoseyParker datastore compatibility.
 	h := sha1.New()
 
 	// rule_structural_id
