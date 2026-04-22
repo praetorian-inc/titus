@@ -884,8 +884,53 @@ func TestOutputReportSARIF_NilScoreFallsBackToWarning(t *testing.T) {
 	assert.False(t, hasProps, "properties should be absent when score is nil")
 }
 
-// Keep os import used below
-var _ = os.DevNull
+func TestReport_JSON_ScoreRoundTrip_Golden(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	rule := &types.Rule{ID: "np.test.1", Name: "Test", Pattern: "x"}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	finding := &types.Finding{
+		ID:     "test-finding-abc",
+		RuleID: "np.test.1",
+		Groups: [][]byte{[]byte("x1x2x")},
+		Score: &types.Score{
+			Final:             75,
+			Base:              75,
+			SuggestedSeverity: "high",
+			Applied:           []types.ScoreModifier{},
+		},
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.test.1": rule}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportJSON(cmd, findings, matches, ruleMap))
+
+	goldenPath := "testdata/golden/score_json.golden.json"
+	wantBytes, err := os.ReadFile(goldenPath)
+	if err != nil {
+		if os.Getenv("UPDATE_GOLDEN") != "" {
+			require.NoError(t, os.WriteFile(goldenPath, buf.Bytes(), 0644))
+			t.Skip("wrote golden file, rerun without UPDATE_GOLDEN")
+		}
+		t.Fatalf("golden file not found: %v", err)
+	}
+
+	assert.Equal(t, strings.TrimSpace(string(wantBytes)), strings.TrimSpace(buf.String()),
+		"JSON output mismatch (regenerate with UPDATE_GOLDEN=1)")
+}
 
 func TestFilterRejected_BulkAnnotationError_Propagates(t *testing.T) {
 	s := &fakeRejectionStore{bulkErr: errors.New("db exploded")}
