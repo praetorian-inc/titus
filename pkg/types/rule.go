@@ -38,6 +38,10 @@ type Rule struct {
 	// PatternRequirements specifies character-class and content constraints
 	// for the captured value. nil means no requirements.
 	PatternRequirements *PatternRequirements
+
+	// BaseScore is the inherent severity of this rule's secret class,
+	// ranging 0-100. Assigned via research per rule. Required.
+	BaseScore int
 }
 
 // namedGroupRe matches named capture groups like (?P<name>...) and replaces
