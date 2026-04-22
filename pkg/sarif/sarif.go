@@ -2,6 +2,7 @@ package sarif
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -54,12 +55,23 @@ type ShortDescription struct {
 	Text string `json:"text"`
 }
 
+// ResultProperties holds the SARIF `properties` bag. Emitted under
+// `result.properties` in the output JSON.
+type ResultProperties struct {
+	// SecuritySeverity is a string-encoded float in [0.0, 10.0] — the
+	// GitHub Code Scanning convention. Computed as Score.Final / 10.
+	SecuritySeverity string `json:"security-severity,omitempty"`
+	// TitusScore is the full Score object for consumers that want the breakdown.
+	TitusScore *types.Score `json:"titus_score,omitempty"`
+}
+
 // Result represents a single finding
 type Result struct {
-	RuleID    string     `json:"ruleId"`
-	Level     string     `json:"level"`
-	Message   Message    `json:"message"`
-	Locations []Location `json:"locations"`
+	RuleID     string            `json:"ruleId"`
+	Level      string            `json:"level"`
+	Message    Message           `json:"message"`
+	Locations  []Location        `json:"locations"`
+	Properties *ResultProperties `json:"properties,omitempty"`
 }
 
 // Message contains the result message
@@ -179,6 +191,61 @@ func (r *Report) AddResult(match *types.Match, filePath string) {
 // ToJSON serializes the report to JSON bytes
 func (r *Report) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(r, "", "  ")
+}
+
+// LevelForScore maps a 0-100 score to a SARIF level enum value.
+func LevelForScore(score int) string {
+	switch {
+	case score < 20:
+		return "none"
+	case score < 40:
+		return "note"
+	case score < 60:
+		return "warning"
+	default:
+		return "error"
+	}
+}
+
+// AddResultWithScore adds a finding result with score metadata. Preferred over
+// AddResult when a Score is available — level is band-mapped from score, and
+// properties carry the full Score object for downstream consumers.
+func (r *Report) AddResultWithScore(match *types.Match, filePath string, score *types.Score) {
+	uri := formatFileURI(filePath)
+
+	region := Region{
+		StartLine:   match.Location.Source.Start.Line,
+		StartColumn: match.Location.Source.Start.Column,
+		EndLine:     match.Location.Source.End.Line,
+		EndColumn:   match.Location.Source.End.Column,
+	}
+	if len(match.Snippet.Matching) > 0 {
+		region.Snippet = Snippet{Text: string(match.Snippet.Matching)}
+	}
+
+	level := "warning"
+	var props *ResultProperties
+	if score != nil {
+		level = LevelForScore(score.Final)
+		props = &ResultProperties{
+			SecuritySeverity: fmt.Sprintf("%.1f", float64(score.Final)/10.0),
+			TitusScore:       score,
+		}
+	}
+
+	result := Result{
+		RuleID:  match.RuleID,
+		Level:   level,
+		Message: Message{Text: match.RuleName},
+		Locations: []Location{{
+			PhysicalLocation: PhysicalLocation{
+				ArtifactLocation: ArtifactLocation{URI: uri},
+				Region:           region,
+			},
+		}},
+		Properties: props,
+	}
+	r.Runs[0].Results = append(r.Runs[0].Results, result)
 }
 
 // formatFileURI converts a file path to SARIF URI format
