@@ -884,6 +884,46 @@ func TestOutputReportSARIF_NilScoreFallsBackToWarning(t *testing.T) {
 	assert.False(t, hasProps, "properties should be absent when score is nil")
 }
 
+func TestOutputReportHuman_ShowsScoreBadge(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	s, err := store.New(store.Config{Path: dbPath})
+	require.NoError(t, err)
+
+	rule := &types.Rule{ID: "np.test.1", Name: "Test Rule", Pattern: "x"}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	finding := &types.Finding{
+		ID:     "f1",
+		RuleID: "np.test.1",
+		Score: &types.Score{
+			Final: 85, Base: 85, SuggestedSeverity: "critical",
+			Applied: []types.ScoreModifier{},
+		},
+	}
+	require.NoError(t, s.AddFinding(finding))
+	require.NoError(t, s.Close())
+
+	findings := []*types.Finding{finding}
+	var matches []*types.Match
+	ruleMap := map[string]*types.Rule{"np.test.1": rule}
+
+	// Disable color for stable output
+	reportColor = "never"
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportHuman(cmd, findings, matches, dbPath, ruleMap))
+
+	output := buf.String()
+	assert.Contains(t, output, "Score:", "expected 'Score:' label in output")
+	assert.Contains(t, output, "85/100", "expected '85/100' score in output")
+	assert.Contains(t, output, "critical", "expected 'critical' severity in output")
+}
+
 func TestReport_JSON_ScoreRoundTrip_Golden(t *testing.T) {
 	tmpDir := t.TempDir()
 	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})

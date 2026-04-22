@@ -686,6 +686,28 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 			s.heading.Sprint("id"),
 			s.id.Sprint(f.ID))
 
+		// Score badge — printed immediately after the finding header when Score is set.
+		if f.Score != nil {
+			severityColor := s.heading // default to bold for unknown tiers
+			switch f.Score.SuggestedSeverity {
+			case "critical":
+				severityColor = color.New(color.FgHiRed, color.Bold)
+			case "high":
+				severityColor = color.New(color.FgHiYellow, color.Bold)
+			case "medium":
+				severityColor = color.New(color.FgHiBlue)
+			case "low", "info":
+				severityColor = color.New(color.Faint)
+			}
+			if color.NoColor {
+				severityColor.DisableColor()
+			}
+			_, _ = fmt.Fprintf(out, "%s %d/100 (%s)\n",
+				s.heading.Sprint("Score:"),
+				f.Score.Final,
+				severityColor.Sprint(f.Score.SuggestedSeverity))
+		}
+
 		// Rule name - "Rule:" in heading style, rule name in ruleName style
 		ruleName := f.RuleID
 		if r, ok := ruleMap[f.RuleID]; ok {
