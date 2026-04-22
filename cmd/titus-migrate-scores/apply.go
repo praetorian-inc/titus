@@ -29,10 +29,13 @@ var (
 )
 
 // applyScoresToRules walks rulesDir, applies scores to matching rules, and
-// returns (numChanged, missingRuleIDs, error). In dry-run mode (apply=false),
-// no files are written but numChanged still reflects what would change.
+// returns (numChanged, missingRuleIDs, error). missingRuleIDs contains rule IDs
+// found in YAML files that have no entry in the scores map (unscored rules).
+// In dry-run mode (apply=false), no files are written but numChanged still
+// reflects what would change.
 func applyScoresToRules(rulesDir string, scores map[string]ScoreEntry, apply bool) (int, []string, error) {
-	seen := map[string]bool{}
+	// allRuleIDs collects every rule ID found across all YAML files.
+	allRuleIDs := map[string]bool{}
 	totalChanged := 0
 
 	err := filepath.WalkDir(rulesDir, func(path string, d fs.DirEntry, err error) error {
@@ -42,7 +45,7 @@ func applyScoresToRules(rulesDir string, scores map[string]ScoreEntry, apply boo
 		if d.IsDir() || filepath.Ext(path) != ".yml" {
 			return nil
 		}
-		changed, err := applyToFile(path, scores, seen, apply)
+		changed, err := applyToFile(path, scores, allRuleIDs, apply)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
@@ -53,10 +56,10 @@ func applyScoresToRules(rulesDir string, scores map[string]ScoreEntry, apply boo
 		return 0, nil, err
 	}
 
-	// Report rule IDs in scores that were never found in any YAML file.
+	// Report rule IDs found in YAML files that have no score in the CSV.
 	var missing []string
-	for id := range scores {
-		if !seen[id] {
+	for id := range allRuleIDs {
+		if _, inScores := scores[id]; !inScores {
 			missing = append(missing, id)
 		}
 	}
@@ -104,12 +107,10 @@ func applyToFile(path string, scores map[string]ScoreEntry, seen map[string]bool
 		blocks = append(blocks, *current)
 	}
 
-	// Mark all rule IDs we encounter regardless of whether they're in scores.
+	// Track all rule IDs found in this file (regardless of whether they're scored).
 	for _, b := range blocks {
 		if b.id != "" {
-			if _, inScores := scores[b.id]; inScores {
-				seen[b.id] = true
-			}
+			seen[b.id] = true
 		}
 	}
 
