@@ -12,6 +12,9 @@ type Finding struct {
 	RuleID  string
 	Groups  [][]byte
 	Matches []*Match // matches belonging to this finding
+	// Score is the computed severity score for this finding. Nil indicates
+	// the finding predates scoring (legacy datastores) or scoring was skipped.
+	Score *Score
 }
 
 // ComputeFindingID computes content-based finding ID.

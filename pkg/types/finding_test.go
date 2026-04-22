@@ -118,3 +118,22 @@ func TestFinding_NilMatches(t *testing.T) {
 
 	assert.Nil(t, finding.Matches)
 }
+
+func TestFinding_HasScoreField(t *testing.T) {
+	f := &Finding{
+		ID:     "abc",
+		RuleID: "np.aws.1",
+		Score: &Score{
+			Final: 75, Base: 60, SuggestedSeverity: "high",
+			Applied: []ScoreModifier{},
+		},
+	}
+	require.NotNil(t, f.Score, "expected non-nil Score")
+	assert.Equal(t, 75, f.Score.Final)
+}
+
+func TestFinding_ScoreNilForLegacy(t *testing.T) {
+	// A Finding without Score should serialize without issue (nil pointer).
+	f := &Finding{ID: "abc", RuleID: "np.test.1"}
+	assert.Nil(t, f.Score, "expected Score to default to nil")
+}
