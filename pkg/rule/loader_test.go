@@ -410,6 +410,41 @@ func TestLoadRule_NoPatternRequirements(t *testing.T) {
 	}
 }
 
+func TestLoadRule_BaseScoreParsed(t *testing.T) {
+	loader := NewLoader()
+	yaml := `rules:
+  - name: Test Rule
+    id: np.test.1
+    pattern: 'test'
+    base_score: 75
+`
+	rule, err := loader.LoadRule([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadRule: %v", err)
+	}
+	if rule.BaseScore != 75 {
+		t.Errorf("BaseScore = %d, want 75", rule.BaseScore)
+	}
+}
+
+func TestLoadRule_BaseScoreMissing_PhaseZero(t *testing.T) {
+	// During Phase 0, missing base_score is allowed (will be hardened to error
+	// in Phase 4 after migration is complete). Default value is 0.
+	loader := NewLoader()
+	yaml := `rules:
+  - name: Test Rule
+    id: np.test.1
+    pattern: 'test'
+`
+	rule, err := loader.LoadRule([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadRule (Phase 0 permissive): %v", err)
+	}
+	if rule.BaseScore != 0 {
+		t.Errorf("BaseScore = %d, want 0 (default)", rule.BaseScore)
+	}
+}
+
 func TestFindRuleset(t *testing.T) {
 	rulesets := []*types.Ruleset{
 		{ID: "default", Name: "Default"},
