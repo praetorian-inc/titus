@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOutputReportHuman_FullSnippetContext(t *testing.T) {
@@ -504,4 +508,376 @@ func TestOutputSummaryJSON(t *testing.T) {
 	if parsed.Rules[0].RuleName != "AWS API Key" {
 		t.Errorf("Expected first rule_name='AWS API Key', got %q", parsed.Rules[0].RuleName)
 	}
+}
+
+// =============================================================================
+// Fake store for filterRejected tests
+// =============================================================================
+
+// fakeRejectionStore is a minimal store.Store implementation for testing
+// filterRejected. Only GetAnnotation is meaningful; all other methods are
+// satisfied by embedding store.Store (nil panic guard — tests must not call
+// any other method).
+type fakeRejectionStore struct {
+	store.Store
+	rejections map[string]string // key: finding ID, value: status string
+	errIDs     map[string]error  // key: finding ID, value: error to return
+}
+
+func (f *fakeRejectionStore) GetAnnotation(targetType, targetID string) (string, string, error) {
+	if f.errIDs != nil {
+		if err, ok := f.errIDs[targetID]; ok {
+			return "", "", err
+		}
+	}
+	if status, ok := f.rejections[targetID]; ok {
+		return status, "", nil
+	}
+	return "", "", nil
+}
+
+// =============================================================================
+// Flag wiring tests
+// =============================================================================
+
+func TestReportCmd_ShowRejectedFlag_RegisteredAsPersistent(t *testing.T) {
+	flag := reportCmd.PersistentFlags().Lookup("show-rejected")
+	require.NotNil(t, flag, "expected --show-rejected to be registered as a persistent flag on reportCmd")
+	assert.Equal(t, "bool", flag.Value.Type())
+}
+
+func TestReportCmd_ShowRejectedFlag_DefaultsToFalse(t *testing.T) {
+	flag := reportCmd.PersistentFlags().Lookup("show-rejected")
+	require.NotNil(t, flag)
+	assert.Equal(t, "false", flag.DefValue)
+}
+
+func TestSummaryCmd_InheritsShowRejectedFromReport(t *testing.T) {
+	// The flag is persistent on reportCmd so summaryCmd inherits it.
+	inherited := summaryCmd.InheritedFlags().Lookup("show-rejected")
+	assert.NotNil(t, inherited, "summaryCmd should inherit --show-rejected from reportCmd persistent flags")
+
+	// It must NOT appear as a locally-defined (non-inherited) flag on summaryCmd.
+	// Use LocalNonPersistentFlags which only returns flags defined directly on
+	// summaryCmd, not those merged in from parent persistent flag sets.
+	local := summaryCmd.LocalNonPersistentFlags().Lookup("show-rejected")
+	assert.Nil(t, local, "--show-rejected must not be a local flag on summaryCmd, only inherited")
+}
+
+func TestReportCmd_ShowRejectedFlag_Description(t *testing.T) {
+	flag := reportCmd.PersistentFlags().Lookup("show-rejected")
+	require.NotNil(t, flag)
+	assert.Contains(t, flag.Usage, "rejected",
+		"flag description should mention 'rejected'")
+}
+
+// =============================================================================
+// filterRejected core logic tests
+// =============================================================================
+
+func TestFilterRejected_EmptyFindings(t *testing.T) {
+	s := &fakeRejectionStore{rejections: map[string]string{}}
+	findings, matches := filterRejected(s, nil, nil, nil)
+	assert.Empty(t, findings)
+	assert.Empty(t, matches)
+}
+
+func TestFilterRejected_NoRejections_ReturnsInputsUnchanged(t *testing.T) {
+	rule := &types.Rule{
+		ID:           "rule-1",
+		StructuralID: "struct-1",
+	}
+	ruleMap := map[string]*types.Rule{"rule-1": rule}
+
+	f1 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret-a")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("secret-a")},
+	}
+	f2 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret-b")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("secret-b")},
+	}
+	findings := []*types.Finding{f1, f2}
+
+	m1 := &types.Match{StructuralID: "match-1", RuleID: "rule-1", Groups: [][]byte{[]byte("secret-a")}}
+	m2 := &types.Match{StructuralID: "match-2", RuleID: "rule-1", Groups: [][]byte{[]byte("secret-b")}}
+	matches := []*types.Match{m1, m2}
+
+	// Store returns empty status for all IDs — no rejections
+	s := &fakeRejectionStore{rejections: map[string]string{}}
+
+	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+
+	assert.Len(t, gotFindings, 2, "all findings should be retained when none are rejected")
+	assert.Len(t, gotMatches, 2, "all matches should be retained when none are rejected")
+	assert.Equal(t, findings, gotFindings, "returned findings slice should equal input")
+	assert.Equal(t, matches, gotMatches, "returned matches slice should equal input")
+}
+
+func TestFilterRejected_AllFindingsRejected_ReturnsEmpty(t *testing.T) {
+	rule := &types.Rule{
+		ID:           "rule-1",
+		StructuralID: "struct-1",
+	}
+	ruleMap := map[string]*types.Rule{"rule-1": rule}
+
+	f1 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret-a")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("secret-a")},
+	}
+	f2 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret-b")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("secret-b")},
+	}
+	findings := []*types.Finding{f1, f2}
+
+	m1 := &types.Match{StructuralID: "match-1", RuleID: "rule-1", Groups: [][]byte{[]byte("secret-a")}}
+	m2 := &types.Match{StructuralID: "match-2", RuleID: "rule-1", Groups: [][]byte{[]byte("secret-b")}}
+	matches := []*types.Match{m1, m2}
+
+	s := &fakeRejectionStore{
+		rejections: map[string]string{
+			f1.ID: "reject",
+			f2.ID: "reject",
+		},
+	}
+
+	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+
+	assert.Empty(t, gotFindings, "all findings should be removed when all are rejected")
+	assert.Empty(t, gotMatches, "all matches should be removed when all findings are rejected")
+}
+
+func TestFilterRejected_PartialRejection_RemovesRejectedFindingAndItsMatches(t *testing.T) {
+	rule := &types.Rule{
+		ID:           "rule-1",
+		StructuralID: "struct-partial",
+	}
+	ruleMap := map[string]*types.Rule{"rule-1": rule}
+
+	// Three findings: first, middle (to be rejected), last
+	f1 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret-1")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("secret-1")},
+	}
+	f2 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret-2")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("secret-2")},
+	}
+	f3 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret-3")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("secret-3")},
+	}
+	findings := []*types.Finding{f1, f2, f3}
+
+	// Build matches with StructuralID set so buildFindingMatchMap can resolve
+	// them via ComputeFindingID.  We assign each match a RuleID and Groups
+	// matching its parent finding so the content-based map links them.
+	m1 := &types.Match{
+		StructuralID: "smatch-1",
+		RuleID:       "rule-1",
+		Groups:       [][]byte{[]byte("secret-1")},
+	}
+	m2a := &types.Match{
+		StructuralID: "smatch-2a",
+		RuleID:       "rule-1",
+		Groups:       [][]byte{[]byte("secret-2")},
+	}
+	m2b := &types.Match{
+		StructuralID: "smatch-2b",
+		RuleID:       "rule-1",
+		Groups:       [][]byte{[]byte("secret-2")},
+	}
+	m3 := &types.Match{
+		StructuralID: "smatch-3",
+		RuleID:       "rule-1",
+		Groups:       [][]byte{[]byte("secret-3")},
+	}
+	matches := []*types.Match{m1, m2a, m2b, m3}
+
+	// Only f2 (middle) is rejected.
+	s := &fakeRejectionStore{
+		rejections: map[string]string{f2.ID: "reject"},
+	}
+
+	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+
+	require.Len(t, gotFindings, 2, "should have 2 findings after rejecting middle one")
+	assert.Equal(t, f1, gotFindings[0], "first finding retained")
+	assert.Equal(t, f3, gotFindings[1], "last finding retained")
+
+	// Matches for f2 (m2a and m2b) should be removed; m1 and m3 should remain.
+	require.Len(t, gotMatches, 2, "should have 2 matches after removing rejected finding's matches")
+	structIDs := make([]string, 0, len(gotMatches))
+	for _, m := range gotMatches {
+		structIDs = append(structIDs, m.StructuralID)
+	}
+	assert.Contains(t, structIDs, "smatch-1")
+	assert.Contains(t, structIDs, "smatch-3")
+	assert.NotContains(t, structIDs, "smatch-2a")
+	assert.NotContains(t, structIDs, "smatch-2b")
+}
+
+func TestFilterRejected_NonRejectStatusRetained(t *testing.T) {
+	rule := &types.Rule{
+		ID:           "rule-1",
+		StructuralID: "struct-nonreject",
+	}
+	ruleMap := map[string]*types.Rule{"rule-1": rule}
+
+	f1 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("val-1")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("val-1")},
+	}
+	f2 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("val-2")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("val-2")},
+	}
+	findings := []*types.Finding{f1, f2}
+	matches := []*types.Match{
+		{StructuralID: "sm-1", RuleID: "rule-1", Groups: [][]byte{[]byte("val-1")}},
+		{StructuralID: "sm-2", RuleID: "rule-1", Groups: [][]byte{[]byte("val-2")}},
+	}
+
+	// f1 has "accept" status, f2 has no status — neither should be filtered.
+	s := &fakeRejectionStore{
+		rejections: map[string]string{f1.ID: "accept"},
+	}
+
+	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+
+	assert.Len(t, gotFindings, 2, "findings with non-reject status should be retained")
+	assert.Len(t, gotMatches, 2, "matches for non-rejected findings should be retained")
+}
+
+func TestFilterRejected_AnnotationErrorIsIgnored(t *testing.T) {
+	rule := &types.Rule{
+		ID:           "rule-1",
+		StructuralID: "struct-errtest",
+	}
+	ruleMap := map[string]*types.Rule{"rule-1": rule}
+
+	f1 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("err-val")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("err-val")},
+	}
+	f2 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("ok-val")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("ok-val")},
+	}
+	findings := []*types.Finding{f1, f2}
+	matches := []*types.Match{
+		{StructuralID: "sm-err", RuleID: "rule-1", Groups: [][]byte{[]byte("err-val")}},
+		{StructuralID: "sm-ok", RuleID: "rule-1", Groups: [][]byte{[]byte("ok-val")}},
+	}
+
+	// f1 returns an error from GetAnnotation (even though "reject" would be the
+	// status) — the error path means it must NOT be filtered.
+	// f2 returns status "reject" with no error — it MUST be filtered.
+	s := &fakeRejectionStore{
+		rejections: map[string]string{f2.ID: "reject"},
+		errIDs:     map[string]error{f1.ID: errors.New("db read error")},
+	}
+
+	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+
+	// f1 retained (error → no rejection), f2 removed
+	require.Len(t, gotFindings, 1)
+	assert.Equal(t, f1.ID, gotFindings[0].ID, "finding whose annotation returned an error should be retained")
+
+	require.Len(t, gotMatches, 1)
+	assert.Equal(t, "sm-err", gotMatches[0].StructuralID, "match for error-path finding should be retained")
+}
+
+func TestFilterRejected_MatchWithoutFindingIsRetained(t *testing.T) {
+	rule := &types.Rule{
+		ID:           "rule-1",
+		StructuralID: "struct-orphan",
+	}
+	ruleMap := map[string]*types.Rule{"rule-1": rule}
+
+	// Only one finding; its match uses groups "reject-me".
+	rejected := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("reject-me")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("reject-me")},
+	}
+	findings := []*types.Finding{rejected}
+
+	// "Orphan" match: its Groups do not match any finding in ruleMap
+	// (different groups value, so buildFindingMatchMap won't link it).
+	orphanMatch := &types.Match{
+		StructuralID: "sm-orphan",
+		RuleID:       "rule-other", // not in ruleMap → won't resolve to any finding
+		Groups:       [][]byte{[]byte("orphan-val")},
+	}
+	rejectedMatch := &types.Match{
+		StructuralID: "sm-rejected",
+		RuleID:       "rule-1",
+		Groups:       [][]byte{[]byte("reject-me")},
+	}
+	matches := []*types.Match{orphanMatch, rejectedMatch}
+
+	s := &fakeRejectionStore{
+		rejections: map[string]string{rejected.ID: "reject"},
+	}
+
+	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+
+	assert.Empty(t, gotFindings, "rejected finding should be removed")
+
+	// The orphan match is NOT linked to any rejected finding, so it must survive.
+	require.Len(t, gotMatches, 1, "orphan match unrelated to rejected finding should be retained")
+	assert.Equal(t, "sm-orphan", gotMatches[0].StructuralID)
+}
+
+func TestFilterRejected_DuplicateStructuralIDs(t *testing.T) {
+	rule := &types.Rule{
+		ID:           "rule-1",
+		StructuralID: "struct-dup",
+	}
+	ruleMap := map[string]*types.Rule{"rule-1": rule}
+
+	f1 := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("dup-val")}),
+		RuleID: "rule-1",
+		Groups: [][]byte{[]byte("dup-val")},
+	}
+	findings := []*types.Finding{f1}
+
+	// Two matches sharing the exact same StructuralID (defensive scenario).
+	sharedID := "sm-shared"
+	m1 := &types.Match{
+		StructuralID: sharedID,
+		RuleID:       "rule-1",
+		Groups:       [][]byte{[]byte("dup-val")},
+	}
+	m2 := &types.Match{
+		StructuralID: sharedID,
+		RuleID:       "rule-1",
+		Groups:       [][]byte{[]byte("dup-val")},
+	}
+	matches := []*types.Match{m1, m2}
+
+	s := &fakeRejectionStore{
+		rejections: map[string]string{f1.ID: "reject"},
+	}
+
+	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+
+	assert.Empty(t, gotFindings)
+	// Both matches share the same StructuralID that is in the rejected set;
+	// both should be removed.
+	assert.Empty(t, gotMatches, "both matches with the shared StructuralID should be removed when finding is rejected")
 }
