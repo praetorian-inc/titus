@@ -3,6 +3,9 @@ package types
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSeverityForScore(t *testing.T) {
@@ -17,19 +20,13 @@ func TestSeverityForScore(t *testing.T) {
 		{80, "critical"}, {90, "critical"}, {100, "critical"},
 	}
 	for _, c := range cases {
-		if got := SeverityForScore(c.score); got != c.want {
-			t.Errorf("SeverityForScore(%d) = %q, want %q", c.score, got, c.want)
-		}
+		assert.Equal(t, c.want, SeverityForScore(c.score), "SeverityForScore(%d)", c.score)
 	}
 }
 
 func TestSeverityForScore_OutOfRange(t *testing.T) {
-	if got := SeverityForScore(-5); got != "info" {
-		t.Errorf("SeverityForScore(-5) = %q, want info (clamped)", got)
-	}
-	if got := SeverityForScore(150); got != "critical" {
-		t.Errorf("SeverityForScore(150) = %q, want critical (clamped)", got)
-	}
+	assert.Equal(t, "info", SeverityForScore(-5), "SeverityForScore(-5) should clamp to info")
+	assert.Equal(t, "critical", SeverityForScore(150), "SeverityForScore(150) should clamp to critical")
 }
 
 func TestScore_JSONSerialization(t *testing.T) {
@@ -42,32 +39,17 @@ func TestScore_JSONSerialization(t *testing.T) {
 		},
 	}
 	data, err := json.Marshal(s)
-	if err != nil {
-		t.Fatalf("json.Marshal: %v", err)
-	}
-	got := string(data)
+	require.NoError(t, err)
+
 	want := `{"Final":85,"Base":60,"SuggestedSeverity":"critical","Applied":[{"Name":"iam-admin","Scorer":"aws","Kind":"set_score","Value":95,"Priority":50}]}`
-	if got != want {
-		t.Errorf("JSON mismatch\n got: %s\nwant: %s", got, want)
-	}
+	assert.Equal(t, want, string(data))
 }
 
 func TestScore_EmptyAppliedSerializesAsEmptyArray(t *testing.T) {
 	s := &Score{Final: 50, Base: 50, SuggestedSeverity: "medium", Applied: []ScoreModifier{}}
-	data, _ := json.Marshal(s)
-	got := string(data)
-	// Must contain "Applied":[] not "Applied":null
-	want := `"Applied":[]`
-	if !containsSubstring(got, want) {
-		t.Errorf("expected %q in output, got %s", want, got)
-	}
-}
+	data, err := json.Marshal(s)
+	require.NoError(t, err)
 
-func containsSubstring(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
+	// Must contain "Applied":[] not "Applied":null
+	assert.Contains(t, string(data), `"Applied":[]`)
 }
