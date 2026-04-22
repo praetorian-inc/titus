@@ -38,6 +38,7 @@ type ScoreEntry struct {
 // and returns a map of rule ID to ScoreEntry. Validates that scores are in [0,100]
 // and that rule IDs are non-empty.
 func parseScoreCSV(path string) (map[string]ScoreEntry, error) {
+	// #nosec G304 -- path comes from -scores CLI flag; this is a dev-only migration tool.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("opening scores csv: %w", err)

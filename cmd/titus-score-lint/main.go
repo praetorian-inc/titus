@@ -63,6 +63,7 @@ func lintDir(dir string) []string {
 			return nil
 		}
 
+		// #nosec G304 -- path comes from filepath.WalkDir under the rules-dir CLI argument; dev-only lint tool.
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			errs = append(errs, path+": read error: "+readErr.Error())

@@ -70,6 +70,7 @@ func applyScoresToRules(rulesDir string, scores map[string]ScoreEntry, apply boo
 // inserts or updates base_score lines as needed. The seen map is updated with
 // every rule ID encountered.
 func applyToFile(path string, scores map[string]ScoreEntry, seen map[string]bool, apply bool) (int, error) {
+	// #nosec G304 -- path comes from filepath.WalkDir under the -rules CLI flag; dev-only migration tool.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -187,6 +188,7 @@ func applyToFile(path string, scores map[string]ScoreEntry, seen map[string]bool
 		if bytes.HasSuffix(data, []byte("\n")) && !strings.HasSuffix(output, "\n") {
 			output += "\n"
 		}
+		// #nosec G306 -- rule YAML files must be world-readable (0644) since they are source files committed to the repo.
 		if err := os.WriteFile(path, []byte(output), 0644); err != nil {
 			return 0, err
 		}
