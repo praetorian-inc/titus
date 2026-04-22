@@ -103,11 +103,11 @@ build-migrate-scores:
 
 # Run migration tool in dry-run mode (safe)
 migrate-scores-dryrun: build-migrate-scores
-	./dist/titus-migrate-scores -scores scores.csv -rules pkg/rule/rules/
+	./dist/titus-migrate-scores -scores docs/scores.csv -rules pkg/rule/rules/
 
 # Apply score migration (writes to rule YAMLs)
 migrate-scores-apply: build-migrate-scores
-	./dist/titus-migrate-scores -scores scores.csv -rules pkg/rule/rules/ -apply
+	./dist/titus-migrate-scores -scores docs/scores.csv -rules pkg/rule/rules/ -apply
 
 # Build pure-Go binary (no CGO, no Vectorscan — portable fallback)
 build-pure:

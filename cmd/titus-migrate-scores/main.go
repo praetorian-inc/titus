@@ -6,7 +6,7 @@
 //
 // Usage:
 //
-//	titus-migrate-scores -scores scores.csv -rules pkg/rule/rules/ -apply
+//	titus-migrate-scores -scores docs/scores.csv -rules pkg/rule/rules/ -apply
 //
 // Flags:
 //
