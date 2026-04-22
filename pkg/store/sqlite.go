@@ -364,6 +364,33 @@ func (s *SQLiteStore) GetAnnotation(targetType, targetID string) (string, string
 	return status.String, comment.String, nil
 }
 
+func (s *SQLiteStore) GetAnnotationsByType(targetType string) (map[string]string, error) {
+	rows, err := s.e.Query(
+		"SELECT target_id, status FROM annotations WHERE target_type = ? AND status IS NOT NULL",
+		targetType,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var id string
+		var status sql.NullString
+		if err := rows.Scan(&id, &status); err != nil {
+			return nil, err
+		}
+		if status.Valid {
+			result[id] = status.String
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (s *SQLiteStore) SetAnnotation(targetType, targetID, status, comment string) error {
 	var statusVal, commentVal sql.NullString
 	if status != "" {

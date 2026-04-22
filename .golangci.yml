@@ -13,6 +13,7 @@ linters:
         - (*compress/gzip.Reader).Close
         - (*compress/gzip.Writer).Close
         - (*archive/zip.Writer).Close
+        - (*database/sql.Rows).Close
         - (github.com/praetorian-inc/titus/pkg/matcher.Matcher).Close
         - (github.com/praetorian-inc/titus/pkg/store.Store).Close
         - (*github.com/praetorian-inc/titus/pkg/datastore.Datastore).Close

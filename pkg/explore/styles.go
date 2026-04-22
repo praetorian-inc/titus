@@ -1,6 +1,9 @@
 package explore
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+	"github.com/praetorian-inc/titus/pkg/store"
+)
 
 // Colors
 var (
@@ -121,10 +124,10 @@ func renderValidationStatus(status string) string {
 // renderAnnotationStatus returns a styled string for an annotation status.
 func renderAnnotationStatus(status string) string {
 	switch status {
-	case "accept":
-		return acceptStyle.Render("accept")
-	case "reject":
-		return rejectStyle.Render("reject")
+	case store.StatusAccept:
+		return acceptStyle.Render(store.StatusAccept)
+	case store.StatusReject:
+		return rejectStyle.Render(store.StatusReject)
 	default:
 		return ""
 	}
