@@ -11,6 +11,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/praetorian-inc/titus/pkg/rule"
+	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
@@ -263,7 +264,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 	case "human":
 		return outputReportHuman(cmd, findings, matches, storePath, ruleMap)
 	case "sarif":
-		return fmt.Errorf("SARIF output not yet implemented")
+		return outputReportSARIF(cmd, s, findings, matches, ruleMap)
 	default:
 		return fmt.Errorf("unknown output format: %s", reportFormat)
 	}
@@ -567,6 +568,63 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 	}
 
 	return parts
+}
+
+// outputReportSARIF writes findings in SARIF 2.1.0 format with score metadata.
+// Each finding's matches are included as SARIF results; score data is embedded
+// in result.properties so downstream consumers (GitHub Code Scanning, etc.) can
+// use the severity tiers without re-computing them.
+func outputReportSARIF(cmd *cobra.Command, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
+	report := sarif.NewReport()
+
+	// Add all rules from the rule map
+	for _, r := range ruleMap {
+		report.AddRule(r)
+	}
+
+	// Build finding lookup by ID for score retrieval
+	findingByID := make(map[string]*types.Finding, len(findings))
+	for _, f := range findings {
+		findingByID[f.ID] = f
+	}
+
+	// Cache provenance by blob ID to avoid repeated store queries
+	provenanceCache := make(map[types.BlobID]string)
+
+	for _, match := range matches {
+		filePath, ok := provenanceCache[match.BlobID]
+		if !ok {
+			prov, err := s.GetProvenance(match.BlobID)
+			if err != nil {
+				filePath = match.BlobID.Hex()
+			} else {
+				filePath = prov.Path()
+			}
+			provenanceCache[match.BlobID] = filePath
+		}
+
+		// Look up score from the corresponding finding
+		var score *types.Score
+		if r, ok := ruleMap[match.RuleID]; ok {
+			fid := types.ComputeFindingID(r.StructuralID, match.Groups)
+			if f, ok := findingByID[fid]; ok {
+				score = f.Score
+			}
+		}
+		report.AddResultWithScore(match, filePath, score)
+	}
+
+	jsonBytes, err := report.ToJSON()
+	if err != nil {
+		return fmt.Errorf("serializing SARIF: %w", err)
+	}
+
+	_, err = cmd.OutOrStdout().Write(jsonBytes)
+	if err != nil {
+		return fmt.Errorf("writing SARIF output: %w", err)
+	}
+
+	return nil
 }
 
 func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {

@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -762,6 +765,127 @@ func TestFilterRejected_NonRejectStatusRetained(t *testing.T) {
 	assert.Len(t, gotFindings, 2, "findings with non-reject status should be retained")
 	assert.Len(t, gotMatches, 2, "matches for non-rejected findings should be retained")
 }
+
+func TestOutputReportSARIF_EmitsScore(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	rule := &types.Rule{ID: "np.test.1", Name: "Test Rule", Pattern: "x"}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	finding := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("secret")}),
+		RuleID: "np.test.1",
+		Groups: [][]byte{[]byte("secret")},
+		Score: &types.Score{
+			Final:             75,
+			Base:              75,
+			SuggestedSeverity: "high",
+			Applied:           []types.ScoreModifier{},
+		},
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	blobID := types.BlobID{}
+	require.NoError(t, s.AddBlob(blobID, 10))
+
+	match := &types.Match{
+		StructuralID: "sm-1",
+		RuleID:       "np.test.1",
+		Groups:       [][]byte{[]byte("secret")},
+		BlobID:       blobID,
+		Location:     types.Location{},
+	}
+	require.NoError(t, s.AddMatch(match))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.test.1": rule}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportSARIF(cmd, s, findings, matches, ruleMap))
+
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &parsed))
+
+	runs := parsed["runs"].([]interface{})
+	results := runs[0].(map[string]interface{})["results"].([]interface{})
+	require.Len(t, results, 1)
+
+	r := results[0].(map[string]interface{})
+	// score 75 → level "error"
+	assert.Equal(t, "error", r["level"])
+
+	props, ok := r["properties"].(map[string]interface{})
+	require.True(t, ok, "properties should be present in SARIF result")
+	assert.Equal(t, "7.5", props["security-severity"])
+}
+
+func TestOutputReportSARIF_NilScoreFallsBackToWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	rule := &types.Rule{ID: "np.test.2", Name: "No Score Rule", Pattern: "y"}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	finding := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("val")}),
+		RuleID: "np.test.2",
+		Groups: [][]byte{[]byte("val")},
+		Score:  nil, // no score
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	blobID2 := types.BlobID{}
+	require.NoError(t, s.AddBlob(blobID2, 10))
+
+	match := &types.Match{
+		StructuralID: "sm-2",
+		RuleID:       "np.test.2",
+		Groups:       [][]byte{[]byte("val")},
+		BlobID:       blobID2,
+		Location:     types.Location{},
+	}
+	require.NoError(t, s.AddMatch(match))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.test.2": rule}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportSARIF(cmd, s, findings, matches, ruleMap))
+
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &parsed))
+
+	runs := parsed["runs"].([]interface{})
+	results := runs[0].(map[string]interface{})["results"].([]interface{})
+	require.Len(t, results, 1)
+
+	r := results[0].(map[string]interface{})
+	// nil score → fallback level "warning"
+	assert.Equal(t, "warning", r["level"])
+	// properties should be absent when score is nil
+	_, hasProps := r["properties"]
+	assert.False(t, hasProps, "properties should be absent when score is nil")
+}
+
+// Keep os import used below
+var _ = os.DevNull
 
 func TestFilterRejected_BulkAnnotationError_Propagates(t *testing.T) {
 	s := &fakeRejectionStore{bulkErr: errors.New("db exploded")}
