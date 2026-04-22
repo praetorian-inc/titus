@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -202,17 +203,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.focus == paneFindings || m.focus == paneDetails {
 			switch {
 			case keyMatches(msg, defaultKeys.Accept):
-				m.setAnnotation("accept")
+				m.setAnnotation(store.StatusAccept)
 				return m, nil
 			case keyMatches(msg, defaultKeys.Reject):
-				m.setAnnotation("reject")
+				m.setAnnotation(store.StatusReject)
 				return m, nil
 			case keyMatches(msg, defaultKeys.AcceptNext):
-				m.setAnnotation("accept")
+				m.setAnnotation(store.StatusAccept)
 				m.moveNext()
 				return m, nil
 			case keyMatches(msg, defaultKeys.RejectNext):
-				m.setAnnotation("reject")
+				m.setAnnotation(store.StatusReject)
 				m.moveNext()
 				return m, nil
 			case keyMatches(msg, defaultKeys.Comment):

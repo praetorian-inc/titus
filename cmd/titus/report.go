@@ -353,7 +353,7 @@ func filterRejected(s store.Store, findings []*types.Finding, matches []*types.M
 	rejectedFindingIDs := make(map[string]bool)
 	for _, f := range findings {
 		status, _, err := s.GetAnnotation("finding", f.ID)
-		if err == nil && status == "reject" {
+		if err == nil && status == store.StatusReject {
 			rejectedFindingIDs[f.ID] = true
 		}
 	}

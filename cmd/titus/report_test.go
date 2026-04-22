@@ -641,8 +641,8 @@ func TestFilterRejected_AllFindingsRejected_ReturnsEmpty(t *testing.T) {
 
 	s := &fakeRejectionStore{
 		rejections: map[string]string{
-			f1.ID: "reject",
-			f2.ID: "reject",
+			f1.ID: store.StatusReject,
+			f2.ID: store.StatusReject,
 		},
 	}
 
@@ -704,7 +704,7 @@ func TestFilterRejected_PartialRejection_RemovesRejectedFindingAndItsMatches(t *
 
 	// Only f2 (middle) is rejected.
 	s := &fakeRejectionStore{
-		rejections: map[string]string{f2.ID: "reject"},
+		rejections: map[string]string{f2.ID: store.StatusReject},
 	}
 
 	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
@@ -750,7 +750,7 @@ func TestFilterRejected_NonRejectStatusRetained(t *testing.T) {
 
 	// f1 has "accept" status, f2 has no status — neither should be filtered.
 	s := &fakeRejectionStore{
-		rejections: map[string]string{f1.ID: "accept"},
+		rejections: map[string]string{f1.ID: store.StatusAccept},
 	}
 
 	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
@@ -786,7 +786,7 @@ func TestFilterRejected_AnnotationErrorIsIgnored(t *testing.T) {
 	// status) — the error path means it must NOT be filtered.
 	// f2 returns status "reject" with no error — it MUST be filtered.
 	s := &fakeRejectionStore{
-		rejections: map[string]string{f2.ID: "reject"},
+		rejections: map[string]string{f2.ID: store.StatusReject},
 		errIDs:     map[string]error{f1.ID: errors.New("db read error")},
 	}
 
@@ -830,7 +830,7 @@ func TestFilterRejected_MatchWithoutFindingIsRetained(t *testing.T) {
 	matches := []*types.Match{orphanMatch, rejectedMatch}
 
 	s := &fakeRejectionStore{
-		rejections: map[string]string{rejected.ID: "reject"},
+		rejections: map[string]string{rejected.ID: store.StatusReject},
 	}
 
 	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
@@ -871,7 +871,7 @@ func TestFilterRejected_DuplicateStructuralIDs(t *testing.T) {
 	matches := []*types.Match{m1, m2}
 
 	s := &fakeRejectionStore{
-		rejections: map[string]string{f1.ID: "reject"},
+		rejections: map[string]string{f1.ID: store.StatusReject},
 	}
 
 	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
