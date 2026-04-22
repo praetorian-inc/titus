@@ -282,6 +282,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 									ID:     findingID,
 									RuleID: match.RuleID,
 									Groups: match.Groups,
+									Score:  synthesizeBaseScore(rule),
 								}); err != nil {
 									return fmt.Errorf("storing finding: %w", err)
 								}
