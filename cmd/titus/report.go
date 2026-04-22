@@ -18,10 +18,11 @@ import (
 )
 
 var (
-	reportDatastore string
-	reportFormat    string
-	reportColor     string
-	summaryFormat   string
+	reportDatastore      string
+	reportFormat         string
+	reportColor          string
+	summaryFormat        string
+	reportShowRejected bool
 )
 
 // styles holds color formatters matching NoseyParker color scheme
@@ -190,6 +191,7 @@ func init() {
 	reportCmd.Flags().StringVar(&reportFormat, "format", "human", "Output format: human, json, sarif")
 	reportCmd.PersistentFlags().StringVar(&reportColor, "color", "auto", "Color output: auto, always, never")
 	reportCmd.PersistentFlags().Lookup("color").NoOptDefVal = "always"
+	reportCmd.PersistentFlags().BoolVar(&reportShowRejected, "show-rejected", false, "Include findings marked as rejected via the explore command (hidden by default)")
 
 	reportCmd.AddCommand(summaryCmd)
 	summaryCmd.Flags().StringVar(&summaryFormat, "format", "human", "Output format: human, json")
@@ -244,6 +246,11 @@ func runReport(cmd *cobra.Command, args []string) error {
 	ruleMap := make(map[string]*types.Rule)
 	for _, r := range rules {
 		ruleMap[r.ID] = r
+	}
+
+	// Filter out findings with rejected annotations unless --show-rejected is set
+	if !reportShowRejected {
+		findings, matches = filterRejected(s, findings, matches, ruleMap)
 	}
 
 	// Output based on format
@@ -303,6 +310,11 @@ func runSummary(cmd *cobra.Command, args []string) error {
 		ruleMap[r.ID] = r
 	}
 
+	// Filter out findings with rejected annotations unless --show-rejected is set
+	if !reportShowRejected {
+		findings, matches = filterRejected(s, findings, matches, ruleMap)
+	}
+
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
 
@@ -333,6 +345,48 @@ func runSummary(cmd *cobra.Command, args []string) error {
 // =============================================================================
 // HELPERS
 // =============================================================================
+
+// filterRejected removes findings that have a "reject" annotation and all
+// matches associated with those findings.
+func filterRejected(s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) ([]*types.Finding, []*types.Match) {
+	// Determine which finding IDs are rejected
+	rejectedFindingIDs := make(map[string]bool)
+	for _, f := range findings {
+		status, _, err := s.GetAnnotation("finding", f.ID)
+		if err == nil && status == "reject" {
+			rejectedFindingIDs[f.ID] = true
+		}
+	}
+
+	if len(rejectedFindingIDs) == 0 {
+		return findings, matches
+	}
+
+	// Collect structural IDs of matches that belong to rejected findings
+	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
+	rejectedMatchIDs := make(map[string]bool)
+	for fID := range rejectedFindingIDs {
+		for _, m := range matchesByFinding[fID] {
+			rejectedMatchIDs[m.StructuralID] = true
+		}
+	}
+
+	filteredFindings := make([]*types.Finding, 0, len(findings))
+	for _, f := range findings {
+		if !rejectedFindingIDs[f.ID] {
+			filteredFindings = append(filteredFindings, f)
+		}
+	}
+
+	filteredMatches := make([]*types.Match, 0, len(matches))
+	for _, m := range matches {
+		if !rejectedMatchIDs[m.StructuralID] {
+			filteredMatches = append(filteredMatches, m)
+		}
+	}
+
+	return filteredFindings, filteredMatches
+}
 
 // buildFindingMatchMap groups matches by finding ID using content-based computation.
 // It uses structural ID matching with a fallback to RuleID + Groups matching.
