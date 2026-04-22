@@ -124,10 +124,30 @@ func createFindingsTable(db *sql.DB) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			structural_id TEXT NOT NULL UNIQUE,
 			rule_id TEXT NOT NULL,
-			groups_json TEXT
+			groups_json TEXT,
+			score_final INTEGER,
+			score_base INTEGER,
+			score_suggested_severity TEXT,
+			score_applied_json TEXT
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migrate old datastores: add score columns if missing.
+	// ALTER TABLE ADD COLUMN errors (column already exists) are ignored,
+	// following the same pattern as provenance table migration.
+	for _, col := range []string{
+		"score_final INTEGER",
+		"score_base INTEGER",
+		"score_suggested_severity TEXT",
+		"score_applied_json TEXT",
+	} {
+		_, _ = db.Exec("ALTER TABLE findings ADD COLUMN " + col)
+	}
+
+	return nil
 }
 
 func createProvenanceTable(db *sql.DB) error {
