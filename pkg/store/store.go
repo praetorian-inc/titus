@@ -54,6 +54,10 @@ type Store interface {
 	// SetAnnotation creates or updates an annotation.
 	SetAnnotation(targetType, targetID, status, comment string) error
 
+	// GetAnnotationsByType returns a map of targetID → status for all annotations
+	// of the given targetType. Useful when filtering many findings at once.
+	GetAnnotationsByType(targetType string) (map[string]string, error)
+
 	// Close closes the database connection.
 	Close() error
 }

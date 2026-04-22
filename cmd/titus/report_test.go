@@ -515,25 +515,24 @@ func TestOutputSummaryJSON(t *testing.T) {
 // =============================================================================
 
 // fakeRejectionStore is a minimal store.Store implementation for testing
-// filterRejected. Only GetAnnotation is meaningful; all other methods are
+// filterRejected. Only GetAnnotationsByType is meaningful; all other methods are
 // satisfied by embedding store.Store (nil panic guard — tests must not call
 // any other method).
 type fakeRejectionStore struct {
 	store.Store
 	rejections map[string]string // key: finding ID, value: status string
-	errIDs     map[string]error  // key: finding ID, value: error to return
+	bulkErr    error             // error to return from GetAnnotationsByType
 }
 
-func (f *fakeRejectionStore) GetAnnotation(targetType, targetID string) (string, string, error) {
-	if f.errIDs != nil {
-		if err, ok := f.errIDs[targetID]; ok {
-			return "", "", err
-		}
+func (f *fakeRejectionStore) GetAnnotationsByType(targetType string) (map[string]string, error) {
+	if f.bulkErr != nil {
+		return nil, f.bulkErr
 	}
-	if status, ok := f.rejections[targetID]; ok {
-		return status, "", nil
+	result := make(map[string]string)
+	for id, status := range f.rejections {
+		result[id] = status
 	}
-	return "", "", nil
+	return result, nil
 }
 
 // =============================================================================
@@ -577,7 +576,8 @@ func TestReportCmd_ShowRejectedFlag_Description(t *testing.T) {
 
 func TestFilterRejected_EmptyFindings(t *testing.T) {
 	s := &fakeRejectionStore{rejections: map[string]string{}}
-	findings, matches := filterRejected(s, nil, nil, nil)
+	findings, matches, err := filterRejected(s, nil, nil, nil)
+	require.NoError(t, err)
 	assert.Empty(t, findings)
 	assert.Empty(t, matches)
 }
@@ -608,7 +608,8 @@ func TestFilterRejected_NoRejections_ReturnsInputsUnchanged(t *testing.T) {
 	// Store returns empty status for all IDs — no rejections
 	s := &fakeRejectionStore{rejections: map[string]string{}}
 
-	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+	gotFindings, gotMatches, err := filterRejected(s, findings, matches, ruleMap)
+	require.NoError(t, err)
 
 	assert.Len(t, gotFindings, 2, "all findings should be retained when none are rejected")
 	assert.Len(t, gotMatches, 2, "all matches should be retained when none are rejected")
@@ -646,7 +647,8 @@ func TestFilterRejected_AllFindingsRejected_ReturnsEmpty(t *testing.T) {
 		},
 	}
 
-	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+	gotFindings, gotMatches, err := filterRejected(s, findings, matches, ruleMap)
+	require.NoError(t, err)
 
 	assert.Empty(t, gotFindings, "all findings should be removed when all are rejected")
 	assert.Empty(t, gotMatches, "all matches should be removed when all findings are rejected")
@@ -707,7 +709,8 @@ func TestFilterRejected_PartialRejection_RemovesRejectedFindingAndItsMatches(t *
 		rejections: map[string]string{f2.ID: store.StatusReject},
 	}
 
-	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+	gotFindings, gotMatches, err := filterRejected(s, findings, matches, ruleMap)
+	require.NoError(t, err)
 
 	require.Len(t, gotFindings, 2, "should have 2 findings after rejecting middle one")
 	assert.Equal(t, f1, gotFindings[0], "first finding retained")
@@ -753,51 +756,18 @@ func TestFilterRejected_NonRejectStatusRetained(t *testing.T) {
 		rejections: map[string]string{f1.ID: store.StatusAccept},
 	}
 
-	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+	gotFindings, gotMatches, err := filterRejected(s, findings, matches, ruleMap)
+	require.NoError(t, err)
 
 	assert.Len(t, gotFindings, 2, "findings with non-reject status should be retained")
 	assert.Len(t, gotMatches, 2, "matches for non-rejected findings should be retained")
 }
 
-func TestFilterRejected_AnnotationErrorIsIgnored(t *testing.T) {
-	rule := &types.Rule{
-		ID:           "rule-1",
-		StructuralID: "struct-errtest",
-	}
-	ruleMap := map[string]*types.Rule{"rule-1": rule}
-
-	f1 := &types.Finding{
-		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("err-val")}),
-		RuleID: "rule-1",
-		Groups: [][]byte{[]byte("err-val")},
-	}
-	f2 := &types.Finding{
-		ID:     types.ComputeFindingID(rule.StructuralID, [][]byte{[]byte("ok-val")}),
-		RuleID: "rule-1",
-		Groups: [][]byte{[]byte("ok-val")},
-	}
-	findings := []*types.Finding{f1, f2}
-	matches := []*types.Match{
-		{StructuralID: "sm-err", RuleID: "rule-1", Groups: [][]byte{[]byte("err-val")}},
-		{StructuralID: "sm-ok", RuleID: "rule-1", Groups: [][]byte{[]byte("ok-val")}},
-	}
-
-	// f1 returns an error from GetAnnotation (even though "reject" would be the
-	// status) — the error path means it must NOT be filtered.
-	// f2 returns status "reject" with no error — it MUST be filtered.
-	s := &fakeRejectionStore{
-		rejections: map[string]string{f2.ID: store.StatusReject},
-		errIDs:     map[string]error{f1.ID: errors.New("db read error")},
-	}
-
-	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
-
-	// f1 retained (error → no rejection), f2 removed
-	require.Len(t, gotFindings, 1)
-	assert.Equal(t, f1.ID, gotFindings[0].ID, "finding whose annotation returned an error should be retained")
-
-	require.Len(t, gotMatches, 1)
-	assert.Equal(t, "sm-err", gotMatches[0].StructuralID, "match for error-path finding should be retained")
+func TestFilterRejected_BulkAnnotationError_Propagates(t *testing.T) {
+	s := &fakeRejectionStore{bulkErr: errors.New("db exploded")}
+	_, _, err := filterRejected(s, []*types.Finding{{ID: "f1"}}, nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "db exploded")
 }
 
 func TestFilterRejected_MatchWithoutFindingIsRetained(t *testing.T) {
@@ -833,7 +803,8 @@ func TestFilterRejected_MatchWithoutFindingIsRetained(t *testing.T) {
 		rejections: map[string]string{rejected.ID: store.StatusReject},
 	}
 
-	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+	gotFindings, gotMatches, err := filterRejected(s, findings, matches, ruleMap)
+	require.NoError(t, err)
 
 	assert.Empty(t, gotFindings, "rejected finding should be removed")
 
@@ -874,7 +845,8 @@ func TestFilterRejected_DuplicateStructuralIDs(t *testing.T) {
 		rejections: map[string]string{f1.ID: store.StatusReject},
 	}
 
-	gotFindings, gotMatches := filterRejected(s, findings, matches, ruleMap)
+	gotFindings, gotMatches, err := filterRejected(s, findings, matches, ruleMap)
+	require.NoError(t, err)
 
 	assert.Empty(t, gotFindings)
 	// Both matches share the same StructuralID that is in the rejected set;

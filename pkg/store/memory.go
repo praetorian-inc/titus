@@ -208,6 +208,11 @@ func (m *MemoryStore) SetAnnotation(targetType, targetID, status, comment string
 	return nil
 }
 
+// GetAnnotationsByType is a no-op for in-memory store.
+func (m *MemoryStore) GetAnnotationsByType(targetType string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
 // Close closes the database connection.
 // For in-memory store, this is a no-op.
 func (m *MemoryStore) Close() error {

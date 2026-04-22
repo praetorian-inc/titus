@@ -250,7 +250,10 @@ func runReport(cmd *cobra.Command, args []string) error {
 
 	// Filter out findings with rejected annotations unless --show-rejected is set
 	if !reportShowRejected {
-		findings, matches = filterRejected(s, findings, matches, ruleMap)
+		findings, matches, err = filterRejected(s, findings, matches, ruleMap)
+		if err != nil {
+			return fmt.Errorf("filtering rejected findings: %w", err)
+		}
 	}
 
 	// Output based on format
@@ -312,7 +315,10 @@ func runSummary(cmd *cobra.Command, args []string) error {
 
 	// Filter out findings with rejected annotations unless --show-rejected is set
 	if !reportShowRejected {
-		findings, matches = filterRejected(s, findings, matches, ruleMap)
+		findings, matches, err = filterRejected(s, findings, matches, ruleMap)
+		if err != nil {
+			return fmt.Errorf("filtering rejected findings: %w", err)
+		}
 	}
 
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
@@ -347,19 +353,25 @@ func runSummary(cmd *cobra.Command, args []string) error {
 // =============================================================================
 
 // filterRejected removes findings that have a "reject" annotation and all
-// matches associated with those findings.
-func filterRejected(s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) ([]*types.Finding, []*types.Match) {
+// matches associated with those findings. Returns an error if the annotation
+// lookup fails so callers can decide whether to proceed without filtering or
+// abort entirely.
+func filterRejected(s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) ([]*types.Finding, []*types.Match, error) {
+	annotations, err := s.GetAnnotationsByType("finding")
+	if err != nil {
+		return nil, nil, fmt.Errorf("retrieving annotations: %w", err)
+	}
+
 	// Determine which finding IDs are rejected
 	rejectedFindingIDs := make(map[string]bool)
 	for _, f := range findings {
-		status, _, err := s.GetAnnotation("finding", f.ID)
-		if err == nil && status == store.StatusReject {
+		if annotations[f.ID] == store.StatusReject {
 			rejectedFindingIDs[f.ID] = true
 		}
 	}
 
 	if len(rejectedFindingIDs) == 0 {
-		return findings, matches
+		return findings, matches, nil
 	}
 
 	// Collect structural IDs of matches that belong to rejected findings
@@ -385,7 +397,7 @@ func filterRejected(s store.Store, findings []*types.Finding, matches []*types.M
 		}
 	}
 
-	return filteredFindings, filteredMatches
+	return filteredFindings, filteredMatches, nil
 }
 
 // buildFindingMatchMap groups matches by finding ID using content-based computation.
