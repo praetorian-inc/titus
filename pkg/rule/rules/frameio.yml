@@ -1,7 +1,7 @@
 rules:
   - name: Frame.io API Token
     id: kingfisher.frameio.1
-    base_score: 65
+    base_score: 55
     pattern: |
       (?xi)
       \b

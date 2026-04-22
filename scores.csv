@@ -1,324 +1,324 @@
 rule_id,base_score,tier,reasoning
-kingfisher.alibabacloud.1,45,medium,"Alibaba Cloud access key ID (LTAI prefix). An identifier analogous to AWS AKIA — alone it enables reconnaissance and account enumeration against Aliyun STS but cannot authenticate without the paired secret. Medium rather than info because the LTAI prefix is an unambiguous cloud credential marker and reduces the attack surface to a known platform."
+kingfisher.alibabacloud.1,45,medium,Alibaba Cloud access key ID (LTAI prefix). An identifier analogous to AWS AKIA — alone it enables reconnaissance and account enumeration against Aliyun STS but cannot authenticate without the paired secret. Medium rather than info because the LTAI prefix is an unambiguous cloud credential marker and reduces the attack surface to a known platform.
 kingfisher.alibabacloud.2,88,critical,"Alibaba Cloud access key secret. When combined with the AKID (kingfisher.alibabacloud.1) grants full programmatic access to Alibaba Cloud (ECS, OSS, RAM) — a direct analog to the AWS secret access key. Rule has live HTTP validation against STS GetCallerIdentity. Financial and blast-radius impact equivalent to AWS."
-np.aws.1,48,medium,"AWS access key ID (AKIA/AGPA/AIDA/AROA/ASIA prefixes). The key ID alone is an identifier — reveals account and principal type enabling targeted enumeration but cannot authenticate to AWS APIs without the paired secret. Scored medium rather than info because the structured prefix format enables confident cloud-provider attribution and narrows attack surface significantly."
+np.aws.1,48,medium,AWS access key ID (AKIA/AGPA/AIDA/AROA/ASIA prefixes). The key ID alone is an identifier — reveals account and principal type enabling targeted enumeration but cannot authenticate to AWS APIs without the paired secret. Scored medium rather than info because the structured prefix format enables confident cloud-provider attribution and narrows attack surface significantly.
 np.aws.2,88,critical,"AWS secret access key. When paired with a key ID grants full programmatic access to any AWS service the IAM principal is authorized for. Can enable data exfiltration, resource creation, privilege escalation, and significant financial damage. Pattern anchors on aws_secret_access_key label increasing confidence this is a real credential rather than noise."
-np.aws.3,12,info,"AWS account ID (12-digit numeric). Not a credential — cannot authenticate to any AWS service. Used in ARN construction. Discloses organizational structure useful for targeting ARN-based resources but has no direct authorization power. Info tier."
-np.aws.4,80,critical,"AWS session token (temporary STS credential). Combined with a temporary key ID and secret constitutes a complete immediately usable credential set. Temporary credentials issued for assumed roles can carry admin-level permissions. Scored at the low end of critical because tokens are short-lived (hours to 12h) reducing remediation urgency."
-np.aws.5,35,low,"Amazon MWS (Marketplace Web Services) auth token. The MWS service was deprecated and shut down on March 31 2024. While historically it granted seller data access the service is no longer functional. Scored low to acknowledge historical risk and presence in old codebases."
-np.s3.1,22,low,"AWS S3 bucket URL (subdomain-style: bucket.s3.amazonaws.com). An identifier not a credential. Reveals bucket names enabling reconnaissance and potential access to misconfigured public buckets. Slightly above pure info because S3 bucket name exposure is a known step in data-breach attack chains."
-np.s3.2,22,low,"AWS S3 bucket URL (path-style: s3.amazonaws.com/bucket). Same capability and risk as np.s3.1 — a bucket name identifier enabling reconnaissance and potential access to misconfigured public buckets. No direct authorization power."
+np.aws.3,12,info,AWS account ID (12-digit numeric). Not a credential — cannot authenticate to any AWS service. Used in ARN construction. Discloses organizational structure useful for targeting ARN-based resources but has no direct authorization power. Info tier.
+np.aws.4,80,critical,AWS session token (temporary STS credential). Combined with a temporary key ID and secret constitutes a complete immediately usable credential set. Temporary credentials issued for assumed roles can carry admin-level permissions. Scored at the low end of critical because tokens are short-lived (hours to 12h) reducing remediation urgency.
+np.aws.5,35,low,Amazon MWS (Marketplace Web Services) auth token. The MWS service was deprecated and shut down on March 31 2024. While historically it granted seller data access the service is no longer functional. Scored low to acknowledge historical risk and presence in old codebases.
+np.s3.1,22,low,AWS S3 bucket URL (subdomain-style: bucket.s3.amazonaws.com). An identifier not a credential. Reveals bucket names enabling reconnaissance and potential access to misconfigured public buckets. Slightly above pure info because S3 bucket name exposure is a known step in data-breach attack chains.
+np.s3.2,22,low,AWS S3 bucket URL (path-style: s3.amazonaws.com/bucket). Same capability and risk as np.s3.1 — a bucket name identifier enabling reconnaissance and potential access to misconfigured public buckets. No direct authorization power.
 np.arn.1,10,info,"Amazon Resource Name (ARN). Structural identifier for AWS resources. ARNs reveal account IDs, regions, service types, and resource names useful for attack targeting but are not credentials and cannot authenticate to any service. Info tier."
-np.appsync.1,52,medium,"AWS AppSync API key (da2- prefix). AppSync keys authenticate GraphQL API requests. Per AWS documentation these can be used for public/unauthenticated GraphQL endpoints and are configurable up to 365 days. If used on a private endpoint with sensitive data they are high-impact; if public-facing they may be intentionally exposed. Scored medium reflecting the documented ambiguity about whether these are always secret."
+np.appsync.1,52,medium,AWS AppSync API key (da2- prefix). AppSync keys authenticate GraphQL API requests. Per AWS documentation these can be used for public/unauthenticated GraphQL endpoints and are configurable up to 365 days. If used on a private endpoint with sensitive data they are high-impact; if public-facing they may be intentionally exposed. Scored medium reflecting the documented ambiguity about whether these are always secret.
 np.aws.6,95,critical,"Combined AWS API credentials: key ID immediately followed by secret access key in the same code block. This is the complete credential pair needed for full programmatic AWS API access. Higher confidence than individual rules because co-location strongly indicates a real leaked credential set. Maximum blast radius — financial, data, and infrastructure impact."
 np.azure.6,62,high,"Azure Notification Hub SharedAccessKey (from azure-notification-hub.yml). Grants ability to send push notifications, register devices, and potentially manage the hub depending on access policy. DefaultFullSharedAccessSignature grants management access at scale. Scored high reflecting the worst-case full-access policy and potential for notification spam and data exfiltration."
 np.azure.1,85,critical,"Azure connection string containing AccountName and AccountKey or SharedAccessKey. Grants direct read/write access to Azure Storage (Blob, Queue, Table) or Service Bus resources. A complete credential pair analogous to AWS access key plus secret. Examples include IoT Hub and storage account connection strings with base64 account keys — full data access."
 np.azure.2,80,critical,"Azure App Configuration connection string containing endpoint URL, client ID, and secret. Grants access to App Configuration stores which typically hold application settings, feature flags, and references to Azure Key Vault secrets. Compromise enables configuration tampering and potential secret extraction from Key Vault references."
 np.azure.3,68,high,"Azure DevOps Personal Access Token (fuzzy context pattern matching variable names like personal_access_token). DevOps PATs can be scoped narrowly or broadly; access to source code, pipelines, and build artifacts enables supply chain attacks. Scored high rather than critical because scope is PAT-dependent and fuzzy matching reduces precision."
 np.azure.4,72,high,"Azure DevOps Personal Access Token (new 84-character AZDO-suffix format, higher confidence). Modern PAT format with structured markers. Can grant read/write access to repositories, pipelines, work items, and artifacts enabling supply chain compromise. Higher score than np.azure.3 because the specific format reduces false positives."
-np.azure.5,55,medium,"Azure API Management subscription key (32-character hex). Authenticates requests to an APIM gateway providing access to backend APIs protected by that gateway. Impact bounded by the specific API product/scope the subscription covers. Could be narrow (single API) or broad (all APIs). Scored medium reflecting typical single-product scope."
-kingfisher.azure.devops.1,8,info,"Azure DevOps organization name (dev.azure.com/org-name). An organizational identifier not a credential. Reveals the DevOps URL used in downstream PAT validation. Marked visible:false in YAML. Info tier."
+np.azure.5,55,medium,Azure API Management subscription key (32-character hex). Authenticates requests to an APIM gateway providing access to backend APIs protected by that gateway. Impact bounded by the specific API product/scope the subscription covers. Could be narrow (single API) or broad (all APIs). Scored medium reflecting typical single-product scope.
+kingfisher.azure.devops.1,8,info,Azure DevOps organization name (dev.azure.com/org-name). An organizational identifier not a credential. Reveals the DevOps URL used in downstream PAT validation. Marked visible:false in YAML. Info tier.
 kingfisher.azure.devops.2,72,high,"Azure DevOps PAT (AZDO-suffix format with live HTTP validation against DevOps REST API). Identical format to np.azure.4. Grants access to source code, build pipelines, and artifacts. Live validation increases confidence this detects real tokens. High tier."
 kingfisher.azureopenai.1,60,high,"Azure OpenAI API key (32-character hex, fuzzy context pattern requiring co-located host). Grants access to Azure-hosted OpenAI model deployments (GPT-4, embeddings, etc.). Enables unauthorized AI inference (cost impact) and potential access to fine-tuned models with proprietary training data. Scored at low end of high due to medium confidence and host dependency."
 kingfisher.azureopenai.2,65,high,"Azure OpenAI API key (extended 80-100 char format with JQQJ/AAAB/ACOGk structural markers, high confidence). More reliable detection than kingfisher.azureopenai.1. Same capability — unauthorized OpenAI inference and cost impact — but higher precision justifies higher score within high tier."
-kingfisher.azureopenai.host.1,10,info,"Azure OpenAI endpoint hostname (*.openai.azure.com). Not a credential. Reveals which Azure OpenAI instances an organization uses. Required for live validation of co-located API keys. Marked visible:false in YAML. Info tier."
-kingfisher.azuresearch.key.1,55,medium,"Azure Cognitive Search query key (52-character uppercase alphanumeric). Query keys grant read-only search access to an Azure Search index — cannot modify data or index configuration. Scored medium: read access may expose PII or sensitive indexed content but write/admin operations require separate admin keys. Impact bounded by index contents."
-kingfisher.azuresearch.url.1,10,info,"Azure Search service URL (*.search.windows.net/indexes/index-name). Identifier revealing the search service and index name. Required for live validation pairing with the search key. Not itself a credential. Info tier."
-kingfisher.azurestorage.1a,8,info,"Azure Storage account name extracted from a connection string (AccountName= pattern). A storage account name is a public DNS-resolvable identifier. Not a credential. Marked visible:false in YAML. Used as a dependency for azurestorage.2 validation. Info tier."
-kingfisher.azurestorage.1b,8,info,"Azure Storage account name extracted from a blob endpoint URL (accountname.blob.core.windows.net). Public DNS-resolvable identifier. Not a credential. Marked visible:false in YAML. Info tier."
-kingfisher.azurestorage.1c,8,info,"Azure Storage account name extracted from a labeled variable (azure_storage_name=...). Same risk profile as 1a and 1b — a public identifier enabling targeting but not itself a credential. Marked visible:false in YAML. Info tier."
+kingfisher.azureopenai.host.1,10,info,Azure OpenAI endpoint hostname (*.openai.azure.com). Not a credential. Reveals which Azure OpenAI instances an organization uses. Required for live validation of co-located API keys. Marked visible:false in YAML. Info tier.
+kingfisher.azuresearch.key.1,55,medium,Azure Cognitive Search query key (52-character uppercase alphanumeric). Query keys grant read-only search access to an Azure Search index — cannot modify data or index configuration. Scored medium: read access may expose PII or sensitive indexed content but write/admin operations require separate admin keys. Impact bounded by index contents.
+kingfisher.azuresearch.url.1,10,info,Azure Search service URL (*.search.windows.net/indexes/index-name). Identifier revealing the search service and index name. Required for live validation pairing with the search key. Not itself a credential. Info tier.
+kingfisher.azurestorage.1a,8,info,Azure Storage account name extracted from a connection string (AccountName= pattern). A storage account name is a public DNS-resolvable identifier. Not a credential. Marked visible:false in YAML. Used as a dependency for azurestorage.2 validation. Info tier.
+kingfisher.azurestorage.1b,8,info,Azure Storage account name extracted from a blob endpoint URL (accountname.blob.core.windows.net). Public DNS-resolvable identifier. Not a credential. Marked visible:false in YAML. Info tier.
+kingfisher.azurestorage.1c,8,info,Azure Storage account name extracted from a labeled variable (azure_storage_name=...). Same risk profile as 1a and 1b — a public identifier enabling targeting but not itself a credential. Marked visible:false in YAML. Info tier.
 kingfisher.azurestorage.2,87,critical,"Azure Storage account key (86-88 base64 characters). Master key for an Azure Storage account granting full read/write/delete access to all Blobs, Queues, Tables, and Files in that account. Analogous to AWS secret access key for a specific storage account. Storage often contains backups, application data, logs, and secrets. Critical tier."
-kingfisher.gcp.1,92,critical,"GCP service account JSON credentials (detected by auth_provider_x509_cert_url field). A complete long-lived credential set that can be used to impersonate the service account and access any GCP resource the account has IAM permissions for. These credentials have no expiry by default and can grant project-wide or org-wide access. Highest-severity GCP secret type."
-kingfisher.gcp.3,45,medium,"LOW CONFIDENCE: GCP private key ID (35-40 lowercase hex characters in gcp_key/gcp_secret context). A key ID alone does not grant access — the private key material is separate. However it identifies a specific service account key useful for targeting or verifying whether a stolen private key is still active. Scored medium because context keyword 'secret' suggests proximity to real credentials."
-np.gcs.1,20,low,"Google Cloud Storage bucket URL (subdomain-style: bucket.storage.googleapis.com). Bucket name identifier enabling reconnaissance and potential access to misconfigured publicly-accessible buckets. Not a credential. Slightly above info because GCS bucket name exposure is a common first step in cloud data breach discovery."
-np.gcs.2,20,low,"Google Cloud Storage bucket URL (path-style: storage.googleapis.com/bucket). Same risk profile as np.gcs.1 — a bucket name identifier enabling enumeration of GCS contents if the bucket ACL is misconfigured. Not a credential."
+kingfisher.gcp.1,92,critical,GCP service account JSON credentials (detected by auth_provider_x509_cert_url field). A complete long-lived credential set that can be used to impersonate the service account and access any GCP resource the account has IAM permissions for. These credentials have no expiry by default and can grant project-wide or org-wide access. Highest-severity GCP secret type.
+kingfisher.gcp.3,45,medium,LOW CONFIDENCE: GCP private key ID (35-40 lowercase hex characters in gcp_key/gcp_secret context). A key ID alone does not grant access — the private key material is separate. However it identifies a specific service account key useful for targeting or verifying whether a stolen private key is still active. Scored medium because context keyword 'secret' suggests proximity to real credentials.
+np.gcs.1,20,low,Google Cloud Storage bucket URL (subdomain-style: bucket.storage.googleapis.com). Bucket name identifier enabling reconnaissance and potential access to misconfigured publicly-accessible buckets. Not a credential. Slightly above info because GCS bucket name exposure is a common first step in cloud data breach discovery.
+np.gcs.2,20,low,Google Cloud Storage bucket URL (path-style: storage.googleapis.com/bucket). Same risk profile as np.gcs.1 — a bucket name identifier enabling enumeration of GCS contents if the bucket ACL is misconfigured. Not a credential.
 np.age.1,5,info,"Age Recipient is an X25519 public key — no secret material, cannot decrypt data. YAML categorizes as identifier not secret."
-np.age.2,85,critical,"Age Identity (X25519 secret key). Possessing it decrypts all ciphertext encrypted to the corresponding recipient."
-kingfisher.coinbase.1,85,critical,"Coinbase Access Token bearer token validated against api.coinbase.com/v2/user; likely grants trading permissions — full account takeover."
-kingfisher.coinbase.2,90,critical,"Coinbase CDP API Key (ECDSA): captures org key name + raw EC private key PEM. Can sign all CDP transactions."
-kingfisher.coinbase.3,90,critical,"Coinbase CDP API Key (Ed25519): captures key UUID + raw 64-byte Ed25519 private key. Same full-signing impact as ECDSA variant."
-np.pwhash.1,50,medium,"MD5crypt ($1$). MD5 cracks at billions/sec on GPU; high recovery probability depending on password strength."
-np.pwhash.2,35,low,"bcrypt ($2a/b/x/y$). Designed to be slow; cost factor makes cracking expensive. Short/common passwords still at risk."
-np.pwhash.3,40,low,"SHA256crypt ($5$). Stronger than md5crypt with configurable rounds; standard in Linux shadow. Moderate cracking resistance."
-np.pwhash.4,40,low,"SHA512crypt ($6$). Better digest than sha256crypt; common in modern Linux shadow files. Moderate resistance."
-np.pwhash.5,45,medium,"Cisco IOS PBKDF2-SHA256 ($8$). Strong KDF but success yields network device admin — elevated impact context."
-kingfisher.1password.1,90,critical,"1Password Service-Account Token (ops_eyJ...) unlocks all vaults accessible to the service account — master key for stored credentials."
+np.age.2,85,critical,Age Identity (X25519 secret key). Possessing it decrypts all ciphertext encrypted to the corresponding recipient.
+kingfisher.coinbase.1,85,critical,Coinbase Access Token bearer token validated against api.coinbase.com/v2/user; likely grants trading permissions — full account takeover.
+kingfisher.coinbase.2,90,critical,Coinbase CDP API Key (ECDSA): captures org key name + raw EC private key PEM. Can sign all CDP transactions.
+kingfisher.coinbase.3,90,critical,Coinbase CDP API Key (Ed25519): captures key UUID + raw 64-byte Ed25519 private key. Same full-signing impact as ECDSA variant.
+np.pwhash.1,50,medium,MD5crypt ($1$). MD5 cracks at billions/sec on GPU; high recovery probability depending on password strength.
+np.pwhash.2,35,low,bcrypt ($2a/b/x/y$). Designed to be slow; cost factor makes cracking expensive. Short/common passwords still at risk.
+np.pwhash.3,40,low,SHA256crypt ($5$). Stronger than md5crypt with configurable rounds; standard in Linux shadow. Moderate cracking resistance.
+np.pwhash.4,40,low,SHA512crypt ($6$). Better digest than sha256crypt; common in modern Linux shadow files. Moderate resistance.
+np.pwhash.5,45,medium,Cisco IOS PBKDF2-SHA256 ($8$). Strong KDF but success yields network device admin — elevated impact context.
+kingfisher.1password.1,90,critical,1Password Service-Account Token (ops_eyJ...) unlocks all vaults accessible to the service account — master key for stored credentials.
 kingfisher.1password.2,75,high,"1Password Account Secret Key. One of two auth factors; alone insufficient, but combined with weak/reused master password enables full takeover."
 np.pem.1,92,critical,"Generic PEM private key (RSA/DSA/OPENSSH/EC). Full unencrypted private key — identity impersonation, TLS decryption, anything the cert trusts."
-np.pem.2,90,critical,"Base64-double-encoded PEM private key (Kubernetes-style). Decodes to identical impact as np.pem.1; extra encoding layer is not a security control."
+np.pem.2,90,critical,Base64-double-encoded PEM private key (Kubernetes-style). Decodes to identical impact as np.pem.1; extra encoding layer is not a security control.
 kingfisher.privkey.1,80,critical,"Encrypted RSA private key (Proc-Type: 4,ENCRYPTED). Passphrase provides partial protection; weak/nearby passphrases likely. Low-end critical."
-kingfisher.privkey.2,90,critical,"Broad PEM private key (RSA/PGP/DSA/OPENSSH/ENCRYPTED/EC). Unencrypted key material for all major types; full signing/decryption capability."
+kingfisher.privkey.2,90,critical,Broad PEM private key (RSA/PGP/DSA/OPENSSH/ENCRYPTED/EC). Unencrypted key material for all major types; full signing/decryption capability.
 np.wireguard.1,90,critical,"WireGuard PrivateKey. Enables full peer impersonation on VPN; decrypt all tunneled traffic, access entire private network segment."
-np.wireguard.2,75,high,"WireGuard PresharedKey. Weakens quantum-resistance layer but does not alone break the tunnel — peer private key still required for handshake."
-kingfisher.bitly.1,45,medium,"URL shortener access token — not a payment service; grants account control and link management but no financial exposure."
-kingfisher.duffel.1,82,critical,"Travel/flights booking API that is payment-capable; compromised token can book flights and incur real financial charges."
-kingfisher.easypost.1,80,critical,"Shipping carrier API that creates paid labels and incurs real postage costs; direct financial impact on account holder."
-kingfisher.finicity.1,75,high,"Financial data aggregation API token (similar to Plaid); grants read access to linked bank/investment account data."
-kingfisher.finicity.2,75,high,"Finicity OAuth client secret; used to authenticate financial data API requests; same risk profile as the API token."
-kingfisher.gocardless.1,83,critical,"Direct-debit payment API; compromised token can initiate real bank debits and move money; full payment capability."
-kingfisher.gumroad.1,60,medium,"Creator platform access token; grants account management and sales data access but limited direct financial movement."
-kingfisher.lob.1,55,medium,"Lob secret API key for programmatic mail/print service; can trigger paid mailings and incur real costs."
-kingfisher.lob.2,30,low,"Lob publishable (client-side) API key; restricted permissions compared to secret key; lower risk suitable for front-end use."
-kingfisher.paypal.1,15,info,"PayPal OAuth Client ID — public identifier used in OAuth flows; not a secret and not sufficient alone to authorize transactions."
-kingfisher.paypal.2,85,critical,"PayPal OAuth Secret — live payment credential; combined with client ID grants full ability to initiate payments and access account data."
-kingfisher.paystack.1,85,critical,"Paystack live API key; full payment processing capability including charging cards and initiating transfers."
-kingfisher.plaid.1,15,info,"Plaid Client ID — non-secret public identifier; per guidance this is info-level and insufficient alone to access financial data."
-kingfisher.plaid.2,90,critical,"Plaid Production secret; grants access to live financial institution data and transaction history."
-kingfisher.plaid.3,40,medium,"Plaid Sandbox secret; no real financial data but indicates Plaid integration and pattern exposure."
-kingfisher.plaid.4,88,critical,"Plaid Production access token; grants direct access to a specific end-user's live bank account data; critical financial and privacy impact."
-kingfisher.plaid.5,25,low,"Plaid Sandbox access token; tied to synthetic test data only; no real user financial data accessible."
-np.razorpay.1,85,critical,"Razorpay live API key; full payment processing including charges and payouts in production."
-np.razorpay.2,50,medium,"Razorpay test API key; no real money movement but confirms integration and leaks key naming patterns."
-kingfisher.shippo.1,60,medium,"Shippo shipping label API token; can create paid shipping labels incurring real postage costs."
+np.wireguard.2,75,high,WireGuard PresharedKey. Weakens quantum-resistance layer but does not alone break the tunnel — peer private key still required for handshake.
+kingfisher.bitly.1,45,medium,URL shortener access token — not a payment service; grants account control and link management but no financial exposure.
+kingfisher.duffel.1,82,critical,Travel/flights booking API that is payment-capable; compromised token can book flights and incur real financial charges.
+kingfisher.easypost.1,80,critical,Shipping carrier API that creates paid labels and incurs real postage costs; direct financial impact on account holder.
+kingfisher.finicity.1,75,high,Financial data aggregation API token (similar to Plaid); grants read access to linked bank/investment account data.
+kingfisher.finicity.2,75,high,Finicity OAuth client secret; used to authenticate financial data API requests; same risk profile as the API token.
+kingfisher.gocardless.1,83,critical,Direct-debit payment API; compromised token can initiate real bank debits and move money; full payment capability.
+kingfisher.gumroad.1,60,medium,Creator platform access token; grants account management and sales data access but limited direct financial movement.
+kingfisher.lob.1,55,medium,Lob secret API key for programmatic mail/print service; can trigger paid mailings and incur real costs.
+kingfisher.lob.2,30,low,Lob publishable (client-side) API key; restricted permissions compared to secret key; lower risk suitable for front-end use.
+kingfisher.paypal.1,15,info,PayPal OAuth Client ID — public identifier used in OAuth flows; not a secret and not sufficient alone to authorize transactions.
+kingfisher.paypal.2,85,critical,PayPal OAuth Secret — live payment credential; combined with client ID grants full ability to initiate payments and access account data.
+kingfisher.paystack.1,85,critical,Paystack live API key; full payment processing capability including charging cards and initiating transfers.
+kingfisher.plaid.1,15,info,Plaid Client ID — non-secret public identifier; per guidance this is info-level and insufficient alone to access financial data.
+kingfisher.plaid.2,90,critical,Plaid Production secret; grants access to live financial institution data and transaction history.
+kingfisher.plaid.3,40,medium,Plaid Sandbox secret; no real financial data but indicates Plaid integration and pattern exposure.
+kingfisher.plaid.4,88,critical,Plaid Production access token; grants direct access to a specific end-user's live bank account data; critical financial and privacy impact.
+kingfisher.plaid.5,25,low,Plaid Sandbox access token; tied to synthetic test data only; no real user financial data accessible.
+np.razorpay.1,85,critical,Razorpay live API key; full payment processing including charges and payouts in production.
+np.razorpay.2,50,medium,Razorpay test API key; no real money movement but confirms integration and leaks key naming patterns.
+kingfisher.shippo.1,60,medium,Shippo shipping label API token; can create paid shipping labels incurring real postage costs.
 np.square.1,85,critical,"Square live access token; grants full payment processing, refunds, and account management capabilities."
-np.square.2,83,critical,"Square OAuth Secret; used to obtain live access tokens via OAuth; compromised secret enables impersonation and live payment access."
+np.square.2,83,critical,Square OAuth Secret; used to obtain live access tokens via OAuth; compromised secret enables impersonation and live payment access.
 np.stripe.1,90,critical,"Stripe live API key; full charge, refund, and customer data access in production environment."
-np.stripe.2,50,medium,"Stripe test API key; no real money but leaks integration details and test data."
-np.atlassian.1,65,high,"Atlassian Cloud API token grants broad access to Jira/Confluence/Trello workspaces; tied to user identity with org-level read/write across projects and potentially admin APIs."
-np.bitbucket.1,65,high,"Bitbucket app password substitutes full account credentials for API and Git operations; scope includes repo read/write and may include admin and pipeline access."
-np.gitalk.1,48,medium,"Gitalk OAuth client_id+client_secret pair enables GitHub OAuth impersonation for comment auth; client_secret elevates from mere identifier but scope is limited to issue commenting workflows."
-np.github.1,75,high,"Classic GitHub PAT (ghp_ prefix) typically carries broad repo-write scopes plus read:org and other grants chosen at creation; no fine-grained restriction enforced by design."
-np.github.2,70,high,"GitHub OAuth access token (gho_ prefix) is user-scoped to the authorizing account's granted scopes; can include repo-write and admin:org depending on app's requested permissions."
-np.github.3,85,critical,"GitHub App installation token (ghu_/ghs_ prefix) can hold org-admin or all-repos write if App was installed with broad permissions; server-to-server tokens are machine-level and hard to trace."
-np.github.4,50,medium,"GitHub refresh token (ghr_ prefix) cannot directly authenticate API calls; must be exchanged for an access token requiring the client_secret as well — reduces standalone exploitability."
-np.github.5,15,info,"GitHub OAuth Client ID is a public identifier intentionally exposed in browser-visible OAuth flows; alone it grants no access and poses no direct secret exposure risk."
+np.stripe.2,50,medium,Stripe test API key; no real money but leaks integration details and test data.
+np.atlassian.1,65,high,Atlassian Cloud API token grants broad access to Jira/Confluence/Trello workspaces; tied to user identity with org-level read/write across projects and potentially admin APIs.
+np.bitbucket.1,65,high,Bitbucket app password substitutes full account credentials for API and Git operations; scope includes repo read/write and may include admin and pipeline access.
+np.gitalk.1,48,medium,Gitalk OAuth client_id+client_secret pair enables GitHub OAuth impersonation for comment auth; client_secret elevates from mere identifier but scope is limited to issue commenting workflows.
+np.github.1,75,high,Classic GitHub PAT (ghp_ prefix) typically carries broad repo-write scopes plus read:org and other grants chosen at creation; no fine-grained restriction enforced by design.
+np.github.2,70,high,GitHub OAuth access token (gho_ prefix) is user-scoped to the authorizing account's granted scopes; can include repo-write and admin:org depending on app's requested permissions.
+np.github.3,85,critical,GitHub App installation token (ghu_/ghs_ prefix) can hold org-admin or all-repos write if App was installed with broad permissions; server-to-server tokens are machine-level and hard to trace.
+np.github.4,50,medium,GitHub refresh token (ghr_ prefix) cannot directly authenticate API calls; must be exchanged for an access token requiring the client_secret as well — reduces standalone exploitability.
+np.github.5,15,info,GitHub OAuth Client ID is a public identifier intentionally exposed in browser-visible OAuth flows; alone it grants no access and poses no direct secret exposure risk.
 np.github.6,85,critical,"GitHub App client secret authenticates the App itself; combined with Client ID enables token minting, OAuth code exchange, and webhook validation — full App-level compromise."
-np.github.7,65,high,"Fine-grained GitHub PAT (github_pat_ prefix) is narrowly scoped by design to selected repos and specific permissions; lower blast radius than classic PAT but still source-control write access."
-np.gitlab.1,70,high,"GitLab runner registration token allows registering a new CI runner to a project or group; attacker gains code execution in all future pipelines and access to CI secrets and artifacts."
+np.github.7,65,high,Fine-grained GitHub PAT (github_pat_ prefix) is narrowly scoped by design to selected repos and specific permissions; lower blast radius than classic PAT but still source-control write access.
+np.gitlab.1,70,high,GitLab runner registration token allows registering a new CI runner to a project or group; attacker gains code execution in all future pipelines and access to CI secrets and artifacts.
 np.gitlab.2,72,high,"GitLab Personal Access Token with api scope grants full REST API access including repo read/write, user impersonation possibilities, and group membership management."
 np.gitlab.3,65,high,"GitLab pipeline trigger token initiates arbitrary pipeline runs on a project; enables code execution in CI environment, exfiltration of CI variables, and supply chain interference."
-np.gitlab.4,68,high,"GitLab Routable PAT routes to a specific self-managed/Dedicated instance; carries same repo and API risks as a standard GitLab PAT."
-kingfisher.gitter.1,45,medium,"Gitter access token authenticates to the Gitter/Matrix chat API; grants read/write to chat rooms for that user but limited to messaging — no source code or admin access."
-np.appcenter.1,65,high,"Mobile CI/CD admin token; can modify build pipelines and distribute app binaries to test devices or stores."
-np.artifactory.1,70,high,"Universal artifact repository API key; can publish/overwrite packages across all registered repos — supply-chain risk."
-np.browserstack.1,50,medium,"Cloud browser/device testing credential; no code-publish capability but grants access to test infrastructure."
-kingfisher.buildkite.1,65,high,"CI/CD platform API key; can trigger builds and modify pipeline configuration."
-kingfisher.circleci.1,65,high,"CircleCI personal access token; full CI admin rights including pipeline modification and secret access."
-kingfisher.circleci.2,65,high,"CircleCI project token; scoped CI admin — can trigger builds and read environment variables."
-kingfisher.clojars.1,40,low,"Clojars username alone; identifier-level exposure with no direct credential — requires paired token to act."
-kingfisher.clojars.2,65,high,"Clojars API token; can publish Clojure packages to the public registry — supply-chain risk."
-kingfisher.codacy.1,50,medium,"Code quality analysis API key; can upload coverage and read results but no code-publish capability."
-np.codeclimate.1,20,info,"CodeClimate reporter ID; a project identifier used to route coverage uploads — low sensitivity."
-kingfisher.codecov.1,50,medium,"Codecov access token; used to upload coverage reports; exposure could allow falsified coverage data."
-kingfisher.coderabbit.1,55,medium,"PR automation AI review API key; can interact with PRs but no direct pipeline or publish rights."
-kingfisher.coveralls.1,20,info,"Coveralls repo identifier; a non-secret project identifier used to route coverage uploads."
-kingfisher.coveralls.2,50,medium,"Coveralls personal API token; grants coverage reporting access across all user repos but no publish rights."
-np.cratesio.1,70,high,"crates.io API token; can publish Rust crates to the public registry — direct supply-chain risk."
-np.cypress.1,50,medium,"Cypress record key; allows uploading test recordings to Cypress Cloud — no code-publish capability."
-kingfisher.docker.1,70,high,"Docker registry auths JSON with embedded credentials; can push malicious images to any configured registry."
-np.dockerhub.1,70,high,"Docker Hub PAT; can push images to Docker Hub public/private repos — significant supply-chain risk."
-kingfisher.drone.1,65,high,"DroneCI access token; can trigger pipelines and modify CI configuration."
-np.gradle.1,65,high,"Hardcoded Gradle credentials; typically repo-upload credentials for Artifactory/Maven — enables malicious package publishing."
-kingfisher.infracost.1,45,medium,"Infracost API token; used for cloud cost estimation — no infrastructure modification capability."
-np.jenkins.1,70,high,"Jenkins token or crumb; grants CI system control including build triggering and pipeline modification."
-np.jenkins.2,75,high,"Jenkins setup admin password; full administrative access including plugin install and credential access."
-kingfisher.mergify.1,55,medium,"Mergify PR automation API key; can merge/close PRs and modify merge rules — elevated but not full CI admin."
-np.npm.1,75,high,"NPM fine-grained access token; can publish packages to npm registry — high supply-chain risk affecting millions of users."
-np.nuget.1,70,high,"NuGet API key; can publish .NET packages to nuget.org — direct supply-chain risk."
-kingfisher.packagecloud.1,65,high,"PackageCloud API key; can publish packages to private/public repositories — supply-chain risk."
-kingfisher.pulumi.1,70,high,"Pulumi API key; grants infrastructure automation access — can provision/destroy cloud resources."
-np.pypi.1,75,high,"PyPI upload token; can publish Python packages to PyPI — high supply-chain risk affecting millions of users."
-np.rubygems.1,70,high,"RubyGems API key; can publish gems to rubygems.org — direct supply-chain risk."
-np.sauce.1,50,medium,"SauceLabs test infrastructure token; grants access to cloud browser/device testing — no code-publish capability."
-kingfisher.scalingo.1,70,high,"Scalingo PaaS API token; full app deployment control including env vars and scaling — Heroku-like PaaS."
-kingfisher.snyk.1,55,medium,"Snyk API key; vulnerability scanning — can read code analysis results but limited write/publish capability."
-kingfisher.sonarcloud.1,50,medium,"SonarCloud API token; code quality analysis — can upload scan results but no code-publish capability."
-np.sonarqube.1,50,medium,"SonarQube token; self-hosted code quality scanner — can modify analysis config and read results."
-np.stackhawk.1,55,medium,"StackHawk DAST API key; dynamic application security testing — can trigger scans but no pipeline/publish control."
-np.teamcity.1,65,high,"TeamCity API token; full CI system access including build triggering and configuration modification."
+np.gitlab.4,68,high,GitLab Routable PAT routes to a specific self-managed/Dedicated instance; carries same repo and API risks as a standard GitLab PAT.
+kingfisher.gitter.1,45,medium,Gitter access token authenticates to the Gitter/Matrix chat API; grants read/write to chat rooms for that user but limited to messaging — no source code or admin access.
+np.appcenter.1,65,high,Mobile CI/CD admin token; can modify build pipelines and distribute app binaries to test devices or stores.
+np.artifactory.1,70,high,Universal artifact repository API key; can publish/overwrite packages across all registered repos — supply-chain risk.
+np.browserstack.1,50,medium,Cloud browser/device testing credential; no code-publish capability but grants access to test infrastructure.
+kingfisher.buildkite.1,65,high,CI/CD platform API key; can trigger builds and modify pipeline configuration.
+kingfisher.circleci.1,65,high,CircleCI personal access token; full CI admin rights including pipeline modification and secret access.
+kingfisher.circleci.2,65,high,CircleCI project token; scoped CI admin — can trigger builds and read environment variables.
+kingfisher.clojars.1,40,low,Clojars username alone; identifier-level exposure with no direct credential — requires paired token to act.
+kingfisher.clojars.2,65,high,Clojars API token; can publish Clojure packages to the public registry — supply-chain risk.
+kingfisher.codacy.1,50,medium,Code quality analysis API key; can upload coverage and read results but no code-publish capability.
+np.codeclimate.1,20,info,CodeClimate reporter ID; a project identifier used to route coverage uploads — low sensitivity.
+kingfisher.codecov.1,50,medium,Codecov access token; used to upload coverage reports; exposure could allow falsified coverage data.
+kingfisher.coderabbit.1,55,medium,PR automation AI review API key; can interact with PRs but no direct pipeline or publish rights.
+kingfisher.coveralls.1,20,info,Coveralls repo identifier; a non-secret project identifier used to route coverage uploads.
+kingfisher.coveralls.2,50,medium,Coveralls personal API token; grants coverage reporting access across all user repos but no publish rights.
+np.cratesio.1,70,high,crates.io API token; can publish Rust crates to the public registry — direct supply-chain risk.
+np.cypress.1,50,medium,Cypress record key; allows uploading test recordings to Cypress Cloud — no code-publish capability.
+kingfisher.docker.1,70,high,Docker registry auths JSON with embedded credentials; can push malicious images to any configured registry.
+np.dockerhub.1,70,high,Docker Hub PAT; can push images to Docker Hub public/private repos — significant supply-chain risk.
+kingfisher.drone.1,65,high,DroneCI access token; can trigger pipelines and modify CI configuration.
+np.gradle.1,65,high,Hardcoded Gradle credentials; typically repo-upload credentials for Artifactory/Maven — enables malicious package publishing.
+kingfisher.infracost.1,45,medium,Infracost API token; used for cloud cost estimation — no infrastructure modification capability.
+np.jenkins.1,70,high,Jenkins token or crumb; grants CI system control including build triggering and pipeline modification.
+np.jenkins.2,75,high,Jenkins setup admin password; full administrative access including plugin install and credential access.
+kingfisher.mergify.1,55,medium,Mergify PR automation API key; can merge/close PRs and modify merge rules — elevated but not full CI admin.
+np.npm.1,75,high,NPM fine-grained access token; can publish packages to npm registry — high supply-chain risk affecting millions of users.
+np.nuget.1,70,high,NuGet API key; can publish .NET packages to nuget.org — direct supply-chain risk.
+kingfisher.packagecloud.1,65,high,PackageCloud API key; can publish packages to private/public repositories — supply-chain risk.
+kingfisher.pulumi.1,70,high,Pulumi API key; grants infrastructure automation access — can provision/destroy cloud resources.
+np.pypi.1,75,high,PyPI upload token; can publish Python packages to PyPI — high supply-chain risk affecting millions of users.
+np.rubygems.1,70,high,RubyGems API key; can publish gems to rubygems.org — direct supply-chain risk.
+np.sauce.1,50,medium,SauceLabs test infrastructure token; grants access to cloud browser/device testing — no code-publish capability.
+kingfisher.scalingo.1,70,high,Scalingo PaaS API token; full app deployment control including env vars and scaling — Heroku-like PaaS.
+kingfisher.snyk.1,55,medium,Snyk API key; vulnerability scanning — can read code analysis results but limited write/publish capability.
+kingfisher.sonarcloud.1,50,medium,SonarCloud API token; code quality analysis — can upload scan results but no code-publish capability.
+np.sonarqube.1,50,medium,SonarQube token; self-hosted code quality scanner — can modify analysis config and read results.
+np.stackhawk.1,55,medium,StackHawk DAST API key; dynamic application security testing — can trigger scans but no pipeline/publish control.
+np.teamcity.1,65,high,TeamCity API token; full CI system access including build triggering and configuration modification.
 kingfisher.travisci.1,65,high,"Travis CI token; CI platform credential enabling pipeline control, secret access, and build triggering."
-kingfisher.travisci.2,65,high,"Travis CI encrypted variable; contains sensitive CI secrets — exposure reveals protected environment values."
-kingfisher.asana.1,15,info,"Asana Client ID is a public OAuth identifier — not a secret; no access granted on its own."
-kingfisher.asana.2,60,medium,"Asana Client Secret enables OAuth token exchange; exposure allows app impersonation but requires redirect URI pairing."
-kingfisher.asana.3,62,medium,"Asana OAuth/Personal Access Token grants read/write to user's tasks and projects; typical SaaS user-level API key."
-np.calendly.1,45,medium,"Calendly Personal Access Token provides read/write to scheduling data; limited blast radius — no payment or infra access."
-kingfisher.discord.1,40,medium,"Discord Webhook URL allows write to a specific channel only; no read access or account takeover possible."
+kingfisher.travisci.2,65,high,Travis CI encrypted variable; contains sensitive CI secrets — exposure reveals protected environment values.
+kingfisher.asana.1,15,info,Asana Client ID is a public OAuth identifier — not a secret; no access granted on its own.
+kingfisher.asana.2,60,medium,Asana Client Secret enables OAuth token exchange; exposure allows app impersonation but requires redirect URI pairing.
+kingfisher.asana.3,62,medium,Asana OAuth/Personal Access Token grants read/write to user's tasks and projects; typical SaaS user-level API key.
+np.calendly.1,45,medium,Calendly Personal Access Token provides read/write to scheduling data; limited blast radius — no payment or infra access.
+kingfisher.discord.1,40,medium,Discord Webhook URL allows write to a specific channel only; no read access or account takeover possible.
 kingfisher.discord.2,65,high,"Discord Bot Token grants full bot permissions (messages, member data, server management) per granted scopes."
-kingfisher.discord.3,10,info,"Discord Bot ID is a public numeric identifier — not a credential; no access granted."
+kingfisher.discord.3,10,info,Discord Bot ID is a public numeric identifier — not a credential; no access granted.
 kingfisher.jira.1,10,info,"Jira Domain (e.g., company.atlassian.net) is a public URL identifier — not a secret."
 kingfisher.jira.2,62,medium,"Jira API Token grants user-level access to issues, projects, and boards; equivalent to a SaaS user credential."
 kingfisher.lark.1,65,high,"LarkSuite Tenant Access Token provides org-wide API access; can enumerate users, messages, and files across the tenant."
-kingfisher.lark.2,62,medium,"LarkSuite User Access Token acts on behalf of a specific user; read/write to that user's messages and data."
-kingfisher.lark.3,58,medium,"LarkSuite App Access Token scoped to app permissions; functional but limited to granted app scopes."
+kingfisher.lark.2,62,medium,LarkSuite User Access Token acts on behalf of a specific user; read/write to that user's messages and data.
+kingfisher.lark.3,58,medium,LarkSuite App Access Token scoped to app permissions; functional but limited to granted app scopes.
 kingfisher.line.1,55,medium,"Line Messaging API Token enables send/receive messages via a bot channel; moderate impact, limited to bot scope."
 kingfisher.linear.1,62,medium,"Linear API Key grants read/write to issues, projects, and team data; typical project management SaaS token."
 kingfisher.mattermost.1,10,info,"Mattermost URL is a server address — a public endpoint identifier, not a credential."
 kingfisher.mattermost.2,70,high,"Mattermost Access Token provides broad API access to channels, messages, and user data; equivalent to Slack bot token."
-kingfisher.mattermost.3,45,medium,"Mattermost Incoming Webhook URL allows write to a specific channel only; no read or account access."
-np.mattermost.1,70,high,"Mattermost Personal Access Token acts as a full user credential; read/write across all accessible channels and data."
-kingfisher.messagebird.1,65,high,"MessageBird API Token is a server-side key enabling SMS/voice send and account management; high abuse potential for phishing/spam."
+kingfisher.mattermost.3,45,medium,Mattermost Incoming Webhook URL allows write to a specific channel only; no read or account access.
+np.mattermost.1,70,high,Mattermost Personal Access Token acts as a full user credential; read/write across all accessible channels and data.
+kingfisher.messagebird.1,65,high,MessageBird API Token is a server-side key enabling SMS/voice send and account management; high abuse potential for phishing/spam.
 np.msteams.1,45,medium,"Microsoft Teams Webhook allows posting to a specific channel; write-only to one endpoint, no read or broader M365 access."
-kingfisher.microsoftteamswebhook.1,45,medium,"Microsoft Teams Webhook (different file) — same semantics as np.msteams.1; write to one channel only."
+kingfisher.microsoftteamswebhook.1,45,medium,Microsoft Teams Webhook (different file) — same semantics as np.msteams.1; write to one channel only.
 kingfisher.monday.1,60,medium,"Monday.com API Key grants read/write to boards, items, and automation; typical project management SaaS key."
 kingfisher.notion.1,55,medium,"Notion Legacy Token (internal integration token) grants access to shared pages/databases; legacy format, moderate scope."
-kingfisher.notion.2,58,medium,"Notion Token (integration token) grants read/write to explicitly shared workspace content; limited by sharing scope."
-kingfisher.notion.3,62,medium,"Notion OAuth Refresh Token can generate new access tokens indefinitely; persistent access risk slightly higher than regular token."
-kingfisher.sendbird.1,15,info,"Sendbird Application ID is a public identifier used in client SDKs — not a secret; no server-side access."
+kingfisher.notion.2,58,medium,Notion Token (integration token) grants read/write to explicitly shared workspace content; limited by sharing scope.
+kingfisher.notion.3,62,medium,Notion OAuth Refresh Token can generate new access tokens indefinitely; persistent access risk slightly higher than regular token.
+kingfisher.sendbird.1,15,info,Sendbird Application ID is a public identifier used in client SDKs — not a secret; no server-side access.
 kingfisher.sendbird.2,65,high,"Sendbird API Token is a server-side master key; grants full access to users, channels, and messages across the app."
 np.slack.2,70,high,"Slack Bot Token (xoxb-) grants API access scoped to bot permissions; can read channels, post messages, access user data."
-np.slack.4,75,high,"Slack User Token (xoxp-) acts as a real user; broader permissions than bot token including DMs and user-level actions."
+np.slack.4,75,high,Slack User Token (xoxp-) acts as a real user; broader permissions than bot token including DMs and user-level actions.
 np.slack.5,55,medium,"Slack App Token (xapp-) used for Socket Mode connections; scoped to app-level socket access, not full workspace data."
 np.slack.6,65,high,"Slack Legacy Bot Token older format with broad implicit permissions; no granular OAuth scopes, higher risk than modern bot tokens."
 np.slack.7,45,medium,"Slack Workflow Webhook triggers a specific workflow step; scoped write action only, limited blast radius."
 np.slack.8,45,medium,"Slack Trigger URL invokes a specific Slack workflow trigger; write-only to defined workflow, no read access."
 np.slack.3,45,medium,"Slack Webhook URL posts to a specific channel; write-only, no read or broader workspace access."
-np.telegram.1,55,medium,"Telegram Bot Token grants full control of a bot account; can read messages in groups the bot is added to and send messages."
-kingfisher.ai21studio.1,50,medium,"AI21 Studio API key; quota-limited LLM provider with moderate billing exposure."
-np.anthropic.1,70,high,"Anthropic API key (sk-ant-api prefix); Claude Opus usage is expensive and a leaked key enables significant cost accrual; major LLM provider."
-kingfisher.baseten.1,55,medium,"Baseten API key; model deployment/inference platform with billing exposure."
-kingfisher.cerebras.1,55,medium,"Cerebras AI API key; fast inference hardware provider; billing risk exists but smaller customer base."
-kingfisher.cohere.1,60,medium,"Cohere API key; established NLP/LLM provider with enterprise usage; quota-based billing means compromise can drive meaningful costs."
-kingfisher.deepseek.1,55,medium,"DeepSeek API key; growing LLM provider with pay-per-token billing; moderate cost exposure."
-kingfisher.fireworks.1,55,medium,"Fireworks.ai API key; fast inference API for open models; pay-per-token billing."
-kingfisher.friendli.1,55,medium,"Friendli.ai API key; LLM inference provider with per-token billing; moderate financial exposure."
-np.groq.1,50,medium,"Groq API key; ultra-fast inference but currently generous free tier and rate limits reduce worst-case billing exposure."
-np.huggingface.1,60,medium,"HuggingFace User Access Token; can access and pull private models and datasets; enables IP theft of proprietary models."
-kingfisher.mistral.1,60,medium,"Mistral AI API key; European LLM provider with pay-per-token commercial API."
-kingfisher.ollama.1,50,medium,"Ollama hosted API key; primarily local/self-hosted tool but hosted service keys carry moderate billing risk."
-np.openai.1,70,high,"OpenAI API key; GPT-4/o1 usage is expensive with high per-token costs; one of the highest financial exposure AI keys; widely targeted."
-kingfisher.openrouter.1,65,high,"OpenRouter API key; proxies to many LLMs including expensive frontier models; aggregated billing across providers makes cost exposure significant."
-kingfisher.perplexity.1,58,medium,"Perplexity AI API key; search-augmented LLM with per-request billing."
-kingfisher.replicate.1,65,high,"Replicate API token; runs diverse ML models on-demand with per-second GPU billing; high cost exposure."
-kingfisher.runway.1,65,high,"Runway API key; video generation AI is computationally expensive with high per-second billing."
-kingfisher.stabilityai.1,60,medium,"Stability AI API key; image generation with per-image billing; moderate-high cost exposure."
-kingfisher.together.1,55,medium,"Together.ai API key; open-source model inference with per-token billing; moderate cost exposure."
-kingfisher.vastai.1,70,high,"Vast.ai API key; GPU compute rental marketplace; direct money loss on compromise as attacker can spin up expensive GPU instances."
-kingfisher.xai.1,65,high,"xAI (Grok) API key; Grok model inference with per-token billing; high-profile provider."
-kingfisher.zhipu.1,50,medium,"Zhipu (BigModel) API key; Chinese LLM provider with pay-per-token API."
-kingfisher.assemblyai.1,50,medium,"Transcription service API key; per-call billing with quotas but not catastrophic on leak."
-kingfisher.clarifai.1,50,medium,"Computer vision API key; per-call billing model; abuse leads to quota exhaustion and unexpected charges."
-kingfisher.cursor.1,50,medium,"IDE AI assistant user-scoped integration key; grants access to AI completions and possibly code context."
-kingfisher.deepgram.1,50,medium,"Transcription API key; per-call billing with quotas; abuse risks cost amplification."
-kingfisher.elevenlabs.1,55,medium,"Voice synthesis API key; elevated due to deepfake audio abuse potential and per-character billing."
-kingfisher.exa.1,50,medium,"AI search API key; per-query billing; abuse leads to quota exhaustion."
-kingfisher.imagekit.1,50,medium,"Image CDN and transformation private API key; allows media manipulation and upload."
-np.jina.1,45,medium,"Embeddings/search foundation API key; per-call billing; low blast radius on leak."
-kingfisher.klingai.1,60,medium,"AI video generation secret key; top of medium range due to expensive generation operations."
-kingfisher.langchain.1,50,medium,"LangSmith personal access token; grants access to LLM tracing and experiment data which may contain sensitive content."
-kingfisher.langchain.2,50,medium,"LangSmith service key; similar to personal token but service-scoped."
-kingfisher.pdflayer.1,40,medium,"PDF rendering API key; low-risk utility service; abuse limited to quota exhaustion."
-kingfisher.retellai.api_key.1,55,medium,"Voice agent API key; elevated due to potential for fraudulent voice call campaigns using compromised key."
-kingfisher.scraperapi.1,45,medium,"Web scraping service key; abuse leads to quota exhaustion and potential IP reputation impact."
-np.tavily.1,50,medium,"AI search API key; per-query billing model; abuse leads to quota exhaustion."
-kingfisher.voyageai.api_key,45,medium,"Embeddings API key; narrow-scope utility service; per-call billing; low blast radius."
-kingfisher.wandb.1,65,high,"Weights and Biases experiment tracking key; grants read/write access to ML project data, model artifacts, training runs, and hyperparameters — exposure can leak proprietary model research."
-kingfisher.beamer.1,50,medium,"Changelog/feedback tool; can post announcements but no direct email/SMS send."
-kingfisher.customerio.1,60,medium,"Customer.io Tracking API triggers automated email/SMS campaigns."
+np.telegram.1,55,medium,Telegram Bot Token grants full control of a bot account; can read messages in groups the bot is added to and send messages.
+kingfisher.ai21studio.1,50,medium,AI21 Studio API key; quota-limited LLM provider with moderate billing exposure.
+np.anthropic.1,70,high,Anthropic API key (sk-ant-api prefix); Claude Opus usage is expensive and a leaked key enables significant cost accrual; major LLM provider.
+kingfisher.baseten.1,55,medium,Baseten API key; model deployment/inference platform with billing exposure.
+kingfisher.cerebras.1,55,medium,Cerebras AI API key; fast inference hardware provider; billing risk exists but smaller customer base.
+kingfisher.cohere.1,60,medium,Cohere API key; established NLP/LLM provider with enterprise usage; quota-based billing means compromise can drive meaningful costs.
+kingfisher.deepseek.1,55,medium,DeepSeek API key; growing LLM provider with pay-per-token billing; moderate cost exposure.
+kingfisher.fireworks.1,55,medium,Fireworks.ai API key; fast inference API for open models; pay-per-token billing.
+kingfisher.friendli.1,55,medium,Friendli.ai API key; LLM inference provider with per-token billing; moderate financial exposure.
+np.groq.1,50,medium,Groq API key; ultra-fast inference but currently generous free tier and rate limits reduce worst-case billing exposure.
+np.huggingface.1,60,medium,HuggingFace User Access Token; can access and pull private models and datasets; enables IP theft of proprietary models.
+kingfisher.mistral.1,60,medium,Mistral AI API key; European LLM provider with pay-per-token commercial API.
+kingfisher.ollama.1,50,medium,Ollama hosted API key; primarily local/self-hosted tool but hosted service keys carry moderate billing risk.
+np.openai.1,70,high,OpenAI API key; GPT-4/o1 usage is expensive with high per-token costs; one of the highest financial exposure AI keys; widely targeted.
+kingfisher.openrouter.1,65,high,OpenRouter API key; proxies to many LLMs including expensive frontier models; aggregated billing across providers makes cost exposure significant.
+kingfisher.perplexity.1,58,medium,Perplexity AI API key; search-augmented LLM with per-request billing.
+kingfisher.replicate.1,65,high,Replicate API token; runs diverse ML models on-demand with per-second GPU billing; high cost exposure.
+kingfisher.runway.1,65,high,Runway API key; video generation AI is computationally expensive with high per-second billing.
+kingfisher.stabilityai.1,60,medium,Stability AI API key; image generation with per-image billing; moderate-high cost exposure.
+kingfisher.together.1,55,medium,Together.ai API key; open-source model inference with per-token billing; moderate cost exposure.
+kingfisher.vastai.1,70,high,Vast.ai API key; GPU compute rental marketplace; direct money loss on compromise as attacker can spin up expensive GPU instances.
+kingfisher.xai.1,65,high,xAI (Grok) API key; Grok model inference with per-token billing; high-profile provider.
+kingfisher.zhipu.1,50,medium,Zhipu (BigModel) API key; Chinese LLM provider with pay-per-token API.
+kingfisher.assemblyai.1,50,medium,Transcription service API key; per-call billing with quotas but not catastrophic on leak.
+kingfisher.clarifai.1,50,medium,Computer vision API key; per-call billing model; abuse leads to quota exhaustion and unexpected charges.
+kingfisher.cursor.1,50,medium,IDE AI assistant user-scoped integration key; grants access to AI completions and possibly code context.
+kingfisher.deepgram.1,50,medium,Transcription API key; per-call billing with quotas; abuse risks cost amplification.
+kingfisher.elevenlabs.1,55,medium,Voice synthesis API key; elevated due to deepfake audio abuse potential and per-character billing.
+kingfisher.exa.1,50,medium,AI search API key; per-query billing; abuse leads to quota exhaustion.
+kingfisher.imagekit.1,50,medium,Image CDN and transformation private API key; allows media manipulation and upload.
+np.jina.1,45,medium,Embeddings/search foundation API key; per-call billing; low blast radius on leak.
+kingfisher.klingai.1,60,medium,AI video generation secret key; top of medium range due to expensive generation operations.
+kingfisher.langchain.1,50,medium,LangSmith personal access token; grants access to LLM tracing and experiment data which may contain sensitive content.
+kingfisher.langchain.2,50,medium,LangSmith service key; similar to personal token but service-scoped.
+kingfisher.pdflayer.1,40,medium,PDF rendering API key; low-risk utility service; abuse limited to quota exhaustion.
+kingfisher.retellai.api_key.1,55,medium,Voice agent API key; elevated due to potential for fraudulent voice call campaigns using compromised key.
+kingfisher.scraperapi.1,45,medium,Web scraping service key; abuse leads to quota exhaustion and potential IP reputation impact.
+np.tavily.1,50,medium,AI search API key; per-query billing model; abuse leads to quota exhaustion.
+kingfisher.voyageai.api_key,45,medium,Embeddings API key; narrow-scope utility service; per-call billing; low blast radius.
+kingfisher.wandb.1,55,medium,ML experiment tracking; leaks proprietary model research and hyperparameters but no customer PII or systems access. Medium matches impact.
+kingfisher.beamer.1,50,medium,Changelog/feedback tool; can post announcements but no direct email/SMS send.
+kingfisher.customerio.1,60,medium,Customer.io Tracking API triggers automated email/SMS campaigns.
 kingfisher.customerio.2,62,medium,"Customer.io App API Key — broader access: manages campaigns, segments, triggers sends."
-np.delighted.1,45,medium,"NPS/survey tool; limited to sending survey invites and reading responses."
-kingfisher.eventbrite.1,65,high,"Create/manage events and ticket sales; fraudulent ticket creation, attendee PII exposure."
+np.delighted.1,45,medium,NPS/survey tool; limited to sending survey invites and reading responses.
+kingfisher.eventbrite.1,55,medium,Reputational risk only: can create fraudulent events and read attendee data but primary impact is embarrassment/brand not material company damage.
 kingfisher.freshdesk.1,35,low,"Freshdesk Domain identifier only (company.freshdesk.com), not an auth credential."
 kingfisher.freshdesk.2,65,high,"Full access to all support tickets, conversations, customer PII."
-np.helpscout.1,65,high,"Help Scout OAuth Client Secret enables full mailbox impersonation; all customer support conversations exposed."
-kingfisher.intercom.1,55,medium,"Access to contact data and can send in-app/email messages. PII risk and spam vector."
+np.helpscout.1,65,high,Help Scout OAuth Client Secret enables full mailbox impersonation; all customer support conversations exposed.
+kingfisher.intercom.1,55,medium,Access to contact data and can send in-app/email messages. PII risk and spam vector.
 np.iterable.1,60,medium,"Full marketing automation: email, push, SMS sends to user lists."
-kingfisher.klaviyo.1,60,medium,"Email/SMS marketing lists and sends; subscriber PII access."
-np.mailchimp.1,55,medium,"Bulk email to mailing lists; slightly lower than transactional email due to marketing focus."
-np.mailgun.1,65,high,"Full transactional email send from authorized domains; phishing/spam at scale."
+kingfisher.klaviyo.1,60,medium,Email/SMS marketing lists and sends; subscriber PII access.
+np.mailchimp.1,55,medium,Bulk email to mailing lists; slightly lower than transactional email due to marketing focus.
+np.mailgun.1,65,high,Full transactional email send from authorized domains; phishing/spam at scale.
 kingfisher.mailjet.1,65,high,"SMS API Key; direct per-message cost, SMS phishing and 2FA spoofing."
-kingfisher.mailjet.2,65,high,"Basic Auth: full platform access including email and SMS send capability."
-kingfisher.mandrill.1,65,high,"Transactional email through verified domains; highly credible phishing vector."
+kingfisher.mailjet.2,65,high,Basic Auth: full platform access including email and SMS send capability.
+kingfisher.mandrill.1,65,high,Transactional email through verified domains; highly credible phishing vector.
 kingfisher.opsgenie.1,58,medium,"Can page on-call, suppress/fabricate incidents, cause alert fatigue."
 kingfisher.pagerduty.1,58,medium,"Trigger incidents, page engineers, manage schedules. Disrupt incident response."
-np.pendo.1,50,medium,"Product analytics + in-app guide management; can view session data and modify in-app messages."
-np.postmark.1,65,high,"Transactional email send from authorized domains; phishing/spam capability."
-kingfisher.resend.api_key.1,65,high,"Transactional email send; can send arbitrary email from authorized domains."
-np.sendgrid.1,65,high,"SG.xxx key; full email send at scale from authorized domains; phishing/spam/brand abuse."
-kingfisher.sendinblue.1,60,medium,"Email + SMS marketing/transactional sends; mass campaign capability."
-kingfisher.statuspage.1,55,medium,"Can publish false incident/maintenance status updates misleading customers."
-np.twilio.1,75,high,"Full SMS/voice API; direct monetary cost per send; phishing and 2FA spoofing at scale."
-np.zendesk.1,68,high,"All support tickets and customer conversations; PII exposure and full read/write on support interactions."
-np.amplitude.1,40,low,"Amplitude API Key is an analytics ingestion key used to send event data; limited to analytics write access with no admin capabilities."
-kingfisher.datadog.1,15,info,"Datadog Site Domain is a tenant identifier — not a credential; just configuration metadata."
-kingfisher.datadog.2,50,medium,"Datadog API Key allows sending metrics/logs/traces and some read operations; not full admin but broader than ingestion-only."
-kingfisher.datadog.3,65,high,"Datadog Application Key grants admin-level access to the Datadog API including account management and sensitive data queries."
-kingfisher.datadog.4,25,low,"Datadog RUM Client Token is a public-facing instrumentation token for browser/mobile SDK; intentionally embeddable in client code."
-np.dtrack.1,50,medium,"Dependency-Track API Key enables SBOM and vulnerability management operations; medium risk — read/write to vulnerability tracking data."
-np.dynatrace.1,60,medium,"Dynatrace Token has variable scope depending on assigned permissions; defaults to medium-high as it often grants monitoring and configuration access."
+np.pendo.1,50,medium,Product analytics + in-app guide management; can view session data and modify in-app messages.
+np.postmark.1,65,high,Transactional email send from authorized domains; phishing/spam capability.
+kingfisher.resend.api_key.1,65,high,Transactional email send; can send arbitrary email from authorized domains.
+np.sendgrid.1,65,high,SG.xxx key; full email send at scale from authorized domains; phishing/spam/brand abuse.
+kingfisher.sendinblue.1,60,medium,Email + SMS marketing/transactional sends; mass campaign capability.
+kingfisher.statuspage.1,55,medium,Can publish false incident/maintenance status updates misleading customers.
+np.twilio.1,75,high,Full SMS/voice API; direct monetary cost per send; phishing and 2FA spoofing at scale.
+np.zendesk.1,68,high,All support tickets and customer conversations; PII exposure and full read/write on support interactions.
+np.amplitude.1,40,low,Amplitude API Key is an analytics ingestion key used to send event data; limited to analytics write access with no admin capabilities.
+kingfisher.datadog.1,15,info,Datadog Site Domain is a tenant identifier — not a credential; just configuration metadata.
+kingfisher.datadog.2,50,medium,Datadog API Key allows sending metrics/logs/traces and some read operations; not full admin but broader than ingestion-only.
+kingfisher.datadog.3,65,high,Datadog Application Key grants admin-level access to the Datadog API including account management and sensitive data queries.
+kingfisher.datadog.4,25,low,Datadog RUM Client Token is a public-facing instrumentation token for browser/mobile SDK; intentionally embeddable in client code.
+np.dtrack.1,50,medium,Dependency-Track API Key enables SBOM and vulnerability management operations; medium risk — read/write to vulnerability tracking data.
+np.dynatrace.1,60,medium,Dynatrace Token has variable scope depending on assigned permissions; defaults to medium-high as it often grants monitoring and configuration access.
 np.grafana.1,65,high,"Grafana API Token grants full API access to dashboards, data sources, and configuration — equivalent to admin access in many deployments."
-np.grafana.2,65,high,"Grafana Cloud API Token grants administrative access to Grafana Cloud stacks including provisioning and data source management."
-np.grafana.3,65,high,"Grafana Service Account Token provides programmatic API access equivalent to the service account role — often admin or editor level."
-kingfisher.honeycomb.1,50,medium,"Honeycomb API Key is used for both ingestion and querying; medium risk as it can read observability data."
-np.newrelic.1,35,low,"New Relic License Key is used exclusively for telemetry ingestion; no read or admin capabilities."
-np.newrelic.2,35,low,"New Relic License Key (alternate format) — telemetry ingest only with no read or admin access."
-np.newrelic.3,50,medium,"New Relic API Service Key enables API access for service integrations; broader than license key but below full admin scope."
+np.grafana.2,65,high,Grafana Cloud API Token grants administrative access to Grafana Cloud stacks including provisioning and data source management.
+np.grafana.3,65,high,Grafana Service Account Token provides programmatic API access equivalent to the service account role — often admin or editor level.
+kingfisher.honeycomb.1,50,medium,Honeycomb API Key is used for both ingestion and querying; medium risk as it can read observability data.
+np.newrelic.1,35,low,New Relic License Key is used exclusively for telemetry ingestion; no read or admin capabilities.
+np.newrelic.2,35,low,New Relic License Key (alternate format) — telemetry ingest only with no read or admin access.
+np.newrelic.3,50,medium,New Relic API Service Key enables API access for service integrations; broader than license key but below full admin scope.
 np.newrelic.4,70,high,"New Relic Admin API Key provides full administrative access including account management, user management, and all API operations."
-np.newrelic.5,30,low,"New Relic Insights Insert Key is write-only for custom event ingestion; cannot query or read any data from New Relic."
-np.newrelic.6,32,low,"New Relic Insights Query Key provides read-only access to query custom events; no write or admin capabilities."
-np.newrelic.7,55,medium,"New Relic REST API Key grants access to REST API v2 for metrics and configuration; broader than license/insights keys."
-np.newrelic.8,55,medium,"New Relic Pixie API Key provides access to Pixie live debugging platform (k8s observability); can query live cluster data."
-np.newrelic.9,58,medium,"New Relic Pixie Deploy Key used to deploy/configure Pixie agents on Kubernetes clusters; elevated risk due to cluster deployment capability."
-kingfisher.posthog.1,40,low,"PostHog Project API Key is primarily an ingestion/capture key for sending analytics events; limited read access to project data."
-kingfisher.posthog.2,55,medium,"PostHog Personal API Key provides admin-level access to the PostHog API for account management and data querying."
-np.segment.1,55,medium,"Segment Public API Token provides workspace-level access including source/destination management; elevated for workspace administration."
+np.newrelic.5,30,low,New Relic Insights Insert Key is write-only for custom event ingestion; cannot query or read any data from New Relic.
+np.newrelic.6,32,low,New Relic Insights Query Key provides read-only access to query custom events; no write or admin capabilities.
+np.newrelic.7,55,medium,New Relic REST API Key grants access to REST API v2 for metrics and configuration; broader than license/insights keys.
+np.newrelic.8,55,medium,New Relic Pixie API Key provides access to Pixie live debugging platform (k8s observability); can query live cluster data.
+np.newrelic.9,58,medium,New Relic Pixie Deploy Key used to deploy/configure Pixie agents on Kubernetes clusters; elevated risk due to cluster deployment capability.
+kingfisher.posthog.1,40,low,PostHog Project API Key is primarily an ingestion/capture key for sending analytics events; limited read access to project data.
+kingfisher.posthog.2,55,medium,PostHog Personal API Key provides admin-level access to the PostHog API for account management and data querying.
+np.segment.1,55,medium,Segment Public API Token provides workspace-level access including source/destination management; elevated for workspace administration.
 kingfisher.sentry.1,65,high,"Sentry Access Token grants OAuth-scoped API access which can include full read/write to projects, issues, and organization data."
 kingfisher.sentry.2,65,high,"Sentry Organization Token provides organization-scoped API access with broad permissions over projects, members, and settings."
-kingfisher.sentry.3,65,high,"Sentry User Token grants API access acting as the user; scope varies but can include sensitive project and error data access."
-kingfisher.sentry.4,25,low,"Sentry DSN is a publishable ingest URL intentionally embedded in client applications to report errors; not a secret credential."
-np.wakatime.1,30,low,"WakaTime API Key provides access to personal coding activity/time tracking data; limited to individual user telemetry."
-np.wakatime.2,30,low,"WakaTime Prefixed API Key — same as np.wakatime.1 with a waka_ prefix format; personal time tracking access only."
-kingfisher.clickhouse.1,85,critical,"ClickHouse Cloud secret key grants direct database access to all data the credential can reach."
-kingfisher.clickhouse.2,15,info,"ClickHouse Cloud key ID is an identifier only; no access possible without the paired secret key."
-np.databricks.1,90,critical,"Databricks PAT grants workspace-wide access and can spin up compute clusters incurring significant cost."
-kingfisher.jdbc.1,85,critical,"JDBC connection string with embedded credentials provides raw database access for any data the DB user can reach."
-np.mongodb.1,85,critical,"MongoDB connection string with credentials grants direct database access to all collections the user can reach."
-kingfisher.mongodb.1,85,critical,"MongoDB API private key grants significant API-level access to Atlas resources."
-kingfisher.mongodb.2,15,info,"MongoDB API public key is an identifier only; requires the paired private key to authenticate."
-kingfisher.mongodb.3,85,critical,"MongoDB URI connection string with credentials provides direct database access."
-kingfisher.mongodb.4,95,critical,"MongoDB Atlas service account token with admin privileges grants full Atlas account control."
-kingfisher.mysql.1,85,critical,"MySQL URI with embedded credentials grants direct database access to all data the DB user can reach."
-np.odbc.1,85,critical,"ODBC connection string with credentials provides raw database access equivalent to a direct connection string."
-kingfisher.planetscale.1,85,critical,"PlanetScale API token grants management-level control over databases and branches."
-kingfisher.planetscale.2,15,info,"PlanetScale username is an identifier only; no access possible without paired credential."
-np.postgres.1,85,critical,"PostgreSQL connection URI with embedded credentials grants direct database access."
-kingfisher.rabbitmq.1,75,high,"RabbitMQ credential grants access to the message broker; can read/write queues and intercept or inject messages."
-kingfisher.supabase.1,90,critical,"Supabase management token grants full account-level control including project management and all data."
-kingfisher.supabase.2,70,high,"Supabase project API key grants per-project data access; significant but scoped to one project."
-kingfisher.supabase.3,15,info,"Supabase project URL is a public endpoint identifier; no credentials embedded."
-np.auth0.1,85,critical,"Auth0 Application Credentials (domain+client_id+client_secret) grant full control over an SSO tenant including user management and OAuth configuration."
-kingfisher.authress.1,70,high,"Authress Service Client Access Key enables programmatic access to Authress authorization APIs for managing access controls."
-kingfisher.cloudflare.1,82,critical,"Cloudflare API Token can control DNS/WAF/CDN/Workers for all zones; misconfigured DNS or firewall rules can redirect traffic or disable protections."
-kingfisher.cloudflare.2,75,high,"Cloudflare Origin CA Key is used to issue TLS certificates for origin servers; exposure allows issuance of fraudulent origin certificates."
-kingfisher.definednetworking.1,60,medium,"Defined Networking API Token controls network overlay configuration; access can expose network topology and allow routing changes."
-np.doppler.1,70,high,"Doppler CLI Token provides developer-level access to secrets and configs via CLI; broad read access to environment secrets."
-np.doppler.2,70,high,"Doppler Personal Token tied to a user account grants access to all projects and environments that user can access."
-np.doppler.3,75,high,"Doppler Service Token grants automated read access to a specific config environment; exposure leaks all secrets in that environment."
-np.doppler.4,85,critical,"Doppler Service Account Token is a machine identity with configurable cross-project access; equivalent to admin-tier secrets access."
-np.doppler.5,75,high,"Doppler SCIM Token enables identity provisioning operations (create/update/delete users and groups); unauthorized user management in IdP."
-np.doppler.6,55,medium,"Doppler Audit Token grants read-only access to audit logs; exposes operational activity but cannot modify secrets or configurations."
+kingfisher.sentry.3,65,high,Sentry User Token grants API access acting as the user; scope varies but can include sensitive project and error data access.
+kingfisher.sentry.4,25,low,Sentry DSN is a publishable ingest URL intentionally embedded in client applications to report errors; not a secret credential.
+np.wakatime.1,30,low,WakaTime API Key provides access to personal coding activity/time tracking data; limited to individual user telemetry.
+np.wakatime.2,30,low,WakaTime Prefixed API Key — same as np.wakatime.1 with a waka_ prefix format; personal time tracking access only.
+kingfisher.clickhouse.1,85,critical,ClickHouse Cloud secret key grants direct database access to all data the credential can reach.
+kingfisher.clickhouse.2,15,info,ClickHouse Cloud key ID is an identifier only; no access possible without the paired secret key.
+np.databricks.1,90,critical,Databricks PAT grants workspace-wide access and can spin up compute clusters incurring significant cost.
+kingfisher.jdbc.1,85,critical,JDBC connection string with embedded credentials provides raw database access for any data the DB user can reach.
+np.mongodb.1,85,critical,MongoDB connection string with credentials grants direct database access to all collections the user can reach.
+kingfisher.mongodb.1,85,critical,MongoDB API private key grants significant API-level access to Atlas resources.
+kingfisher.mongodb.2,15,info,MongoDB API public key is an identifier only; requires the paired private key to authenticate.
+kingfisher.mongodb.3,85,critical,MongoDB URI connection string with credentials provides direct database access.
+kingfisher.mongodb.4,95,critical,MongoDB Atlas service account token with admin privileges grants full Atlas account control.
+kingfisher.mysql.1,85,critical,MySQL URI with embedded credentials grants direct database access to all data the DB user can reach.
+np.odbc.1,85,critical,ODBC connection string with credentials provides raw database access equivalent to a direct connection string.
+kingfisher.planetscale.1,85,critical,PlanetScale API token grants management-level control over databases and branches.
+kingfisher.planetscale.2,15,info,PlanetScale username is an identifier only; no access possible without paired credential.
+np.postgres.1,85,critical,PostgreSQL connection URI with embedded credentials grants direct database access.
+kingfisher.rabbitmq.1,75,high,RabbitMQ credential grants access to the message broker; can read/write queues and intercept or inject messages.
+kingfisher.supabase.1,90,critical,Supabase management token grants full account-level control including project management and all data.
+kingfisher.supabase.2,70,high,Supabase project API key grants per-project data access; significant but scoped to one project.
+kingfisher.supabase.3,15,info,Supabase project URL is a public endpoint identifier; no credentials embedded.
+np.auth0.1,85,critical,Auth0 Application Credentials (domain+client_id+client_secret) grant full control over an SSO tenant including user management and OAuth configuration.
+kingfisher.authress.1,70,high,Authress Service Client Access Key enables programmatic access to Authress authorization APIs for managing access controls.
+kingfisher.cloudflare.1,82,critical,Cloudflare API Token can control DNS/WAF/CDN/Workers for all zones; misconfigured DNS or firewall rules can redirect traffic or disable protections.
+kingfisher.cloudflare.2,75,high,Cloudflare Origin CA Key is used to issue TLS certificates for origin servers; exposure allows issuance of fraudulent origin certificates.
+kingfisher.definednetworking.1,60,medium,Defined Networking API Token controls network overlay configuration; access can expose network topology and allow routing changes.
+np.doppler.1,70,high,Doppler CLI Token provides developer-level access to secrets and configs via CLI; broad read access to environment secrets.
+np.doppler.2,70,high,Doppler Personal Token tied to a user account grants access to all projects and environments that user can access.
+np.doppler.3,75,high,Doppler Service Token grants automated read access to a specific config environment; exposure leaks all secrets in that environment.
+np.doppler.4,85,critical,Doppler Service Account Token is a machine identity with configurable cross-project access; equivalent to admin-tier secrets access.
+np.doppler.5,75,high,Doppler SCIM Token enables identity provisioning operations (create/update/delete users and groups); unauthorized user management in IdP.
+np.doppler.6,55,medium,Doppler Audit Token grants read-only access to audit logs; exposes operational activity but cannot modify secrets or configurations.
 kingfisher.harness.pat.1,70,high,"Harness Personal Access Token provides access to CI/CD pipelines, secrets, and deployment configurations; supply chain manipulation risk."
-np.hashicorp.1,90,critical,"HashiCorp Vault Service Token (pre-v1.10) grants broad secrets engine access limited only by attached policies; full Vault access with admin policy."
-np.hashicorp.2,70,high,"HashiCorp Vault Batch Token (pre-v1.10) is short-lived and non-renewable with limited capabilities; reduces blast radius."
-np.hashicorp.3,95,critical,"HashiCorp Vault Recovery Token (pre-v1.10) used for root-level recovery operations; grants equivalent-to-root access."
-np.hashicorp.4,90,critical,"HashiCorp Vault Service Token (v1.10+) grants broad secrets engine access limited only by attached policies; full Vault access with admin policy."
-np.hashicorp.5,70,high,"HashiCorp Vault Batch Token (v1.10+) is performance-optimized and short-lived with embedded policy claims."
-np.hashicorp.6,95,critical,"HashiCorp Vault Recovery Token (v1.10+) used for root-level recovery operations; grants equivalent-to-root access."
-np.hashicorp.7,95,critical,"HashiCorp Vault Unseal Key is one of the Shamir secret shares required to unseal a sealed Vault; enables full secret access."
-kingfisher.intra42.1,15,info,"Intra42 Client ID is a public OAuth identifier used to initiate authorization flows; not a secret."
-kingfisher.intra42.2,65,high,"Intra42 Client Secret combined with Client ID enables server-side OAuth token requests; allows impersonation."
+np.hashicorp.1,90,critical,HashiCorp Vault Service Token (pre-v1.10) grants broad secrets engine access limited only by attached policies; full Vault access with admin policy.
+np.hashicorp.2,70,high,HashiCorp Vault Batch Token (pre-v1.10) is short-lived and non-renewable with limited capabilities; reduces blast radius.
+np.hashicorp.3,95,critical,HashiCorp Vault Recovery Token (pre-v1.10) used for root-level recovery operations; grants equivalent-to-root access.
+np.hashicorp.4,90,critical,HashiCorp Vault Service Token (v1.10+) grants broad secrets engine access limited only by attached policies; full Vault access with admin policy.
+np.hashicorp.5,70,high,HashiCorp Vault Batch Token (v1.10+) is performance-optimized and short-lived with embedded policy claims.
+np.hashicorp.6,95,critical,HashiCorp Vault Recovery Token (v1.10+) used for root-level recovery operations; grants equivalent-to-root access.
+np.hashicorp.7,95,critical,HashiCorp Vault Unseal Key is one of the Shamir secret shares required to unseal a sealed Vault; enables full secret access.
+kingfisher.intra42.1,15,info,Intra42 Client ID is a public OAuth identifier used to initiate authorization flows; not a secret.
+kingfisher.intra42.2,65,high,Intra42 Client Secret combined with Client ID enables server-side OAuth token requests; allows impersonation.
 kingfisher.jumpcloud.1,85,critical,"JumpCloud API Key provides full admin access to JumpCloud directory including user management, SSO app configuration, and device policies."
-np.kubernetes.1,85,critical,"Kubernetes Bootstrap Token grants cluster join capabilities; unauthorized nodes can join cluster for initial access."
-np.kubernetes.2,85,critical,"Kubernetes Bootstrap Token (alternate format) — same risk as np.kubernetes.1; grants cluster bootstrap access."
-kingfisher.launchdarkly.1,70,high,"LaunchDarkly Access Token enables full feature flag management; can manipulate application behavior."
-kingfisher.launchdarkly.2,15,info,"LaunchDarkly Client-side ID is a public identifier embedded in frontend code for SDK initialization."
+np.kubernetes.1,85,critical,Kubernetes Bootstrap Token grants cluster join capabilities; unauthorized nodes can join cluster for initial access.
+np.kubernetes.2,85,critical,Kubernetes Bootstrap Token (alternate format) — same risk as np.kubernetes.1; grants cluster bootstrap access.
+kingfisher.launchdarkly.1,70,high,LaunchDarkly Access Token enables full feature flag management; can manipulate application behavior.
+kingfisher.launchdarkly.2,15,info,LaunchDarkly Client-side ID is a public identifier embedded in frontend code for SDK initialization.
 np.okta.1,90,critical,"Okta API Token grants full admin access to Okta SSO tenant including user lifecycle management, app assignments, and OAuth client configuration."
 kingfisher.optimizely.1,65,high,"Optimizely Personal Access Token enables management of experiments, feature flags, and project settings."
-np.vmware.1,75,high,"VMware Connect-VIServer credentials embedded in scripts grant access to vSphere/vCenter infrastructure; VM management and lateral movement."
+np.vmware.1,75,high,VMware Connect-VIServer credentials embedded in scripts grant access to vSphere/vCenter infrastructure; VM management and lateral movement.
 kingfisher.hubspot.1,75,high,"HubSpot Private App Token grants access to CRM contacts, marketing data, and deal pipelines — contains customer PII and business intelligence."
 kingfisher.jotform.1,65,high,"JotForm API key exposes form submission data which frequently contains PII (names, emails, addresses, health info)."
 np.salesforce.1,85,critical,"Salesforce Access Token provides access to full CRM including customer PII, financial records, opportunities, and business-critical data at scale."
-np.shopify.1,10,info,"Shopify domain/store identifier only — reveals shop URL but grants no API access or sensitive data exposure."
+np.shopify.1,10,info,Shopify domain/store identifier only — reveals shop URL but grants no API access or sensitive data exposure.
 np.shopify.2,85,critical,"Shopify App Secret can be used to mint OAuth tokens with shop-wide access including orders, customer PII, and payment processing capabilities."
 np.shopify.3,70,high,"Shopify Public App Access Token grants shop-scoped API access to orders, customer data, and inventory depending on OAuth scopes."
 np.shopify.4,75,high,"Shopify Custom App Access Token has shop-wide access to orders, customers, products, and potentially payment/refund operations."
 np.shopify.5,75,high,"Shopify Legacy Private App Access Token provides full shop API access including customer PII, orders, and financial operations."
-kingfisher.typeform.1,65,high,"Typeform API Token exposes form responses which routinely contain PII; also allows creating/modifying forms used for data collection."
+kingfisher.typeform.1,65,high,Typeform API Token exposes form responses which routinely contain PII; also allows creating/modifying forms used for data collection.
 kingfisher.zohocrm.1,70,high,"Zoho CRM API Access Token grants access to customer records, sales pipeline, contacts, and business PII across the CRM."
-kingfisher.zuplo.1,60,medium,"Zuplo API gateway key controls API routing and rate limiting; impact depends on configured backend but represents significant infrastructure access."
+kingfisher.zuplo.1,60,medium,Zuplo API gateway key controls API routing and rate limiting; impact depends on configured backend but represents significant infrastructure access.
 kingfisher.hereapi.1,55,medium,HERE API keys are per-call billed with request quotas for mapping/geocoding services; exposure enables quota exhaustion and unauthorized usage but limited blast radius beyond billing impact
 kingfisher.ipstack.1,45,medium,IPStack API keys enable IP geolocation lookups with per-call billing; exposure causes quota exhaustion and data harvesting but read-only with limited blast radius
 np.mapbox.1,25,low,Mapbox public token (pk.*) is intentionally client-side and designed to be embedded in frontend code; exposure has minimal impact beyond potential quota abuse
-np.mapbox.2,65,high,Mapbox secret token (sk.*) is server-side with full account access; exposure enables quota exhaustion style/tileset manipulation and potential billing impact
+np.mapbox.2,50,medium,Mapbox secret token; enables style editing and quota burn on Maps Platform but no customer data or systems access. Medium matches impact.
 np.mapbox.3,50,medium,Mapbox temporary token (tk.*) has time-limited scope and restricted permissions; exposure risk is bounded by token expiry and scope constraints
 kingfisher.maxmind.1,55,medium,MaxMind license key grants access to GeoIP database downloads and queries; exposure enables unauthorized data access and quota exhaustion
 kingfisher.maxmind.2,15,info,MaxMind Account ID is a non-secret identifier used for account reference; alone it grants no API access and poses minimal security risk
@@ -326,166 +326,166 @@ kingfisher.ngrok.1,70,high,Ngrok API key can create tunnels exposing internal ne
 kingfisher.openweather.1,45,medium,OpenWeather API keys provide weather data access with per-call billing; exposure enables quota exhaustion and data harvesting but entirely read-only with low blast radius
 kingfisher.shodan.1,55,medium,Shodan API key provides read-only internet scanning and search capabilities; exposure enables reconnaissance against targets using attacker quota but no write access
 kingfisher.tailscale.1,85,critical,Tailscale API key can add devices to a private mesh network modify ACLs and access internal services; full network compromise potential makes this critical severity
-kingfisher.datagov.1,15,info,"Rate-limit identifier for public government datasets; no meaningful secret power and no private data access."
-np.deviantart.1,45,medium,"User-scoped OAuth access token for a niche creative platform; limited blast radius to one account."
-kingfisher.deviantart.1,45,medium,"OAuth client secret enabling app-level impersonation on a niche creative platform; moderate impact."
-np.facebook.1,60,medium,"Facebook app secret key enabling app-level API access and signature verification; can impersonate the application."
-np.facebook.2,45,medium,"User-scoped Facebook access token; compromises one user account including profile and linked permissions."
-np.facebook.3,65,high,"Facebook app credentials (ID + secret) giving full control over the app; can manage users, webhooks, and app settings."
-kingfisher.flickr.1,30,low,"Read-only API key for a photo-sharing platform; primarily accesses public content with rate-limit enforcement."
-kingfisher.flickr.2,30,low,"User OAuth session token for Flickr; compromises one account on a niche platform with mostly public content."
-kingfisher.foursquare.1,20,low,"Public client identifier; not a secret and provides no privileged access on its own."
-kingfisher.foursquare.2,45,medium,"OAuth client secret for Foursquare location platform; enables app impersonation and user data access."
-kingfisher.guardian.1,25,low,"API key for The Guardian public news content; read-only access to published articles with quota enforcement."
+kingfisher.datagov.1,15,info,Rate-limit identifier for public government datasets; no meaningful secret power and no private data access.
+np.deviantart.1,45,medium,User-scoped OAuth access token for a niche creative platform; limited blast radius to one account.
+kingfisher.deviantart.1,45,medium,OAuth client secret enabling app-level impersonation on a niche creative platform; moderate impact.
+np.facebook.1,60,medium,Facebook app secret key enabling app-level API access and signature verification; can impersonate the application.
+np.facebook.2,45,medium,User-scoped Facebook access token; compromises one user account including profile and linked permissions.
+np.facebook.3,60,medium,Facebook app credentials; grants control of the FB integration app but impact is scoped to that one app/brand surface. Medium matches typical blast radius.
+kingfisher.flickr.1,30,low,Read-only API key for a photo-sharing platform; primarily accesses public content with rate-limit enforcement.
+kingfisher.flickr.2,30,low,User OAuth session token for Flickr; compromises one account on a niche platform with mostly public content.
+kingfisher.foursquare.1,20,low,Public client identifier; not a secret and provides no privileged access on its own.
+kingfisher.foursquare.2,45,medium,OAuth client secret for Foursquare location platform; enables app impersonation and user data access.
+kingfisher.guardian.1,25,low,API key for The Guardian public news content; read-only access to published articles with quota enforcement.
 np.instagram.1,45,medium,"Instagram Graph API access token; user-scoped access to profile, media, and messaging for one account."
-np.linkedin.1,20,low,"Public LinkedIn OAuth client identifier; not a secret and provides no privileged access on its own."
-np.linkedin.2,40,low,"LinkedIn OAuth client secret; app-level but LinkedIn scope is user-profile-focused with limited downstream impact."
-np.linkedin.3,35,low,"User-scoped LinkedIn access token; read/write on one professional profile with limited blast radius."
-np.nasa.1,25,low,"NASA public data API key; rate-limit key for open scientific datasets with no private data access."
-kingfisher.nytimes.1,25,low,"NYT public news content API key; read-only access to published articles with quota enforcement."
-np.twitch.1,50,medium,"Twitch stream key grants ability to broadcast live video as the streamer; high reputational impact for that account."
-np.twitter.1,20,low,"Public Twitter/X OAuth client identifier; not a secret and provides no privileged API access on its own."
-np.twitter.2,60,medium,"Twitter/X app-level OAuth secret key; enables full app impersonation and broad API access."
-np.twitter.3,55,medium,"Twitter/X app-level bearer token; enables read access to Twitter API at application scope."
+np.linkedin.1,20,low,Public LinkedIn OAuth client identifier; not a secret and provides no privileged access on its own.
+np.linkedin.2,40,low,LinkedIn OAuth client secret; app-level but LinkedIn scope is user-profile-focused with limited downstream impact.
+np.linkedin.3,35,low,User-scoped LinkedIn access token; read/write on one professional profile with limited blast radius.
+np.nasa.1,25,low,NASA public data API key; rate-limit key for open scientific datasets with no private data access.
+kingfisher.nytimes.1,25,low,NYT public news content API key; read-only access to published articles with quota enforcement.
+np.twitch.1,50,medium,Twitch stream key grants ability to broadcast live video as the streamer; high reputational impact for that account.
+np.twitter.1,20,low,Public Twitter/X OAuth client identifier; not a secret and provides no privileged API access on its own.
+np.twitter.2,60,medium,Twitter/X app-level OAuth secret key; enables full app impersonation and broad API access.
+np.twitter.3,55,medium,Twitter/X app-level bearer token; enables read access to Twitter API at application scope.
 np.twitter.4,50,medium,"User-scoped Twitter/X access token; can post, read DMs, and act as the authenticated user account."
-kingfisher.yelp.1,30,low,"Yelp Fusion API key for public business data; read-only access to restaurant and business listings with rate limits."
-np.youtube.1,30,low,"YouTube Data API key; mostly read-only quota key for public video data with no OAuth user delegation."
-np.adafruit.1,55,medium,"Adafruit IO key grants access to IoT dashboard feeds and data; limited to cloud data plane with no direct device firmware control."
-np.adobe.1,70,high,"Adobe OAuth client secret enables impersonation of OAuth application across Creative Cloud and Experience Platform APIs."
-kingfisher.aiven.1,85,critical,"Aiven API key provides admin-level control over managed cloud databases (PostgreSQL/Kafka/etc.); full infrastructure compromise potential."
-np.blynk.1,60,high,"Blynk device access token controls a single IoT device (GPIO/functions); physical-world impact limited to one device scope."
-np.blynk.2,75,high,"Blynk organization access token grants fleet-wide device control across all devices in an org; elevated physical-world impact."
-np.blynk.3,75,high,"Blynk organization access token (alternate detection pattern); same fleet-wide device control scope."
-np.blynk.8,85,critical,"Blynk organization client credentials (client_id+secret) enable full OAuth token minting for entire org fleet."
-np.blynk.9,85,critical,"Blynk organization client credentials (alternate detection pattern); same full org OAuth scope."
-np.particleio.1,75,high,"Particle.io access token can flash firmware and call device functions on cloud-connected hardware; direct physical-world impact."
-np.particleio.2,75,high,"Particle.io access token (alternate detection pattern); same firmware-flash and device-function control scope."
-kingfisher.riot.1,15,info,"Riot platform host is a configuration identifier/hostname with no credential value."
-kingfisher.riot.2,35,low,"Riot Games API key provides read access to game data and match history; rate-limited public-facing API."
-np.thingsboard.1,70,high,"ThingsBoard access token authenticates a device or user to the IoT platform; enables telemetry read/write and device command execution."
-np.thingsboard.2,75,high,"ThingsBoard provision device key allows registration of new devices into the platform; enables rogue device enrollment."
-np.thingsboard.3,75,high,"ThingsBoard provision device secret pairs with provision key to authenticate device provisioning; same rogue-device registration risk."
-np.truenas.1,85,critical,"TrueNAS WebSocket API key provides full NAS administrative control (storage pools/shares/plugins/VMs); critical data and infrastructure impact."
-np.truenas.2,85,critical,"TrueNAS REST API key provides full NAS administrative control equivalent to WebSocket; complete storage system compromise."
-np.truenas.3,55,medium,"TrueNAS keyword-proximity detection is lower-confidence (may match config comments near key material); reduced certainty warrants medium."
-np.dropbox.1,85,critical,"Dropbox Access Token grants full read/write access to every file in the authenticated user's Dropbox; file-sync services holding all user files carry the same blast radius as cloud-infra breaches."
+kingfisher.yelp.1,30,low,Yelp Fusion API key for public business data; read-only access to restaurant and business listings with rate limits.
+np.youtube.1,30,low,YouTube Data API key; mostly read-only quota key for public video data with no OAuth user delegation.
+np.adafruit.1,55,medium,Adafruit IO key grants access to IoT dashboard feeds and data; limited to cloud data plane with no direct device firmware control.
+np.adobe.1,70,high,Adobe OAuth client secret enables impersonation of OAuth application across Creative Cloud and Experience Platform APIs.
+kingfisher.aiven.1,85,critical,Aiven API key provides admin-level control over managed cloud databases (PostgreSQL/Kafka/etc.); full infrastructure compromise potential.
+np.blynk.1,60,high,Blynk device access token controls a single IoT device (GPIO/functions); physical-world impact limited to one device scope.
+np.blynk.2,75,high,Blynk organization access token grants fleet-wide device control across all devices in an org; elevated physical-world impact.
+np.blynk.3,75,high,Blynk organization access token (alternate detection pattern); same fleet-wide device control scope.
+np.blynk.8,85,critical,Blynk organization client credentials (client_id+secret) enable full OAuth token minting for entire org fleet.
+np.blynk.9,85,critical,Blynk organization client credentials (alternate detection pattern); same full org OAuth scope.
+np.particleio.1,75,high,Particle.io access token can flash firmware and call device functions on cloud-connected hardware; direct physical-world impact.
+np.particleio.2,75,high,Particle.io access token (alternate detection pattern); same firmware-flash and device-function control scope.
+kingfisher.riot.1,15,info,Riot platform host is a configuration identifier/hostname with no credential value.
+kingfisher.riot.2,35,low,Riot Games API key provides read access to game data and match history; rate-limited public-facing API.
+np.thingsboard.1,70,high,ThingsBoard access token authenticates a device or user to the IoT platform; enables telemetry read/write and device command execution.
+np.thingsboard.2,75,high,ThingsBoard provision device key allows registration of new devices into the platform; enables rogue device enrollment.
+np.thingsboard.3,75,high,ThingsBoard provision device secret pairs with provision key to authenticate device provisioning; same rogue-device registration risk.
+np.truenas.1,85,critical,TrueNAS WebSocket API key provides full NAS administrative control (storage pools/shares/plugins/VMs); critical data and infrastructure impact.
+np.truenas.2,85,critical,TrueNAS REST API key provides full NAS administrative control equivalent to WebSocket; complete storage system compromise.
+np.truenas.3,55,medium,TrueNAS keyword-proximity detection is lower-confidence (may match config comments near key material); reduced certainty warrants medium.
+np.dropbox.1,85,critical,Dropbox Access Token grants full read/write access to every file in the authenticated user's Dropbox; file-sync services holding all user files carry the same blast radius as cloud-infra breaches.
 kingfisher.fileio.1,55,medium,"FileIO Secret Key controls a temporary file-hosting service; can upload malicious files (phishing payloads, malware distribution) but service is ephemeral by design."
-kingfisher.airtable.1,60,high,"Airtable Personal Access Token grants full read/write access to Airtable bases which may contain sensitive business records; long-lived and broadly scoped."
-kingfisher.airtable.2,55,medium,"Airtable OAuth Token is typically more narrowly scoped than a PAT and may be short-lived; still exposes Airtable base data."
-kingfisher.apify.1,50,medium,"Apify API Token enables control of web scraping actors and data storage; unauthorized compute usage and scraped data access."
-kingfisher.apollo.1,60,high,"Apollo API Key provides access to Apollo.io sales intelligence platform including contact/company enrichment data; prospect database exfiltration."
-kingfisher.clay.1,50,medium,"Clay API Key accesses Clay data enrichment and GTM platform; exposure may leak enrichment workflows and contact data."
-kingfisher.diffbot.1,45,medium,"Diffbot API Key accesses web data extraction and knowledge graph APIs; unauthorized scraping quota usage."
+kingfisher.airtable.1,60,high,Airtable Personal Access Token grants full read/write access to Airtable bases which may contain sensitive business records; long-lived and broadly scoped.
+kingfisher.airtable.2,55,medium,Airtable OAuth Token is typically more narrowly scoped than a PAT and may be short-lived; still exposes Airtable base data.
+kingfisher.apify.1,50,medium,Apify API Token enables control of web scraping actors and data storage; unauthorized compute usage and scraped data access.
+kingfisher.apollo.1,55,medium,Sales intelligence platform; exposes your lead/prospect list (competitive intel) but no customer PII and no systems impact. Medium matches blast radius.
+kingfisher.clay.1,50,medium,Clay API Key accesses Clay data enrichment and GTM platform; exposure may leak enrichment workflows and contact data.
+kingfisher.diffbot.1,45,medium,Diffbot API Key accesses web data extraction and knowledge graph APIs; unauthorized scraping quota usage.
 kingfisher.fastly.1,75,high,"Fastly API Token provides CDN administrative control including cache purging, configuration changes, and WAF rule modification."
-np.figma.1,60,high,"Figma Personal Access Token grants access to design files, prototypes, and team assets; unreleased product designs and proprietary UI assets."
-kingfisher.frame.io.1,65,high,"Frame.io API Token provides access to video asset management platform including project files, review workflows, and media assets."
-kingfisher.frameio.1,65,high,"Frame.io API Token (alternate rule) — same risk profile as kingfisher.frame.io.1; video asset management access."
-np.krb5.asrep.23.1,90,critical,"Kerberos 5 AS-REP hash (etype 23/RC4) is a password hash that can be cracked offline via AS-REP roasting; successful cracking yields AD credentials."
+np.figma.1,55,medium,Design files and prototypes; proprietary UI/IP leak risk but no customer PII and no systems access. Medium matches impact.
+kingfisher.frame.io.1,55,medium,Video asset management access; proprietary media leak risk but no customer PII or systems compromise. Medium matches impact.
+kingfisher.frameio.1,55,medium,Video asset management access (alternate rule); same risk profile as kingfisher.frame.io.1. Medium matches impact.
+np.krb5.asrep.23.1,90,critical,Kerberos 5 AS-REP hash (etype 23/RC4) is a password hash that can be cracked offline via AS-REP roasting; successful cracking yields AD credentials.
 kingfisher.ionic.1,55,medium,"Ionic API Token provides access to Ionic mobile application platform for builds, deployments, and app configuration."
-np.postman.1,70,high,"Postman API Key grants access to private API collections and workspaces which frequently contain embedded credentials and authentication tokens."
-kingfisher.airbrake.1,45,medium,"Error monitoring user key; exposes project list and error data but limited blast radius."
-kingfisher.alchemy.1,68,high,"Web3 RPC node access to Ethereum mainnet; enables NFT/transaction queries and blockchain operations on behalf of the org."
-kingfisher.algolia.1,55,medium,"Algolia Admin API key grants index management (read/write/delete indices and records); meaningful data exposure."
-kingfisher.algolia.2,20,low,"Algolia Application ID — identifier only (visible:false helper); not a secret by itself."
-kingfisher.anypoint.1,55,medium,"MuleSoft Anypoint API key; access to integration platform account and API management."
-kingfisher.baremetrics.1,40,medium,"Revenue analytics read API; exposes MRR/subscription financial metrics but no write/modify capability."
-np.branchio.1,50,medium,"Branch.io live key; access to deep link data and attribution analytics for production."
-np.branchio.2,30,low,"Branch.io test key; limited scope to test environment — reduced real-world impact."
-kingfisher.ciscomeraki.1,65,high,"Cisco Meraki API key; grants access to manage network devices and organization settings — network infrastructure admin."
-kingfisher.clearbit.1,45,medium,"Clearbit data enrichment API; exposes company/person lookup — primarily data consumption risk."
-kingfisher.cloudsight.1,40,medium,"CloudSight image recognition API; enables image submissions and result queries — limited to paid resource abuse."
-kingfisher.confluent.1,20,low,"Confluent client ID (visible:false helper rule); not a standalone secret — requires paired API secret."
-kingfisher.confluent.2,65,high,"Confluent/Kafka API secret (paired with client ID); grants full access to Kafka cluster data streams and IAM management."
-kingfisher.confluent.3,65,high,"Confluent API secret updated format with checksum; same risk as .2 — Kafka cluster access and data stream control."
-kingfisher.contentful.1,40,medium,"Contentful Delivery API token; read-only CMS content access — no write capability."
-kingfisher.contentful.2,55,medium,"Contentful Personal Access Token (CFPAT-prefix); full CMS management including content creation and deletion."
-kingfisher.coze.1,45,medium,"Coze AI chatbot platform PAT; access to workspaces and AI agent configurations."
-np.digitalocean.1,85,critical,"DigitalOcean Application Access Token (doo_v1_); full cloud infra API — droplets/networking/databases — AWS-tier analog."
-np.digitalocean.2,85,critical,"DigitalOcean Personal Access Token (dop_v1_); full cloud infra control — highest privilege DigitalOcean token type."
-np.digitalocean.3,82,critical,"DigitalOcean Refresh Token (dor_v1_); enables OAuth token refresh to obtain new PATs — sustained infra access."
-kingfisher.disqus.1,40,medium,"Disqus comments API secret; exposes forum threads and user comment data."
-np.django.1,68,high,"Django SECRET_KEY; cryptographic signing of sessions/cookies/CSRF tokens — enables session forgery and auth bypass."
-kingfisher.endorlabs.1,20,low,"Endor Labs API key component (visible:false helper); not usable alone — requires paired API secret."
-kingfisher.endorlabs.2,50,medium,"Endor Labs API secret (SCA/supply chain tool); access to dependency vulnerability data and org security posture."
-kingfisher.eraser.1,35,low,"Eraser diagram/doc tool API key; limited to usage reporting queries — low blast radius."
-kingfisher.finnhub.1,40,medium,"Finnhub financial market data API token; stock/crypto data access — paid resource consumption risk."
-np.firebase.1,70,high,"Firebase Cloud Messaging server key; grants authority to send push notifications to ALL registered devices — phishing/spam vector."
-np.firebase.2,30,low,"Firebase FCM device token; single-device push notification target identifier — limited to targeted messaging of one user."
-np.firecrawl.1,40,medium,"Firecrawl web scraping API key; paid resource consumption and crawling operations — limited to scraping service."
-kingfisher.fleetbase.1,50,medium,"Fleetbase logistics/fleet management API; live/test variants — access to fleet operations and order data."
-kingfisher.flyio.1,75,high,"Fly.io API Token (FlyV1 prefix); manages deployed containers/VMs and app infrastructure — hosting infra admin."
-kingfisher.freshbooks.1,55,medium,"FreshBooks accounting access token; exposes invoices/clients/financial records — sensitive business data."
-np.google.1,15,info,"Google Client ID (.apps.googleusercontent.com); public identifier used in OAuth flows — not a secret."
-np.google.2,65,high,"Google OAuth Client Secret (GOCSPX- prefix); combined with client ID enables OAuth token issuance."
-np.google.3,55,medium,"Google OAuth client_secret fuzzy pattern; lower confidence generic pattern. LOW CONFIDENCE: fuzzy match."
-np.google.4,70,high,"Google OAuth Access Token (ya29. prefix); live bearer token granting immediate access to Google APIs."
-np.google.5,55,medium,"Google API key (AIza prefix); enables access to Google APIs — billing/quota abuse risk."
-np.google.6,68,high,"Google OAuth Credentials (client_id + client_secret combined); full OAuth flow enablement."
-np.google.7,55,medium,"Base64-encoded Google API key (QUl6YVN prefix); same risk as np.google.5 once decoded."
-np.google.8,50,medium,"Google Maps API key with contextual match; quota theft and billing charges on Maps Platform."
-kingfisher.google.oauth2.1,70,high,"Google OAuth2 Access Token (ya29. pattern via kingfisher rule); live token granting immediate Google API access."
-np.heroku.1,85,critical,"Heroku API Key; full PaaS cloud infra control — deploy/manage/destroy apps and dynos — cloud infra tier."
-kingfisher.ibm.1,85,critical,"IBM Cloud User API Key; full IBM Cloud infra access — equivalent authority to AWS IAM user key."
-kingfisher.infura.1,68,high,"Infura Web3 API key; Ethereum/IPFS node access for RPC calls and blockchain data."
-kingfisher.instantly.1,45,medium,"Instantly.ai email outreach API key; access to email campaign analytics and account data."
-np.kagi.1,35,low,"Kagi search API key; paid search resource consumption — limited to search queries and account info."
-np.keenio.1,45,medium,"Keen.io analytics API key; read/write/master key variants — event data access and possible project administration."
-kingfisher.kickbox.1,40,medium,"Kickbox email verification API key; enables email verification queries — paid resource consumption."
-np.lokalise.1,45,medium,"Lokalise translation management API token; read/write on localization projects and language files."
-kingfisher.looker.1,15,info,"Looker Base URL (visible:false helper); hostname identifier only — not a credential."
-kingfisher.looker.2,20,low,"Looker Client ID (visible:false helper); not usable as a standalone secret — requires client secret."
-kingfisher.looker.3,60,high,"Looker Client Secret (paired with URL and client ID); grants BI platform login and business intelligence data access."
-kingfisher.netlify.1,75,high,"Netlify API Key (hex pattern); full hosting platform access — deploy/manage sites and environment variables."
-kingfisher.netlify.2,75,high,"Netlify API Key (alphanumeric pattern); same capability as .1 — site management and deployment control."
-kingfisher.nvidia.nim.1,55,medium,"NVIDIA NIM API Key (nvapi- prefix); AI inference API access — paid GPU resource consumption."
-kingfisher.nylas.api_uri.1,10,info,"Nylas API URI (visible:false helper); regional endpoint identifier only — not a credential."
-kingfisher.nylas.1,55,medium,"Nylas email/calendar API key; access to email and calendar data depending on scopes — moderate PII exposure."
-kingfisher.owlbot.1,25,low,"Owlbot dictionary API key; public dictionary lookup service — very limited impact beyond quota consumption."
-kingfisher.pastebin.1,35,low,"Pastebin API key; enables paste creation/reading — limited to paste platform operations."
-kingfisher.prefect.1,50,medium,"Prefect workflow orchestration API token; access to cloud workflows and workspace data."
-kingfisher.pubnub.1,50,medium,"PubNub publish key; enables publishing messages to real-time channels — moderate messaging abuse risk."
-kingfisher.pubnub.2,45,medium,"PubNub subscribe key; enables reading real-time channel data — potential message interception."
-kingfisher.rapidapi.1,50,medium,"RapidAPI key; access to subscribed APIs on RapidAPI marketplace — scope varies by subscriptions."
-kingfisher.readme.1,35,low,"ReadMe documentation API key; access to developer documentation project settings — limited impact."
-kingfisher.recaptcha.1,45,medium,"reCAPTCHA API key; pattern matches both site keys and secret keys — if secret key allows CAPTCHA bypass."
-kingfisher.scale.1,50,medium,"Scale AI data labeling live API key; access to AI annotation team management and task data."
-kingfisher.scale.2,35,low,"Scale Callback Auth key (live_auth_ prefix); webhook signature verification only — cannot initiate API calls."
-np.sourcegraph.1,68,high,"Sourcegraph Access Token (sgp_ prefix); code search access and potential lateral movement to linked GitHub/GitLab."
-np.spotify.1,40,medium,"Spotify OAuth access token; user account access (playlists/history/profile) — limited to media platform data."
-kingfisher.sslmate.1,50,medium,"SSLMate API key; SSL certificate ordering and management — potential for rogue cert issuance on managed domains."
-kingfisher.vercel.1,85,critical,"Vercel API Token; full hosting infra control — deploy/manage projects and environment variables — production infra tier."
-np.wpengine.1,65,high,"WPEngine API key; WordPress hosting management — site control/backups/configuration access across hosted sites."
-kingfisher.yandex.1,40,medium,"Yandex API key (dictionary service context). LOW CONFIDENCE: pattern may apply to broader Yandex cloud services."
-np.zapier.1,50,medium,"Zapier Webhook URL; triggers automation workflows — enables data exfiltration via zap execution."
-kingfisher.credentials.1,55,medium,"HTTP URL with user:pass embedded; min_entropy 3.0 medium confidence; unknown service target."
-kingfisher.curl.1,55,medium,"curl -u flag leaks creds in shell history; low YAML confidence; unknown target service."
+np.postman.1,70,high,Postman API Key grants access to private API collections and workspaces which frequently contain embedded credentials and authentication tokens.
+kingfisher.airbrake.1,45,medium,Error monitoring user key; exposes project list and error data but limited blast radius.
+kingfisher.alchemy.1,68,high,Web3 RPC node access to Ethereum mainnet; enables NFT/transaction queries and blockchain operations on behalf of the org.
+kingfisher.algolia.1,55,medium,Algolia Admin API key grants index management (read/write/delete indices and records); meaningful data exposure.
+kingfisher.algolia.2,20,low,Algolia Application ID — identifier only (visible:false helper); not a secret by itself.
+kingfisher.anypoint.1,55,medium,MuleSoft Anypoint API key; access to integration platform account and API management.
+kingfisher.baremetrics.1,40,medium,Revenue analytics read API; exposes MRR/subscription financial metrics but no write/modify capability.
+np.branchio.1,50,medium,Branch.io live key; access to deep link data and attribution analytics for production.
+np.branchio.2,30,low,Branch.io test key; limited scope to test environment — reduced real-world impact.
+kingfisher.ciscomeraki.1,65,high,Cisco Meraki API key; grants access to manage network devices and organization settings — network infrastructure admin.
+kingfisher.clearbit.1,45,medium,Clearbit data enrichment API; exposes company/person lookup — primarily data consumption risk.
+kingfisher.cloudsight.1,40,medium,CloudSight image recognition API; enables image submissions and result queries — limited to paid resource abuse.
+kingfisher.confluent.1,20,low,Confluent client ID (visible:false helper rule); not a standalone secret — requires paired API secret.
+kingfisher.confluent.2,65,high,Confluent/Kafka API secret (paired with client ID); grants full access to Kafka cluster data streams and IAM management.
+kingfisher.confluent.3,65,high,Confluent API secret updated format with checksum; same risk as .2 — Kafka cluster access and data stream control.
+kingfisher.contentful.1,40,medium,Contentful Delivery API token; read-only CMS content access — no write capability.
+kingfisher.contentful.2,55,medium,Contentful Personal Access Token (CFPAT-prefix); full CMS management including content creation and deletion.
+kingfisher.coze.1,45,medium,Coze AI chatbot platform PAT; access to workspaces and AI agent configurations.
+np.digitalocean.1,85,critical,DigitalOcean Application Access Token (doo_v1_); full cloud infra API — droplets/networking/databases — AWS-tier analog.
+np.digitalocean.2,85,critical,DigitalOcean Personal Access Token (dop_v1_); full cloud infra control — highest privilege DigitalOcean token type.
+np.digitalocean.3,82,critical,DigitalOcean Refresh Token (dor_v1_); enables OAuth token refresh to obtain new PATs — sustained infra access.
+kingfisher.disqus.1,40,medium,Disqus comments API secret; exposes forum threads and user comment data.
+np.django.1,68,high,Django SECRET_KEY; cryptographic signing of sessions/cookies/CSRF tokens — enables session forgery and auth bypass.
+kingfisher.endorlabs.1,20,low,Endor Labs API key component (visible:false helper); not usable alone — requires paired API secret.
+kingfisher.endorlabs.2,50,medium,Endor Labs API secret (SCA/supply chain tool); access to dependency vulnerability data and org security posture.
+kingfisher.eraser.1,35,low,Eraser diagram/doc tool API key; limited to usage reporting queries — low blast radius.
+kingfisher.finnhub.1,40,medium,Finnhub financial market data API token; stock/crypto data access — paid resource consumption risk.
+np.firebase.1,70,high,Firebase Cloud Messaging server key; grants authority to send push notifications to ALL registered devices — phishing/spam vector.
+np.firebase.2,30,low,Firebase FCM device token; single-device push notification target identifier — limited to targeted messaging of one user.
+np.firecrawl.1,40,medium,Firecrawl web scraping API key; paid resource consumption and crawling operations — limited to scraping service.
+kingfisher.fleetbase.1,50,medium,Fleetbase logistics/fleet management API; live/test variants — access to fleet operations and order data.
+kingfisher.flyio.1,75,high,Fly.io API Token (FlyV1 prefix); manages deployed containers/VMs and app infrastructure — hosting infra admin.
+kingfisher.freshbooks.1,55,medium,FreshBooks accounting access token; exposes invoices/clients/financial records — sensitive business data.
+np.google.1,15,info,Google Client ID (.apps.googleusercontent.com); public identifier used in OAuth flows — not a secret.
+np.google.2,65,high,Google OAuth Client Secret (GOCSPX- prefix); combined with client ID enables OAuth token issuance.
+np.google.3,55,medium,Google OAuth client_secret fuzzy pattern; lower confidence generic pattern. LOW CONFIDENCE: fuzzy match.
+np.google.4,70,high,Google OAuth Access Token (ya29. prefix); live bearer token granting immediate access to Google APIs.
+np.google.5,55,medium,Google API key (AIza prefix); enables access to Google APIs — billing/quota abuse risk.
+np.google.6,68,high,Google OAuth Credentials (client_id + client_secret combined); full OAuth flow enablement.
+np.google.7,55,medium,Base64-encoded Google API key (QUl6YVN prefix); same risk as np.google.5 once decoded.
+np.google.8,50,medium,Google Maps API key with contextual match; quota theft and billing charges on Maps Platform.
+kingfisher.google.oauth2.1,70,high,Google OAuth2 Access Token (ya29. pattern via kingfisher rule); live token granting immediate Google API access.
+np.heroku.1,85,critical,Heroku API Key; full PaaS cloud infra control — deploy/manage/destroy apps and dynos — cloud infra tier.
+kingfisher.ibm.1,85,critical,IBM Cloud User API Key; full IBM Cloud infra access — equivalent authority to AWS IAM user key.
+kingfisher.infura.1,68,high,Infura Web3 API key; Ethereum/IPFS node access for RPC calls and blockchain data.
+kingfisher.instantly.1,45,medium,Instantly.ai email outreach API key; access to email campaign analytics and account data.
+np.kagi.1,35,low,Kagi search API key; paid search resource consumption — limited to search queries and account info.
+np.keenio.1,45,medium,Keen.io analytics API key; read/write/master key variants — event data access and possible project administration.
+kingfisher.kickbox.1,40,medium,Kickbox email verification API key; enables email verification queries — paid resource consumption.
+np.lokalise.1,45,medium,Lokalise translation management API token; read/write on localization projects and language files.
+kingfisher.looker.1,15,info,Looker Base URL (visible:false helper); hostname identifier only — not a credential.
+kingfisher.looker.2,20,low,Looker Client ID (visible:false helper); not usable as a standalone secret — requires client secret.
+kingfisher.looker.3,60,high,Looker Client Secret (paired with URL and client ID); grants BI platform login and business intelligence data access.
+kingfisher.netlify.1,75,high,Netlify API Key (hex pattern); full hosting platform access — deploy/manage sites and environment variables.
+kingfisher.netlify.2,75,high,Netlify API Key (alphanumeric pattern); same capability as .1 — site management and deployment control.
+kingfisher.nvidia.nim.1,55,medium,NVIDIA NIM API Key (nvapi- prefix); AI inference API access — paid GPU resource consumption.
+kingfisher.nylas.api_uri.1,10,info,Nylas API URI (visible:false helper); regional endpoint identifier only — not a credential.
+kingfisher.nylas.1,55,medium,Nylas email/calendar API key; access to email and calendar data depending on scopes — moderate PII exposure.
+kingfisher.owlbot.1,25,low,Owlbot dictionary API key; public dictionary lookup service — very limited impact beyond quota consumption.
+kingfisher.pastebin.1,35,low,Pastebin API key; enables paste creation/reading — limited to paste platform operations.
+kingfisher.prefect.1,50,medium,Prefect workflow orchestration API token; access to cloud workflows and workspace data.
+kingfisher.pubnub.1,50,medium,PubNub publish key; enables publishing messages to real-time channels — moderate messaging abuse risk.
+kingfisher.pubnub.2,45,medium,PubNub subscribe key; enables reading real-time channel data — potential message interception.
+kingfisher.rapidapi.1,50,medium,RapidAPI key; access to subscribed APIs on RapidAPI marketplace — scope varies by subscriptions.
+kingfisher.readme.1,35,low,ReadMe documentation API key; access to developer documentation project settings — limited impact.
+kingfisher.recaptcha.1,45,medium,reCAPTCHA API key; pattern matches both site keys and secret keys — if secret key allows CAPTCHA bypass.
+kingfisher.scale.1,50,medium,Scale AI data labeling live API key; access to AI annotation team management and task data.
+kingfisher.scale.2,35,low,Scale Callback Auth key (live_auth_ prefix); webhook signature verification only — cannot initiate API calls.
+np.sourcegraph.1,68,high,Sourcegraph Access Token (sgp_ prefix); code search access and potential lateral movement to linked GitHub/GitLab.
+np.spotify.1,40,medium,Spotify OAuth access token; user account access (playlists/history/profile) — limited to media platform data.
+kingfisher.sslmate.1,50,medium,SSLMate API key; SSL certificate ordering and management — potential for rogue cert issuance on managed domains.
+kingfisher.vercel.1,85,critical,Vercel API Token; full hosting infra control — deploy/manage projects and environment variables — production infra tier.
+np.wpengine.1,65,high,WPEngine API key; WordPress hosting management — site control/backups/configuration access across hosted sites.
+kingfisher.yandex.1,40,medium,Yandex API key (dictionary service context). LOW CONFIDENCE: pattern may apply to broader Yandex cloud services.
+np.zapier.1,50,medium,Zapier Webhook URL; triggers automation workflows — enables data exfiltration via zap execution.
+kingfisher.credentials.1,55,medium,HTTP URL with user:pass embedded; min_entropy 3.0 medium confidence; unknown service target.
+kingfisher.curl.1,55,medium,curl -u flag leaks creds in shell history; low YAML confidence; unknown target service.
 kingfisher.curl.2,55,medium,"curl Authorization header; opaque token, no system context, low YAML confidence."
-kingfisher.filezilla.1,70,high,"FileZilla base64-encoded stored password; trivially decoded FTP/SFTP credential."
-kingfisher.filezilla.2,70,high,"FileZilla plaintext stored password; directly readable remote-access credential."
-np.generic.1,50,medium,"Generic 32-64 char secret value; YAML explicitly notes bad precision/recall."
-np.generic.2,50,medium,"Generic API key (api_key/access_key variable); no vendor signal."
-np.generic.3,50,medium,"Quoted user+password pair assignment; two-field pattern adds strength."
-np.generic.4,50,medium,"Unquoted user+password pair (config-file style); same strength as .3."
+kingfisher.filezilla.1,70,high,FileZilla base64-encoded stored password; trivially decoded FTP/SFTP credential.
+kingfisher.filezilla.2,70,high,FileZilla plaintext stored password; directly readable remote-access credential.
+np.generic.1,50,medium,Generic 32-64 char secret value; YAML explicitly notes bad precision/recall.
+np.generic.2,50,medium,Generic API key (api_key/access_key variable); no vendor signal.
+np.generic.3,50,medium,Quoted user+password pair assignment; two-field pattern adds strength.
+np.generic.4,50,medium,Unquoted user+password pair (config-file style); same strength as .3.
 np.generic.5,50,medium,"Double-quoted password= assignment; single-field, many negatives filtered."
-np.generic.6,50,medium,"Single-quoted password= assignment; variant of .5."
-np.generic.7,85,critical,".NET NetworkCredential hardcoded user+pass; NTLM/Kerberos/Basic auth to network resources."
-np.generic.8,85,critical,".NET DirectoryEntry hardcoded LDAP path+user+pass; Active Directory access per YAML."
+np.generic.6,50,medium,Single-quoted password= assignment; variant of .5.
+np.generic.7,85,critical,.NET NetworkCredential hardcoded user+pass; NTLM/Kerberos/Basic auth to network resources.
+np.generic.8,85,critical,.NET DirectoryEntry hardcoded LDAP path+user+pass; Active Directory access per YAML.
 np.generic.9,55,medium,".NET appsettings key with pass/secret/token/admin value; fuzzy, no DB specificity."
-np.generic.10,85,critical,".NET ConnectionString config; YAML: may allow attacker direct database access."
+np.generic.10,85,critical,.NET ConnectionString config; YAML: may allow attacker direct database access.
 np.generic.11,45,medium,"'the password is ...' natural-language phrase; documentation-style, lower specificity."
-np.generic.12,45,medium,"Variant of .11 with double-quoted value; same documentation-style reasoning."
-np.generic.13,45,medium,"'password for user ... is ...' phrase; doc-style despite username context."
-np.generic.14,45,medium,"Variant of .13 with double-quoted values; same reasoning."
-np.generic.15,50,medium,"if-statement password comparison (double-quoted); hardcoded app-level credential."
-np.generic.16,50,medium,"if-statement password comparison (single-quoted); variant of .15."
+np.generic.12,45,medium,Variant of .11 with double-quoted value; same documentation-style reasoning.
+np.generic.13,45,medium,'password for user ... is ...' phrase; doc-style despite username context.
+np.generic.14,45,medium,Variant of .13 with double-quoted values; same reasoning.
+np.generic.15,50,medium,if-statement password comparison (double-quoted); hardcoded app-level credential.
+np.generic.16,50,medium,if-statement password comparison (single-quoted); variant of .15.
 np.http.1,55,medium,"HTTP Basic Authorization header (base64 user:pass); broad scope, any service."
 np.http.2,55,medium,"HTTP Bearer token; opaque, no system specificity."
 np.jwt.1,55,medium,"Full JWT token (header.payload.sig); issued token may be expired, not the signing key."
-np.jwt.2,75,high,"JWT signing secret (double-quoted YAML); compromising this forges arbitrary tokens."
+np.jwt.2,75,high,JWT signing secret (double-quoted YAML); compromising this forges arbitrary tokens.
 np.jwt.3,75,high,"JWT signing secret (single-quoted YAML); variant of .2, same high-severity rationale."
-np.netrc.1,70,high,"netrc machine+login+password; classic Unix credential file for curl/git/ftp."
-np.phpmailer.1,60,medium,"PHPMailer SMTP host+user+pass triple; email creds meaningful but not infra-level."
-np.psexec.1,85,critical,"PsExec -u/-p invocation; domain admin credentials enabling Windows lateral movement."
-np.reactapp.1,50,medium,"REACT_APP username baked into client bundle; identifier category per YAML."
+np.netrc.1,70,high,netrc machine+login+password; classic Unix credential file for curl/git/ftp.
+np.phpmailer.1,60,medium,PHPMailer SMTP host+user+pass triple; email creds meaningful but not infra-level.
+np.psexec.1,85,critical,PsExec -u/-p invocation; domain admin credentials enabling Windows lateral movement.
+np.reactapp.1,50,medium,REACT_APP username baked into client bundle; identifier category per YAML.
 np.reactapp.2,50,medium,"REACT_APP password baked into client bundle; client-visible credential, unknown scope."
-kingfisher.uri.1,55,medium,"RFC-compliant URI with user:secret@host; higher entropy threshold (4.0) than credentials.1."
+kingfisher.uri.1,55,medium,RFC-compliant URI with user:secret@host; higher entropy threshold (4.0) than credentials.1.

@@ -46,7 +46,7 @@ rules:
 
 - name: Facebook App Credentials
   id: np.facebook.3
-  base_score: 65
+  base_score: 60
 
   pattern: |
     (?x)(?i)

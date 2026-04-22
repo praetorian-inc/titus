@@ -1,7 +1,7 @@
 rules:
   - name: Apollo API Key
     id: kingfisher.apollo.1
-    base_score: 60
+    base_score: 55
     pattern: |
       (?xi)
       \b

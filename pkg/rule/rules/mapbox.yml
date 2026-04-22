@@ -24,7 +24,7 @@ rules:
 
 - name: Mapbox Secret Access Token
   id: np.mapbox.2
-  base_score: 65
+  base_score: 50
 
   # NOTE: `pk` tokens are public and have read-only access.
   #       `sk` tokens are secret and should never be shared.
