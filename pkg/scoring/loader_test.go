@@ -50,6 +50,110 @@ func TestLoadScorers_EmptyArray(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLoadScorers_MalformedRegex(t *testing.T) {
+	loader := NewLoader()
+	yamlBytes := []byte(`scorers:
+  - name: bad-regex
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: bad
+        match_group: { name: x, matches: '[unclosed' }
+        delta: 1
+`)
+	_, err := loader.LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "regex")
+}
+
+func TestLoadScorers_BothDeltaAndSetScore(t *testing.T) {
+	loader := NewLoader()
+	yamlBytes := []byte(`scorers:
+  - name: ambiguous
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: bad
+        match_length: { op: gt, value: 0 }
+        delta: 5
+        set_score: 50
+`)
+	_, err := loader.LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one")
+}
+
+func TestLoadScorers_NoCondition(t *testing.T) {
+	loader := NewLoader()
+	yamlBytes := []byte(`scorers:
+  - name: no-cond
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: bad
+        delta: 5
+`)
+	_, err := loader.LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one condition")
+}
+
+func TestLoadScorers_NoAction(t *testing.T) {
+	loader := NewLoader()
+	yamlBytes := []byte(`scorers:
+  - name: no-action
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: bad
+        match_length: { op: gt, value: 0 }
+`)
+	_, err := loader.LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delta or set_score")
+}
+
+func TestLoadScorers_SetScoreOutOfRange(t *testing.T) {
+	loader := NewLoader()
+	yamlBytes := []byte(`scorers:
+  - name: out-of-range
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: bad
+        match_length: { op: gt, value: 0 }
+        set_score: 150
+`)
+	_, err := loader.LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "[0, 100]")
+}
+
+func TestLoadScorers_MissingRuleIDs(t *testing.T) {
+	loader := NewLoader()
+	yamlBytes := []byte(`scorers:
+  - name: no-rules
+    rule_ids: []
+    modifiers:
+      - name: x
+        match_length: { op: gt, value: 0 }
+        delta: 1
+`)
+	_, err := loader.LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rule_ids")
+}
+
+func TestLoadScorers_InvalidMatchLengthOp(t *testing.T) {
+	loader := NewLoader()
+	yamlBytes := []byte(`scorers:
+  - name: bad-op
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: x
+        match_length: { op: gte, value: 0 }
+        delta: 1
+`)
+	_, err := loader.LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "gt|lt|eq")
+}
+
 // Proves that the loader mirrors NewLoaderWithFS from pkg/rule/loader.go:26-30.
 func TestLoadBuiltinScorers_WithCustomFS(t *testing.T) {
 	mockFS := fstest.MapFS{
