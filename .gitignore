@@ -39,3 +39,11 @@ coverage.out
 .capability-development/
 .claude/
 .worktrees/
+
+# Claude Code session artifacts
+.claude/.output/
+.claude/hooks/
+.claude/settings.local.json
+.claude/.serena/
+.claude/.serena-warmup-status.json
+.claude/agent-memory/
