@@ -1,0 +1,28 @@
+name: Codex PR Review
+
+# Thin caller of the centralized hardened Codex PR reviewer
+# (praetorian-inc/public-workflows). All security posture lives there:
+# same-repo gate, anti-injection prompt, drop-sudo sandbox, Harden-Runner,
+# CODEOWNERS on the reusable workflow file. Do not copy security settings
+# back into this file — always widen via a PR to public-workflows.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: codex-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codex-review:
+    uses: praetorian-inc/public-workflows/.github/workflows/codex-code.yml@c53011b16f91273b2e8bf7b3981d5e64a9d4ad31  # v2.1.0 (codex-code.yml)
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      model: "gpt-5.4"
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
