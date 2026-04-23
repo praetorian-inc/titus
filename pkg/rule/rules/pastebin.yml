@@ -1,6 +1,7 @@
 rules:
   - name: Pastebin API Key
     id: kingfisher.pastebin.1
+    base_score: 35
     pattern: |
       (?xi)
       \b

@@ -2,6 +2,7 @@ rules:
 
 - name: MailChimp API Key
   id: np.mailchimp.1
+  base_score: 55
 
   pattern: |
     (?x)(?i)

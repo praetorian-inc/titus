@@ -1,6 +1,7 @@
 rules:
   - name: Baremetrics API Key
     id: kingfisher.baremetrics.1
+    base_score: 40
     pattern: |
       (?xi)
       \b

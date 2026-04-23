@@ -1,6 +1,7 @@
 rules:
   - name: GoCardless API Token
     id: kingfisher.gocardless.1
+    base_score: 83
     pattern: |
       (?xi)                     
       \b

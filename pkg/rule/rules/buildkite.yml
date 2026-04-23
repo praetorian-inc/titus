@@ -1,6 +1,7 @@
 rules:
   - name: Buildkite API Key
     id: kingfisher.buildkite.1
+    base_score: 65
     pattern: |
       (?xi)
       (?P<token>

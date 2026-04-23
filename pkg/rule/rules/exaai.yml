@@ -1,6 +1,7 @@
 rules:
   - name: Exa AI API Key
     id: kingfisher.exa.1
+    base_score: 50
     pattern: |
       (?xi)
       (?:

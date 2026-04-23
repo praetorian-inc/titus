@@ -4,6 +4,7 @@ rules:
 
 - name: Branch.io Live Key
   id: np.branchio.1
+  base_score: 50
 
   pattern: '(?i)\b(?P<key>key_live_[a-zA-Z0-9]{16,40})\b'
 
@@ -31,6 +32,7 @@ rules:
 
 - name: Branch.io Test Key
   id: np.branchio.2
+  base_score: 30
 
   pattern: '(?i)\b(?P<key>key_test_[a-zA-Z0-9]{16,40})\b'
 

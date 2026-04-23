@@ -1,6 +1,7 @@
 rules:
   - name: Voyage AI API Key
     id: kingfisher.voyageai.api_key
+    base_score: 45
     description: Detects Voyage AI API keys used for embedding and retrieval models.
     # Matches keys starting with 'pa-' followed by 43 URL-safe base64 characters
     pattern: |

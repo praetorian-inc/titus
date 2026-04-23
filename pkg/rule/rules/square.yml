@@ -2,6 +2,7 @@ rules:
 
 - name: Square Access Token
   id: np.square.1
+  base_score: 85
 
   pattern: '(?i)\b(?P<token>sq0atp-[a-z0-9_-]{22})\b'
 
@@ -35,6 +36,7 @@ rules:
 
 - name: Square OAuth Secret
   id: np.square.2
+  base_score: 83
 
   pattern: '(?i)\b(?P<secret>sq0csp-[a-z0-9_-]{43})\b'
 

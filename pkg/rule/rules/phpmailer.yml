@@ -2,6 +2,7 @@ rules:
 
 - name: PHPMailer Credentials
   id: np.phpmailer.1
+  base_score: 60
 
   pattern: |
     (?x)

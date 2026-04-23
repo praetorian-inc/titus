@@ -138,12 +138,32 @@ func (s *SQLiteStore) AddFinding(f *types.Finding) error {
 	if err != nil {
 		return fmt.Errorf("serializing groups: %w", err)
 	}
-	_, err = s.e.Exec("INSERT OR IGNORE INTO findings (structural_id, rule_id, groups_json) VALUES (?, ?, ?)", f.ID, f.RuleID, groupsJSON)
+
+	var scoreFinal, scoreBase sql.NullInt64
+	var scoreSeverity, scoreApplied sql.NullString
+	if f.Score != nil {
+		scoreFinal = sql.NullInt64{Int64: int64(f.Score.Final), Valid: true}
+		scoreBase = sql.NullInt64{Int64: int64(f.Score.Base), Valid: true}
+		scoreSeverity = sql.NullString{String: f.Score.SuggestedSeverity, Valid: true}
+
+		// Always marshal Applied (empty array if no modifiers fired).
+		appliedJSON, err := json.Marshal(f.Score.Applied)
+		if err != nil {
+			return fmt.Errorf("marshaling score.applied: %w", err)
+		}
+		scoreApplied = sql.NullString{String: string(appliedJSON), Valid: true}
+	}
+
+	_, err = s.e.Exec(
+		`INSERT OR IGNORE INTO findings (structural_id, rule_id, groups_json, score_final, score_base, score_suggested_severity, score_applied_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		f.ID, f.RuleID, groupsJSON,
+		scoreFinal, scoreBase, scoreSeverity, scoreApplied,
+	)
 	return err
 }
 
 func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
-	rows, err := s.e.Query("SELECT structural_id, rule_id, groups_json FROM findings")
+	rows, err := s.e.Query("SELECT structural_id, rule_id, groups_json, score_final, score_base, score_suggested_severity, score_applied_json FROM findings")
 	if err != nil {
 		return nil, err
 	}
@@ -151,12 +171,28 @@ func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
 	var result []*types.Finding
 	for rows.Next() {
 		var f types.Finding
-		var groupsJSON sql.NullString
-		if err := rows.Scan(&f.ID, &f.RuleID, &groupsJSON); err != nil {
+		var groupsJSON, scoreSeverity, scoreApplied sql.NullString
+		var scoreFinal, scoreBase sql.NullInt64
+		if err := rows.Scan(&f.ID, &f.RuleID, &groupsJSON, &scoreFinal, &scoreBase, &scoreSeverity, &scoreApplied); err != nil {
 			return nil, err
 		}
 		if groupsJSON.Valid {
 			f.Groups, _ = deserializeGroups(groupsJSON.String)
+		}
+		if scoreFinal.Valid {
+			sc := &types.Score{
+				Final:             int(scoreFinal.Int64),
+				Base:              int(scoreBase.Int64),
+				SuggestedSeverity: scoreSeverity.String,
+				Applied:           []types.ScoreModifier{},
+			}
+			if scoreApplied.Valid && scoreApplied.String != "" {
+				_ = json.Unmarshal([]byte(scoreApplied.String), &sc.Applied)
+				if sc.Applied == nil {
+					sc.Applied = []types.ScoreModifier{}
+				}
+			}
+			f.Score = sc
 		}
 		result = append(result, &f)
 	}

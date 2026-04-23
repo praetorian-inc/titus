@@ -1,6 +1,7 @@
 rules:
   - name: Instantly API Key
     id: kingfisher.instantly.1
+    base_score: 45
     pattern: |
       (?xi)
       \b

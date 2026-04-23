@@ -1,6 +1,7 @@
 rules:
   - name: Flickr API Key
     id: kingfisher.flickr.1
+    base_score: 30
     pattern: |
       (?xi)
       \b
@@ -24,6 +25,7 @@ rules:
       - "flickr_api_key: d1953fb62a9798593bfdb4287ed2423e"
   - name: Flickr OAuth Token
     id: kingfisher.flickr.2
+    base_score: 30
     pattern: |
       (?xi)
       \b

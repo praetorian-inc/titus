@@ -1,6 +1,7 @@
 rules:
   - name: xAI (Grok) API Key
     id:   kingfisher.xai.1
+    base_score: 65
     pattern: |
       (?xi)
       \b

@@ -2,6 +2,7 @@ rules:
 
 - name: Help Scout OAuth Client Secret
   id: np.helpscout.1
+  base_score: 65
 
   pattern: |
     (?xi)

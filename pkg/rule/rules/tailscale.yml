@@ -1,6 +1,7 @@
 rules:
   - name: Tailscale API Key
     id: kingfisher.tailscale.1
+    base_score: 85
     pattern: |
       (?xi)
       \b

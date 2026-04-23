@@ -1,6 +1,7 @@
 rules:
   - name: Klaviyo API Key
     id: kingfisher.klaviyo.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

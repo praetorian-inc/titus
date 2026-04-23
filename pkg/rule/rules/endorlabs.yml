@@ -1,6 +1,7 @@
 rules:
   - name: Endor Labs API Key
     id: kingfisher.endorlabs.1
+    base_score: 20
     visible: false
     confidence: medium
     min_entropy: 3.0
@@ -20,6 +21,7 @@ rules:
 
   - name: Endor Labs API Secret
     id: kingfisher.endorlabs.2
+    base_score: 50
     pattern: |
       (?xi)
       \b

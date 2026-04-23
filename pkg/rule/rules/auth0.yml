@@ -2,6 +2,7 @@ rules:
 
 - name: Auth0 Application Credentials
   id: np.auth0.1
+  base_score: 85
 
   pattern: |
     (?x)(?s)
@@ -59,4 +60,3 @@ rules:
       export AUTH0_CLIENT_ID="nUBJjeJElAPmpwBjhWgWX6aJYovpK0n5"
       export AUTH0_CLIENT_SECRET="wsxY2eUG78qKGTyUpAOUbwCDCwc8mZSQzTmNS-k0qf56uX5nAjQyjRe_iD7oq8b7"
       export AUTH0_DOMAIN="appman18922506.auth0.com"
-

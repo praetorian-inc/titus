@@ -2,6 +2,7 @@ rules:
 
 - name: Microsoft Teams Webhook
   id: np.msteams.1
+  base_score: 45
 
   pattern: |
     (?x)(?i)

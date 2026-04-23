@@ -2,6 +2,7 @@ rules:
 
   - name: Mattermost URL
     id: kingfisher.mattermost.1
+    base_score: 10
     pattern: |
       (?xi)
       \b
@@ -42,6 +43,7 @@ rules:
 
   - name: Mattermost Access Token
     id: kingfisher.mattermost.2
+    base_score: 70
     pattern: |
       (?xi)
       \b
@@ -102,6 +104,7 @@ rules:
 
   - name: Mattermost Incoming Webhook URL
     id: kingfisher.mattermost.3
+    base_score: 45
     pattern: |
       (?xi)
       (?P<webhook>
@@ -150,6 +153,7 @@ rules:
 
   - name: Mattermost Personal Access Token
     id: np.mattermost.1
+    base_score: 70
     pattern: |
       (?xi)
       (?:mattermost|mm)

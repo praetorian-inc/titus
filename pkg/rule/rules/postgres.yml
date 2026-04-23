@@ -3,6 +3,7 @@ rules:
 # this handles some cases of postgres URIs, but not the full generality of them
 - name: Credentials in PostgreSQL Connection URI
   id: np.postgres.1
+  base_score: 85
 
   pattern: |
     (?x)

@@ -2,6 +2,7 @@ rules:
 
 - name: Calendly Personal Access Token
   id: np.calendly.1
+  base_score: 45
 
   pattern: |
     (?xi)

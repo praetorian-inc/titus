@@ -1,7 +1,7 @@
 # Titus Makefile
 # Build automation for secrets scanner
 
-.PHONY: all build build-pure build-static build-wasm build-extension test vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan
+.PHONY: all build build-pure build-static build-wasm build-extension test vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint
 
 VERSION ?= dev
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
@@ -96,6 +96,19 @@ else
 	@echo "[vectorscan] Found hyperscan via pkg-config"
 endif
 
+# Build the score migration tool
+build-migrate-scores:
+	@mkdir -p dist
+	GOWORK=off CGO_ENABLED=0 go build -o dist/titus-migrate-scores ./cmd/titus-migrate-scores
+
+# Run migration tool in dry-run mode (safe)
+migrate-scores-dryrun: build-migrate-scores
+	./dist/titus-migrate-scores -scores docs/scores.csv -rules pkg/rule/rules/
+
+# Apply score migration (writes to rule YAMLs)
+migrate-scores-apply: build-migrate-scores
+	./dist/titus-migrate-scores -scores docs/scores.csv -rules pkg/rule/rules/ -apply
+
 # Build pure-Go binary (no CGO, no Vectorscan — portable fallback)
 build-pure:
 	@mkdir -p dist
@@ -125,6 +138,10 @@ build-extension: build-wasm
 	@echo "  3. Click 'Load unpacked'"
 	@echo "  4. Select the 'extension' directory"
 	@echo ""
+
+# Score lint — validate every rule has a reasonable base_score
+score-lint:
+	GOWORK=off go run ./cmd/titus-score-lint pkg/rule/rules/
 
 # Run unit tests
 test:

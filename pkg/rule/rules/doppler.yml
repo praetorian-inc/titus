@@ -2,6 +2,7 @@ rules:
 
 - name: Doppler CLI Token
   id: np.doppler.1
+  base_score: 70
 
   pattern: |
     (?x)
@@ -20,6 +21,7 @@ rules:
 
 - name: Doppler Personal Token
   id: np.doppler.2
+  base_score: 70
 
   pattern: |
     (?x)
@@ -38,6 +40,7 @@ rules:
 
 - name: Doppler Service Token
   id: np.doppler.3
+  base_score: 75
 
   pattern: |
     (?x)
@@ -56,6 +59,7 @@ rules:
 
 - name: Doppler Service Account Token
   id: np.doppler.4
+  base_score: 85
 
   pattern: |
     (?x)
@@ -74,6 +78,7 @@ rules:
 
 - name: Doppler SCIM Token
   id: np.doppler.5
+  base_score: 75
 
   pattern: |
     (?x)
@@ -92,6 +97,7 @@ rules:
 
 - name: Doppler Audit Token
   id: np.doppler.6
+  base_score: 55
 
   pattern: |
     (?x)

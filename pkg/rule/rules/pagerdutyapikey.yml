@@ -1,6 +1,7 @@
 rules:
   - name: PagerDuty API Key
     id: kingfisher.pagerduty.1
+    base_score: 58
     pattern: |
       (?xi)                                                     
       (?: 

@@ -1,6 +1,7 @@
 rules:
   - name: Kling AI Secret Key
     id: kingfisher.klingai.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

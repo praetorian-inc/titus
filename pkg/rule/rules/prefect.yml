@@ -1,6 +1,7 @@
 rules:
   - name: Prefect API Token
     id: kingfisher.prefect.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

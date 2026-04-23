@@ -181,6 +181,53 @@ func TestRelativePathConversion(t *testing.T) {
 	assert.Equal(t, "relative/path/file.txt", report.Runs[0].Results[1].Locations[0].PhysicalLocation.ArtifactLocation.URI)
 }
 
+func TestAddResult_WithScore_EmitsPropertiesAndLevel(t *testing.T) {
+	r := NewReport()
+	match := &types.Match{
+		RuleID:   "np.aws.1",
+		RuleName: "AWS API Key",
+		Location: types.Location{
+			Source: types.SourceSpan{
+				Start: types.SourcePoint{Line: 10, Column: 5},
+				End:   types.SourcePoint{Line: 10, Column: 25},
+			},
+		},
+		Snippet: types.Snippet{Matching: []byte("AKIAIOSFODNN7EXAMPLE")},
+	}
+	score := &types.Score{
+		Final:             85,
+		Base:              60,
+		SuggestedSeverity: "critical",
+		Applied:           []types.ScoreModifier{},
+	}
+	r.AddResultWithScore(match, "/path/to/file.txt", score)
+
+	require.Len(t, r.Runs[0].Results, 1)
+	res := r.Runs[0].Results[0]
+
+	// score 85 → level "error"
+	assert.Equal(t, "error", res.Level, "Level should be 'error' for score 85")
+	require.NotNil(t, res.Properties, "Properties should not be nil")
+	assert.Equal(t, "8.5", res.Properties.SecuritySeverity)
+	require.NotNil(t, res.Properties.TitusScore, "TitusScore should not be nil")
+	assert.Equal(t, 85, res.Properties.TitusScore.Final)
+}
+
+func TestLevelForScore(t *testing.T) {
+	cases := []struct {
+		score int
+		want  string
+	}{
+		{0, "none"}, {19, "none"},
+		{20, "note"}, {39, "note"},
+		{40, "warning"}, {59, "warning"},
+		{60, "error"}, {99, "error"}, {100, "error"},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, LevelForScore(c.score), "LevelForScore(%d)", c.score)
+	}
+}
+
 func TestSnippetInRegion(t *testing.T) {
 	report := NewReport()
 

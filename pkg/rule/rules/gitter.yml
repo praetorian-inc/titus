@@ -1,6 +1,7 @@
 rules:
   - name: Gitter Access Token
     id: kingfisher.gitter.1
+    base_score: 45
     pattern: |
       (?xi)
       \b

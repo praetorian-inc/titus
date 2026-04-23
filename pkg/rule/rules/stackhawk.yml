@@ -2,6 +2,7 @@ rules:
 
 - name: StackHawk API Key
   id: np.stackhawk.1
+  base_score: 55
 
   pattern: '\b(hawk\.[0-9A-Za-z_-]{20}\.[0-9A-Za-z_-]{20})\b'
 

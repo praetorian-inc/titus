@@ -1,6 +1,7 @@
 rules:
   - name: MailJetSMS API Key
     id: kingfisher.mailjet.1
+    base_score: 65
     pattern: |
       (?xi)
       \b
@@ -38,6 +39,7 @@ rules:
               words: ['"Count"']
   - name: MailJet Basic Auth
     id: kingfisher.mailjet.2
+    base_score: 65
     pattern: |
       (?xi)
       \b

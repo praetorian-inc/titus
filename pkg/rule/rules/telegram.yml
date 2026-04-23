@@ -2,6 +2,7 @@ rules:
 
 - name: Telegram Bot Token
   id: np.telegram.1
+  base_score: 55
 
   pattern: |
     (?x)

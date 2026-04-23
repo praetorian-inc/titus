@@ -1,6 +1,7 @@
 rules:
   - name: SslMate API Key
     id: kingfisher.sslmate.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

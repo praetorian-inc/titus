@@ -44,7 +44,7 @@ func (l *Loader) LoadRule(data []byte) (*types.Rule, error) {
 		return nil, fmt.Errorf("expected single rule, found %d", len(yamlFile.Rules))
 	}
 
-	return convertYAMLRule(yamlFile.Rules[0]), nil
+	return convertYAMLRule(yamlFile.Rules[0])
 }
 
 // LoadRuleFile loads a rule from a YAML file path.
@@ -107,7 +107,11 @@ func (l *Loader) LoadBuiltinRules() ([]*types.Rule, error) {
 		}
 
 		for _, yr := range yamlFile.Rules {
-			rules = append(rules, convertYAMLRule(yr))
+			rule, err := convertYAMLRule(yr)
+			if err != nil {
+				return fmt.Errorf("loading %s: %w", path, err)
+			}
+			rules = append(rules, rule)
 		}
 
 		return nil
@@ -158,7 +162,15 @@ func (l *Loader) LoadBuiltinRulesets() ([]*types.Ruleset, error) {
 }
 
 // convertYAMLRule converts yamlRule to types.Rule and computes StructuralID.
-func convertYAMLRule(yr yamlRule) *types.Rule {
+// Returns an error if base_score is missing or out of the valid range [0, 100].
+func convertYAMLRule(yr yamlRule) (*types.Rule, error) {
+	if yr.BaseScore == nil {
+		return nil, fmt.Errorf("rule %s: base_score is required", yr.ID)
+	}
+	score := *yr.BaseScore
+	if score < 0 || score > 100 {
+		return nil, fmt.Errorf("rule %s: base_score %d out of range [0, 100]", yr.ID, score)
+	}
 	r := &types.Rule{
 		ID:               yr.ID,
 		Name:             yr.Name,
@@ -169,6 +181,7 @@ func convertYAMLRule(yr yamlRule) *types.Rule {
 		References:       yr.References,
 		Categories:       yr.Categories,
 		MinEntropy:       yr.MinEntropy,
+		BaseScore:        score,
 	}
 	if yr.PatternRequirements != nil {
 		r.PatternRequirements = &types.PatternRequirements{
@@ -181,7 +194,7 @@ func convertYAMLRule(yr yamlRule) *types.Rule {
 		}
 	}
 	r.StructuralID = r.ComputeStructuralID()
-	return r
+	return r, nil
 }
 
 // convertYAMLRuleset converts yamlRuleset to types.Ruleset.

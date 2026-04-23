@@ -8,6 +8,7 @@ rules:
 # coverage data or cause abuse of services.
 - name: CodeClimate Reporter ID
   id: np.codeclimate.1
+  base_score: 20
 
   pattern: |
     (?x)

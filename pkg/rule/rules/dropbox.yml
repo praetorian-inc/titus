@@ -2,6 +2,7 @@ rules:
 
 - name: Dropbox Access Token
   id: np.dropbox.1
+  base_score: 85
 
   pattern: |
     (?x)

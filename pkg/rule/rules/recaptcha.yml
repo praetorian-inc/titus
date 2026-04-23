@@ -1,6 +1,7 @@
 rules:
   - name: reCAPTCHA API Key
     id: kingfisher.recaptcha.1
+    base_score: 45
     pattern: |
       (?xi)
       recaptcha

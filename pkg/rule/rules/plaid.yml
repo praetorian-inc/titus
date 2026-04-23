@@ -1,6 +1,7 @@
 rules:
   - name: Plaid Client ID (helper)
     id: kingfisher.plaid.1
+    base_score: 15
     visible: false
     pattern: |
       (?xi)
@@ -25,6 +26,7 @@ rules:
   # -------------------------
   - name: Plaid Secret (Production)
     id: kingfisher.plaid.2
+    base_score: 90
     pattern: |
       (?xi)
       \b
@@ -85,6 +87,7 @@ rules:
 
   - name: Plaid Secret (Sandbox)
     id: kingfisher.plaid.3
+    base_score: 40
     pattern: |
       (?xi)
       \b
@@ -149,6 +152,7 @@ rules:
   # -------------------------
   - name: Plaid Access Token (Production)
     id: kingfisher.plaid.4
+    base_score: 88
     pattern: |
       (?xi)
       \b
@@ -207,6 +211,7 @@ rules:
 
   - name: Plaid Access Token (Sandbox)
     id: kingfisher.plaid.5
+    base_score: 25
     pattern: |
       (?xi)
       \b

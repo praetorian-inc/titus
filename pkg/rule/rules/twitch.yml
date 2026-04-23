@@ -2,6 +2,7 @@ rules:
 
 - name: Twitch Stream Key
   id: np.twitch.1
+  base_score: 50
 
   pattern: |
     (?xi)

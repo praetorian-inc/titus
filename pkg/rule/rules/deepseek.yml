@@ -1,6 +1,7 @@
 rules:
   - name: DeepSeek API Key
     id:   kingfisher.deepseek.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: Netlify API Key
     id: kingfisher.netlify.1
+    base_score: 75
     pattern: |
       (?xi)
       netlify
@@ -33,6 +34,7 @@ rules:
 
   - name: Netlify API Key
     id: kingfisher.netlify.2
+    base_score: 75
     pattern: |
       (?xi)
       \b

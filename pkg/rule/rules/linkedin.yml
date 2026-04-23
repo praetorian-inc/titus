@@ -2,6 +2,7 @@ rules:
 
 - name: LinkedIn Client ID
   id: np.linkedin.1
+  base_score: 20
 
   pattern: |
     (?x)(?i)
@@ -28,6 +29,7 @@ rules:
 
 - name: LinkedIn Secret Key
   id: np.linkedin.2
+  base_score: 40
 
   pattern: |
     (?x)(?i)
@@ -52,6 +54,7 @@ rules:
 
 - name: LinkedIn Access Token
   id: np.linkedin.3
+  base_score: 35
 
   pattern: '\b(?P<access_token>AQ[A-Za-z0-9_-]{200,1000})\b'
 

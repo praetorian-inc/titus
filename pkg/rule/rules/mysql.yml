@@ -1,6 +1,7 @@
 rules:
   - name: MySQL URI with Credentials
     id: kingfisher.mysql.1
+    base_score: 85
     pattern: |
       (?xi)
       (

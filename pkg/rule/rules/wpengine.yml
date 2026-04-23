@@ -2,6 +2,7 @@ rules:
 
 - name: WPEngine API Key
   id: np.wpengine.1
+  base_score: 65
 
   pattern: |
     (?xi)

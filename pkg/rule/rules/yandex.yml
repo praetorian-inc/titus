@@ -1,6 +1,7 @@
 rules:
   - name: Yandex API Key
     id: kingfisher.yandex.1
+    base_score: 40
     pattern: |
       (?xi)
       \b

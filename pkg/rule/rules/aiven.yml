@@ -1,6 +1,7 @@
 rules:
   - name: Aiven API Key
     id: kingfisher.aiven.1
+    base_score: 85
     pattern: |
       (?xi)
       aiven

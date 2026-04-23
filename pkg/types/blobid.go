@@ -1,7 +1,7 @@
 package types
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- SHA1 is required for compatibility with NoseyParker blob IDs; not used as a cryptographic primitive.
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +14,7 @@ type BlobID [20]byte
 // ComputeBlobID computes Git-style blob ID: SHA-1("blob {len}\0{content}").
 func ComputeBlobID(content []byte) BlobID {
 	header := fmt.Sprintf("blob %d\x00", len(content))
+	// #nosec G401 -- SHA1 is used for content-addressing, not cryptographic integrity. Required for NoseyParker datastore compatibility.
 	h := sha1.New()
 	h.Write([]byte(header))
 	h.Write(content)

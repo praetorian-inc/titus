@@ -2,6 +2,7 @@ rules:
 
 - name: Hashicorp Vault Service Token (< v1.10)
   id: np.hashicorp.1
+  base_score: 90
 
   pattern: |
     (?x)
@@ -33,6 +34,7 @@ rules:
 
 - name: Hashicorp Vault Batch Token (< v1.10)
   id: np.hashicorp.2
+  base_score: 70
 
   pattern: |
     (?x)
@@ -62,6 +64,7 @@ rules:
 
 - name: Hashicorp Vault Recovery Token (< v1.10)
   id: np.hashicorp.3
+  base_score: 95
 
   pattern: |
     (?x)
@@ -92,6 +95,7 @@ rules:
 
 - name: Hashicorp Vault Service Token (>= v1.10)
   id: np.hashicorp.4
+  base_score: 90
 
   pattern: |
     (?x)
@@ -117,6 +121,7 @@ rules:
 
 - name: Hashicorp Vault Batch Token (>= v1.10)
   id: np.hashicorp.5
+  base_score: 70
 
   pattern: |
     (?x)
@@ -143,6 +148,7 @@ rules:
 
 - name: Hashicorp Vault Recovery Token (>= v1.10)
   id: np.hashicorp.6
+  base_score: 95
 
   pattern: |
     (?x)
@@ -169,6 +175,7 @@ rules:
 
 - name: Hashicorp Vault Unseal Key
   id: np.hashicorp.7
+  base_score: 95
 
   pattern: |
     (?x)

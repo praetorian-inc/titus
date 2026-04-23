@@ -2,6 +2,7 @@ rules:
 
 - name: Databricks Personal Access Token
   id: np.databricks.1
+  base_score: 90
   pattern: |
     (?x)
     \b

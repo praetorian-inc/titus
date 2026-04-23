@@ -1,6 +1,7 @@
 rules:
   - name: MessageBird API Token
     id: kingfisher.messagebird.1
+    base_score: 65
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: Mistral AI API Key
     id: kingfisher.mistral.1
+    base_score: 60
     pattern: |
       (?xi)                       
       \b                         

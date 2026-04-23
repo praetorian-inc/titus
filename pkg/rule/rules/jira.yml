@@ -1,6 +1,7 @@
 rules:
   - name: Jira Domain
     id: kingfisher.jira.1
+    base_score: 10
     pattern: |
       (?xi)
       \b
@@ -19,6 +20,7 @@ rules:
 
   - name: Jira Token
     id: kingfisher.jira.2
+    base_score: 62
     pattern: |
       (?xi)
       \b

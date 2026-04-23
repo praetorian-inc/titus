@@ -1,6 +1,7 @@
 rules:
   - name: PostHog Project API Key
     id: kingfisher.posthog.1
+    base_score: 40
     pattern: | 
       (?x)
       (
@@ -29,6 +30,7 @@ rules:
               status: [200]
   - name: PostHog Personal API Key
     id: kingfisher.posthog.2
+    base_score: 55
     pattern: |
       (?x)
       (

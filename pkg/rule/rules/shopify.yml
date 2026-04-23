@@ -2,6 +2,7 @@ rules:
 
 - name: Shopify Domain
   id: np.shopify.1
+  base_score: 10
 
   categories:
   - identifier
@@ -24,6 +25,7 @@ rules:
 
 - name: Shopify App Secret
   id: np.shopify.2
+  base_score: 85
 
   categories:
   - api
@@ -46,6 +48,7 @@ rules:
 
 - name: Shopify Access Token (Public App)
   id: np.shopify.3
+  base_score: 70
   pattern: '\b(?P<token>shpat_[a-fA-F0-9]{32})\b'
 
   categories:
@@ -66,6 +69,7 @@ rules:
 
 - name: Shopify Access Token (Custom App)
   id: np.shopify.4
+  base_score: 75
   pattern: '\b(?P<token>shpca_[a-fA-F0-9]{32})\b'
 
   categories:
@@ -82,6 +86,7 @@ rules:
 
 - name: Shopify Access Token (Legacy Private App)
   id: np.shopify.5
+  base_score: 75
   pattern: '\b(?P<token>shppa_[a-fA-F0-9]{32})\b'
 
   categories:

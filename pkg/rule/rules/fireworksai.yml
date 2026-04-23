@@ -1,6 +1,7 @@
 rules:
   - name: Fireworks.ai API Key
     id: kingfisher.fireworks.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

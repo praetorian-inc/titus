@@ -1,6 +1,7 @@
 rules:
   - name: Fleetbase API Key
     id: kingfisher.fleetbase.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

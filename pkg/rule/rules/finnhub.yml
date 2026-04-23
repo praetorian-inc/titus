@@ -1,6 +1,7 @@
 rules:
   - name: Finnhub API Token
     id: kingfisher.finnhub.1
+    base_score: 40
     pattern: |
       (?xi)
       \b

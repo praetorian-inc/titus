@@ -2,6 +2,7 @@ rules:
 
 - name: Gitalk OAuth Credentials
   id: np.gitalk.1
+  base_score: 48
 
   pattern: |
     (?x)

@@ -1,6 +1,7 @@
 rules:
   - name: FreshBooks Access Token
     id: kingfisher.freshbooks.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

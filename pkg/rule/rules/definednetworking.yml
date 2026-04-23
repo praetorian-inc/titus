@@ -1,6 +1,7 @@
 rules:
   - name: Defined Networking API Token
     id: kingfisher.definednetworking.1
+    base_score: 60
     pattern: |
       (?x)
       \b
@@ -38,4 +39,3 @@ rules:
               words:
                 - '"cidr"'
               match_all_words: true
-

@@ -1,6 +1,7 @@
 rules:
   - name: OpenRouter API Key
     id: kingfisher.openrouter.1
+    base_score: 65
     pattern: |
       (?xi)
       \b

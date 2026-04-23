@@ -1,6 +1,7 @@
 rules:
   - name: Azure Storage Account Name (Connection String)
     id: kingfisher.azurestorage.1a
+    base_score: 8
     pattern: |
       (?xi)
       (?i:AccountName)\s*=\s*(?P<account_name>[a-z0-9]{3,24})(?:\b|[^a-z0-9])
@@ -12,6 +13,7 @@ rules:
 
   - name: Azure Storage Account Name (Blob Endpoint)
     id: kingfisher.azurestorage.1b
+    base_score: 8
     pattern: |
       (?xi)
       (?P<account_name>[a-z0-9]{3,24})\.blob\.core\.windows\.net\b
@@ -23,6 +25,7 @@ rules:
 
   - name: Azure Storage Account Name (Label)
     id: kingfisher.azurestorage.1c
+    base_score: 8
     pattern: |
       (?xi)
       \bazure(?:[_\s-]*)(?:storage|account)(?:[_\s-]*)(?:name)\b
@@ -36,6 +39,7 @@ rules:
 
   - name: Azure Storage Account Key
     id: kingfisher.azurestorage.2
+    base_score: 87
     pattern: |
       (?xi)
       azure

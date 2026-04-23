@@ -1,6 +1,7 @@
 rules:
   - name: Optimizely Personal Access Token
     id: kingfisher.optimizely.1
+    base_score: 65
     pattern: |
       (?xi)
       \b

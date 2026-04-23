@@ -282,6 +282,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 									ID:     findingID,
 									RuleID: match.RuleID,
 									Groups: match.Groups,
+									Score:  synthesizeBaseScore(rule),
 								}); err != nil {
 									return fmt.Errorf("storing finding: %w", err)
 								}
@@ -1134,6 +1135,10 @@ func outputNoseyParkerSummary(cmd *cobra.Command, findings []*types.Finding, rul
 	return nil
 }
 
+// outputMatches emits the scan's raw matches as JSON for `titus scan --format=json`.
+// This is NOT the score-bearing output — findings (with their Score) are persisted
+// in the datastore and surfaced via `titus report --format=json`. Downstream
+// consumers (Chariot, CI) that need severity should use the report output.
 func outputMatches(cmd *cobra.Command, matches []*types.Match) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
@@ -1179,6 +1184,20 @@ func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches
 		report.AddRule(rule)
 	}
 
+	// Build rule map for finding ID computation
+	ruleMap := make(map[string]*types.Rule, len(rules))
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
+	// Build finding lookup so we can attach Score to each SARIF result
+	findingByID := make(map[string]*types.Finding)
+	if findings, err := s.GetFindings(); err == nil {
+		for _, f := range findings {
+			findingByID[f.ID] = f
+		}
+	}
+
 	// Cache provenance by blob ID to avoid repeated queries
 	provenanceCache := make(map[types.BlobID]string)
 
@@ -1198,7 +1217,15 @@ func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches
 			provenanceCache[match.BlobID] = filePath
 		}
 
-		report.AddResult(match, filePath)
+		// Look up score from the corresponding finding
+		var score *types.Score
+		if r, ok := ruleMap[match.RuleID]; ok {
+			fid := types.ComputeFindingID(r.StructuralID, match.Groups)
+			if f, ok := findingByID[fid]; ok {
+				score = f.Score
+			}
+		}
+		report.AddResultWithScore(match, filePath, score)
 	}
 
 	// Serialize to JSON

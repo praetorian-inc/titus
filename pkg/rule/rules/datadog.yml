@@ -3,6 +3,7 @@ rules:
   # We capture the "site parameter" (domain), then validation uses https://api.<site>.
   - name: Datadog Site Domain
     id: kingfisher.datadog.1
+    base_score: 15
     visible: false
     confidence: medium
     min_entropy: 2.0
@@ -35,6 +36,7 @@ rules:
 
   - name: Datadog API Key
     id: kingfisher.datadog.2
+    base_score: 50
     pattern: |
       (?xi)
       \b(?:datadog|dd)
@@ -75,6 +77,7 @@ rules:
 
   - name: Datadog Application Key
     id: kingfisher.datadog.3
+    base_score: 65
     pattern: |
       (?xi)
       \b(?:datadog|dd)
@@ -118,6 +121,7 @@ rules:
 
   - name: Datadog RUM Client Token
     id: kingfisher.datadog.4
+    base_score: 25
     pattern: |
       (?xi)
       (?:

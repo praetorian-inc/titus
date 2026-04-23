@@ -1,6 +1,7 @@
 rules:
   - name: Jumpcloud API Key
     id: kingfisher.jumpcloud.1
+    base_score: 85
     pattern: |
       (?xi)
       \b

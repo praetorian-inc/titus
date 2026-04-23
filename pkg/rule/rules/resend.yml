@@ -1,6 +1,7 @@
 rules:
   - name: Resend API Key
     id: kingfisher.resend.api_key.1
+    base_score: 65
     pattern: |
       (?x)
       \b

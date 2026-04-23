@@ -1,6 +1,7 @@
 rules:
   - name: Contains encrypted RSA private key
     id: kingfisher.privkey.1
+    base_score: 80
     pattern: |
       (?xi)                   
       (?msi)
@@ -45,6 +46,7 @@ rules:
 
   - name: Contains Private Key
     id: kingfisher.privkey.2
+    base_score: 90
     pattern: |
       (?xims)
       (                       

@@ -1,6 +1,7 @@
 rules:
   - name: Riot Platform Host
     id: kingfisher.riot.1
+    base_score: 15
     visible: false
     confidence: medium
     min_entropy: 1.0
@@ -21,6 +22,7 @@ rules:
 
   - name: Riot Games API Key
     id: kingfisher.riot.2
+    base_score: 35
     pattern: |
       (?xi)
       \b

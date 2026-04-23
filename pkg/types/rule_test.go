@@ -134,3 +134,8 @@ func TestRuleset_NilRuleIDs(t *testing.T) {
 
 	assert.Nil(t, ruleset.RuleIDs)
 }
+
+func TestRule_HasBaseScore(t *testing.T) {
+	r := &Rule{ID: "test.1", BaseScore: 75}
+	assert.Equal(t, 75, r.BaseScore)
+}

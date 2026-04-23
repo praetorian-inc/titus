@@ -2,6 +2,7 @@ rules:
 
 - name: Azure Notification Hub Access Key
   id: np.azure.6
+  base_score: 62
 
   pattern: |
     (?x)

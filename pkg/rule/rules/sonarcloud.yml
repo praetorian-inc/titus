@@ -1,6 +1,7 @@
 rules:
   - name: SonarCloud API Token
     id: kingfisher.sonarcloud.1
+    base_score: 50
     pattern: |
       (?xi)                    
       \b

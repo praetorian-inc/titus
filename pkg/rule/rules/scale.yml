@@ -1,6 +1,7 @@
 rules:
   - name: Scale API Key
     id: kingfisher.scale.1
+    base_score: 50
     pattern: |
       (?x)
       \b
@@ -44,6 +45,7 @@ rules:
 
   - name: Scale Callback Auth Key
     id: kingfisher.scale.2
+    base_score: 35
     pattern: |
       (?x)
       \b

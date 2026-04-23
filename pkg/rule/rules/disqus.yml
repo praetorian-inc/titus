@@ -1,6 +1,7 @@
 rules:
   - name: Disqus API Key
     id: kingfisher.disqus.1
+    base_score: 40
     pattern: |
       (?xi)
       \b

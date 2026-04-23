@@ -1,6 +1,7 @@
 rules:
   - name: Cursor Integrations (User) API Key
     id: kingfisher.cursor.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

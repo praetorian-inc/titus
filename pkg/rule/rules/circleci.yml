@@ -1,6 +1,7 @@
 rules:
   - name: CircleCI API Personal Access Token
     id: kingfisher.circleci.1
+    base_score: 65
     pattern: |
       (?xi)
       \b
@@ -50,6 +51,7 @@ rules:
           url: https://circleci.com/api/v2/me
   - name: CircleCI API Project Token
     id: kingfisher.circleci.2
+    base_score: 65
     pattern: |
       (?xi)
       \b

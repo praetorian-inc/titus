@@ -1,6 +1,7 @@
 rules:
   - name: LangSmith Personal Access Token
     id: kingfisher.langchain.1
+    base_score: 50
     pattern: |
       (?xi)
       \b
@@ -29,6 +30,7 @@ rules:
             - type: JsonValid
   - name: LangSmith Service Key
     id: kingfisher.langchain.2
+    base_score: 50
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: JDBC connection string with embedded credentials
     id: kingfisher.jdbc.1
+    base_score: 85
     pattern: |
       (?xi)
       (?P<token>

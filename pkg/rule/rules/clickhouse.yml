@@ -1,6 +1,7 @@
 rules:
   - name: ClickHouse Cloud Secret Key
     id: kingfisher.clickhouse.1
+    base_score: 85
     pattern: |
       (?xi)
       \b
@@ -38,6 +39,7 @@ rules:
       - https://clickhouse.com/docs/en/cloud/security/service-accounts
   - name: ClickHouse Cloud Key ID
     id: kingfisher.clickhouse.2
+    base_score: 15
     pattern: |
       (?xi)
       \b

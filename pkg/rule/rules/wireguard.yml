@@ -5,6 +5,7 @@ rules:
 
 - name: WireGuard Private Key
   id: np.wireguard.1
+  base_score: 90
 
   pattern: PrivateKey\s*=\s*(?P<token>[A-Za-z0-9+/]{43}=)
 
@@ -24,6 +25,7 @@ rules:
 
 - name: WireGuard Preshared Key
   id: np.wireguard.2
+  base_score: 75
 
   pattern: PresharedKey\s*=\s*(?P<token>[A-Za-z0-9+/]{43}=)
 

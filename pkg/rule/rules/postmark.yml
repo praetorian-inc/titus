@@ -3,6 +3,7 @@ rules:
 - name: Postmark API Token
 
   id: np.postmark.1
+  base_score: 65
 
   pattern: |
     (?x)

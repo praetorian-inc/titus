@@ -2,6 +2,7 @@ rules:
   # Helper: capture the Nylas API base URI (data residency) from config/env so validation hits the right region.
   - name: Nylas API URI
     id: kingfisher.nylas.api_uri.1
+    base_score: 10
     visible: false
     confidence: medium
     min_entropy: 2.0
@@ -18,6 +19,7 @@ rules:
 
   - name: Nylas API Key
     id: kingfisher.nylas.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

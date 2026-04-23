@@ -1,6 +1,7 @@
 rules:
   - name: Kickbox API Key
     id: kingfisher.kickbox.1
+    base_score: 40
     pattern: |
       (?xi)
       \b

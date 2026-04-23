@@ -1,6 +1,7 @@
 rules:
   - name: Eventbrite API Key
     id: kingfisher.eventbrite.1
+    base_score: 55
     pattern: |
       (?xi)
       \b

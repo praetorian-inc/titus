@@ -2,6 +2,7 @@ rules:
 
 - name: Pendo Integration Key
   id: np.pendo.1
+  base_score: 50
 
   pattern: |
     (?xi)

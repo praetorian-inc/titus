@@ -5,6 +5,7 @@ rules:
 
 - name: Stripe API Key
   id: np.stripe.1
+  base_score: 90
 
   pattern: '(?i)\b(?P<key>(?:sk|rk)_live_[a-z0-9]{24})\b'
 
@@ -21,6 +22,7 @@ rules:
 
 - name: Stripe API Test Key
   id: np.stripe.2
+  base_score: 50
 
   pattern: '(?i)\b(?P<key>(?:sk|rk)_test_[a-z0-9]{24})\b'
 

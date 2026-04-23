@@ -1,6 +1,7 @@
 rules:
   - name: PubNub Publish Key
     id: kingfisher.pubnub.1
+    base_score: 50
     pattern: |
       (?xi)
       \b
@@ -29,6 +30,7 @@ rules:
         variable: SUBSCRIPTIONTOKEN
   - name: PubNub Subscription Key
     id: kingfisher.pubnub.2
+    base_score: 45
     pattern: |
       (?xi)
       \b

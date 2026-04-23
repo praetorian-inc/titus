@@ -1,6 +1,7 @@
 rules:
   - name: OpenWeather Map API Key
     id: kingfisher.openweather.1
+    base_score: 45
     pattern: |
       (?xi)
       (?:pyowm|openweather|\bowm\b)
@@ -23,4 +24,3 @@ rules:
       - https://openweathermap.org/forecast5
       - https://openweathermap.org/appid
       - https://publicapi.dev/open-weather-map-api
-

@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -17,6 +18,7 @@ func TestLoadRule_Valid(t *testing.T) {
       (?x)
       AKIA[A-Z0-9]{16}
     description: AWS access key ID
+    base_score: 60
     references:
       - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
     examples:
@@ -177,6 +179,7 @@ func TestLoadBuiltinRules_WithRules(t *testing.T) {
   - name: Test Rule
     id: np.test.1
     pattern: test.*pattern
+    base_score: 50
     categories:
       - test
 `
@@ -246,6 +249,7 @@ func TestLoadBuiltinRulesets_WithRulesets(t *testing.T) {
 }
 
 func TestConvertYAMLRule(t *testing.T) {
+	score := 50
 	yr := yamlRule{
 		ID:          "np.test.1",
 		Name:        "Test Rule",
@@ -253,9 +257,13 @@ func TestConvertYAMLRule(t *testing.T) {
 		Description: "Test description",
 		Examples:    []string{"test example"},
 		Categories:  []string{"test"},
+		BaseScore:   &score,
 	}
 
-	rule := convertYAMLRule(yr)
+	rule, err := convertYAMLRule(yr)
+	if err != nil {
+		t.Fatalf("convertYAMLRule: %v", err)
+	}
 
 	if rule.ID != yr.ID {
 		t.Errorf("expected ID %s, got %s", yr.ID, rule.ID)
@@ -307,6 +315,7 @@ func TestRoundTrip(t *testing.T) {
     id: np.github.1
     pattern: ghp_[a-zA-Z0-9]{36}
     description: GitHub personal access token
+    base_score: 75
     examples:
       - "ghp_1234567890abcdefghijklmnopqrstuvwxyz12"
     categories:
@@ -342,6 +351,7 @@ func TestLoadRule_WithMinEntropy(t *testing.T) {
   - name: Test Rule With Entropy
     id: np.test.entropy.1
     pattern: 'test[A-Z0-9]{16}'
+    base_score: 50
     min_entropy: 3.5
 `
 	rule, err := loader.LoadRule([]byte(yaml))
@@ -360,6 +370,7 @@ func TestLoadRule_WithPatternRequirements(t *testing.T) {
   - name: Test Rule With Requirements
     id: np.test.req.1
     pattern: 'sk_live_[A-Za-z0-9]{24}'
+    base_score: 50
     pattern_requirements:
       min_digits: 2
       min_uppercase: 1
@@ -397,6 +408,7 @@ func TestLoadRule_NoPatternRequirements(t *testing.T) {
   - name: Simple Rule
     id: np.test.simple.1
     pattern: 'simple[A-Z0-9]+'
+    base_score: 50
 `
 	rule, err := loader.LoadRule([]byte(yaml))
 	if err != nil {
@@ -407,6 +419,84 @@ func TestLoadRule_NoPatternRequirements(t *testing.T) {
 	}
 	if rule.PatternRequirements != nil {
 		t.Error("expected PatternRequirements to be nil for rule without requirements")
+	}
+}
+
+func TestLoadRule_BaseScoreParsed(t *testing.T) {
+	loader := NewLoader()
+	yaml := `rules:
+  - name: Test Rule
+    id: np.test.1
+    pattern: 'test'
+    base_score: 75
+`
+	rule, err := loader.LoadRule([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadRule: %v", err)
+	}
+	if rule.BaseScore != 75 {
+		t.Errorf("BaseScore = %d, want 75", rule.BaseScore)
+	}
+}
+
+func TestLoadRule_BaseScoreMissing_Rejected(t *testing.T) {
+	loader := NewLoader()
+	yaml := `rules:
+  - name: Test Rule
+    id: np.test.1
+    pattern: 'test'
+`
+	_, err := loader.LoadRule([]byte(yaml))
+	if err == nil {
+		t.Error("expected error for rule missing base_score, got nil")
+	}
+	if err != nil && !strings.Contains(err.Error(), "base_score") {
+		t.Errorf("error message does not mention base_score: %v", err)
+	}
+}
+
+func TestLoadRule_BaseScoreOutOfRange(t *testing.T) {
+	loader := NewLoader()
+	yaml := `rules:
+  - name: Test Rule
+    id: np.test.1
+    pattern: 'test'
+    base_score: 150
+`
+	_, err := loader.LoadRule([]byte(yaml))
+	if err == nil {
+		t.Error("expected error for base_score 150 (out of range), got nil")
+	}
+}
+
+func TestLoadRule_BaseScoreNegative(t *testing.T) {
+	loader := NewLoader()
+	yaml := `rules:
+  - name: Test Rule
+    id: np.test.1
+    pattern: 'test'
+    base_score: -5
+`
+	_, err := loader.LoadRule([]byte(yaml))
+	if err == nil {
+		t.Error("expected error for negative base_score, got nil")
+	}
+}
+
+func TestLoadRule_BaseScoreValid(t *testing.T) {
+	loader := NewLoader()
+	yaml := `rules:
+  - name: Test Rule
+    id: np.test.1
+    pattern: 'test'
+    base_score: 75
+`
+	rule, err := loader.LoadRule([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadRule: %v", err)
+	}
+	if rule.BaseScore != 75 {
+		t.Errorf("BaseScore = %d, want 75", rule.BaseScore)
 	}
 }
 

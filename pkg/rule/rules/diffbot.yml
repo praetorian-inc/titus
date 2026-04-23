@@ -1,6 +1,7 @@
 rules:
   - name: Diffbot API Key
     id: kingfisher.diffbot.1
+    base_score: 45
     pattern: |
       (?xi)                       
       \b                         

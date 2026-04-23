@@ -1,6 +1,7 @@
 rules:
   - name: Bitly Access Token
     id: kingfisher.bitly.1
+    base_score: 45
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: Codacy API Key
     id: kingfisher.codacy.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

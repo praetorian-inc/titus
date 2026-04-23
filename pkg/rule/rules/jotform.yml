@@ -1,6 +1,7 @@
 rules:
   - name: Jotform API Key
     id: kingfisher.jotform.1
+    base_score: 65
     pattern: |
       (?xi)
       \b

@@ -1,6 +1,7 @@
 rules:
   - name: Shippo API Token
     id: kingfisher.shippo.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

@@ -1,0 +1,16 @@
+[
+  {
+    "ID": "test-finding-abc",
+    "RuleID": "np.test.1",
+    "Groups": [
+      "eDF4Mng="
+    ],
+    "Matches": null,
+    "Score": {
+      "Final": 75,
+      "Base": 75,
+      "SuggestedSeverity": "high",
+      "Applied": []
+    }
+  }
+]

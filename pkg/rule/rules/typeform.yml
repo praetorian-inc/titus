@@ -1,6 +1,7 @@
 rules:
   - name: Typeform API Token
     id: kingfisher.typeform.1
+    base_score: 65
     pattern: |
       (?xi)
       \b

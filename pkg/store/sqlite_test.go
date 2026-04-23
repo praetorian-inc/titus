@@ -357,3 +357,54 @@ func TestSQLite_ProvenanceWithCommitMetadata(t *testing.T) {
 	assert.Equal(t, committerTS, got.Commit.CommitterTimestamp)
 	assert.Equal(t, "add config", got.Commit.Message)
 }
+
+func TestSQLiteStore_AddFinding_PersistsScore(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := NewSQLite(filepath.Join(tmpDir, "test.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	finding := &types.Finding{
+		ID:     "abc",
+		RuleID: "np.aws.1",
+		Groups: [][]byte{[]byte("AKIAIOSFODNN7EXAMPLE")},
+		Score: &types.Score{
+			Final:             85,
+			Base:              60,
+			SuggestedSeverity: "critical",
+			Applied:           []types.ScoreModifier{},
+		},
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+
+	got := findings[0]
+	require.NotNil(t, got.Score, "expected Score to be non-nil after round-trip")
+	assert.Equal(t, 85, got.Score.Final)
+	assert.Equal(t, 60, got.Score.Base)
+	assert.Equal(t, "critical", got.Score.SuggestedSeverity)
+	assert.NotNil(t, got.Score.Applied, "Score.Applied must be non-nil (empty slice)")
+}
+
+func TestSQLiteStore_AddFinding_NilScoreAllowed(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := NewSQLite(filepath.Join(tmpDir, "test.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	finding := &types.Finding{
+		ID:     "xyz",
+		RuleID: "np.test.1",
+		Groups: [][]byte{[]byte("x")},
+		// Score is nil
+	}
+	require.NoError(t, s.AddFinding(finding), "AddFinding with nil Score should not error")
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	assert.Nil(t, findings[0].Score, "expected Score to stay nil after round-trip")
+}

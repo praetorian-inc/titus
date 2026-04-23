@@ -1,6 +1,7 @@
 rules:
   - name: Confluent Client ID
     id: kingfisher.confluent.1
+    base_score: 20
     pattern: |
       (?xi)
       \b(?:confluent|ccloud|cpdev|kafka)
@@ -22,6 +23,7 @@ rules:
       - https://docs.confluent.io/cloud/current/access-management/authenticate/api-keys.html
   - name: Confluent API Secret
     id: kingfisher.confluent.2
+    base_score: 65
     pattern: |
       (?xi)
       (?:confluent|ccloud|cpdev|kafka)
@@ -57,6 +59,7 @@ rules:
         variable: CLIENTID
   - name: Confluent API Secret - Updated Format
     id: kingfisher.confluent.3
+    base_score: 65
     pattern: |
       (?xi)
       \b

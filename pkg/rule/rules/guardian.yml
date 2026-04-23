@@ -1,6 +1,7 @@
 rules:
   - name: Guardian API Key
     id: kingfisher.guardian.1
+    base_score: 25
     pattern: |
       (?xi)
       \b

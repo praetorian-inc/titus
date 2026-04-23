@@ -1,6 +1,7 @@
 rules:
   - name: Zhipu (BigModel) API Key
     id: kingfisher.zhipu.1
+    base_score: 50
     pattern: |
       (?xi)
       \b

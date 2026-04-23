@@ -1,5 +1,6 @@
 rules:
   - id: np.redis.1
+    base_score: 85
     name: Redis URI Connection String
     # Hyperscan-compatible pattern (no lookbehind)
     # Comment filtering moved to ignore_if_contains
@@ -57,6 +58,7 @@ rules:
       - https://github.com/redis/redis-py/blob/master/redis/client.py
 
   - id: np.redis.2
+    base_score: 70
     name: Python Redis Client Debug Output
     # Hyperscan-compatible pattern (no lookahead)
     # "None" filtering moved to ignore_if_contains

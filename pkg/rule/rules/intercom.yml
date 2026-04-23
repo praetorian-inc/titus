@@ -1,6 +1,7 @@
 rules:
   - name: Intercom API Token
     id: kingfisher.intercom.1
+    base_score: 55
     pattern: |
       (?xi)  
       (?:intercom|ic)

@@ -2,6 +2,7 @@ rules:
 
 - name: Razorpay API Key
   id: np.razorpay.1
+  base_score: 85
 
   pattern: '(?i)\b(?P<key>rzp_live_[A-Za-z0-9]{14})\b'
 
@@ -30,6 +31,7 @@ rules:
 
 - name: Razorpay Test API Key
   id: np.razorpay.2
+  base_score: 50
 
   pattern: '(?i)\b(?P<key>rzp_test_[A-Za-z0-9]{14})\b'
 

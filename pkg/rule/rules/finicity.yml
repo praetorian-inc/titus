@@ -1,6 +1,7 @@
 rules:
   - name: Finicity API token
     id: kingfisher.finicity.1
+    base_score: 75
     pattern: |
       (?xi)                     
       \b                       
@@ -36,6 +37,7 @@ rules:
     
   - name: Finicity client secret
     id: kingfisher.finicity.2
+    base_score: 75
     pattern: |
       (?xi)                     
       \b                       

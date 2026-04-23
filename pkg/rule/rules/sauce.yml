@@ -2,6 +2,7 @@ rules:
 
 - name: Sauce Token
   id: np.sauce.1
+  base_score: 50
 
   pattern: |
     (?x)(?i)

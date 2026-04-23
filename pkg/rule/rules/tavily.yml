@@ -3,6 +3,7 @@ rules:
 - name: Tavily API Key
 
   id: np.tavily.1
+  base_score: 50
 
   description: >
     A Tavily API Key was found.

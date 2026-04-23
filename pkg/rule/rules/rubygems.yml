@@ -2,6 +2,7 @@ rules:
 
 - name: RubyGems API Key
   id: np.rubygems.1
+  base_score: 70
 
   pattern: |
     (?x)(?i)

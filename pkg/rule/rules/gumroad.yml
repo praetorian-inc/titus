@@ -1,6 +1,7 @@
 rules:
   - name: Gumroad Access Token
     id: kingfisher.gumroad.1
+    base_score: 60
     pattern: |
       (?xi)
       \b

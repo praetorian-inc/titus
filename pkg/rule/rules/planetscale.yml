@@ -1,6 +1,7 @@
 rules:
   - name: PlanetScale API Token
     id: kingfisher.planetscale.1
+    base_score: 85
     pattern: |
       (?xi)
       \b
@@ -37,6 +38,7 @@ rules:
 
   - name: PlanetScale Username
     id: kingfisher.planetscale.2
+    base_score: 15
     pattern: |
       (?xi)
       (?:pscale|planetscale)

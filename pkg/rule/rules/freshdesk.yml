@@ -1,6 +1,7 @@
 rules:
   - name: Freshdesk Domain
     id: kingfisher.freshdesk.1
+    base_score: 35
     visible: false
     confidence: low
     min_entropy: 0.0
@@ -17,6 +18,7 @@ rules:
 
   - name: Freshdesk API Key
     id: kingfisher.freshdesk.2
+    base_score: 65
     pattern: |
       (?xi)
       \b

@@ -2,6 +2,7 @@ rules:
 
 - name: Anthropic API Key
   id: np.anthropic.1
+  base_score: 70
 
   pattern: |
     (?x)

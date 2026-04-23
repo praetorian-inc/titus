@@ -2,6 +2,7 @@ rules:
 
 - name: Instagram Graph API Access Token
   id: np.instagram.1
+  base_score: 45
 
   pattern: '\b(?P<token>IGQVJ[A-Za-z0-9_-]{50,})\b'
 

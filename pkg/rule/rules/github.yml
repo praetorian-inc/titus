@@ -2,6 +2,7 @@ rules:
 
 - name: GitHub Personal Access Token
   id: np.github.1
+  base_score: 75
   pattern: '\b(?P<token>ghp_[a-zA-Z0-9]{36})\b'
 
   categories: [api, secret]
@@ -21,6 +22,7 @@ rules:
 
 - name: GitHub OAuth Access Token
   id: np.github.2
+  base_score: 70
   pattern: '\b(?P<token>gho_[a-zA-Z0-9]{36})\b'
 
   categories: [api, secret]
@@ -37,6 +39,7 @@ rules:
 
 - name: GitHub App Token
   id: np.github.3
+  base_score: 85
   # Note: `ghu_` prefix is for user-to-server tokens; `ghs_` is for server-to-server tokens
   pattern: '\b(?P<token>(?:ghu|ghs)_[a-zA-Z0-9]{36})\b'
 
@@ -56,6 +59,7 @@ rules:
 
 - name: GitHub Refresh Token
   id: np.github.4
+  base_score: 50
   pattern: '\b(?P<token>ghr_[a-zA-Z0-9]{76})\b'
 
   categories: [api, secret]
@@ -71,6 +75,7 @@ rules:
 
 - name: GitHub Client ID
   id: np.github.5
+  base_score: 15
   pattern: |
     (?x)(?i)
     (?:github)
@@ -95,6 +100,7 @@ rules:
 
 - name: GitHub Secret Key
   id: np.github.6
+  base_score: 85
   pattern: |
     (?x)(?i)
     github
@@ -119,6 +125,7 @@ rules:
 
 - name: GitHub Personal Access Token (fine-grained permissions)
   id: np.github.7
+  base_score: 65
   pattern: |
     (?x)
     \b

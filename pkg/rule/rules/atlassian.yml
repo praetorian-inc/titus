@@ -2,6 +2,7 @@ rules:
 
 - name: Atlassian Cloud API Token
   id: np.atlassian.1
+  base_score: 65
   pattern: |
     (?x)
     \b(?P<token>

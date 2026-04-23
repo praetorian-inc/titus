@@ -3,6 +3,7 @@ rules:
 # This handles some cases of MongoDB connection strings, but not the full generality of them.
 - name: Credentials in MongoDB Connection String
   id: np.mongodb.1
+  base_score: 85
 
   pattern: |
     (?x)

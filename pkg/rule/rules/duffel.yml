@@ -1,6 +1,7 @@
 rules:
   - name: Duffel API Token
     id: kingfisher.duffel.1
+    base_score: 82
     pattern: |
       (?xi)
       \b

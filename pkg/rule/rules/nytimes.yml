@@ -1,6 +1,7 @@
 rules:
   - name: New York Times API Key
     id: kingfisher.nytimes.1
+    base_score: 25
     pattern: |
       (?xi)
       (?:nytimes|new[- ]?york[- ]?times)

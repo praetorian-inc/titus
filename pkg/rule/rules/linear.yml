@@ -1,6 +1,7 @@
 rules:
   - name: Linear API Key
     id: kingfisher.linear.1
+    base_score: 62
     pattern: |
       (?xi)                   
       \b                     

@@ -1,6 +1,7 @@
 rules:
   - name: Data.gov API Key
     id: kingfisher.datagov.1
+    base_score: 15
     pattern: |
       (?xi)
       \b
@@ -37,4 +38,3 @@ rules:
             - report_response: true
             - type: StatusMatch
               status: [200]
-

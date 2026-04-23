@@ -1,6 +1,7 @@
 rules:
   - name: Delighted API Key
     id: np.delighted.1
+    base_score: 45
     pattern: |
       (?xi)
       \b(?:delighted)

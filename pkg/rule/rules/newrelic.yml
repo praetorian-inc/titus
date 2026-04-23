@@ -2,6 +2,7 @@ rules:
 
 - name: New Relic License Key
   id: np.newrelic.1
+  base_score: 35
 
   pattern: |
     (?x)(?i)
@@ -32,6 +33,7 @@ rules:
 
 - name: New Relic License Key
   id: np.newrelic.2
+  base_score: 35
   pattern: |
     (?x)(?i)
     associated\ with\ your\ New\ Relic\ account\.\s+
@@ -63,6 +65,7 @@ rules:
 
 - name: New Relic API Service Key
   id: np.newrelic.3
+  base_score: 50
   pattern: |
     (?x)(?i)
     \b
@@ -86,6 +89,7 @@ rules:
 
 - name: New Relic Admin API Key
   id: np.newrelic.4
+  base_score: 70
   pattern: |
     (?x)(?i)
     \b
@@ -104,6 +108,7 @@ rules:
 
 - name: New Relic Insights Insert Key
   id: np.newrelic.5
+  base_score: 30
   pattern: |
     (?x)(?i)
     \b
@@ -123,6 +128,7 @@ rules:
 
 - name: New Relic Insights Query Key
   id: np.newrelic.6
+  base_score: 32
   pattern: |
     (?x)(?i)
     \b
@@ -141,6 +147,7 @@ rules:
 
 - name: New Relic REST API Key
   id: np.newrelic.7
+  base_score: 55
   pattern: |
     (?x)(?i)
     \b
@@ -164,6 +171,7 @@ rules:
 
 - name: New Relic Pixie API Key
   id: np.newrelic.8
+  base_score: 55
   pattern: |
     (?x)(?i)
     \b
@@ -184,6 +192,7 @@ rules:
 
 - name: New Relic Pixie Deploy Key
   id: np.newrelic.9
+  base_score: 58
   pattern: |
     (?x)(?i)
     \b

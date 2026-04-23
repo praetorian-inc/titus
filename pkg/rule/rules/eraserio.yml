@@ -1,6 +1,7 @@
 rules:
   - name: Eraser API Key
     id: kingfisher.eraser.1
+    base_score: 35
     pattern: |
       (?xi)
       \b

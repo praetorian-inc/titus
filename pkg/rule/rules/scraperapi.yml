@@ -1,6 +1,7 @@
 rules:
   - name: ScraperAPI Key
     id: kingfisher.scraperapi.1
+    base_score: 45
     pattern: |
       (?xi)
       \b(?:scraper(?:\s|[_-])?api|scraperapi)

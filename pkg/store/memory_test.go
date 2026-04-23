@@ -431,3 +431,4 @@ func TestMemory_Close(t *testing.T) {
 	// Assert - Close should be a no-op for in-memory store
 	assert.NoError(t, err)
 }
+

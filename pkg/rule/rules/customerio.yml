@@ -1,6 +1,7 @@
 rules:
   - name: Customer.io Tracking API Key
     id: kingfisher.customerio.1
+    base_score: 60
     pattern: |
       (?xi)
       \b
@@ -26,6 +27,7 @@ rules:
 
   - name: Customer.io App API Key
     id: kingfisher.customerio.2
+    base_score: 62
     pattern: |
       (?xi)
       \b

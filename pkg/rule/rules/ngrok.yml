@@ -1,6 +1,7 @@
 rules:
   - name: Ngrok API Key
     id: kingfisher.ngrok.1
+    base_score: 70
     pattern: |
       (?xi)
       \b

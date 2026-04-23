@@ -2,6 +2,7 @@ rules:
 
 - name: Twilio API Key
   id: np.twilio.1
+  base_score: 75
 
   # Named capture group for validator compatibility
   # Captures API Key SID (SK + 32 hex chars)
