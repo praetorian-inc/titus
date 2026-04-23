@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1203,4 +1204,44 @@ func TestOutputReportJSON_FilePathFallsBackToBlobHex(t *testing.T) {
 	// file_path must fall back to the blob ID hex string when no provenance exists.
 	assert.Equal(t, blobID.Hex(), gotMatch.FilePath,
 		"file_path should fall back to BlobID.Hex() when provenance is unavailable")
+}
+
+// =============================================================================
+// Regression test: jsonFinding.Matches tag must track types.Finding.Matches
+// =============================================================================
+
+func TestJSONFindingMatchesTagTracksFinding(t *testing.T) {
+	// If types.Finding.Matches ever gains or changes its json tag, the
+	// shadow jsonFinding.Matches tag must be updated in lockstep, otherwise
+	// titus report --format json will emit two "Matches" keys (or one wrong
+	// key and the embedded original). This test enforces that coupling.
+
+	findingField, ok := reflect.TypeOf(types.Finding{}).FieldByName("Matches")
+	require.True(t, ok, "types.Finding.Matches field not found")
+
+	findingMarshaledName := marshaledJSONName(findingField)
+
+	jfField, ok := reflect.TypeOf(jsonFinding{}).FieldByName("Matches")
+	require.True(t, ok, "jsonFinding.Matches field not found")
+
+	jfMarshaledName := marshaledJSONName(jfField)
+
+	require.Equal(t, findingMarshaledName, jfMarshaledName,
+		"jsonFinding.Matches json key (%q) must match types.Finding.Matches json key (%q); "+
+			"update the tag in cmd/titus/report.go when types.Finding.Matches changes",
+		jfMarshaledName, findingMarshaledName)
+}
+
+// marshaledJSONName returns the JSON key encoding/json would use for the field,
+// handling untagged fields (default field-name behavior) and tag options like ",omitempty".
+func marshaledJSONName(f reflect.StructField) string {
+	tag := f.Tag.Get("json")
+	if tag == "" {
+		return f.Name
+	}
+	name, _, _ := strings.Cut(tag, ",")
+	if name == "" {
+		return f.Name
+	}
+	return name
 }
