@@ -93,3 +93,76 @@ func TestMatchGroupCondition_NilSafety(t *testing.T) {
 	_, err = nilCond.Evaluate(&types.Match{})
 	require.Error(t, err)
 }
+
+func TestSurroundingContextContainsCondition_Evaluate(t *testing.T) {
+	mkMatch := func(before, after string) *types.Match {
+		return &types.Match{Snippet: types.Snippet{
+			Before: []byte(before),
+			After:  []byte(after),
+		}}
+	}
+	tests := []struct {
+		name      string
+		within    int
+		value     string
+		match     *types.Match
+		wantFired bool
+	}{
+		{
+			name:      "found in before (unlimited)",
+			within:    0,
+			value:     "docker",
+			match:     mkMatch("FROM docker:latest\n", "run"),
+			wantFired: true,
+		},
+		{
+			name:      "found in after (unlimited)",
+			within:    0,
+			value:     "example",
+			match:     mkMatch("", "this is an example line"),
+			wantFired: true,
+		},
+		{
+			name:      "not found anywhere",
+			within:    0,
+			value:     "kubernetes",
+			match:     mkMatch("docker stuff", "and more docker"),
+			wantFired: false,
+		},
+		{
+			name:      "within limits prevents match",
+			within:    3,
+			value:     "docker",
+			match:     mkMatch("0123456789docker", ""), // "docker" is 10+ chars away from match
+			wantFired: false,
+		},
+		{
+			name:      "within limits preserves close match",
+			within:    10,
+			value:     "docker",
+			match:     mkMatch("docker0123", ""), // within 10 bytes of end
+			wantFired: true,
+		},
+		{
+			name:      "nil match is non-fire",
+			within:    0,
+			value:     "anything",
+			match:     nil,
+			wantFired: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &surroundingContextContainsCondition{Within: tt.within, Value: tt.value}
+			got, err := c.Evaluate(tt.match)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantFired, got)
+		})
+	}
+}
+
+func TestSurroundingContextContainsCondition_EmptyValueIsError(t *testing.T) {
+	c := &surroundingContextContainsCondition{Within: 0, Value: ""}
+	_, err := c.Evaluate(&types.Match{})
+	require.Error(t, err)
+}
