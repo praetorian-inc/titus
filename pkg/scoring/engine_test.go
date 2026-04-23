@@ -1,10 +1,12 @@
 package scoring
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Confirms the basic Scorer/Modifier types exist with the expected shape.
@@ -57,4 +59,162 @@ func TestEngine_NoMatchingScorer_ReturnsBaseOnly(t *testing.T) {
 
 	assert.Equal(t, 30, score.Final)
 	assert.Empty(t, score.Applied)
+}
+
+// Helper: builds a deterministic "always fires" condition for math tests.
+func alwaysFires() Condition {
+	return &matchLengthCondition{Op: matchLengthOpGT, Value: -1} // any length > -1 → true
+}
+
+func TestEngine_DeltaStacks(t *testing.T) {
+	scorer := &Scorer{
+		Name:    "stack",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			{Name: "a", Kind: ModifierKindDelta, Value: 5, Condition: alwaysFires()},
+			{Name: "b", Kind: ModifierKindDelta, Value: 10, Condition: alwaysFires()},
+			{Name: "c", Kind: ModifierKindDelta, Value: -3, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 50}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	assert.Equal(t, 62, score.Final) // 50 + 5 + 10 - 3
+	assert.Len(t, score.Applied, 3)
+}
+
+func TestEngine_SetScoreReplaces(t *testing.T) {
+	scorer := &Scorer{
+		Name:    "replace",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			{Name: "boost", Kind: ModifierKindDelta, Value: 20, Condition: alwaysFires()},
+			{Name: "force-to-10", Kind: ModifierKindSetScore, Value: 10, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 50}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	// Declaration order, no priorities: +20 then set_score=10 → final 10.
+	assert.Equal(t, 10, score.Final)
+	assert.Len(t, score.Applied, 2)
+}
+
+func TestEngine_DeltaAfterSetScore(t *testing.T) {
+	scorer := &Scorer{
+		Name:    "replace-then-add",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			{Name: "force-to-10", Kind: ModifierKindSetScore, Value: 10, Condition: alwaysFires()},
+			{Name: "bonus", Kind: ModifierKindDelta, Value: 5, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 80}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	assert.Equal(t, 15, score.Final) // set to 10, then +5
+}
+
+func TestEngine_ClampsLow(t *testing.T) {
+	scorer := &Scorer{
+		Name:    "dive",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			{Name: "a", Kind: ModifierKindDelta, Value: -200, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 50}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	assert.Equal(t, 0, score.Final)
+	assert.Equal(t, "info", score.SuggestedSeverity)
+}
+
+func TestEngine_ClampsHigh(t *testing.T) {
+	scorer := &Scorer{
+		Name:    "soar",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			{Name: "a", Kind: ModifierKindDelta, Value: 200, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 50}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	assert.Equal(t, 100, score.Final)
+	assert.Equal(t, "critical", score.SuggestedSeverity)
+}
+
+// erroringCondition always returns an error — used to prove modifier is skipped.
+type erroringCondition struct{}
+
+func (e *erroringCondition) Evaluate(m *types.Match) (bool, error) {
+	return false, fmt.Errorf("synthetic error")
+}
+
+func TestEngine_PriorityDESCOrdering(t *testing.T) {
+	scorer := &Scorer{
+		Name:    "priority-test",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			// Declared order: low, high, mid. Expected eval: high, mid, low.
+			{Name: "low", Priority: 10, Kind: ModifierKindDelta, Value: 1, Condition: alwaysFires()},
+			{Name: "high", Priority: 100, Kind: ModifierKindSetScore, Value: 50, Condition: alwaysFires()},
+			{Name: "mid", Priority: 50, Kind: ModifierKindDelta, Value: 10, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 5}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	// Eval order by priority DESC: high (set=50) → mid (+10) → low (+1) → 61.
+	assert.Equal(t, 61, score.Final)
+	require.Len(t, score.Applied, 3)
+	assert.Equal(t, "high", score.Applied[0].Name)
+	assert.Equal(t, "mid", score.Applied[1].Name)
+	assert.Equal(t, "low", score.Applied[2].Name)
+}
+
+func TestEngine_TieBreak_YAMLOrderASC(t *testing.T) {
+	scorer := &Scorer{
+		Name:    "tiebreak",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			// Same priority — YAML declaration order wins (first = A).
+			{Name: "A", Priority: 50, Kind: ModifierKindDelta, Value: 1, Condition: alwaysFires()},
+			{Name: "B", Priority: 50, Kind: ModifierKindDelta, Value: 2, Condition: alwaysFires()},
+			{Name: "C", Priority: 50, Kind: ModifierKindDelta, Value: 3, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 0}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	assert.Equal(t, 6, score.Final)
+	require.Len(t, score.Applied, 3)
+	assert.Equal(t, "A", score.Applied[0].Name)
+	assert.Equal(t, "B", score.Applied[1].Name)
+	assert.Equal(t, "C", score.Applied[2].Name)
+}
+
+func TestEngine_ConditionError_SkipsModifier_ContinuesScoring(t *testing.T) {
+	var warnings []string
+	scorer := &Scorer{
+		Name:    "mixed",
+		RuleIDs: []string{"np.test.1"},
+		Modifiers: []Modifier{
+			{Name: "broken", Kind: ModifierKindDelta, Value: 100, Condition: &erroringCondition{}},
+			{Name: "works", Kind: ModifierKindDelta, Value: 5, Condition: alwaysFires()},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer})
+	engine.warnf = func(format string, args ...any) {
+		warnings = append(warnings, fmt.Sprintf(format, args...))
+	}
+	rule := &types.Rule{ID: "np.test.1", BaseScore: 50}
+	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{{Snippet: types.Snippet{Matching: []byte("x")}}}, rule)
+	assert.Equal(t, 55, score.Final) // 50 + 5 (broken skipped)
+	require.Len(t, score.Applied, 1)
+	assert.Equal(t, "works", score.Applied[0].Name)
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "broken")
+	assert.Contains(t, warnings[0], "synthetic error")
 }
