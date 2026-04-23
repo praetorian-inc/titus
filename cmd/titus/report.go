@@ -260,7 +260,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 	// Output based on format
 	switch reportFormat {
 	case "json":
-		return outputReportJSON(cmd, findings, matches, ruleMap)
+		return outputReportJSON(cmd, s, findings, matches, ruleMap)
 	case "human":
 		return outputReportHuman(cmd, findings, matches, storePath, ruleMap)
 	case "sarif":
@@ -627,18 +627,57 @@ func outputReportSARIF(cmd *cobra.Command, s store.Store, findings []*types.Find
 	return nil
 }
 
-func outputReportJSON(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
-	// Group matches by finding ID using content-based computation
+// jsonMatch is a shadow type for types.Match that adds a file_path field to
+// the JSON output without modifying the shared types.Match struct. Embedding
+// *types.Match exposes all existing fields; the outer FilePath field takes
+// precedence over any same-named field on the embedded struct.
+type jsonMatch struct {
+	*types.Match
+	FilePath string `json:"file_path"`
+}
+
+// jsonFinding is a shadow type for types.Finding that replaces the Matches
+// slice with []jsonMatch so each match carries a file_path. The json tag
+// here must match the marshaled name of types.Finding.Matches; if that
+// field ever gains an explicit json tag, update this tag in lockstep or
+// the output will contain two "Matches" keys.
+type jsonFinding struct {
+	*types.Finding
+	Matches []jsonMatch `json:"Matches"`
+}
+
+func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
+	// Group matches by finding ID using content-based computation.
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 
-	// Attach matches to their findings
+	// Cache provenance path lookups to avoid redundant store queries.
+	provenanceCache := make(map[types.BlobID]string)
+
+	// Build the output slice using the shadow types so we don't mutate
+	// the shared types.Finding/types.Match structs.
+	out := make([]jsonFinding, 0, len(findings))
 	for _, f := range findings {
-		f.Matches = matchesByFinding[f.ID]
+		ms := matchesByFinding[f.ID]
+		jms := make([]jsonMatch, 0, len(ms))
+		for _, m := range ms {
+			filePath, ok := provenanceCache[m.BlobID]
+			if !ok {
+				prov, err := s.GetProvenance(m.BlobID)
+				if err != nil {
+					filePath = m.BlobID.Hex()
+				} else {
+					filePath = prov.Path()
+				}
+				provenanceCache[m.BlobID] = filePath
+			}
+			jms = append(jms, jsonMatch{Match: m, FilePath: filePath})
+		}
+		out = append(out, jsonFinding{Finding: f, Matches: jms})
 	}
 
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(findings)
+	return encoder.Encode(out)
 }
 
 func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, datastorePath string, ruleMap map[string]*types.Rule) error {

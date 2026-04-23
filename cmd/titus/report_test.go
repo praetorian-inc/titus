@@ -956,7 +956,7 @@ func TestReport_JSON_ScoreRoundTrip_Golden(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	require.NoError(t, outputReportJSON(cmd, findings, matches, ruleMap))
+	require.NoError(t, outputReportJSON(cmd, s, findings, matches, ruleMap))
 
 	goldenPath := "testdata/golden/score_json.golden.json"
 	wantBytes, err := os.ReadFile(goldenPath)
@@ -1061,4 +1061,146 @@ func TestFilterRejected_DuplicateStructuralIDs(t *testing.T) {
 	// Both matches share the same StructuralID that is in the rejected set;
 	// both should be removed.
 	assert.Empty(t, gotMatches, "both matches with the shared StructuralID should be removed when finding is rejected")
+}
+
+// =============================================================================
+// Tests for outputReportJSON file_path field (issue #197)
+// =============================================================================
+
+// jsonMatchOutput is used to decode the Matches field from outputReportJSON output.
+type jsonMatchOutput struct {
+	BlobID       types.BlobID `json:"BlobID"`
+	StructuralID string       `json:"StructuralID"`
+	RuleID       string       `json:"RuleID"`
+	FilePath     string       `json:"file_path"`
+}
+
+// jsonFindingOutput is used to decode the top-level finding output.
+type jsonFindingOutput struct {
+	ID      string            `json:"ID"`
+	RuleID  string            `json:"RuleID"`
+	Matches []jsonMatchOutput `json:"Matches"`
+}
+
+func TestOutputReportJSON_IncludesFilePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	// Set up rule
+	rule := &types.Rule{ID: "np.test.1", Name: "Test Rule", Pattern: "sk_test_.*"}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	// Set up finding
+	groups := [][]byte{[]byte("sk_test_secret")}
+	finding := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, groups),
+		RuleID: "np.test.1",
+		Groups: groups,
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	// Set up blob with provenance pointing to a known path
+	blobID := types.ComputeBlobID([]byte("STRIPE_SECRET_KEY=sk_test_secret"))
+	require.NoError(t, s.AddBlob(blobID, 32))
+	wantPath := "/tmp/demo/creds.txt"
+	require.NoError(t, s.AddProvenance(blobID, types.FileProvenance{FilePath: wantPath}))
+
+	// Set up match linking blob to finding
+	match := &types.Match{
+		StructuralID: "sm-stripe-1",
+		RuleID:       "np.test.1",
+		BlobID:       blobID,
+		Groups:       groups,
+		Location:     types.Location{},
+		Snippet: types.Snippet{
+			Matching: []byte("sk_test_secret"),
+		},
+	}
+	require.NoError(t, s.AddMatch(match))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.test.1": rule}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportJSON(cmd, s, findings, matches, ruleMap))
+
+	// Parse the JSON output
+	var output []jsonFindingOutput
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &output), "output must be valid JSON")
+
+	require.Len(t, output, 1, "expected exactly one finding")
+	require.Len(t, output[0].Matches, 1, "expected exactly one match")
+
+	gotMatch := output[0].Matches[0]
+
+	// Primary assertion: file_path must be the provenance path, not a blob hex string.
+	assert.Equal(t, wantPath, gotMatch.FilePath,
+		"file_path should equal the provenance path, not the blob hex")
+
+	// Existing fields must be preserved.
+	assert.Equal(t, "np.test.1", gotMatch.RuleID, "RuleID should be preserved in match output")
+	assert.Equal(t, "sm-stripe-1", gotMatch.StructuralID, "StructuralID should be preserved in match output")
+}
+
+func TestOutputReportJSON_FilePathFallsBackToBlobHex(t *testing.T) {
+	// When no provenance exists for a blob, file_path should fall back to blob hex string.
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	rule := &types.Rule{ID: "np.test.2", Name: "Test Rule 2", Pattern: "tok_.*"}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	groups := [][]byte{[]byte("tok_abc")}
+	finding := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, groups),
+		RuleID: "np.test.2",
+		Groups: groups,
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	blobID := types.ComputeBlobID([]byte("TOKEN=tok_abc"))
+	require.NoError(t, s.AddBlob(blobID, 13))
+	// No AddProvenance call — no provenance for this blob.
+
+	match := &types.Match{
+		StructuralID: "sm-token-1",
+		RuleID:       "np.test.2",
+		BlobID:       blobID,
+		Groups:       groups,
+		Location:     types.Location{},
+	}
+	require.NoError(t, s.AddMatch(match))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.test.2": rule}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportJSON(cmd, s, findings, matches, ruleMap))
+
+	var output []jsonFindingOutput
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &output))
+
+	require.Len(t, output, 1)
+	require.Len(t, output[0].Matches, 1)
+
+	gotMatch := output[0].Matches[0]
+	// file_path must fall back to the blob ID hex string when no provenance exists.
+	assert.Equal(t, blobID.Hex(), gotMatch.FilePath,
+		"file_path should fall back to BlobID.Hex() when provenance is unavailable")
 }
