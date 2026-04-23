@@ -1,12 +1,8 @@
-name: Gemini PR Review
-
-# Thin caller of the centralized hardened Gemini PR reviewer
-# (praetorian-inc/public-workflows). All security posture lives there.
-# Do not copy security settings back into this file.
+name: Gemini PR Assistant
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review]
+    types: [opened, ready_for_review]
   pull_request_review_comment:
     types: [created]
 
@@ -16,6 +12,9 @@ concurrency:
 
 jobs:
   gemini-review:
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event_name != 'pull_request_review_comment' || contains(github.event.comment.body, '@gemini'))
     uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@cde8b58405ce8b7ebd30a8b478a32921aba49215  # v2.1.0
     permissions:
       contents: read
