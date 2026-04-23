@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   gemini-review:
-    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@7207401d1ad8a10ea4289b73a458068787d249af  # update to release tag SHA after merge
+    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@cde8b58405ce8b7ebd30a8b478a32921aba49215  # v2.1.0
     permissions:
       contents: read
       pull-requests: write
