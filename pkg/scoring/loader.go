@@ -1,0 +1,182 @@
+package scoring
+
+import (
+	"fmt"
+	"io/fs"
+	"path/filepath"
+	"regexp"
+
+	"gopkg.in/yaml.v3"
+)
+
+// ScorerLoader handles loading scorer YAML files. Mirrors pkg/rule.Loader.
+type ScorerLoader struct {
+	fs fs.FS
+}
+
+// NewLoader creates a loader backed by the embedded builtinFS.
+func NewLoader() *ScorerLoader {
+	return &ScorerLoader{fs: builtinFS}
+}
+
+// NewLoaderWithFS creates a loader backed by a custom fs.FS (for tests).
+func NewLoaderWithFS(fsys fs.FS) *ScorerLoader {
+	return &ScorerLoader{fs: fsys}
+}
+
+// LoadScorers parses a scorers YAML document and returns the compiled Scorers.
+// Regex compile errors, missing leaves, ambiguous actions, etc. are hard
+// failures — the caller (scan startup) must abort.
+func (l *ScorerLoader) LoadScorers(data []byte) ([]*Scorer, error) {
+	var yf yamlScorersFile
+	if err := yaml.Unmarshal(data, &yf); err != nil {
+		return nil, fmt.Errorf("failed to parse scorer YAML: %w", err)
+	}
+	if len(yf.Scorers) == 0 {
+		return nil, fmt.Errorf("no scorers found in YAML")
+	}
+	result := make([]*Scorer, 0, len(yf.Scorers))
+	for i, ys := range yf.Scorers {
+		s, err := convertYAMLScorer(ys)
+		if err != nil {
+			return nil, fmt.Errorf("scorer[%d] %q: %w", i, ys.Name, err)
+		}
+		result = append(result, s)
+	}
+	return result, nil
+}
+
+// LoadBuiltinScorers walks the embedded scorers/ directory and loads every
+// .yaml file. Mirrors pkg/rule/loader.go:86-125.
+func (l *ScorerLoader) LoadBuiltinScorers() ([]*Scorer, error) {
+	var scorers []*Scorer
+	err := fs.WalkDir(l.fs, "scorers", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ".yaml" {
+			return nil
+		}
+		data, err := fs.ReadFile(l.fs, path)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", path, err)
+		}
+		loaded, err := l.LoadScorers(data)
+		if err != nil {
+			return fmt.Errorf("loading %s: %w", path, err)
+		}
+		scorers = append(scorers, loaded...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return scorers, nil
+}
+
+// convertYAMLScorer compiles a yamlScorer into a *Scorer, validating every
+// modifier and precompiling all regexes.
+func convertYAMLScorer(ys yamlScorer) (*Scorer, error) {
+	if ys.Name == "" {
+		return nil, fmt.Errorf("scorer name is required")
+	}
+	if len(ys.RuleIDs) == 0 {
+		return nil, fmt.Errorf("scorer %q: rule_ids must be non-empty", ys.Name)
+	}
+	if len(ys.Modifiers) == 0 {
+		return nil, fmt.Errorf("scorer %q: modifiers must be non-empty", ys.Name)
+	}
+	out := &Scorer{
+		Name:      ys.Name,
+		RuleIDs:   append([]string(nil), ys.RuleIDs...),
+		Modifiers: make([]Modifier, 0, len(ys.Modifiers)),
+	}
+	for i, ym := range ys.Modifiers {
+		m, err := convertYAMLModifier(ym)
+		if err != nil {
+			return nil, fmt.Errorf("modifier[%d] %q: %w", i, ym.Name, err)
+		}
+		out.Modifiers = append(out.Modifiers, m)
+	}
+	return out, nil
+}
+
+// convertYAMLModifier enforces the "exactly one condition, exactly one action"
+// rule and compiles the regex (if any).
+func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
+	if ym.Name == "" {
+		return Modifier{}, fmt.Errorf("modifier name is required")
+	}
+	// Condition: exactly one
+	condCount := 0
+	var cond Condition
+	if ym.MatchGroup != nil {
+		condCount++
+		if ym.MatchGroup.Name == "" {
+			return Modifier{}, fmt.Errorf("match_group.name is required")
+		}
+		if ym.MatchGroup.Matches == "" {
+			return Modifier{}, fmt.Errorf("match_group.matches is required")
+		}
+		re, err := regexp.Compile(ym.MatchGroup.Matches)
+		if err != nil {
+			return Modifier{}, fmt.Errorf("match_group.matches regex %q: %w", ym.MatchGroup.Matches, err)
+		}
+		cond = &matchGroupCondition{Name: ym.MatchGroup.Name, Regex: re}
+	}
+	if ym.SurroundingContextContains != nil {
+		condCount++
+		if ym.SurroundingContextContains.Value == "" {
+			return Modifier{}, fmt.Errorf("surrounding_context_contains.value is required")
+		}
+		if ym.SurroundingContextContains.Within < 0 {
+			return Modifier{}, fmt.Errorf("surrounding_context_contains.within must be >= 0")
+		}
+		cond = &surroundingContextContainsCondition{
+			Within: ym.SurroundingContextContains.Within,
+			Value:  ym.SurroundingContextContains.Value,
+		}
+	}
+	if ym.MatchLength != nil {
+		condCount++
+		op := matchLengthOp(ym.MatchLength.Op)
+		switch op {
+		case matchLengthOpGT, matchLengthOpLT, matchLengthOpEQ:
+		default:
+			return Modifier{}, fmt.Errorf("match_length.op must be gt|lt|eq, got %q", ym.MatchLength.Op)
+		}
+		cond = &matchLengthCondition{Op: op, Value: ym.MatchLength.Value}
+	}
+	if condCount != 1 {
+		return Modifier{}, fmt.Errorf("exactly one condition leaf required (got %d)", condCount)
+	}
+
+	// Action: exactly one
+	actionCount := 0
+	var kind ModifierKind
+	var value int
+	if ym.Delta != nil {
+		actionCount++
+		kind = ModifierKindDelta
+		value = *ym.Delta
+	}
+	if ym.SetScore != nil {
+		actionCount++
+		kind = ModifierKindSetScore
+		value = *ym.SetScore
+		if value < 0 || value > 100 {
+			return Modifier{}, fmt.Errorf("set_score must be in [0, 100], got %d", value)
+		}
+	}
+	if actionCount != 1 {
+		return Modifier{}, fmt.Errorf("exactly one of delta or set_score required (got %d)", actionCount)
+	}
+
+	return Modifier{
+		Name:      ym.Name,
+		Priority:  ym.Priority, // default 0 when omitted
+		Kind:      kind,
+		Value:     value,
+		Condition: cond,
+	}, nil
+}
