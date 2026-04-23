@@ -166,3 +166,40 @@ func TestSurroundingContextContainsCondition_EmptyValueIsError(t *testing.T) {
 	_, err := c.Evaluate(&types.Match{})
 	require.Error(t, err)
 }
+
+func TestMatchLengthCondition_Evaluate(t *testing.T) {
+	mkMatch := func(matching string) *types.Match {
+		return &types.Match{Snippet: types.Snippet{Matching: []byte(matching)}}
+	}
+	tests := []struct {
+		name      string
+		op        matchLengthOp
+		value     int
+		match     *types.Match
+		wantFired bool
+	}{
+		{"gt fires when longer", matchLengthOpGT, 10, mkMatch("AKIAIOSFODNN7EXAMPLE"), true},
+		{"gt no-fire when shorter", matchLengthOpGT, 50, mkMatch("AKIAIOSFODNN7EXAMPLE"), false},
+		{"gt boundary: equal is not greater", matchLengthOpGT, 20, mkMatch("AKIAIOSFODNN7EXAMPLE"), false},
+		{"lt fires when shorter", matchLengthOpLT, 30, mkMatch("AKIAIOSFODNN7EXAMPLE"), true},
+		{"lt no-fire when longer", matchLengthOpLT, 5, mkMatch("AKIAIOSFODNN7EXAMPLE"), false},
+		{"eq fires on exact length", matchLengthOpEQ, 20, mkMatch("AKIAIOSFODNN7EXAMPLE"), true},
+		{"eq no-fire when off by one", matchLengthOpEQ, 19, mkMatch("AKIAIOSFODNN7EXAMPLE"), false},
+		{"empty matching has length 0", matchLengthOpEQ, 0, mkMatch(""), true},
+		{"nil match is non-fire", matchLengthOpGT, 0, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &matchLengthCondition{Op: tt.op, Value: tt.value}
+			got, err := c.Evaluate(tt.match)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantFired, got)
+		})
+	}
+}
+
+func TestMatchLengthCondition_InvalidOpIsError(t *testing.T) {
+	c := &matchLengthCondition{Op: "bogus", Value: 0}
+	_, err := c.Evaluate(&types.Match{Snippet: types.Snippet{Matching: []byte("x")}})
+	require.Error(t, err)
+}
