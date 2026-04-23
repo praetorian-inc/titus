@@ -5,12 +5,12 @@
     "Groups": [
       "eDF4Mng="
     ],
-    "Matches": null,
     "Score": {
       "Final": 75,
       "Base": 75,
       "SuggestedSeverity": "high",
       "Applied": []
-    }
+    },
+    "Matches": []
   }
 ]
