@@ -1,0 +1,24 @@
+name: Gemini PR Review
+
+# Thin caller of the centralized hardened Gemini PR reviewer
+# (praetorian-inc/public-workflows). All security posture lives there.
+# Do not copy security settings back into this file.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  group: gemini-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gemini-review:
+    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@7207401d1ad8a10ea4289b73a458068787d249af  # update to release tag SHA after merge
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
