@@ -829,6 +829,18 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 		return nil, nil
 	}
 
+	// Deduplicate: keep only one retry job per (blobID, rule.ID) pair.
+	seen := make(map[string]struct{})
+	deduped := jobs[:0]
+	for _, j := range jobs {
+		key := j.blobID.Hex() + "\x00" + j.rule.ID
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			deduped = append(deduped, j)
+		}
+	}
+	jobs = deduped
+
 	const retryTimeout = 30 * time.Second
 
 	var all []*types.Match
