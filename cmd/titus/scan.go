@@ -363,13 +363,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 				if !exists {
 					findingCount.Add(1)
 					matchCount.Add(1)
-					f := &types.Finding{
+					if err := tx.AddFinding(&types.Finding{
 						ID:     findingID,
 						RuleID: match.RuleID,
 						Groups: match.Groups,
-					}
-					f.Score = engine.Score(f, []*types.Match{match}, rule)
-					if err := tx.AddFinding(f); err != nil {
+						Score:  synthesizeBaseScore(rule),
+					}); err != nil {
 						return fmt.Errorf("storing retry finding: %w", err)
 					}
 				}
