@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -223,6 +224,48 @@ func TestPortableRegexp_BlobIDInWarning(t *testing.T) {
 		assert.Contains(t, w, blobID.Hex(), "warning should include the blob ID hex")
 		assert.Contains(t, w, "on blob", "warning should use 'on blob' prefix")
 	}
+}
+
+// TestPortableRegexp_TimedOutBlobsAreRetried verifies that blobs which timed out
+// during the main parallel scan are queued and retried by DrainTimedOut(), recovering
+// findings that would otherwise be silently dropped due to CPU-contention starvation.
+func TestPortableRegexp_TimedOutBlobsAreRetried(t *testing.T) {
+	// A simple pattern that will complete quickly under low load.
+	rules := []*types.Rule{
+		{
+			ID:      "benign-rule",
+			Name:    "Simple API Key",
+			Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
+		},
+	}
+
+	content := []byte("SECRET_KEY=ABCDEFGHIJ1234567890\nsome other content\n")
+	blobID := types.ComputeBlobID(content)
+
+	var warnings []string
+	warnf := func(format string, args ...any) {
+		warnings = append(warnings, fmt.Sprintf(format, args...))
+	}
+
+	m, err := NewPortableRegexpWithTimeout(rules, 0, warnf, 1*time.Millisecond)
+	require.NoError(t, err)
+
+	// With 1ms timeout, every regex call times out immediately.
+	// The match should be queued for retry, not returned yet.
+	matches, err := m.MatchWithBlobID(content, blobID)
+	require.NoError(t, err)
+	assert.Empty(t, matches, "no matches returned during main pass (all timed out)")
+
+	// DrainTimedOut replays queued jobs single-threaded with a longer timeout.
+	retried, err := m.DrainTimedOut()
+	require.NoError(t, err)
+	require.NotEmpty(t, retried, "DrainTimedOut must recover timed-out findings")
+
+	ruleIDs := make(map[string]bool)
+	for _, match := range retried {
+		ruleIDs[match.RuleID] = true
+	}
+	assert.True(t, ruleIDs["benign-rule"], "benign-rule findings must be recovered by DrainTimedOut")
 }
 
 // TestPortableRegexp_BlobIDInWarning_NoHint verifies that warnings always include
