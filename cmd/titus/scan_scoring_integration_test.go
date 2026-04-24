@@ -211,3 +211,67 @@ func TestRunScan_UnscoredRule_StillEmitsFindingWithBaseOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"Applied":[]`, "Applied must marshal as [] not null")
 }
+
+// TestRunScan_MultiMatchDedup_ScoredOncePerFinding verifies the architectural
+// invariant that Engine.Score is called exactly once per unique finding even
+// when a rule matches multiple times in the same file.
+//
+// Strategy: scan a fixture containing two occurrences of the same AKIA key.
+// Both matches yield the same finding ID (same rule + same capture groups) so
+// they deduplicate into a single finding. Assertions:
+//
+//  1. Exactly one finding is emitted (dedup working).
+//  2. Score.Applied has exactly one entry of "akia-long-term", not two.
+//     If scoring were called once per match, Applied would contain duplicate
+//     entries; the presence of exactly one proves scoring fired once.
+func TestRunScan_MultiMatchDedup_ScoredOncePerFinding(t *testing.T) {
+	// Two occurrences of the same AKIA key in the same file.
+	const akiaKey = "AKIADEADBEEFDEADBEEF"
+	fixtureContent := "AWS_KEY=" + akiaKey + "\n" +
+		"BACKUP_KEY=" + akiaKey + "\n"
+
+	tmpDir := t.TempDir()
+	fixturePath := filepath.Join(tmpDir, "fixture.txt")
+	require.NoError(t, os.WriteFile(fixturePath, []byte(fixtureContent), 0644))
+
+	dsPath := filepath.Join(tmpDir, "scan.ds")
+
+	origOutputPath := scanOutputPath
+	origRuleset := scanRuleset
+	scanOutputPath = dsPath
+	scanRuleset = "all"
+	t.Cleanup(func() {
+		scanOutputPath = origOutputPath
+		scanRuleset = origRuleset
+	})
+
+	require.NoError(t, runScan(scanCmd, []string{fixturePath}))
+
+	s, err := store.New(store.Config{Path: filepath.Join(dsPath, "datastore.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+
+	// Collect all np.aws.1 findings (should be exactly 1 after dedup).
+	var awsFindings []*types.Finding
+	for _, f := range findings {
+		if f.RuleID == "np.aws.1" {
+			awsFindings = append(awsFindings, f)
+		}
+	}
+	require.Len(t, awsFindings, 1, "two identical AKIA matches must deduplicate into exactly one finding")
+
+	f := awsFindings[0]
+	require.NotNil(t, f.Score, "finding must have a Score")
+
+	// If scoring ran once per match instead of once per finding, Applied would
+	// contain the "akia-long-term" modifier twice. Exactly one entry proves
+	// the engine was called once for this finding.
+	require.Len(t, f.Score.Applied, 1,
+		"Applied must contain exactly 1 entry; multiple entries would indicate "+
+			"scoring ran more than once for the same finding")
+	assert.Equal(t, "akia-long-term", f.Score.Applied[0].Name,
+		"the single applied modifier must be akia-long-term")
+}
