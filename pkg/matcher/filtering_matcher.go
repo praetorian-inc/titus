@@ -34,6 +34,14 @@ func (f *filteringMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) 
 	return filterMatches(matches, f.rules), nil
 }
 
+func (f *filteringMatcher) DrainTimedOut() ([]*types.Match, error) {
+	matches, err := f.inner.DrainTimedOut()
+	if err != nil {
+		return nil, err
+	}
+	return filterMatches(matches, f.rules), nil
+}
+
 func (f *filteringMatcher) Close() error {
 	return f.inner.Close()
 }

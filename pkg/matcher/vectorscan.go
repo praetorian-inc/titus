@@ -801,6 +801,15 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 	return matches
 }
 
+// DrainTimedOut is a no-op for VectorscanMatcher. Vectorscan uses Hyperscan's
+// SIMD engine for the initial scan phase (no regexp2 timeouts in the hot path),
+// and the regexp2 fallback runs in a dedicated pass where CPU contention is lower.
+// A full retry queue for vectorscan is deferred until the portable matcher fix
+// is validated in production.
+func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
+	return nil, nil
+}
+
 // Close releases all resources associated with the matcher.
 func (m *VectorscanMatcher) Close() error {
 	// Note: We don't drain scratchPool - sync.Pool automatically GCs unused items

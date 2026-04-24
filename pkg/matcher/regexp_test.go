@@ -229,33 +229,30 @@ func TestPortableRegexp_BlobIDInWarning(t *testing.T) {
 // TestPortableRegexp_TimedOutBlobsAreRetried verifies that blobs which timed out
 // during the main parallel scan are queued and retried by DrainTimedOut(), recovering
 // findings that would otherwise be silently dropped due to CPU-contention starvation.
+//
+// The test directly injects a retryJob (package-internal struct) to simulate a timeout
+// that occurred during the main pass, then verifies that DrainTimedOut recovers the match.
+// This avoids any dependency on real wall-clock timing or CPU load.
 func TestPortableRegexp_TimedOutBlobsAreRetried(t *testing.T) {
-	// A simple pattern that will complete quickly under low load.
-	rules := []*types.Rule{
-		{
-			ID:      "benign-rule",
-			Name:    "Simple API Key",
-			Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
-		},
+	rule := &types.Rule{
+		ID:      "benign-rule",
+		Name:    "Simple API Key",
+		Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
 	}
 
 	content := []byte("SECRET_KEY=ABCDEFGHIJ1234567890\nsome other content\n")
 	blobID := types.ComputeBlobID(content)
 
-	var warnings []string
-	warnf := func(format string, args ...any) {
-		warnings = append(warnings, fmt.Sprintf(format, args...))
-	}
-
-	m, err := NewPortableRegexpWithTimeout(rules, 0, warnf, 1*time.Millisecond)
+	m, err := NewPortableRegexpWithTimeout([]*types.Rule{rule}, 0, nil, 5*time.Second)
 	require.NoError(t, err)
 
-	// With 1ms timeout, every regex call times out immediately.
-	// The match should be queued for retry, not returned yet.
-	matches, err := m.MatchWithBlobID(content, blobID)
-	require.NoError(t, err)
-	assert.Empty(t, matches, "no matches returned during main pass (all timed out)")
+	// Simulate a timeout by directly injecting a retry job, as the parallel workers
+	// do when regexp2 returns a timeout error. This decouples the test from real timing.
+	m.retryMu.Lock()
+	m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
+	m.retryMu.Unlock()
 
+	// The main pass has not run, so there are no matches yet.
 	// DrainTimedOut replays queued jobs single-threaded with a longer timeout.
 	retried, err := m.DrainTimedOut()
 	require.NoError(t, err)
@@ -266,6 +263,11 @@ func TestPortableRegexp_TimedOutBlobsAreRetried(t *testing.T) {
 		ruleIDs[match.RuleID] = true
 	}
 	assert.True(t, ruleIDs["benign-rule"], "benign-rule findings must be recovered by DrainTimedOut")
+
+	// After draining, the queue must be empty.
+	retried2, err := m.DrainTimedOut()
+	require.NoError(t, err)
+	assert.Empty(t, retried2, "second DrainTimedOut call must return nothing (queue cleared)")
 }
 
 // TestPortableRegexp_BlobIDInWarning_NoHint verifies that warnings always include

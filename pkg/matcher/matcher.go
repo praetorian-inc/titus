@@ -11,6 +11,13 @@ type Matcher interface {
 	// MatchWithBlobID scans content with a known BlobID.
 	MatchWithBlobID(content []byte, blobID types.BlobID) ([]*types.Match, error)
 
+	// DrainTimedOut replays any (content, blobID, rule) triples that timed out
+	// during the main parallel scan, running them single-threaded with a longer
+	// timeout to eliminate false drops caused by CPU-contention scheduler starvation.
+	// Must be called after all parallel workers have finished (after g.Wait()).
+	// Returns nil, nil when no timeouts were recorded (the common case).
+	DrainTimedOut() ([]*types.Match, error)
+
 	// Close releases resources (e.g., Hyperscan scratch space).
 	Close() error
 }

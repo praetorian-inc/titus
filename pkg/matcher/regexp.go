@@ -171,6 +171,12 @@ func (m *RegexpMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]
 	return matches, nil
 }
 
+// DrainTimedOut is a no-op for the WASM RegexpMatcher: WASM runs single-threaded
+// so there is no CPU-contention starvation and timeouts are genuine backtracking.
+func (m *RegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
+	return nil, nil
+}
+
 // Close releases resources (no-op for regexp).
 func (m *RegexpMatcher) Close() error {
 	return nil
