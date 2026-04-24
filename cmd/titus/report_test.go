@@ -1245,3 +1245,53 @@ func marshaledJSONName(f reflect.StructField) string {
 	}
 	return name
 }
+
+func TestReport_JSON_AppliedPopulated_Golden(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	rule := &types.Rule{ID: "np.aws.1", Name: "AWS API Key", Pattern: `\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b`, BaseScore: 48}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	finding := &types.Finding{
+		ID:     "test-aws-akia",
+		RuleID: "np.aws.1",
+		Groups: [][]byte{[]byte("AKIADEADBEEFDEADBEEF")},
+		Score: &types.Score{
+			Final:             58,
+			Base:              48,
+			SuggestedSeverity: "medium",
+			Applied: []types.ScoreModifier{
+				{Name: "akia-long-term", Scorer: "aws-key-scope", Kind: "delta", Value: 10, Priority: 100},
+			},
+		},
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.aws.1": rule}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportJSON(cmd, s, findings, matches, ruleMap))
+
+	goldenPath := "testdata/golden/score_json_applied.golden.json"
+	wantBytes, err := os.ReadFile(goldenPath)
+	if err != nil {
+		if os.Getenv("UPDATE_GOLDEN") != "" {
+			require.NoError(t, os.WriteFile(goldenPath, buf.Bytes(), 0644))
+			t.Skip("wrote golden file, rerun without UPDATE_GOLDEN")
+		}
+		t.Fatalf("golden file not found (run with UPDATE_GOLDEN=1): %v", err)
+	}
+
+	assert.Equal(t, strings.TrimSpace(string(wantBytes)), strings.TrimSpace(buf.String()),
+		"JSON output mismatch (regenerate with UPDATE_GOLDEN=1)")
+}

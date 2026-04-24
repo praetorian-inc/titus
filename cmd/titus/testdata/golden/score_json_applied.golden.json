@@ -1,0 +1,24 @@
+[
+  {
+    "ID": "test-aws-akia",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "QUtJQURFQURCRUVGREVBREJFRUY="
+    ],
+    "Score": {
+      "Final": 58,
+      "Base": 48,
+      "SuggestedSeverity": "medium",
+      "Applied": [
+        {
+          "Name": "akia-long-term",
+          "Scorer": "aws-key-scope",
+          "Kind": "delta",
+          "Value": 10,
+          "Priority": 100
+        }
+      ]
+    },
+    "Matches": []
+  }
+]
