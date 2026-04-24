@@ -167,7 +167,7 @@ func TestLoadBuiltinScorers_AWSScorerParses(t *testing.T) {
 		}
 	}
 	require.NotNil(t, awsScorer, "aws-key-scope scorer not found in builtin FS")
-	assert.Equal(t, []string{"np.aws.1"}, awsScorer.RuleIDs)
+	assert.Equal(t, []string{"np.aws.1", "np.aws.6"}, awsScorer.RuleIDs)
 	require.Len(t, awsScorer.Modifiers, 3)
 
 	wantNames := []string{"akia-long-term", "asia-temporary-session", "aida-user-identifier"}

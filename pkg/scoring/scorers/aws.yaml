@@ -1,6 +1,8 @@
 # AWS access key ID scorer — static modifiers only (M2 scope).
-# Targets the combined AWS key-ID rule np.aws.1 which matches every AWS key
-# identifier prefix. Adjusts score based on prefix semantics:
+# Targets np.aws.1 (standalone key ID) and np.aws.6 (key ID + secret together).
+# Both rules share the same key_id named capture group with identical prefix
+# alternation, so all modifiers below apply unchanged to both.
+# Adjusts score based on prefix semantics:
 #
 #   - AKIA  → long-term user/root access key. Elevated risk: delta +10.
 #   - ASIA  → temporary STS session token. Lower risk (short-lived): delta -10.
@@ -13,6 +15,7 @@ scorers:
   - name: aws-key-scope
     rule_ids:
       - np.aws.1
+      - np.aws.6
     modifiers:
       - name: akia-long-term
         priority: 100
