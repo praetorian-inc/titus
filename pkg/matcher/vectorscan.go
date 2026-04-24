@@ -870,7 +870,12 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 			continue
 		}
 
+		lastEnd := -1
 		for match != nil {
+			if match.Index <= lastEnd {
+				break
+			}
+			lastEnd = match.Index + match.Length
 			newMatch := m.buildMatchFromRegexp2(j.content, j.blobID, j.rule, match)
 			startLine, startCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.Start))
 			endLine, endCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.End))

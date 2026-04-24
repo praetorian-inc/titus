@@ -385,7 +385,12 @@ func (m *PortableRegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
 			continue
 		}
 
+		lastEnd := -1
 		for match != nil {
+			if match.Index <= lastEnd {
+				break
+			}
+			lastEnd = match.Index + match.Length
 			groups := extractCaptureGroups(match)
 			namedGroups := extractNamedGroups(match, m.groupNameCache[j.rule.Pattern])
 			result := buildMatchResult(j.blobID, j.rule, match.Index, match.Length, []byte(match.String()), groups, namedGroups, j.content, m.contextLines)
