@@ -578,3 +578,51 @@ func TestVectorscanMatcher_CombinedFlagsCaseInsensitive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, matches, 1, "(?xi) pattern should match case-insensitively")
 }
+
+// TestVectorscanMatcher_FallbackTimedOutBlobsAreRetried verifies that blobs which timed
+// out during matchFallbackRules (regexp2 fallback for Hyperscan-incompatible patterns) are
+// queued and recovered by DrainTimedOut, preventing silent finding drops.
+//
+// The test directly injects a retryJob (package-internal struct) to simulate a timeout
+// that occurred during the fallback pass, then verifies DrainTimedOut recovers the match.
+// This avoids any dependency on real wall-clock timing or CPU load.
+func TestVectorscanMatcher_FallbackTimedOutBlobsAreRetried(t *testing.T) {
+	// Use a pattern with a lookahead so it falls into fallbackRules
+	// (lookbehind/lookahead often route to the fallback path).
+	// We use a simple benign pattern here since we inject the job directly.
+	rule := &types.Rule{
+		ID:      "fallback-timeout-rule",
+		Name:    "Fallback Timeout Rule",
+		Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
+	}
+
+	content := []byte("SECRET_KEY=ABCDEFGHIJ1234567890\nsome other content\n")
+	blobID := types.ComputeBlobID(content)
+
+	matcher, err := NewVectorscan([]*types.Rule{rule}, 0, nil)
+	require.NoError(t, err)
+	defer matcher.Close()
+
+	// Simulate a timeout by directly injecting a retry job, exactly as matchFallbackRules
+	// will do once the retry queue is wired up. This decouples the test from real timing.
+	matcher.retryMu.Lock()
+	matcher.retryJobs = append(matcher.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
+	matcher.retryMu.Unlock()
+
+	// DrainTimedOut must replay the queued job single-threaded with a longer timeout
+	// and recover findings that were dropped during the fallback pass.
+	retried, err := matcher.DrainTimedOut()
+	require.NoError(t, err)
+	require.NotEmpty(t, retried, "DrainTimedOut must recover timed-out findings from fallback path")
+
+	ruleIDs := make(map[string]bool)
+	for _, match := range retried {
+		ruleIDs[match.RuleID] = true
+	}
+	assert.True(t, ruleIDs["fallback-timeout-rule"], "fallback-timeout-rule findings must be recovered by DrainTimedOut")
+
+	// After draining, the queue must be empty.
+	retried2, err := matcher.DrainTimedOut()
+	require.NoError(t, err)
+	assert.Empty(t, retried2, "second DrainTimedOut call must return nothing (queue cleared)")
+}
