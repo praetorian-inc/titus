@@ -154,6 +154,30 @@ func TestLoadScorers_InvalidMatchLengthOp(t *testing.T) {
 	assert.Contains(t, err.Error(), "gt|lt|eq")
 }
 
+func TestLoadBuiltinScorers_AWSScorerParses(t *testing.T) {
+	loader := NewLoader()
+	scorers, err := loader.LoadBuiltinScorers()
+	require.NoError(t, err)
+
+	var awsScorer *Scorer
+	for _, s := range scorers {
+		if s.Name == "aws-key-scope" {
+			awsScorer = s
+			break
+		}
+	}
+	require.NotNil(t, awsScorer, "aws-key-scope scorer not found in builtin FS")
+	assert.Equal(t, []string{"np.aws.1"}, awsScorer.RuleIDs)
+	require.Len(t, awsScorer.Modifiers, 3)
+
+	wantNames := []string{"akia-long-term", "asia-temporary-session", "aida-user-identifier"}
+	gotNames := make([]string, len(awsScorer.Modifiers))
+	for i, m := range awsScorer.Modifiers {
+		gotNames[i] = m.Name
+	}
+	assert.ElementsMatch(t, wantNames, gotNames)
+}
+
 // Proves that the loader mirrors NewLoaderWithFS from pkg/rule/loader.go:26-30.
 func TestLoadBuiltinScorers_WithCustomFS(t *testing.T) {
 	mockFS := fstest.MapFS{
