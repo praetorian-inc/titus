@@ -860,6 +860,12 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 
 		for match != nil {
 			newMatch := m.buildMatchFromRegexp2(j.content, j.blobID, j.rule, match)
+			startLine, startCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.Start))
+			endLine, endCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.End))
+			newMatch.Location.Source.Start.Line = startLine
+			newMatch.Location.Source.Start.Column = startCol
+			newMatch.Location.Source.End.Line = endLine
+			newMatch.Location.Source.End.Column = endCol
 			all = append(all, newMatch)
 
 			match, err = re.FindNextMatch(match)

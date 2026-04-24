@@ -347,7 +347,6 @@ func runScan(cmd *cobra.Command, args []string) error {
 	} else if len(retryMatches) > 0 {
 		err := s.ExecBatch(func(tx store.Store) error {
 			for _, match := range retryMatches {
-				// Line/col is already computed inside DrainTimedOut where content is available.
 				if err := tx.AddMatch(match); err != nil {
 					return fmt.Errorf("storing retry match: %w", err)
 				}
