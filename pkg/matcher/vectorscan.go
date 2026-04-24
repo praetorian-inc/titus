@@ -850,55 +850,60 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 			continue
 		}
 
-		// Temporarily raise timeout for the retry pass; restore afterward.
-		orig := re.MatchTimeout
-		re.MatchTimeout = retryTimeout
+		// Temporarily raise timeout for the retry pass; use defer so it is
+		// always restored even if the work panics.
+		jobMatches := func() []*types.Match {
+			orig := re.MatchTimeout
+			re.MatchTimeout = retryTimeout
+			defer func() { re.MatchTimeout = orig }()
 
-		contentRunes := []rune(string(j.content))
+			contentRunes := []rune(string(j.content))
 
-		match, err := re.FindRunesMatch(contentRunes)
-		if err != nil {
-			re.MatchTimeout = orig
-			if strings.Contains(err.Error(), "match timeout") {
-				// Still times out with 30s: genuine catastrophic backtracking.
-				if m.warnf != nil {
-					m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", j.rule.ID, j.blobID.Hex())
-				}
-			} else if m.warnf != nil {
-				m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", j.rule.ID, j.blobID.Hex(), err)
-			}
-			continue
-		}
-
-		lastEnd := -1
-		for match != nil {
-			if match.Index <= lastEnd {
-				break
-			}
-			lastEnd = match.Index + match.Length
-			newMatch := m.buildMatchFromRegexp2(j.content, j.blobID, j.rule, match)
-			startLine, startCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.Start))
-			endLine, endCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.End))
-			newMatch.Location.Source.Start.Line = startLine
-			newMatch.Location.Source.Start.Column = startCol
-			newMatch.Location.Source.End.Line = endLine
-			newMatch.Location.Source.End.Column = endCol
-			all = append(all, newMatch)
-
-			match, err = re.FindNextMatch(match)
+			match, err := re.FindRunesMatch(contentRunes)
 			if err != nil {
 				if strings.Contains(err.Error(), "match timeout") {
+					// Still times out with 30s: genuine catastrophic backtracking.
 					if m.warnf != nil {
 						m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", j.rule.ID, j.blobID.Hex())
 					}
 				} else if m.warnf != nil {
 					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", j.rule.ID, j.blobID.Hex(), err)
 				}
-				break
+				return nil
 			}
-		}
 
-		re.MatchTimeout = orig
+			var found []*types.Match
+			lastEnd := -1
+			for match != nil {
+				if match.Index <= lastEnd {
+					break
+				}
+				lastEnd = match.Index + match.Length
+				newMatch := m.buildMatchFromRegexp2(j.content, j.blobID, j.rule, match)
+				startLine, startCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.Start))
+				endLine, endCol := types.ComputeLineColumn(j.content, int(newMatch.Location.Offset.End))
+				newMatch.Location.Source.Start.Line = startLine
+				newMatch.Location.Source.Start.Column = startCol
+				newMatch.Location.Source.End.Line = endLine
+				newMatch.Location.Source.End.Column = endCol
+				found = append(found, newMatch)
+
+				match, err = re.FindNextMatch(match)
+				if err != nil {
+					if strings.Contains(err.Error(), "match timeout") {
+						if m.warnf != nil {
+							m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", j.rule.ID, j.blobID.Hex())
+						}
+					} else if m.warnf != nil {
+						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", j.rule.ID, j.blobID.Hex(), err)
+					}
+					break
+				}
+			}
+			return found
+		}()
+
+		all = append(all, jobMatches...)
 	}
 
 	return all, nil
