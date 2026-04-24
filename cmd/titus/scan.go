@@ -18,6 +18,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/sarif"
+	"github.com/praetorian-inc/titus/pkg/scoring"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/praetorian-inc/titus/pkg/validator"
@@ -177,6 +178,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		matcher.SetCanValidate(m, validationEngine.CanValidate)
 	}
 
+	// Build the M2 scoring engine once per scan. Static modifiers only; no HTTP.
+	engine, err := buildScoringEngine()
+	if err != nil {
+		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+
 	// Create enumerator
 	enumerator, err := createEnumerator(target, scanGit)
 	if err != nil {
@@ -278,12 +285,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 							}
 							if !exists {
 								findingCount.Add(1)
-								if err := tx.AddFinding(&types.Finding{
+								f := &types.Finding{
 									ID:     findingID,
 									RuleID: match.RuleID,
 									Groups: match.Groups,
-									Score:  synthesizeBaseScore(rule),
-								}); err != nil {
+								}
+								f.Score = engine.Score(f, []*types.Match{match}, rule)
+								if err := tx.AddFinding(f); err != nil {
 									return fmt.Errorf("storing finding: %w", err)
 								}
 							}
@@ -1399,4 +1407,25 @@ func resolveAutoOutput(target string) string {
 		path = wd
 	}
 	return filepath.Base(path) + ".ds"
+}
+
+// scoringEngineInterface is the narrow surface runScan needs, kept as an
+// interface for ease of swapping in tests (currently always *scoring.Engine).
+type scoringEngineInterface interface {
+	Score(f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score
+}
+
+// buildScoringEngine constructs the M2 scoring engine from the embedded scorer
+// YAMLs. Returns a non-nil engine even when no scorers load — in that case
+// Score() always returns base-only.
+//
+// Loader errors (malformed YAML, bad regex) are hard failures: scan startup
+// must abort rather than silently scoring all findings at base.
+func buildScoringEngine() (scoringEngineInterface, error) {
+	loader := scoring.NewLoader()
+	scorers, err := loader.LoadBuiltinScorers()
+	if err != nil {
+		return nil, fmt.Errorf("loading scorers: %w", err)
+	}
+	return scoring.NewEngine(scorers), nil
 }
