@@ -1,0 +1,19 @@
+# GitHub token scorer — static modifiers only (M2 scope).
+# Fine-grained PATs (np.github.7) are inherently scoped: a user must select
+# specific repositories and permissions at creation time, so blast radius is
+# structurally smaller than classic PATs. We reflect this with a flat -10.
+#
+# Classic PATs (np.github.1) and OAuth tokens (np.github.2) have far larger
+# default scope and require HTTP scope-detection to rank accurately. Those
+# land in M3.
+scorers:
+  - name: github-fine-grained-pat
+    rule_ids:
+      - np.github.7
+    modifiers:
+      - name: fine-grained-pat-prefix
+        priority: 100
+        match_group:
+          name: token
+          matches: '^github_pat_'
+        delta: -10

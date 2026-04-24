@@ -178,6 +178,26 @@ func TestLoadBuiltinScorers_AWSScorerParses(t *testing.T) {
 	assert.ElementsMatch(t, wantNames, gotNames)
 }
 
+func TestLoadBuiltinScorers_GitHubScorerParses(t *testing.T) {
+	loader := NewLoader()
+	scorers, err := loader.LoadBuiltinScorers()
+	require.NoError(t, err)
+
+	var ghScorer *Scorer
+	for _, s := range scorers {
+		if s.Name == "github-fine-grained-pat" {
+			ghScorer = s
+			break
+		}
+	}
+	require.NotNil(t, ghScorer)
+	assert.Equal(t, []string{"np.github.7"}, ghScorer.RuleIDs)
+	require.Len(t, ghScorer.Modifiers, 1)
+	assert.Equal(t, "fine-grained-pat-prefix", ghScorer.Modifiers[0].Name)
+	assert.Equal(t, ModifierKindDelta, ghScorer.Modifiers[0].Kind)
+	assert.Equal(t, -10, ghScorer.Modifiers[0].Value)
+}
+
 // Proves that the loader mirrors NewLoaderWithFS from pkg/rule/loader.go:26-30.
 func TestLoadBuiltinScorers_WithCustomFS(t *testing.T) {
 	mockFS := fstest.MapFS{
