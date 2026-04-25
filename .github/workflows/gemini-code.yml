@@ -15,7 +15,7 @@ jobs:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
       (github.event_name != 'pull_request_review_comment' || contains(github.event.comment.body, '@gemini'))
-    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@cde8b58405ce8b7ebd30a8b478a32921aba49215  # v2.1.0
+    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@7c1302bdef0a72e7f5743738baa45272c8e1f8d7  # v2.1.0  # v2.1.0
     permissions:
       contents: read
       pull-requests: write
