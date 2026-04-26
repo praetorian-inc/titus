@@ -15,6 +15,10 @@ on:
     - cron: '0 6 * * 1'  # Mondays 06:00 UTC — weekly baseline
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
