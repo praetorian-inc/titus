@@ -3,6 +3,7 @@ package scoring
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -95,4 +96,62 @@ func (l *headerContainsLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
 		return false, nil
 	}
 	return strings.Contains(v, l.Value), nil
+}
+
+// ----------------------------------------------------------------
+// fires_when leaf implementations (json_path_equals, json_path_matches,
+// json_array_length_gte)
+// ----------------------------------------------------------------
+
+type jsonPathEqualsLeaf struct {
+	Path  string
+	Value interface{} // string or number from YAML
+}
+
+func (l *jsonPathEqualsLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
+	v, err := jsonGet(resp.Body, l.Path)
+	if err != nil {
+		return false, err
+	}
+	// Compare as string for simplicity — YAML values are strings/numbers
+	return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", l.Value), nil
+}
+
+type jsonPathMatchesLeaf struct {
+	Path  string
+	Regex string
+	re    *regexp.Regexp // compiled at load time; lazily compiled if nil
+}
+
+func (l *jsonPathMatchesLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
+	v, err := jsonGet(resp.Body, l.Path)
+	if err != nil {
+		return false, err
+	}
+	re := l.re
+	if re == nil {
+		compiled, err := regexp.Compile(l.Regex)
+		if err != nil {
+			return false, fmt.Errorf("json_path_matches: invalid regex %q: %w", l.Regex, err)
+		}
+		re = compiled
+	}
+	return re.MatchString(fmt.Sprintf("%v", v)), nil
+}
+
+type jsonArrayLengthGteLeaf struct {
+	Path  string
+	Value int
+}
+
+func (l *jsonArrayLengthGteLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
+	v, err := jsonGet(resp.Body, l.Path)
+	if err != nil {
+		return false, err
+	}
+	arr, ok := v.([]interface{})
+	if !ok {
+		return false, fmt.Errorf("json_array_length_gte: path %q is not an array", l.Path)
+	}
+	return len(arr) >= l.Value, nil
 }

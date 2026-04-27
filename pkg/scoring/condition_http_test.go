@@ -114,3 +114,35 @@ func TestHTTPCondition_HeaderContains_CaseInsensitiveHeaderName(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, fired)
 }
+
+func TestHTTPCondition_JSONPathEquals_Fires(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{"plan":{"name":"enterprise"}}`, nil)
+	cond.firesWhen = &jsonPathEqualsLeaf{Path: ".plan.name", Value: "enterprise"}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestHTTPCondition_JSONPathMatches_Fires(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{"login":"octocat"}`, nil)
+	cond.firesWhen = &jsonPathMatchesLeaf{Path: ".login", Regex: `^octo`}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestHTTPCondition_JSONArrayLengthGte_Fires(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `[{"id":1},{"id":2},{"id":3}]`, nil)
+	cond.firesWhen = &jsonArrayLengthGteLeaf{Path: ".", Value: 3}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestHTTPCondition_JSONArrayLengthGte_DoesNotFire(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `[{"id":1}]`, nil)
+	cond.firesWhen = &jsonArrayLengthGteLeaf{Path: ".", Value: 3}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
