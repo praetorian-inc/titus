@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -148,7 +149,7 @@ func TestEngine_ClampsHigh(t *testing.T) {
 // erroringCondition always returns an error — used to prove modifier is skipped.
 type erroringCondition struct{}
 
-func (e *erroringCondition) Evaluate(m *types.Match) (bool, error) {
+func (e *erroringCondition) Evaluate(_ context.Context, m *types.Match) (bool, error) {
 	return false, fmt.Errorf("synthetic error")
 }
 

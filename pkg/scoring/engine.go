@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
@@ -68,7 +69,7 @@ func (e *Engine) Score(f *types.Finding, matches []*types.Match, rule *types.Rul
 	current := score.Final
 	for _, im := range ordered {
 		m := im.mod
-		fired, err := m.Condition.Evaluate(primary)
+		fired, err := m.Condition.Evaluate(context.Background(), primary)
 		if err != nil {
 			e.warnf("[warn] scorer %q modifier %q: %v (skipping)\n", scorer.Name, m.Name, err)
 			continue
