@@ -602,6 +602,89 @@ func TestPortableRegexp_BlacklistAfterKTimeouts(t *testing.T) {
 	assert.Len(t, warnBuf, 1, "no additional warnings after blacklisting")
 }
 
+// TestMatchParallel_DeterministicOutputOrder verifies that matchParallel always returns
+// allMatches in the same canonical order (start offset ASC, end offset ASC, ruleID ASC)
+// regardless of which worker goroutine completes first.
+func TestMatchParallel_DeterministicOutputOrder(t *testing.T) {
+	// Three rules, each matching at different offsets throughout a large blob.
+	// Workers may complete in any order, so without a sort the output slice order
+	// is nondeterministic across runs.
+	rules := []*types.Rule{
+		{
+			ID:      "rule-aaa",
+			Name:    "Pattern AAA",
+			Pattern: `ALPHA_[A-Z]{5}`,
+		},
+		{
+			ID:      "rule-bbb",
+			Name:    "Pattern BBB",
+			Pattern: `BETA_[0-9]{5}`,
+		},
+		{
+			ID:      "rule-ccc",
+			Name:    "Pattern CCC",
+			Pattern: `GAMMA_[a-z]{5}`,
+		},
+	}
+
+	// Build content >10KB so matchParallel is triggered.
+	// Each pattern appears once per line so that deduplication keeps a single match
+	// per rule and the sort key is unambiguous.
+	var sb strings.Builder
+	for sb.Len() < parallelThreshold+5000 {
+		sb.WriteString("ALPHA_ABCDE BETA_12345 GAMMA_abcde filler\n")
+	}
+	content := []byte(sb.String())
+	require.Greater(t, len(content), parallelThreshold, "content must trigger parallel path")
+
+	matcher, err := NewPortableRegexp(rules, 0, nil)
+	require.NoError(t, err)
+
+	// Run 10 times and collect the StructuralID sequences.
+	const runs = 10
+	sequences := make([][]string, runs)
+	for i := range sequences {
+		// Reset the deduplicator between calls so each run is independent.
+		matcher.dedup.Reset()
+		matches, err := matcher.MatchWithBlobID(content, types.ComputeBlobID(content))
+		require.NoError(t, err)
+		ids := make([]string, len(matches))
+		for j, m := range matches {
+			ids[j] = m.RuleID
+		}
+		sequences[i] = ids
+	}
+
+	// Every run must produce the same sequence.
+	require.NotEmpty(t, sequences[0], "must find at least one match")
+	for i := 1; i < runs; i++ {
+		assert.Equal(t, sequences[0], sequences[i],
+			"run %d produced different match order than run 0", i)
+	}
+
+	// Additionally assert that the output is sorted by (start, end, ruleID).
+	// Take the last run's result and verify structural ordering.
+	matcher.dedup.Reset()
+	finalMatches, err := matcher.MatchWithBlobID(content, types.ComputeBlobID(content))
+	require.NoError(t, err)
+	for i := 1; i < len(finalMatches); i++ {
+		mi := finalMatches[i-1]
+		mj := finalMatches[i]
+		if mi.Location.Offset.Start == mj.Location.Offset.Start {
+			if mi.Location.Offset.End == mj.Location.Offset.End {
+				assert.LessOrEqual(t, mi.RuleID, mj.RuleID,
+					"matches at same offset must be sorted by ruleID")
+			} else {
+				assert.LessOrEqual(t, mi.Location.Offset.End, mj.Location.Offset.End,
+					"matches at same start must be sorted by end offset")
+			}
+		} else {
+			assert.Less(t, mi.Location.Offset.Start, mj.Location.Offset.Start,
+				"matches must be sorted by start offset")
+		}
+	}
+}
+
 // TestPortableRegexp_QueueCapDropsExcess verifies that once the retry queue reaches
 // retryQueueCap entries, additional jobs are dropped and retryDropped is incremented.
 // DrainTimedOut must emit a warning when dropped > 0.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -325,6 +326,19 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 			}
 		}
 	}
+
+	// Sort matches into a canonical order so downstream filters
+	// (entropy check, cross-rule dedup) are deterministic across runs.
+	sort.Slice(allMatches, func(i, j int) bool {
+		mi, mj := allMatches[i], allMatches[j]
+		if mi.Location.Offset.Start != mj.Location.Offset.Start {
+			return mi.Location.Offset.Start < mj.Location.Offset.Start
+		}
+		if mi.Location.Offset.End != mj.Location.Offset.End {
+			return mi.Location.Offset.End < mj.Location.Offset.End
+		}
+		return mi.RuleID < mj.RuleID
+	})
 
 	return allMatches, nil
 }
