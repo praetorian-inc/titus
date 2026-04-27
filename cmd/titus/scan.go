@@ -339,6 +339,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Retry any blobs that timed out during the parallel pass.
+	// This runs single-threaded so there is no CPU contention, resolving
+	// starvation-caused false timeouts while still catching real backtracking.
+	if err := drainTimedOutMatches(m, s, ruleMap, &findingCount, &matchCount); err != nil {
+		return fmt.Errorf("retrying timed-out blobs: %w", err)
+	}
+
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[scan] Scan complete: %d blobs, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
 	}
@@ -348,6 +355,49 @@ func runScan(cmd *cobra.Command, args []string) error {
 		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
 
 	return outputScanResults(cmd, s, rules, ruleMap)
+}
+
+// drainTimedOutMatches replays blobs that timed out during the parallel scan
+// pass using the matcher's single-threaded retry queue, then writes the
+// resulting matches and findings to the store. It is called after g.Wait() in
+// each of the scan entry points (runScan, runRepoScan, runS3Scan).
+func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, findingCount, matchCount *atomic.Int64) error {
+	retryMatches, err := m.DrainTimedOut()
+	if err != nil {
+		return fmt.Errorf("drain timed-out blobs: %w", err)
+	}
+	if len(retryMatches) == 0 {
+		return nil
+	}
+	return s.ExecBatch(func(tx store.Store) error {
+		for _, match := range retryMatches {
+			if err := tx.AddMatch(match); err != nil {
+				return fmt.Errorf("storing retry match: %w", err)
+			}
+			rule, ok := ruleMap[match.RuleID]
+			if !ok {
+				return fmt.Errorf("rule not found: %s", match.RuleID)
+			}
+			findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+			exists, err := tx.FindingExists(findingID)
+			if err != nil {
+				return fmt.Errorf("checking retry finding: %w", err)
+			}
+			if !exists {
+				findingCount.Add(1)
+				matchCount.Add(1)
+				if err := tx.AddFinding(&types.Finding{
+					ID:     findingID,
+					RuleID: match.RuleID,
+					Groups: match.Groups,
+					Score:  synthesizeBaseScore(rule),
+				}); err != nil {
+					return fmt.Errorf("storing retry finding: %w", err)
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // =============================================================================
@@ -837,6 +887,10 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		}
 	}
 
+	if err := drainTimedOutMatches(m, s, ruleMap, &findingCount, &matchCount); err != nil {
+		return fmt.Errorf("retrying timed-out blobs: %w", err)
+	}
+
 	duration := time.Since(startTime)
 	printScanStats(cmd, scanOutputFormat, scanOutputPath,
 		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
@@ -1066,6 +1120,10 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 		} else {
 			return fmt.Errorf("scanning: %w", err)
 		}
+	}
+
+	if err := drainTimedOutMatches(m, s, ruleMap, &findingCount, &matchCount); err != nil {
+		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
 	if verbose {

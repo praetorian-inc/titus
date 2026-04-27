@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -223,6 +224,50 @@ func TestPortableRegexp_BlobIDInWarning(t *testing.T) {
 		assert.Contains(t, w, blobID.Hex(), "warning should include the blob ID hex")
 		assert.Contains(t, w, "on blob", "warning should use 'on blob' prefix")
 	}
+}
+
+// TestPortableRegexp_TimedOutBlobsAreRetried verifies that blobs which timed out
+// during the main parallel scan are queued and retried by DrainTimedOut(), recovering
+// findings that would otherwise be silently dropped due to CPU-contention starvation.
+//
+// The test directly injects a retryJob (package-internal struct) to simulate a timeout
+// that occurred during the main pass, then verifies that DrainTimedOut recovers the match.
+// This avoids any dependency on real wall-clock timing or CPU load.
+func TestPortableRegexp_TimedOutBlobsAreRetried(t *testing.T) {
+	rule := &types.Rule{
+		ID:      "benign-rule",
+		Name:    "Simple API Key",
+		Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
+	}
+
+	content := []byte("SECRET_KEY=ABCDEFGHIJ1234567890\nsome other content\n")
+	blobID := types.ComputeBlobID(content)
+
+	m, err := NewPortableRegexpWithTimeout([]*types.Rule{rule}, 0, nil, 5*time.Second)
+	require.NoError(t, err)
+
+	// Simulate a timeout by directly injecting a retry job, as the parallel workers
+	// do when regexp2 returns a timeout error. This decouples the test from real timing.
+	m.retryMu.Lock()
+	m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
+	m.retryMu.Unlock()
+
+	// The main pass has not run, so there are no matches yet.
+	// DrainTimedOut replays queued jobs single-threaded with a longer timeout.
+	retried, err := m.DrainTimedOut()
+	require.NoError(t, err)
+	require.NotEmpty(t, retried, "DrainTimedOut must recover timed-out findings")
+
+	ruleIDs := make(map[string]bool)
+	for _, match := range retried {
+		ruleIDs[match.RuleID] = true
+	}
+	assert.True(t, ruleIDs["benign-rule"], "benign-rule findings must be recovered by DrainTimedOut")
+
+	// After draining, the queue must be empty.
+	retried2, err := m.DrainTimedOut()
+	require.NoError(t, err)
+	assert.Empty(t, retried2, "second DrainTimedOut call must return nothing (queue cleared)")
 }
 
 // TestPortableRegexp_BlobIDInWarning_NoHint verifies that warnings always include
@@ -494,4 +539,206 @@ func TestMatch_SnippetContext_UTF8(t *testing.T) {
 	// Verify after context contains the UTF-8 suffix
 	assert.Contains(t, string(match.Snippet.After), "🔑",
 		"after context should include UTF-8 characters")
+}
+
+// TestPortableRegexp_BlacklistAfterKTimeouts verifies that after retryBlacklistThreshold
+// timeouts for the same rule on distinct blobs, the rule is added to the per-scan
+// blacklist and no further retry jobs are enqueued for it.
+func TestPortableRegexp_BlacklistAfterKTimeouts(t *testing.T) {
+	rule := &types.Rule{
+		ID:      "runaway-rule",
+		Name:    "Runaway Pattern",
+		Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
+	}
+
+	// Use a 1ms timeout so we can reliably simulate timeouts by injecting jobs directly.
+	m, err := NewPortableRegexpWithTimeout([]*types.Rule{rule}, 0, nil, 1*time.Millisecond)
+	require.NoError(t, err)
+
+	// Inject retryBlacklistThreshold-1 jobs (under threshold): they should all be enqueued.
+	for i := 0; i < retryBlacklistThreshold-1; i++ {
+		blob := []byte(fmt.Sprintf("content-%d", i))
+		blobID := types.ComputeBlobID(blob)
+		m.enqueueOrBlacklist(retryJob{content: blob, blobID: blobID, rule: rule})
+	}
+	m.retryMu.Lock()
+	queueLen := len(m.retryJobs)
+	m.retryMu.Unlock()
+	assert.Equal(t, retryBlacklistThreshold-1, queueLen,
+		"first K-1 timeouts should all be enqueued")
+
+	// The K-th timeout (threshold) should blacklist the rule and NOT enqueue a new job.
+	var warnBuf []string
+	m.warnf = func(format string, args ...any) {
+		warnBuf = append(warnBuf, fmt.Sprintf(format, args...))
+	}
+	blob := []byte("content-threshold")
+	blobID := types.ComputeBlobID(blob)
+	m.enqueueOrBlacklist(retryJob{content: blob, blobID: blobID, rule: rule})
+
+	m.retryMu.Lock()
+	queueLenAfter := len(m.retryJobs)
+	m.retryMu.Unlock()
+	assert.Equal(t, retryBlacklistThreshold-1, queueLenAfter,
+		"K-th timeout must NOT add a new job (rule is now blacklisted)")
+
+	// Exactly one warning should have been emitted mentioning the rule and threshold.
+	require.Len(t, warnBuf, 1, "exactly one blacklist warning should be emitted")
+	assert.Contains(t, warnBuf[0], rule.ID, "warning must name the rule")
+	assert.Contains(t, warnBuf[0], fmt.Sprintf("%d", retryBlacklistThreshold),
+		"warning must mention the threshold count")
+	assert.Contains(t, warnBuf[0], "disabled after", "warning must say 'disabled after'")
+
+	// A subsequent (K+1) timeout for the already-blacklisted rule must be silently ignored.
+	blob2 := []byte("content-after-blacklist")
+	blobID2 := types.ComputeBlobID(blob2)
+	m.enqueueOrBlacklist(retryJob{content: blob2, blobID: blobID2, rule: rule})
+
+	m.retryMu.Lock()
+	queueLenFinal := len(m.retryJobs)
+	m.retryMu.Unlock()
+	assert.Equal(t, retryBlacklistThreshold-1, queueLenFinal,
+		"post-blacklist jobs must be silently dropped")
+	assert.Len(t, warnBuf, 1, "no additional warnings after blacklisting")
+}
+
+// TestMatchParallel_DeterministicOutputOrder verifies that matchParallel always returns
+// allMatches in the same canonical order (start offset ASC, end offset ASC, ruleID ASC)
+// regardless of which worker goroutine completes first.
+func TestMatchParallel_DeterministicOutputOrder(t *testing.T) {
+	// Three rules, each matching at different offsets throughout a large blob.
+	// Workers may complete in any order, so without a sort the output slice order
+	// is nondeterministic across runs.
+	rules := []*types.Rule{
+		{
+			ID:      "rule-aaa",
+			Name:    "Pattern AAA",
+			Pattern: `ALPHA_[A-Z]{5}`,
+		},
+		{
+			ID:      "rule-bbb",
+			Name:    "Pattern BBB",
+			Pattern: `BETA_[0-9]{5}`,
+		},
+		{
+			ID:      "rule-ccc",
+			Name:    "Pattern CCC",
+			Pattern: `GAMMA_[a-z]{5}`,
+		},
+	}
+
+	// Build content >10KB so matchParallel is triggered.
+	// Each pattern appears once per line so that deduplication keeps a single match
+	// per rule and the sort key is unambiguous.
+	var sb strings.Builder
+	for sb.Len() < parallelThreshold+5000 {
+		sb.WriteString("ALPHA_ABCDE BETA_12345 GAMMA_abcde filler\n")
+	}
+	content := []byte(sb.String())
+	require.Greater(t, len(content), parallelThreshold, "content must trigger parallel path")
+
+	matcher, err := NewPortableRegexp(rules, 0, nil)
+	require.NoError(t, err)
+
+	// Run 10 times and collect the StructuralID sequences.
+	const runs = 10
+	sequences := make([][]string, runs)
+	for i := range sequences {
+		// Reset the deduplicator between calls so each run is independent.
+		matcher.dedup.Reset()
+		matches, err := matcher.MatchWithBlobID(content, types.ComputeBlobID(content))
+		require.NoError(t, err)
+		ids := make([]string, len(matches))
+		for j, m := range matches {
+			ids[j] = m.RuleID
+		}
+		sequences[i] = ids
+	}
+
+	// Every run must produce the same sequence.
+	require.NotEmpty(t, sequences[0], "must find at least one match")
+	for i := 1; i < runs; i++ {
+		assert.Equal(t, sequences[0], sequences[i],
+			"run %d produced different match order than run 0", i)
+	}
+
+	// Additionally assert that the output is sorted by (start, end, ruleID).
+	// Take the last run's result and verify structural ordering.
+	matcher.dedup.Reset()
+	finalMatches, err := matcher.MatchWithBlobID(content, types.ComputeBlobID(content))
+	require.NoError(t, err)
+	for i := 1; i < len(finalMatches); i++ {
+		mi := finalMatches[i-1]
+		mj := finalMatches[i]
+		if mi.Location.Offset.Start == mj.Location.Offset.Start {
+			if mi.Location.Offset.End == mj.Location.Offset.End {
+				assert.LessOrEqual(t, mi.RuleID, mj.RuleID,
+					"matches at same offset must be sorted by ruleID")
+			} else {
+				assert.LessOrEqual(t, mi.Location.Offset.End, mj.Location.Offset.End,
+					"matches at same start must be sorted by end offset")
+			}
+		} else {
+			assert.Less(t, mi.Location.Offset.Start, mj.Location.Offset.Start,
+				"matches must be sorted by start offset")
+		}
+	}
+}
+
+// TestPortableRegexp_QueueCapDropsExcess verifies that once the retry queue reaches
+// retryQueueCap entries, additional jobs are dropped and retryDropped is incremented.
+// DrainTimedOut must emit a warning when dropped > 0.
+func TestPortableRegexp_QueueCapDropsExcess(t *testing.T) {
+	var warnBuf []string
+	warnf := func(format string, args ...any) {
+		warnBuf = append(warnBuf, fmt.Sprintf(format, args...))
+	}
+
+	// Each job needs a distinct rule ID to avoid the blacklist triggering before the cap.
+	// Use distinct rules so the per-rule blacklist does not fire before we fill the cap.
+	rules := make([]*types.Rule, retryQueueCap+1)
+	for i := range rules {
+		rules[i] = &types.Rule{
+			ID:      fmt.Sprintf("distinct-rule-%d", i),
+			Name:    fmt.Sprintf("Rule %d", i),
+			Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
+		}
+	}
+
+	// Re-create matcher with all distinct rules so they are in regexCache.
+	m2, err := NewPortableRegexpWithTimeout(rules, 0, warnf, 1*time.Millisecond)
+	require.NoError(t, err)
+
+	// Inject retryQueueCap+1 jobs with distinct (blob, rule) pairs.
+	for i := 0; i <= retryQueueCap; i++ {
+		blob := []byte(fmt.Sprintf("content-%d", i))
+		blobID := types.ComputeBlobID(blob)
+		m2.enqueueOrBlacklist(retryJob{content: blob, blobID: blobID, rule: rules[i]})
+	}
+
+	m2.retryMu.Lock()
+	queueLen := len(m2.retryJobs)
+	dropped := m2.retryDropped
+	m2.retryMu.Unlock()
+
+	assert.Equal(t, retryQueueCap, queueLen,
+		"queue must be capped at retryQueueCap entries")
+	assert.Equal(t, 1, dropped,
+		"exactly one job should have been dropped")
+
+	// DrainTimedOut should emit a cap-reached warning.
+	_, err = m2.DrainTimedOut()
+	require.NoError(t, err)
+
+	capWarnings := 0
+	for _, w := range warnBuf {
+		if strings.Contains(w, "retry queue cap") {
+			capWarnings++
+			assert.Contains(t, w, fmt.Sprintf("%d", retryQueueCap),
+				"warning must mention the cap value")
+			assert.Contains(t, w, "1 (blob, rule) pairs were not retried",
+				"warning must report the drop count")
+		}
+	}
+	assert.Equal(t, 1, capWarnings, "exactly one cap-reached warning must be emitted")
 }

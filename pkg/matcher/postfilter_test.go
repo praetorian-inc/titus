@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 // --- findSecretCapture tests ---
@@ -221,6 +222,111 @@ func TestFilterMatches_EntropyFiltering(t *testing.T) {
 	if len(result) != 1 {
 		t.Errorf("expected 1 match after entropy filtering, got %d", len(result))
 	}
+}
+
+func TestFindSecretCapture_DeterministicNamedGroupSelection(t *testing.T) {
+	// Build a match simulating a Redis URI rule with named groups "host" and
+	// "password". "host" sorts alphabetically before "password", but "password"
+	// has much higher Shannon entropy and is the actual secret value.
+	//
+	// The max-entropy approach must always pick "password", not the alphabetically
+	// first key. Run -count=20 to confirm determinism across Go map iteration orders.
+	for i := 0; i < 20; i++ {
+		m := &types.Match{
+			NamedGroups: map[string][]byte{
+				"password": []byte("oJs3RjFV5CVD_very-high-entropy-value"),
+				"host":     []byte("redis.example.com"),
+			},
+		}
+		got := findSecretCapture(m)
+		if string(got) != "oJs3RjFV5CVD_very-high-entropy-value" {
+			t.Errorf("iteration %d: expected password group (highest entropy), got %q", i, got)
+		}
+	}
+}
+
+func TestFindSecretCapture_EqualEntropyAlphabeticalTiebreaker(t *testing.T) {
+	// When two named groups have identical Shannon entropy (e.g. both empty, or
+	// identical byte distributions), the alphabetically earlier key must win
+	// deterministically.
+	for i := 0; i < 20; i++ {
+		m := &types.Match{
+			NamedGroups: map[string][]byte{
+				"beta":  []byte(""), // entropy == 0
+				"alpha": []byte(""), // entropy == 0 — alphabetically first
+			},
+		}
+		got := findSecretCapture(m)
+		if string(got) != "" {
+			t.Errorf("iteration %d: expected empty string, got %q", i, got)
+		}
+		// Verify the key chosen was "alpha" by checking via a non-empty value variant.
+		m2 := &types.Match{
+			NamedGroups: map[string][]byte{
+				"zebra": []byte("aa"), // entropy == 0 (repeated byte)
+				"apple": []byte("bb"), // entropy == 0 (repeated byte), alphabetically first
+			},
+		}
+		got2 := findSecretCapture(m2)
+		if string(got2) != "bb" {
+			t.Errorf("iteration %d: alphabetical tiebreaker: expected 'bb' (group 'apple'), got %q", i, got2)
+		}
+	}
+}
+
+// TestFindSecretCapture_PrefersHighEntropySecret verifies that when a match has
+// named groups of different semantic roles (host, password, db), the group with
+// the highest Shannon entropy is selected for entropy checking — not the
+// alphabetically-first group, which could be a low-entropy field like "db" = "0".
+//
+// This catches a regression where entropy selection reverts to random or
+// alphabetical-only ordering and starts rejecting real Redis/multi-group matches.
+//
+// Regression for PR #201: max-entropy selection in findSecretCapture.
+func TestFindSecretCapture_PrefersHighEntropySecret(t *testing.T) {
+	// Redis-style match: db="0" (entropy≈0), host="redis.example.com" (moderate),
+	// password has the highest entropy and is the actual secret value.
+	password := []byte("oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=")
+	for i := 0; i < 20; i++ {
+		m := &types.Match{
+			NamedGroups: map[string][]byte{
+				"db":       []byte("0"),
+				"host":     []byte("redis.example.com"),
+				"password": password,
+				"username": []byte("admin"),
+				"port":     []byte("6379"),
+			},
+			Groups: [][]byte{[]byte("redis://admin:oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=@redis.example.com:6379/0")},
+		}
+
+		got := findSecretCapture(m)
+		assert.Equal(t, password, got,
+			"run %d: expected password group (highest entropy), got %q", i+1, got)
+	}
+}
+
+// TestPassesEntropyCheck_WithMultiGroupMatch verifies that a Redis-style match
+// with a real password passes entropy even though the "db" group alone wouldn't.
+// This ensures the entropy gate uses the highest-entropy group (password), not
+// the lowest-entropy group (db="0") that alphabetical selection would pick first.
+//
+// Regression for PR #201: findSecretCapture must return the high-entropy group
+// so that passesEntropyCheck operates on the actual secret, not a low-entropy field.
+func TestPassesEntropyCheck_WithMultiGroupMatch(t *testing.T) {
+	password := []byte("oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=")
+	m := &types.Match{
+		NamedGroups: map[string][]byte{
+			"db":       []byte("0"),
+			"password": password,
+		},
+	}
+	secret := findSecretCapture(m)
+
+	// Password has sufficient entropy; "db"="0" alone would fail.
+	assert.True(t, passesEntropyCheck(secret, 3.0),
+		"high-entropy password must pass min_entropy=3.0 check")
+	assert.False(t, passesEntropyCheck([]byte("0"), 3.0),
+		"sanity: 'db'='0' alone fails entropy — confirms we're checking the right group")
 }
 
 func TestFilterMatches_PatternRequirementsFiltering(t *testing.T) {

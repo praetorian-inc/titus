@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,19 @@ import (
 )
 
 const parallelThreshold = 10000 // bytes
+
+const (
+	retryBlacklistThreshold = 3   // timeout count before a rule is blacklisted per scan
+	retryQueueCap           = 500 // max queued retry jobs per scan
+)
+
+// retryJob holds a timed-out (content, blobID, rule) triple that will be
+// replayed single-threaded by DrainTimedOut after the main parallel pass.
+type retryJob struct {
+	content []byte
+	blobID  types.BlobID
+	rule    *types.Rule
+}
 
 // PortableRegexpMatcher implements Matcher using regexp2 for native (non-WASM) builds.
 // This is the non-CGO alternative to HyperscanMatcher, offering portability at the cost of performance.
@@ -40,6 +54,18 @@ type PortableRegexpMatcher struct {
 	dedup          *Deduplicator
 	contextLines   int
 	warnf          func(string, ...any)
+	matchTimeout   time.Duration // initial per-match timeout; 5s by default
+
+	// retryMu protects retryJobs, retryDropped, and (together with blacklistMu)
+	// co-ordinates the cap check. retryJobs is written by parallel workers and
+	// drained single-threaded by DrainTimedOut after the main pass completes.
+	retryMu     sync.Mutex
+	retryJobs   []retryJob
+	retryDropped int // count of jobs dropped due to queue cap
+
+	// blacklistMu protects blacklist, which tracks per-rule timeout counts.
+	blacklistMu sync.Mutex
+	blacklist   map[string]int // ruleID → timeout count
 }
 
 // NewPortableRegexp creates a new portable regexp-based matcher (non-CGO).
@@ -51,6 +77,14 @@ type PortableRegexpMatcher struct {
 // - Cross-compilation without CGO dependencies
 // - Benchmarking CGO vs non-CGO performance
 func NewPortableRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*PortableRegexpMatcher, error) {
+	return NewPortableRegexpWithTimeout(rules, contextLines, warnf, 5*time.Second)
+}
+
+// NewPortableRegexpWithTimeout creates a portable regexp-based matcher with a configurable
+// initial match timeout. Exposed primarily for testing: pass a very short timeout (e.g. 1ms)
+// to reliably trigger the retry queue without requiring catastrophic backtracking patterns.
+// Production callers should use NewPortableRegexp, which applies the standard 5-second timeout.
+func NewPortableRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf func(string, ...any), matchTimeout time.Duration) (*PortableRegexpMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
 	}
@@ -62,6 +96,8 @@ func NewPortableRegexp(rules []*types.Rule, contextLines int, warnf func(string,
 		dedup:          NewContentDeduplicator(),
 		contextLines:   contextLines,
 		warnf:          warnf,
+		matchTimeout:   matchTimeout,
+		blacklist:      make(map[string]int),
 	}
 
 	// Pre-compile all patterns to catch errors early
@@ -76,7 +112,7 @@ func NewPortableRegexp(rules []*types.Rule, contextLines int, warnf func(string,
 			}
 		}
 		// Set timeout to prevent catastrophic backtracking
-		re.MatchTimeout = 5 * time.Second
+		re.MatchTimeout = matchTimeout
 		m.regexCache[rule.Pattern] = re
 		// Cache group names for this pattern
 		m.groupNameCache[rule.Pattern] = re.GetGroupNames()
@@ -119,12 +155,15 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 		// Find first match
 		match, err := re.FindRunesMatch(contentRunes)
 		if err != nil {
-			if m.warnf != nil {
-				if strings.Contains(err.Error(), "match timeout") {
+			if strings.Contains(err.Error(), "match timeout") {
+				// Warn immediately so operators can observe timeout rate, then queue for
+				// single-threaded retry to recover findings lost to CPU-starvation timeouts.
+				if m.warnf != nil {
 					m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
-				} else {
-					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 				}
+				m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
+			} else if m.warnf != nil {
+				m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 			}
 			continue
 		}
@@ -147,12 +186,13 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 			// Find next match
 			match, err = re.FindNextMatch(match)
 			if err != nil {
-				if m.warnf != nil {
-					if strings.Contains(err.Error(), "match timeout") {
+				if strings.Contains(err.Error(), "match timeout") {
+					if m.warnf != nil {
 						m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
-					} else {
-						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 					}
+					m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
+				} else if m.warnf != nil {
+					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 				}
 				break
 			}
@@ -213,12 +253,13 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 				// Find first match
 				match, err := re.FindRunesMatch(contentRunes)
 				if err != nil {
-					if m.warnf != nil {
-						if strings.Contains(err.Error(), "match timeout") {
+					if strings.Contains(err.Error(), "match timeout") {
+						if m.warnf != nil {
 							m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
-						} else {
-							m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 						}
+						m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
+					} else if m.warnf != nil {
+						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 					}
 					continue
 				}
@@ -234,12 +275,13 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 					// Find next match
 					match, err = re.FindNextMatch(match)
 					if err != nil {
-						if m.warnf != nil {
-							if strings.Contains(err.Error(), "match timeout") {
+						if strings.Contains(err.Error(), "match timeout") {
+							if m.warnf != nil {
 								m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", rule.ID, blobID.Hex())
-							} else {
-								m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 							}
+							m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
+						} else if m.warnf != nil {
+							m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 						}
 						break
 					}
@@ -285,7 +327,170 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 		}
 	}
 
+	// Sort matches into a canonical order so downstream filters
+	// (entropy check, cross-rule dedup) are deterministic across runs.
+	sort.Slice(allMatches, func(i, j int) bool {
+		mi, mj := allMatches[i], allMatches[j]
+		if mi.Location.Offset.Start != mj.Location.Offset.Start {
+			return mi.Location.Offset.Start < mj.Location.Offset.Start
+		}
+		if mi.Location.Offset.End != mj.Location.Offset.End {
+			return mi.Location.Offset.End < mj.Location.Offset.End
+		}
+		return mi.RuleID < mj.RuleID
+	})
+
 	return allMatches, nil
+}
+
+// enqueueOrBlacklist applies the per-rule blacklist and queue-cap checks before
+// appending a retry job. Call this at every timeout site instead of directly
+// appending to retryJobs.
+//
+// Behaviour:
+//   - If the rule has already been blacklisted (count > threshold), the job is
+//     silently dropped.
+//   - On the K-th timeout (count == threshold) the rule is blacklisted and one
+//     warning is emitted; no job is enqueued.
+//   - On counts 1 … K-1, the job is enqueued subject to the queue cap.
+//   - If enqueuing would exceed retryQueueCap, the job is dropped and retryDropped
+//     is incremented.
+func (m *PortableRegexpMatcher) enqueueOrBlacklist(j retryJob) {
+	m.blacklistMu.Lock()
+	m.blacklist[j.rule.ID]++
+	count := m.blacklist[j.rule.ID]
+	m.blacklistMu.Unlock()
+
+	if count == retryBlacklistThreshold {
+		if m.warnf != nil {
+			m.warnf("[warn] rule %s disabled after %d timeouts (likely catastrophic backtracking — skipping remaining blobs)\n",
+				j.rule.ID, retryBlacklistThreshold)
+		}
+		return
+	}
+	if count > retryBlacklistThreshold {
+		// Already blacklisted; silently skip.
+		return
+	}
+
+	// count < retryBlacklistThreshold: enqueue subject to cap.
+	m.retryMu.Lock()
+	if len(m.retryJobs) < retryQueueCap {
+		m.retryJobs = append(m.retryJobs, j)
+	} else {
+		m.retryDropped++
+	}
+	m.retryMu.Unlock()
+}
+
+// DrainTimedOut replays any blobs that timed out during the main parallel scan,
+// this time single-threaded and with a longer timeout (30s) to avoid false drops
+// caused by CPU contention between workers. Only if a blob times out again is it
+// truly abandoned (catastrophic backtracking) and the warning emitted.
+//
+// Call this once after the main parallel scan (after all workers have joined) and
+// feed the returned matches through the same store pipeline as normal matches.
+// Near-zero cost when no timeouts occurred; overhead is proportional to actual
+// timeout count.
+func (m *PortableRegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
+	m.retryMu.Lock()
+	jobs := m.retryJobs
+	m.retryJobs = nil
+	dropped := m.retryDropped
+	m.retryMu.Unlock()
+
+	if dropped > 0 {
+		if m.warnf != nil {
+			m.warnf("[warn] retry queue cap (%d) reached; %d (blob, rule) pairs were not retried\n",
+				retryQueueCap, dropped)
+		}
+	}
+
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+
+	// Deduplicate: keep only one retry job per (blobID, rule.ID) pair.
+	seen := make(map[string]struct{})
+	deduped := jobs[:0]
+	for _, j := range jobs {
+		key := j.blobID.Hex() + "\x00" + j.rule.ID
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			deduped = append(deduped, j)
+		}
+	}
+	jobs = deduped
+
+	const retryTimeout = 30 * time.Second
+
+	var all []*types.Match
+	for _, j := range jobs {
+		re := m.regexCache[j.rule.Pattern]
+		if re == nil {
+			continue
+		}
+
+		// Temporarily raise timeout for the retry pass; use defer so it is
+		// always restored even if the work panics.
+		jobMatches := func() []*types.Match {
+			orig := re.MatchTimeout
+			re.MatchTimeout = retryTimeout
+			defer func() { re.MatchTimeout = orig }()
+
+			contentRunes := []rune(string(j.content))
+
+			match, err := re.FindRunesMatch(contentRunes)
+			if err != nil {
+				if strings.Contains(err.Error(), "match timeout") {
+					// Still times out with 30s: genuine catastrophic backtracking.
+					if m.warnf != nil {
+						m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", j.rule.ID, j.blobID.Hex())
+					}
+				} else if m.warnf != nil {
+					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", j.rule.ID, j.blobID.Hex(), err)
+				}
+				return nil
+			}
+
+			var found []*types.Match
+			lastEnd := -1
+			for match != nil {
+				if match.Index <= lastEnd {
+					break
+				}
+				lastEnd = match.Index + match.Length
+				groups := extractCaptureGroups(match)
+				namedGroups := extractNamedGroups(match, m.groupNameCache[j.rule.Pattern])
+				result := buildMatchResult(j.blobID, j.rule, match.Index, match.Length, []byte(match.String()), groups, namedGroups, j.content, m.contextLines)
+				// Compute line/col here since we have access to the original content.
+				startLine, startCol := types.ComputeLineColumn(j.content, int(result.Location.Offset.Start))
+				endLine, endCol := types.ComputeLineColumn(j.content, int(result.Location.Offset.End))
+				result.Location.Source.Start.Line = startLine
+				result.Location.Source.Start.Column = startCol
+				result.Location.Source.End.Line = endLine
+				result.Location.Source.End.Column = endCol
+				found = append(found, result)
+
+				match, err = re.FindNextMatch(match)
+				if err != nil {
+					if strings.Contains(err.Error(), "match timeout") {
+						if m.warnf != nil {
+							m.warnf("[warn] rule %s regex timeout on blob %s (skipping rule for this blob)\n", j.rule.ID, j.blobID.Hex())
+						}
+					} else if m.warnf != nil {
+						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", j.rule.ID, j.blobID.Hex(), err)
+					}
+					break
+				}
+			}
+			return found
+		}()
+
+		all = append(all, jobMatches...)
+	}
+
+	return all, nil
 }
 
 // Close releases resources (no-op for regexp).

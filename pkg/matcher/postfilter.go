@@ -25,10 +25,22 @@ func findSecretCapture(m *types.Match) []byte {
 		}
 	}
 
-	// 2. First named capture in NamedGroups (map iteration order is random,
-	//    but we just need any named group when TOKEN isn't present)
-	for _, v := range m.NamedGroups {
-		return v
+	// 2. Select the named group with the highest Shannon entropy — deterministic
+	//    (max entropy + alphabetical tiebreaker on equal entropy) and semantically
+	//    correct: we want the most-secret-like value for the entropy threshold check.
+	if len(m.NamedGroups) > 0 {
+		var bestKey string
+		bestEntropy := -1.0
+		for k, v := range m.NamedGroups {
+			e := shannonEntropy(v)
+			if e > bestEntropy || (e == bestEntropy && (bestKey == "" || k < bestKey)) {
+				bestEntropy = e
+				bestKey = k
+			}
+		}
+		if bestKey != "" {
+			return m.NamedGroups[bestKey]
+		}
 	}
 
 	// 3. Groups[1] (first positional capture)

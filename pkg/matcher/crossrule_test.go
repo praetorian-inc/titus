@@ -239,3 +239,130 @@ func TestCrossRule_NilCanValidate(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, "np.aws.6", result[0].RuleID)
 }
+
+func makeMatchWithOffset(ruleID string, start int64, groups ...string) *types.Match {
+	m := makeMatch(ruleID, groups...)
+	m.Location.Offset.Start = start
+	return m
+}
+
+func TestCrossRuleDeduplicator_DeterministicAcrossRuns(t *testing.T) {
+	// Build a scenario where two rules have identical matchScore:
+	// same hasValidator=false, same groupCount=1, same groupsLen (same value length),
+	// same patternLen (same pattern length). Only ruleID differs.
+	// "rule.aaa" < "rule.zzz" lexicographically, so "rule.aaa" must always win.
+	rules := makeRules(
+		struct{ id, pattern string }{"rule.aaa", `[a-z]{5}`},
+		struct{ id, pattern string }{"rule.zzz", `[a-z]{5}`},
+	)
+
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	// Both matches share the same group value → single cluster.
+	// Scores are identical on all criteria except ruleID.
+	matches := []*types.Match{
+		makeMatch("rule.aaa", "hello"),
+		makeMatch("rule.zzz", "hello"),
+	}
+
+	// Run Deduplicate 20 times; always the same winner must be returned.
+	var firstWinner string
+	for i := 0; i < 20; i++ {
+		result := dedup.Deduplicate(matches)
+		require.Len(t, result, 1, "run %d: expected 1 result", i)
+		if i == 0 {
+			firstWinner = result[0].RuleID
+		} else {
+			assert.Equal(t, firstWinner, result[0].RuleID,
+				"run %d: winner changed (nondeterministic tiebreak)", i)
+		}
+	}
+	// The deterministic winner must be the lexicographically smaller RuleID.
+	assert.Equal(t, "rule.aaa", firstWinner, "expected lexicographically smaller RuleID to win")
+}
+
+func TestCrossRuleDeduplicator_DeterministicClusterOrder(t *testing.T) {
+	// Build 3 independent clusters (no shared group values) at distinct offsets.
+	// Each cluster has exactly one match so the winner is unambiguous.
+	// The output order must be deterministic across repeated calls.
+	rules := makeRules(
+		struct{ id, pattern string }{"rule.x", `x`},
+		struct{ id, pattern string }{"rule.y", `y`},
+		struct{ id, pattern string }{"rule.z", `z`},
+	)
+
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	// Three non-overlapping clusters, placed at byte offsets 100, 50, 200.
+	// After sorting by min start offset the expected order is: offset 50, 100, 200.
+	matches := []*types.Match{
+		makeMatchWithOffset("rule.x", 100, "unique_x"),
+		makeMatchWithOffset("rule.y", 50, "unique_y"),
+		makeMatchWithOffset("rule.z", 200, "unique_z"),
+	}
+
+	// Run 20 times; the output order must always match the sorted-by-offset order.
+	for i := 0; i < 20; i++ {
+		result := dedup.Deduplicate(matches)
+		require.Len(t, result, 3, "run %d: expected 3 results", i)
+		assert.Equal(t, "rule.y", result[0].RuleID, "run %d: first result should be offset 50 (rule.y)", i)
+		assert.Equal(t, "rule.x", result[1].RuleID, "run %d: second result should be offset 100 (rule.x)", i)
+		assert.Equal(t, "rule.z", result[2].RuleID, "run %d: third result should be offset 200 (rule.z)", i)
+	}
+}
+
+// TestCrossRuleDeduplicator_WinnerStableUnderInputReorder verifies that the same
+// winner is selected from a cluster regardless of the ORDER matches appear in the
+// input slice. This is the property that was broken before the cluster-sort +
+// ruleID-tiebreaker fix: Go map iteration returned clusters in random order,
+// and pickWinner resolved ties arbitrarily without a deterministic final tiebreaker.
+//
+// Regression for PR #201: ruleID tiebreaker in matchScore.Better and
+// cluster-level sort in clusterBySharedValues.
+func TestCrossRuleDeduplicator_WinnerStableUnderInputReorder(t *testing.T) {
+	rules := makeRules(
+		struct{ id, pattern string }{"np.aws.1", `[A-Z0-9]{20}`},
+		struct{ id, pattern string }{"np.aws.6", `[A-Z0-9]{20}`},
+	)
+	d := NewCrossRuleDeduplicator(rules, nil)
+
+	sharedGroup := "AKIAIOSFODNN7EXAMPLE"
+
+	m1 := &types.Match{
+		RuleID: "np.aws.1",
+		Groups: [][]byte{[]byte(sharedGroup)},
+		Location: types.Location{
+			Offset: types.OffsetSpan{Start: 10, End: 30},
+		},
+	}
+	m2 := &types.Match{
+		RuleID: "np.aws.6",
+		Groups: [][]byte{[]byte(sharedGroup)},
+		Location: types.Location{
+			Offset: types.OffsetSpan{Start: 10, End: 30},
+		},
+	}
+
+	// Run 20 times with alternating input order — winner must always be the same rule.
+	// np.aws.1 < np.aws.6 lexicographically, so np.aws.1 must win (all other score
+	// fields are identical: same hasValidator, groupCount, groupsLen, patternLen).
+	var expectedWinner string
+	for i := 0; i < 20; i++ {
+		var result []*types.Match
+		if i%2 == 0 {
+			result = d.Deduplicate([]*types.Match{m1, m2})
+		} else {
+			result = d.Deduplicate([]*types.Match{m2, m1})
+		}
+		require.Len(t, result, 1, "run %d: expected exactly 1 result after dedup", i)
+		if i == 0 {
+			expectedWinner = result[0].RuleID
+		} else {
+			require.Equal(t, expectedWinner, result[0].RuleID,
+				"run %d: winner changed between orderings (nondeterminism)", i+1)
+		}
+	}
+	// Specifically: np.aws.1 must win (lexicographically smaller ruleID is the tiebreaker).
+	assert.Equal(t, "np.aws.1", expectedWinner,
+		"lexicographically smaller ruleID must win when all other score fields are equal")
+}

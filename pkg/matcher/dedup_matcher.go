@@ -37,6 +37,14 @@ func (d *dedupMatcher) MatchWithBlobID(content []byte, blobID types.BlobID) ([]*
 	return d.dedup.Deduplicate(matches), nil
 }
 
+func (d *dedupMatcher) DrainTimedOut() ([]*types.Match, error) {
+	matches, err := d.inner.DrainTimedOut()
+	if err != nil {
+		return nil, err
+	}
+	return d.dedup.Deduplicate(matches), nil
+}
+
 func (d *dedupMatcher) Close() error {
 	return d.inner.Close()
 }

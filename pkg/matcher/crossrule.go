@@ -1,6 +1,8 @@
 package matcher
 
 import (
+	"sort"
+
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -108,7 +110,26 @@ func (d *CrossRuleDeduplicator) clusterBySharedValues(matches []*types.Match) []
 	for _, c := range clusterMap {
 		clusters = append(clusters, c)
 	}
+
+	// Sort clusters deterministically by minimum match start offset.
+	// This eliminates nondeterminism from Go's map iteration order.
+	sort.Slice(clusters, func(i, j int) bool {
+		return minStartOffset(clusters[i]) < minStartOffset(clusters[j])
+	})
+
 	return clusters
+}
+
+// minStartOffset returns the smallest Location.Offset.Start among all matches
+// in the cluster. Used to produce a deterministic cluster ordering.
+func minStartOffset(cluster []*types.Match) int64 {
+	min := cluster[0].Location.Offset.Start
+	for _, m := range cluster[1:] {
+		if m.Location.Offset.Start < min {
+			min = m.Location.Offset.Start
+		}
+	}
+	return min
 }
 
 // pickWinner selects the most informative match from a cluster.
@@ -148,6 +169,7 @@ func (d *CrossRuleDeduplicator) score(m *types.Match) matchScore {
 		groupCount:   len(m.Groups),
 		groupsLen:    groupsLen,
 		patternLen:   patternLen,
+		ruleID:       m.RuleID,
 	}
 }
 
@@ -157,6 +179,7 @@ type matchScore struct {
 	groupCount   int
 	groupsLen    int
 	patternLen   int
+	ruleID       string // used as deterministic tiebreaker
 }
 
 // Better returns true if s is ranked higher than other.
@@ -170,5 +193,10 @@ func (s matchScore) Better(other matchScore) bool {
 	if s.groupsLen != other.groupsLen {
 		return s.groupsLen > other.groupsLen
 	}
-	return s.patternLen > other.patternLen
+	if s.patternLen != other.patternLen {
+		return s.patternLen > other.patternLen
+	}
+	// Deterministic tiebreaker: prefer lexicographically smaller RuleID.
+	// This ensures identical-score matches always resolve to the same winner.
+	return s.ruleID < other.ruleID
 }
