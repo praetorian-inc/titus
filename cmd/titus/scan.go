@@ -65,6 +65,11 @@ var (
 	scanReaders             int
 	scanRuleset             string
 	scanIgnoreFile          string
+
+	// Dynamic scoring flags (M3).
+	scanScopeEnabled bool
+	scanScoreTimeout time.Duration
+	scanScoreBudget  time.Duration
 )
 
 var scanCmd = &cobra.Command{
@@ -100,6 +105,12 @@ func init() {
 	scanCmd.Flags().StringVar(&scanAccessibility, "accessibility", "auto",
 		`code accessibility: "public" (no penalty), "private" (-25 to all scores),`+"\n"+
 			`or "auto" (detect via git remote/GitHub API, defaults to private if undetermined)`)
+	scanCmd.Flags().BoolVar(&scanScopeEnabled, "score-scope", false,
+		"enable HTTP dynamic scoring modifiers (calls external APIs to determine secret scope/permissions)")
+	scanCmd.Flags().DurationVar(&scanScoreTimeout, "score-timeout", 10*time.Second,
+		"per-modifier HTTP timeout for dynamic scoring (default 10s)")
+	scanCmd.Flags().DurationVar(&scanScoreBudget, "score-budget", 60*time.Second,
+		"per-finding overall scoring budget across all modifiers (default 60s; 0 = unlimited)")
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -182,10 +193,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 		matcher.SetCanValidate(m, validationEngine.CanValidate)
 	}
 
-	// Build the M2 scoring engine once per scan. Static modifiers only; no HTTP.
+	// Build the scoring engine once per scan.
 	engine, err := buildScoringEngine()
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+	if scanScopeEnabled && !scanValidate {
+		fmt.Fprintf(os.Stderr, "[warn] --score-scope set without --validate; dynamic modifiers will use unvalidated credentials (results may be less accurate)\n")
 	}
 
 	// Resolve code accessibility for score adjustment.
@@ -1449,5 +1463,10 @@ func buildScoringEngine() (scoringEngineInterface, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading scorers: %w", err)
 	}
-	return scoring.NewEngine(scorers, scoring.EngineConfig{}), nil
+	cfg := scoring.EngineConfig{
+		ScopeEnabled: scanScopeEnabled,
+		Timeout:      scanScoreTimeout,
+		Budget:       scanScoreBudget,
+	}
+	return scoring.NewEngine(scorers, cfg), nil
 }

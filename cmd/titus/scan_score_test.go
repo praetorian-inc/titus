@@ -53,6 +53,26 @@ func TestBuildScoringEngine_BaseScoreOnly(t *testing.T) {
 }
 
 
+// TestBuildScoringEngine_WithScopeEnabled verifies the engine builds without
+// error when --score-scope is enabled.
+func TestBuildScoringEngine_WithScopeEnabled(t *testing.T) {
+	// Save/restore global flag state
+	origScope := scanScopeEnabled
+	origTimeout := scanScoreTimeout
+	origBudget := scanScoreBudget
+	defer func() {
+		scanScopeEnabled = origScope
+		scanScoreTimeout = origTimeout
+		scanScoreBudget = origBudget
+	}()
+	scanScopeEnabled = true
+
+	eng, err := buildScoringEngine()
+	require.NoError(t, err)
+	require.NotNil(t, eng)
+	// Engine is opaque; just verify it builds without error when scope is enabled.
+}
+
 // stubScoringEngine implements scoringEngineInterface for use in unit tests
 // that need to inject a controlled engine without loading real scorers.
 type stubScoringEngine struct {
