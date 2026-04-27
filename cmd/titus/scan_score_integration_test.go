@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestScan_EndToEnd_FindingHasScore(t *testing.T) {
 	}
 	// Pass a match with no named groups — no modifier fires, returns base-only.
 	match := &types.Match{RuleID: r.ID, NamedGroups: map[string][]byte{}}
-	f.Score = engine.Score(f, []*types.Match{match}, r)
+	f.Score = engine.Score(context.Background(), f, []*types.Match{match}, r)
 	require.NoError(t, s.AddFinding(f))
 
 	findings, err := s.GetFindings()

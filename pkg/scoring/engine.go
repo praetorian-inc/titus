@@ -2,28 +2,51 @@ package scoring
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// Engine applies static modifiers to findings. Construct once per scan.
-type Engine struct {
-	scorers []*Scorer
-	// warnf is pluggable for tests; defaults to stderr logging to match the
-	// matcher's warning style (cmd/titus/scan.go:302).
-	warnf func(format string, args ...any)
+// EngineConfig controls Engine behavior. Zero value gives safe defaults.
+type EngineConfig struct {
+	// ScopeEnabled enables HTTP dynamic modifiers. When false, only static
+	// modifiers run (the M2 behavior). Default: false.
+	ScopeEnabled bool
+	// Timeout is the per-modifier HTTP deadline. 0 means use 10s default.
+	Timeout time.Duration
+	// Budget is the per-finding overall scoring deadline across ALL modifiers.
+	// 0 means no per-finding cap (unlimited).
+	Budget time.Duration
+	// WarnF is a printf-style logging function. Nil defaults to stderr.
+	WarnF func(format string, args ...any)
 }
 
-// NewEngine constructs an Engine with the given scorers in first-match-wins
-// order. Passing nil yields an engine that always returns base-only scores.
-func NewEngine(scorers []*Scorer) *Engine {
-	return &Engine{
-		scorers: scorers,
-		warnf:   func(format string, args ...any) { fmt.Fprintf(os.Stderr, format, args...) },
+const defaultModifierTimeout = 10 * time.Second
+
+// Engine applies modifiers to findings. Construct once per scan.
+type Engine struct {
+	scorers []*Scorer
+	cfg     EngineConfig
+	// warnf is pluggable for tests; defaults to stderr logging to match the
+	// matcher's warning style (cmd/titus/scan.go).
+	warnf func(format string, args ...any)
+	stats HTTPModifierStats // aggregate HTTP modifier outcomes
+}
+
+// NewEngine constructs an Engine. Passing nil scorers gives a base-only engine.
+func NewEngine(scorers []*Scorer, cfg EngineConfig) *Engine {
+	warnf := cfg.WarnF
+	if warnf == nil {
+		warnf = func(format string, args ...any) { fmt.Fprintf(os.Stderr, format, args...) }
 	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = defaultModifierTimeout
+	}
+	return &Engine{scorers: scorers, cfg: cfg, warnf: warnf}
 }
 
 // Score computes the finding's score. It never returns an error — condition
@@ -32,13 +55,15 @@ func NewEngine(scorers []*Scorer) *Engine {
 //
 //  1. Find the first scorer whose RuleIDs contains rule.ID (or base-only).
 //  2. Sort modifiers by priority DESC, YAML declaration order ASC on ties.
-//  3. Evaluate each modifier's condition against the primary match.
-//  4. Apply action (delta accumulates, set_score replaces).
-//  5. Clamp final to [0, 100], recompute SuggestedSeverity.
+//  3. Inject shared HTTP cache into all httpConditions.
+//  4. Skip dynamic modifiers when cfg.ScopeEnabled is false.
+//  5. Evaluate each modifier's condition against the primary match.
+//  6. Apply action (delta accumulates, set_score replaces).
+//  7. Clamp final to [0, 100], recompute SuggestedSeverity.
 //
-// Contract: matches must be non-empty when at least one modifier exists;
-// callers in runScan always pass the current match.
-func (e *Engine) Score(f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score {
+// ctx carries the scan-level deadline; Score further constrains it with
+// per-finding budget and per-modifier timeout sub-contexts.
+func (e *Engine) Score(ctx context.Context, f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score {
 	score := &types.Score{
 		Final:             rule.BaseScore,
 		Base:              rule.BaseScore,
@@ -49,10 +74,20 @@ func (e *Engine) Score(f *types.Finding, matches []*types.Match, rule *types.Rul
 	if scorer == nil || len(scorer.Modifiers) == 0 {
 		return score
 	}
+
 	var primary *types.Match
 	if len(matches) > 0 {
 		primary = matches[0]
 	}
+
+	// Apply per-finding budget as a context deadline.
+	findingCtx := ctx
+	var cancel context.CancelFunc
+	if e.cfg.Budget > 0 {
+		findingCtx, cancel = context.WithTimeout(ctx, e.cfg.Budget)
+		defer cancel()
+	}
+
 	// Priority DESC, YAML-ASC on ties. Make a stable copy to preserve
 	// declaration order for tie-breaking.
 	ordered := make([]indexedModifier, len(scorer.Modifiers))
@@ -66,17 +101,37 @@ func (e *Engine) Score(f *types.Finding, matches []*types.Match, rule *types.Rul
 		return ordered[i].yamlIdx < ordered[j].yamlIdx
 	})
 
+	// Inject shared cache into HTTP conditions before evaluation.
+	cache := newHTTPResponseCache()
+	for i := range ordered {
+		if hc, ok := ordered[i].mod.Condition.(*httpCondition); ok {
+			hc.cache = cache
+		}
+	}
+
 	current := score.Final
 	for _, im := range ordered {
 		m := im.mod
-		fired, err := m.Condition.Evaluate(context.Background(), primary)
+
+		// Skip dynamic modifiers when scope is not enabled.
+		if m.IsDynamic() && !e.cfg.ScopeEnabled {
+			continue
+		}
+
+		// Per-modifier timeout sub-context.
+		modCtx, modCancel := context.WithTimeout(findingCtx, e.cfg.Timeout)
+		fired, err := m.Condition.Evaluate(modCtx, primary)
+		modCancel()
+
 		if err != nil {
 			e.warnf("[warn] scorer %q modifier %q: %v (skipping)\n", scorer.Name, m.Name, err)
+			e.trackError(err)
 			continue
 		}
 		if !fired {
 			continue
 		}
+
 		switch m.Kind {
 		case ModifierKindDelta:
 			current += m.Value
@@ -106,6 +161,23 @@ func (e *Engine) Score(f *types.Finding, matches []*types.Match, rule *types.Rul
 	score.SuggestedSeverity = types.SeverityForScore(current)
 	return score
 }
+
+// trackError increments the relevant stats counter based on error type.
+func (e *Engine) trackError(err error) {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled):
+		e.stats.Timeouts++
+	case errors.Is(err, ErrModifierRateLimit):
+		e.stats.RateLimited++
+	case errors.Is(err, ErrModifierServerError):
+		e.stats.ServerErrors++
+	case errors.Is(err, ErrModifierNetwork):
+		e.stats.NetworkErrors++
+	}
+}
+
+// Stats returns aggregate HTTP modifier outcomes for the scan stats line.
+func (e *Engine) Stats() HTTPModifierStats { return e.stats }
 
 // findScorer returns the first scorer targeting the given ruleID, or nil.
 func (e *Engine) findScorer(ruleID string) *Scorer {

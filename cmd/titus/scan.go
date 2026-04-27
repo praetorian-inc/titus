@@ -299,7 +299,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 									RuleID: match.RuleID,
 									Groups: match.Groups,
 								}
-								f.Score = engine.Score(f, []*types.Match{match}, rule)
+								f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
 								if accessibility == AccessibilityPrivate {
 									ApplyAccessibilityModifier(f.Score)
 								}
@@ -411,7 +411,7 @@ func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*
 					RuleID: match.RuleID,
 					Groups: match.Groups,
 				}
-				f.Score = engine.Score(f, []*types.Match{match}, rule)
+				f.Score = engine.Score(context.Background(), f, []*types.Match{match}, rule)
 				if err := tx.AddFinding(f); err != nil {
 					return fmt.Errorf("storing retry finding: %w", err)
 				}
@@ -1433,7 +1433,8 @@ func resolveAutoOutput(target string) string {
 // scoringEngineInterface is the narrow surface runScan needs, kept as an
 // interface for ease of swapping in tests (currently always *scoring.Engine).
 type scoringEngineInterface interface {
-	Score(f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score
+	Score(ctx context.Context, f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score
+	Stats() scoring.HTTPModifierStats
 }
 
 // buildScoringEngine constructs the M2 scoring engine from the embedded scorer
@@ -1448,5 +1449,5 @@ func buildScoringEngine() (scoringEngineInterface, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading scorers: %w", err)
 	}
-	return scoring.NewEngine(scorers), nil
+	return scoring.NewEngine(scorers, scoring.EngineConfig{}), nil
 }

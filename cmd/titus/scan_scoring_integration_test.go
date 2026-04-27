@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -28,7 +29,7 @@ func TestRunScan_EngineBuilt_AppliedPopulated(t *testing.T) {
 		NamedGroups: map[string][]byte{"key_id": []byte("AKIADEADBEEFDEADBEEF")},
 	}
 
-	score := engine.Score(finding, []*types.Match{match}, rule)
+	score := engine.Score(context.Background(), finding, []*types.Match{match}, rule)
 
 	assert.Equal(t, 58, score.Final) // 48 + 10
 	require.Len(t, score.Applied, 1)
@@ -46,7 +47,7 @@ func TestRunScan_ASIAPrefix_DecrementsScore(t *testing.T) {
 
 	rule := &types.Rule{ID: "np.aws.1", BaseScore: 48}
 	match := &types.Match{NamedGroups: map[string][]byte{"key_id": []byte("ASIAXXXXXXXXXXXXXXXX")}}
-	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
+	score := engine.Score(context.Background(), &types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
 	assert.Equal(t, 38, score.Final)
 }
 
@@ -58,7 +59,7 @@ func TestRunScan_AIDAPrefix_ClampsToInfo(t *testing.T) {
 
 	rule := &types.Rule{ID: "np.aws.1", BaseScore: 48}
 	match := &types.Match{NamedGroups: map[string][]byte{"key_id": []byte("AIDAXXXXXXXXXXXXXXXX")}}
-	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
+	score := engine.Score(context.Background(), &types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
 	assert.Equal(t, 10, score.Final)
 	assert.Equal(t, "info", score.SuggestedSeverity)
 }
@@ -75,7 +76,7 @@ func TestRunScan_GitHubFineGrainedPAT(t *testing.T) {
 			"token": []byte("github_pat_11ABCDEFG0000000000000000000000000000000000000000000000000000000000000000000000"),
 		},
 	}
-	score := engine.Score(&types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
+	score := engine.Score(context.Background(), &types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
 	assert.Equal(t, 55, score.Final) // 65 - 10
 
 	// Confirm the engine is a *scoring.Engine for interface sanity.
