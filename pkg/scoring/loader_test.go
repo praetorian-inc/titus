@@ -287,6 +287,28 @@ scorers:
 	assert.Contains(t, err.Error(), "fires_when")
 }
 
+func TestLoadBuiltinScorers_GitHubScorerHasDynamicModifiers(t *testing.T) {
+	loader := NewLoader()
+	scorers, err := loader.LoadBuiltinScorers()
+	require.NoError(t, err)
+	var githubScorer *Scorer
+	for _, s := range scorers {
+		if s.Name == "github-pat-scope" {
+			githubScorer = s
+			break
+		}
+	}
+	require.NotNil(t, githubScorer, "github-pat-scope scorer not found")
+
+	dynamicCount := 0
+	for _, m := range githubScorer.Modifiers {
+		if m.IsDynamic() {
+			dynamicCount++
+		}
+	}
+	assert.Greater(t, dynamicCount, 0, "github scorer should have at least 1 dynamic modifier")
+}
+
 // Proves that the loader mirrors NewLoaderWithFS from pkg/rule/loader.go:26-30.
 func TestLoadBuiltinScorers_WithCustomFS(t *testing.T) {
 	mockFS := fstest.MapFS{

@@ -1,11 +1,12 @@
-# GitHub token scorer — static modifiers only (M2 scope).
-# Fine-grained PATs (np.github.7) are inherently scoped: a user must select
-# specific repositories and permissions at creation time, so blast radius is
-# structurally smaller than classic PATs. We reflect this with a flat -10.
+# GitHub token scorer — static + dynamic modifiers (M3 scope).
 #
-# Classic PATs (np.github.1) and OAuth tokens (np.github.2) have far larger
-# default scope and require HTTP scope-detection to rank accurately. Those
-# land in M3.
+# Scorer "github-fine-grained-pat" (M2) covers np.github.7 with a static -10
+# delta; fine-grained PATs are structurally scoped at creation, so no HTTP
+# checks are needed.
+#
+# Scorer "github-pat-scope" (M3) covers np.github.1 and np.github.2. Classic
+# PATs and OAuth tokens have wide-open default scope and require live HTTP
+# scope detection to rank accurately.
 scorers:
   - name: github-fine-grained-pat
     rule_ids:
@@ -17,3 +18,71 @@ scorers:
           name: token
           matches: '^github_pat_'
         delta: -10
+
+  - name: github-pat-scope
+    rule_ids:
+      - np.github.1   # classic PAT (ghp_)
+      - np.github.2   # OAuth token (gho_)
+
+    modifiers:
+      # --- Dynamic (M3, only when --score-scope) ---
+
+      # admin:org scope: full org control, highest privilege
+      - name: admin-org-scope
+        priority: 90
+        http:
+          method: GET
+          url: https://api.github.com/user
+          auth:
+            type: bearer
+            secret_group: token
+          headers:
+            - name: Accept
+              value: application/vnd.github+json
+            - name: X-GitHub-Api-Version
+              value: "2022-11-28"
+        fires_when:
+          header_contains:
+            name: x-oauth-scopes
+            value: "admin:org"
+        set_score: 90
+
+      # enterprise plan membership — significantly elevated risk
+      - name: enterprise-plan
+        priority: 80
+        http:
+          method: GET
+          url: https://api.github.com/user
+          auth:
+            type: bearer
+            secret_group: token
+          headers:
+            - name: Accept
+              value: application/vnd.github+json
+            - name: X-GitHub-Api-Version
+              value: "2022-11-28"
+        fires_when:
+          json_path_equals:
+            path: ".plan.name"
+            value: enterprise
+        delta: 15
+
+      # member of 3+ orgs — broader blast radius
+      - name: multi-org-member
+        priority: 50
+        http:
+          method: GET
+          url: https://api.github.com/user/orgs
+          auth:
+            type: bearer
+            secret_group: token
+          headers:
+            - name: Accept
+              value: application/vnd.github+json
+            - name: X-GitHub-Api-Version
+              value: "2022-11-28"
+        fires_when:
+          json_array_length_gte:
+            path: "."
+            value: 3
+        delta: 10
