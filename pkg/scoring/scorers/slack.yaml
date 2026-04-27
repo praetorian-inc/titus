@@ -1,0 +1,57 @@
+# Slack token scorer — static + dynamic modifiers (M3 scope).
+#
+# Rule IDs covered:
+#   np.slack.2 — bot token (xoxb-, long format): base_score 70
+#   np.slack.4 — user token (xoxp-): base_score 75
+#   np.slack.6 — bot token (xoxb-, short format): base_score 65
+#
+# All three patterns capture a named group "token", making them suitable for
+# bearer auth injection in HTTP modifiers.
+scorers:
+  - name: slack-token-scope
+    rule_ids:
+      - np.slack.2   # bot token (xoxb-, long format)
+      - np.slack.4   # user token (xoxp-)
+      - np.slack.6   # bot token (xoxb-, short format)
+
+    modifiers:
+      # --- Static: bot tokens have workspace-wide permissions ---
+      - name: bot-token-prefix
+        priority: 100
+        match_group:
+          name: token
+          matches: '^xoxb-'
+        delta: 5   # bot tokens slightly higher risk than user tokens
+
+      # --- Dynamic: verify token is active via auth.test ---
+      - name: valid-active-token
+        priority: 90
+        http:
+          method: POST
+          url: https://slack.com/api/auth.test
+          auth:
+            type: bearer
+            secret_group: token
+          headers:
+            - name: Content-Type
+              value: application/json
+        fires_when:
+          json_path_equals:
+            path: ".ok"
+            value: "true"
+        delta: 10   # confirmed live token — elevated risk
+
+      # --- Dynamic: check if token belongs to an enterprise grid ---
+      - name: enterprise-grid-member
+        priority: 70
+        http:
+          method: GET
+          url: https://slack.com/api/team.info
+          auth:
+            type: bearer
+            secret_group: token
+        fires_when:
+          json_path_equals:
+            path: ".team.is_enterprise_install"
+            value: "true"
+        delta: 15   # enterprise grid = broader blast radius

@@ -287,6 +287,20 @@ scorers:
 	assert.Contains(t, err.Error(), "fires_when")
 }
 
+func TestLoadBuiltinScorers_SlackScorerParses(t *testing.T) {
+	loader := NewLoader()
+	scorers, err := loader.LoadBuiltinScorers()
+	require.NoError(t, err)
+	var found bool
+	for _, s := range scorers {
+		if s.Name == "slack-token-scope" {
+			found = true
+			assert.Greater(t, len(s.Modifiers), 0)
+		}
+	}
+	assert.True(t, found, "slack-token-scope scorer not found")
+}
+
 func TestLoadBuiltinScorers_GitHubScorerHasDynamicModifiers(t *testing.T) {
 	loader := NewLoader()
 	scorers, err := loader.LoadBuiltinScorers()
