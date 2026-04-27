@@ -82,3 +82,35 @@ func TestHTTPCondition_UsesCache(t *testing.T) {
 
 	assert.Equal(t, 1, callCount, "cache should prevent second HTTP call")
 }
+
+func TestHTTPCondition_BodyContains_Fires(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{"login":"octocat","plan":{"name":"enterprise"}}`, nil)
+	cond.firesWhen = &responseBodyContainsLeaf{Value: "enterprise"}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestHTTPCondition_BodyContains_DoesNotFire(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{"plan":{"name":"free"}}`, nil)
+	cond.firesWhen = &responseBodyContainsLeaf{Value: "enterprise"}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
+
+func TestHTTPCondition_HeaderContains_Fires(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{}`, map[string]string{"x-oauth-scopes": "repo, admin:org, read:user"})
+	cond.firesWhen = &headerContainsLeaf{Name: "x-oauth-scopes", Value: "admin:org"}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestHTTPCondition_HeaderContains_CaseInsensitiveHeaderName(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{}`, map[string]string{"x-oauth-scopes": "admin:org"})
+	cond.firesWhen = &headerContainsLeaf{Name: "X-OAuth-Scopes", Value: "admin:org"}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+}

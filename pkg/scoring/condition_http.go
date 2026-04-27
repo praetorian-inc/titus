@@ -3,6 +3,7 @@ package scoring
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -71,4 +72,27 @@ func (l *statusCodeInLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// ----------------------------------------------------------------
+// fires_when leaf implementations (response_body_contains, header_contains)
+// ----------------------------------------------------------------
+
+type responseBodyContainsLeaf struct{ Value string }
+
+func (l *responseBodyContainsLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
+	return strings.Contains(string(resp.Body), l.Value), nil
+}
+
+type headerContainsLeaf struct {
+	Name  string // header name (case-insensitive lookup)
+	Value string // substring to find in header value
+}
+
+func (l *headerContainsLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
+	v, ok := resp.Headers[strings.ToLower(l.Name)]
+	if !ok {
+		return false, nil
+	}
+	return strings.Contains(v, l.Value), nil
 }
