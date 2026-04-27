@@ -149,20 +149,28 @@ func TestRunScan_E2E_AKIAFinding_PopulatesApplied(t *testing.T) {
 }
 
 // TestRunScan_UnscoredRule_StillEmitsFindingWithBaseOnly scans a fixture
-// containing a Slack Bot Token (np.slack.2), which has no scorer in aws.yaml
-// or github.yaml. It verifies that the scoring injection at scan.go:293 does
-// not silently drop findings for unscored rules, and that the resulting Score
-// carries the rule's BaseScore with an empty (non-nil) Applied slice.
+// containing a Slack app token (np.slack.5), which has no scorer in any of
+// the builtin scorer YAML files. It verifies that the scoring injection at
+// scan.go:293 does not silently drop findings for unscored rules, and that
+// the resulting Score carries the rule's BaseScore with an empty (non-nil)
+// Applied slice.
+//
+// Why np.slack.5 (xapp-) rather than np.slack.2 (xoxb-)?
+// The slack-token-scope scorer added in M3 now targets np.slack.2, np.slack.4,
+// and np.slack.6. np.slack.5 (app-level token, xapp- prefix) is deliberately
+// excluded from that scorer. Using it here preserves the invariant being tested:
+// findings for rules with no matching scorer still get emitted with base-only
+// scoring.
 //
 // The empty-non-nil invariant matters for JSON consumers: Applied marshaling
 // as null vs [] is a schema-breaking difference.
 func TestRunScan_UnscoredRule_StillEmitsFindingWithBaseOnly(t *testing.T) {
-	// np.slack.2 pattern: xoxb-[0-9]{10,12}-[0-9]{10,14}-[a-zA-Z0-9]{23,25}
-	// BaseScore is 70. No scorer targets np.slack.2, so Final == Base == 70.
-	slackToken := "xoxb-893582989554-899326518131-JRHeVv1o9Cf99fwDpuortR2D"
+	// np.slack.5 pattern: xapp-[0-9]{12}-[a-zA-Z0-9/+]{24}
+	// BaseScore is 55. No scorer targets np.slack.5, so Final == Base == 55.
+	xappToken := "xapp-123456789012-abcdefghijklmnopqrstuvwx"
 	tmpDir := t.TempDir()
 	fixturePath := filepath.Join(tmpDir, "fixture.txt")
-	require.NoError(t, os.WriteFile(fixturePath, []byte("SLACK_API_TOKEN="+slackToken+"\n"), 0644))
+	require.NoError(t, os.WriteFile(fixturePath, []byte("SLACK_APP_TOKEN="+xappToken+"\n"), 0644))
 
 	dsPath := filepath.Join(tmpDir, "scan.ds")
 
@@ -189,18 +197,18 @@ func TestRunScan_UnscoredRule_StillEmitsFindingWithBaseOnly(t *testing.T) {
 
 	var slackFinding *types.Finding
 	for _, f := range findings {
-		if f.RuleID == "np.slack.2" {
+		if f.RuleID == "np.slack.5" {
 			slackFinding = f
 			break
 		}
 	}
-	require.NotNil(t, slackFinding, "expected np.slack.2 finding to be emitted (not dropped)")
+	require.NotNil(t, slackFinding, "expected np.slack.5 finding to be emitted (not dropped)")
 
 	// Score must be non-nil — the engine always populates it.
 	require.NotNil(t, slackFinding.Score, "Score must not be nil even for unscored rules")
 
-	// Base and Final must equal the rule's BaseScore (70).
-	const wantBase = 70
+	// Base and Final must equal the rule's BaseScore (55).
+	const wantBase = 55
 	assert.Equal(t, wantBase, slackFinding.Score.Base, "Base should equal rule BaseScore")
 	assert.Equal(t, wantBase, slackFinding.Score.Final, "Final should equal Base when no modifiers fired")
 
