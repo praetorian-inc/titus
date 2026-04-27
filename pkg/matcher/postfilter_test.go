@@ -223,6 +223,56 @@ func TestFilterMatches_EntropyFiltering(t *testing.T) {
 	}
 }
 
+func TestFindSecretCapture_DeterministicNamedGroupSelection(t *testing.T) {
+	// Build a match simulating a Redis URI rule with named groups "host" and
+	// "password". "host" sorts alphabetically before "password", but "password"
+	// has much higher Shannon entropy and is the actual secret value.
+	//
+	// The max-entropy approach must always pick "password", not the alphabetically
+	// first key. Run -count=20 to confirm determinism across Go map iteration orders.
+	for i := 0; i < 20; i++ {
+		m := &types.Match{
+			NamedGroups: map[string][]byte{
+				"password": []byte("oJs3RjFV5CVD_very-high-entropy-value"),
+				"host":     []byte("redis.example.com"),
+			},
+		}
+		got := findSecretCapture(m)
+		if string(got) != "oJs3RjFV5CVD_very-high-entropy-value" {
+			t.Errorf("iteration %d: expected password group (highest entropy), got %q", i, got)
+		}
+	}
+}
+
+func TestFindSecretCapture_EqualEntropyAlphabeticalTiebreaker(t *testing.T) {
+	// When two named groups have identical Shannon entropy (e.g. both empty, or
+	// identical byte distributions), the alphabetically earlier key must win
+	// deterministically.
+	for i := 0; i < 20; i++ {
+		m := &types.Match{
+			NamedGroups: map[string][]byte{
+				"beta":  []byte(""), // entropy == 0
+				"alpha": []byte(""), // entropy == 0 — alphabetically first
+			},
+		}
+		got := findSecretCapture(m)
+		if string(got) != "" {
+			t.Errorf("iteration %d: expected empty string, got %q", i, got)
+		}
+		// Verify the key chosen was "alpha" by checking via a non-empty value variant.
+		m2 := &types.Match{
+			NamedGroups: map[string][]byte{
+				"zebra": []byte("aa"), // entropy == 0 (repeated byte)
+				"apple": []byte("bb"), // entropy == 0 (repeated byte), alphabetically first
+			},
+		}
+		got2 := findSecretCapture(m2)
+		if string(got2) != "bb" {
+			t.Errorf("iteration %d: alphabetical tiebreaker: expected 'bb' (group 'apple'), got %q", i, got2)
+		}
+	}
+}
+
 func TestFilterMatches_PatternRequirementsFiltering(t *testing.T) {
 	rules := map[string]*types.Rule{
 		"np.test.2": {
