@@ -540,3 +540,122 @@ func TestMatch_SnippetContext_UTF8(t *testing.T) {
 	assert.Contains(t, string(match.Snippet.After), "🔑",
 		"after context should include UTF-8 characters")
 }
+
+// TestPortableRegexp_BlacklistAfterKTimeouts verifies that after retryBlacklistThreshold
+// timeouts for the same rule on distinct blobs, the rule is added to the per-scan
+// blacklist and no further retry jobs are enqueued for it.
+func TestPortableRegexp_BlacklistAfterKTimeouts(t *testing.T) {
+	rule := &types.Rule{
+		ID:      "runaway-rule",
+		Name:    "Runaway Pattern",
+		Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
+	}
+
+	// Use a 1ms timeout so we can reliably simulate timeouts by injecting jobs directly.
+	m, err := NewPortableRegexpWithTimeout([]*types.Rule{rule}, 0, nil, 1*time.Millisecond)
+	require.NoError(t, err)
+
+	// Inject retryBlacklistThreshold-1 jobs (under threshold): they should all be enqueued.
+	for i := 0; i < retryBlacklistThreshold-1; i++ {
+		blob := []byte(fmt.Sprintf("content-%d", i))
+		blobID := types.ComputeBlobID(blob)
+		m.enqueueOrBlacklist(retryJob{content: blob, blobID: blobID, rule: rule})
+	}
+	m.retryMu.Lock()
+	queueLen := len(m.retryJobs)
+	m.retryMu.Unlock()
+	assert.Equal(t, retryBlacklistThreshold-1, queueLen,
+		"first K-1 timeouts should all be enqueued")
+
+	// The K-th timeout (threshold) should blacklist the rule and NOT enqueue a new job.
+	var warnBuf []string
+	m.warnf = func(format string, args ...any) {
+		warnBuf = append(warnBuf, fmt.Sprintf(format, args...))
+	}
+	blob := []byte("content-threshold")
+	blobID := types.ComputeBlobID(blob)
+	m.enqueueOrBlacklist(retryJob{content: blob, blobID: blobID, rule: rule})
+
+	m.retryMu.Lock()
+	queueLenAfter := len(m.retryJobs)
+	m.retryMu.Unlock()
+	assert.Equal(t, retryBlacklistThreshold-1, queueLenAfter,
+		"K-th timeout must NOT add a new job (rule is now blacklisted)")
+
+	// Exactly one warning should have been emitted mentioning the rule and threshold.
+	require.Len(t, warnBuf, 1, "exactly one blacklist warning should be emitted")
+	assert.Contains(t, warnBuf[0], rule.ID, "warning must name the rule")
+	assert.Contains(t, warnBuf[0], fmt.Sprintf("%d", retryBlacklistThreshold),
+		"warning must mention the threshold count")
+	assert.Contains(t, warnBuf[0], "disabled after", "warning must say 'disabled after'")
+
+	// A subsequent (K+1) timeout for the already-blacklisted rule must be silently ignored.
+	blob2 := []byte("content-after-blacklist")
+	blobID2 := types.ComputeBlobID(blob2)
+	m.enqueueOrBlacklist(retryJob{content: blob2, blobID: blobID2, rule: rule})
+
+	m.retryMu.Lock()
+	queueLenFinal := len(m.retryJobs)
+	m.retryMu.Unlock()
+	assert.Equal(t, retryBlacklistThreshold-1, queueLenFinal,
+		"post-blacklist jobs must be silently dropped")
+	assert.Len(t, warnBuf, 1, "no additional warnings after blacklisting")
+}
+
+// TestPortableRegexp_QueueCapDropsExcess verifies that once the retry queue reaches
+// retryQueueCap entries, additional jobs are dropped and retryDropped is incremented.
+// DrainTimedOut must emit a warning when dropped > 0.
+func TestPortableRegexp_QueueCapDropsExcess(t *testing.T) {
+	var warnBuf []string
+	warnf := func(format string, args ...any) {
+		warnBuf = append(warnBuf, fmt.Sprintf(format, args...))
+	}
+
+	// Each job needs a distinct rule ID to avoid the blacklist triggering before the cap.
+	// Use distinct rules so the per-rule blacklist does not fire before we fill the cap.
+	rules := make([]*types.Rule, retryQueueCap+1)
+	for i := range rules {
+		rules[i] = &types.Rule{
+			ID:      fmt.Sprintf("distinct-rule-%d", i),
+			Name:    fmt.Sprintf("Rule %d", i),
+			Pattern: `SECRET_KEY=([A-Z0-9]{20})`,
+		}
+	}
+
+	// Re-create matcher with all distinct rules so they are in regexCache.
+	m2, err := NewPortableRegexpWithTimeout(rules, 0, warnf, 1*time.Millisecond)
+	require.NoError(t, err)
+
+	// Inject retryQueueCap+1 jobs with distinct (blob, rule) pairs.
+	for i := 0; i <= retryQueueCap; i++ {
+		blob := []byte(fmt.Sprintf("content-%d", i))
+		blobID := types.ComputeBlobID(blob)
+		m2.enqueueOrBlacklist(retryJob{content: blob, blobID: blobID, rule: rules[i]})
+	}
+
+	m2.retryMu.Lock()
+	queueLen := len(m2.retryJobs)
+	dropped := m2.retryDropped
+	m2.retryMu.Unlock()
+
+	assert.Equal(t, retryQueueCap, queueLen,
+		"queue must be capped at retryQueueCap entries")
+	assert.Equal(t, 1, dropped,
+		"exactly one job should have been dropped")
+
+	// DrainTimedOut should emit a cap-reached warning.
+	_, err = m2.DrainTimedOut()
+	require.NoError(t, err)
+
+	capWarnings := 0
+	for _, w := range warnBuf {
+		if strings.Contains(w, "retry queue cap") {
+			capWarnings++
+			assert.Contains(t, w, fmt.Sprintf("%d", retryQueueCap),
+				"warning must mention the cap value")
+			assert.Contains(t, w, "1 (blob, rule) pairs were not retried",
+				"warning must report the drop count")
+		}
+	}
+	assert.Equal(t, 1, capWarnings, "exactly one cap-reached warning must be emitted")
+}

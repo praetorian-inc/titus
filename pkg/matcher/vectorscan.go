@@ -52,11 +52,17 @@ type VectorscanMatcher struct {
 
 	warnf func(string, ...any)
 
-	// retryMu protects retryJobs which is written by matchFallbackRules (and the
-	// hot-path regexp2 pass in matchChunk) and drained single-threaded by
-	// DrainTimedOut after the main scan completes.
-	retryMu   sync.Mutex
-	retryJobs []retryJob
+	// retryMu protects retryJobs, retryDropped, and the cap check.
+	// retryJobs is written by matchFallbackRules (and the hot-path regexp2 pass
+	// in matchChunk) and drained single-threaded by DrainTimedOut after the main
+	// scan completes.
+	retryMu     sync.Mutex
+	retryJobs   []retryJob
+	retryDropped int // count of jobs dropped due to queue cap
+
+	// blacklistMu protects blacklist, which tracks per-rule timeout counts.
+	blacklistMu sync.Mutex
+	blacklist   map[string]int // ruleID → timeout count
 }
 
 // knownIncompatiblePatterns contains rule IDs that are known to be
@@ -97,6 +103,7 @@ func NewVectorscan(rules []*types.Rule, contextLines int, warnf func(string, ...
 		groupNameCache: make(map[string][]string),
 		prefilter:      prefilter.New(rules),
 		warnf:          warnf,
+		blacklist:      make(map[string]int),
 	}
 
 	// Compile patterns into Hyperscan database
@@ -492,9 +499,7 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 			if strings.Contains(err.Error(), "match timeout") {
 				// Queue for single-threaded retry; Hyperscan confirmed a match exists so
 				// dropping here would produce a false negative.
-				m.retryMu.Lock()
-				m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
-				m.retryMu.Unlock()
+				m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
 			} else if m.warnf != nil {
 				m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 			}
@@ -517,9 +522,7 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 				match, err = re.FindNextMatch(match)
 				if err != nil {
 					if strings.Contains(err.Error(), "match timeout") {
-						m.retryMu.Lock()
-						m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
-						m.retryMu.Unlock()
+						m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
 					} else if m.warnf != nil {
 						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 					}
@@ -542,9 +545,7 @@ func (m *VectorscanMatcher) matchChunk(content []byte, blobID types.BlobID, opts
 			match, err = re.FindNextMatch(match)
 			if err != nil {
 				if strings.Contains(err.Error(), "match timeout") {
-					m.retryMu.Lock()
-					m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
-					m.retryMu.Unlock()
+					m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
 				} else if m.warnf != nil {
 					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 				}
@@ -754,9 +755,7 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 		if err != nil {
 			if strings.Contains(err.Error(), "match timeout") {
 				// Queue for single-threaded retry by DrainTimedOut.
-				m.retryMu.Lock()
-				m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
-				m.retryMu.Unlock()
+				m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
 			} else if m.warnf != nil {
 				m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 			}
@@ -777,9 +776,7 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 				match, err = re.FindNextMatch(match)
 				if err != nil {
 					if strings.Contains(err.Error(), "match timeout") {
-						m.retryMu.Lock()
-						m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
-						m.retryMu.Unlock()
+						m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
 					} else if m.warnf != nil {
 						m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 					}
@@ -796,9 +793,7 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 			match, err = re.FindNextMatch(match)
 			if err != nil {
 				if strings.Contains(err.Error(), "match timeout") {
-					m.retryMu.Lock()
-					m.retryJobs = append(m.retryJobs, retryJob{content: content, blobID: blobID, rule: rule})
-					m.retryMu.Unlock()
+					m.enqueueOrBlacklist(retryJob{content: content, blobID: blobID, rule: rule})
 				} else if m.warnf != nil {
 					m.warnf("[warn] rule %s regex error on blob %s (skipping rule for this blob): %v\n", rule.ID, blobID.Hex(), err)
 				}
@@ -808,6 +803,37 @@ func (m *VectorscanMatcher) matchFallbackRules(content []byte, blobID types.Blob
 	}
 
 	return matches
+}
+
+// enqueueOrBlacklist applies the per-rule blacklist and queue-cap checks before
+// appending a retry job. Call this at every timeout site instead of directly
+// appending to retryJobs.
+//
+// See PortableRegexpMatcher.enqueueOrBlacklist for full behaviour documentation.
+func (m *VectorscanMatcher) enqueueOrBlacklist(j retryJob) {
+	m.blacklistMu.Lock()
+	m.blacklist[j.rule.ID]++
+	count := m.blacklist[j.rule.ID]
+	m.blacklistMu.Unlock()
+
+	if count == retryBlacklistThreshold {
+		if m.warnf != nil {
+			m.warnf("[warn] rule %s disabled after %d timeouts (likely catastrophic backtracking — skipping remaining blobs)\n",
+				j.rule.ID, retryBlacklistThreshold)
+		}
+		return
+	}
+	if count > retryBlacklistThreshold {
+		return
+	}
+
+	m.retryMu.Lock()
+	if len(m.retryJobs) < retryQueueCap {
+		m.retryJobs = append(m.retryJobs, j)
+	} else {
+		m.retryDropped++
+	}
+	m.retryMu.Unlock()
 }
 
 // DrainTimedOut replays any (content, blobID, rule) triples that timed out during
@@ -823,7 +849,15 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 	m.retryMu.Lock()
 	jobs := m.retryJobs
 	m.retryJobs = nil
+	dropped := m.retryDropped
 	m.retryMu.Unlock()
+
+	if dropped > 0 {
+		if m.warnf != nil {
+			m.warnf("[warn] retry queue cap (%d) reached; %d (blob, rule) pairs were not retried\n",
+				retryQueueCap, dropped)
+		}
+	}
 
 	if len(jobs) == 0 {
 		return nil, nil
