@@ -56,3 +56,18 @@ func TestScan_EndToEnd_FindingHasScore(t *testing.T) {
 	assert.Equal(t, r.BaseScore, got.Score.Base)
 	assert.Equal(t, types.SeverityForScore(r.BaseScore), got.Score.SuggestedSeverity)
 }
+
+// TestEngine_Stats_ZeroOnNormalRun verifies that calling Stats() on a fresh
+// engine does not panic and returns zero-value stats (no errors on a normal run
+// with no HTTP modifiers triggered).
+func TestEngine_Stats_ZeroOnNormalRun(t *testing.T) {
+	engine, err := buildScoringEngine()
+	require.NoError(t, err)
+
+	stats := engine.Stats()
+	// Zero value: no timeouts, rate limits, server errors, or network errors.
+	assert.Equal(t, 0, stats.Timeouts)
+	assert.Equal(t, 0, stats.RateLimited)
+	assert.Equal(t, 0, stats.ServerErrors)
+	assert.Equal(t, 0, stats.NetworkErrors)
+}

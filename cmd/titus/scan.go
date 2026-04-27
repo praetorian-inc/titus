@@ -380,6 +380,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
+	// Emit aggregate dynamic modifier stats if any errors occurred.
+	if s := engine.Stats(); s.Any() {
+		fmt.Fprintf(os.Stderr, "[scoring] Dynamic modifiers: %d timeouts, %d rate-limited, %d server errors, %d network errors\n",
+			s.Timeouts, s.RateLimited, s.ServerErrors, s.NetworkErrors)
+	}
+
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[scan] Scan complete: %d blobs, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
 	}

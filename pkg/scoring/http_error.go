@@ -42,6 +42,12 @@ type HTTPModifierStats struct {
 	ServerErrors  int
 }
 
-func (s *HTTPModifierStats) any() bool {
+// Any reports whether any modifier errors occurred during the scan.
+func (s HTTPModifierStats) Any() bool {
 	return s.Timeouts > 0 || s.RateLimited > 0 || s.NetworkErrors > 0 || s.ServerErrors > 0
+}
+
+// any is a package-internal alias for Any.
+func (s *HTTPModifierStats) any() bool {
+	return s.Any()
 }
