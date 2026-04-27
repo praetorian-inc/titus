@@ -239,3 +239,74 @@ func TestCrossRule_NilCanValidate(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, "np.aws.6", result[0].RuleID)
 }
+
+func makeMatchWithOffset(ruleID string, start int64, groups ...string) *types.Match {
+	m := makeMatch(ruleID, groups...)
+	m.Location.Offset.Start = start
+	return m
+}
+
+func TestCrossRuleDeduplicator_DeterministicAcrossRuns(t *testing.T) {
+	// Build a scenario where two rules have identical matchScore:
+	// same hasValidator=false, same groupCount=1, same groupsLen (same value length),
+	// same patternLen (same pattern length). Only ruleID differs.
+	// "rule.aaa" < "rule.zzz" lexicographically, so "rule.aaa" must always win.
+	rules := makeRules(
+		struct{ id, pattern string }{"rule.aaa", `[a-z]{5}`},
+		struct{ id, pattern string }{"rule.zzz", `[a-z]{5}`},
+	)
+
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	// Both matches share the same group value → single cluster.
+	// Scores are identical on all criteria except ruleID.
+	matches := []*types.Match{
+		makeMatch("rule.aaa", "hello"),
+		makeMatch("rule.zzz", "hello"),
+	}
+
+	// Run Deduplicate 20 times; always the same winner must be returned.
+	var firstWinner string
+	for i := 0; i < 20; i++ {
+		result := dedup.Deduplicate(matches)
+		require.Len(t, result, 1, "run %d: expected 1 result", i)
+		if i == 0 {
+			firstWinner = result[0].RuleID
+		} else {
+			assert.Equal(t, firstWinner, result[0].RuleID,
+				"run %d: winner changed (nondeterministic tiebreak)", i)
+		}
+	}
+	// The deterministic winner must be the lexicographically smaller RuleID.
+	assert.Equal(t, "rule.aaa", firstWinner, "expected lexicographically smaller RuleID to win")
+}
+
+func TestCrossRuleDeduplicator_DeterministicClusterOrder(t *testing.T) {
+	// Build 3 independent clusters (no shared group values) at distinct offsets.
+	// Each cluster has exactly one match so the winner is unambiguous.
+	// The output order must be deterministic across repeated calls.
+	rules := makeRules(
+		struct{ id, pattern string }{"rule.x", `x`},
+		struct{ id, pattern string }{"rule.y", `y`},
+		struct{ id, pattern string }{"rule.z", `z`},
+	)
+
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	// Three non-overlapping clusters, placed at byte offsets 100, 50, 200.
+	// After sorting by min start offset the expected order is: offset 50, 100, 200.
+	matches := []*types.Match{
+		makeMatchWithOffset("rule.x", 100, "unique_x"),
+		makeMatchWithOffset("rule.y", 50, "unique_y"),
+		makeMatchWithOffset("rule.z", 200, "unique_z"),
+	}
+
+	// Run 20 times; the output order must always match the sorted-by-offset order.
+	for i := 0; i < 20; i++ {
+		result := dedup.Deduplicate(matches)
+		require.Len(t, result, 3, "run %d: expected 3 results", i)
+		assert.Equal(t, "rule.y", result[0].RuleID, "run %d: first result should be offset 50 (rule.y)", i)
+		assert.Equal(t, "rule.x", result[1].RuleID, "run %d: second result should be offset 100 (rule.x)", i)
+		assert.Equal(t, "rule.z", result[2].RuleID, "run %d: third result should be offset 200 (rule.z)", i)
+	}
+}
