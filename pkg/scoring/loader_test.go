@@ -239,6 +239,54 @@ scorers:
 	assert.True(t, mod.IsDynamic())
 }
 
+func TestLoadScorers_FiresWhen_JSONPathEquals_Parses(t *testing.T) {
+	yaml := `
+scorers:
+  - name: s
+    rule_ids: [np.x.1]
+    modifiers:
+      - name: m
+        http: {method: GET, url: https://example.com}
+        fires_when:
+          json_path_equals: {path: ".plan.name", value: enterprise}
+        delta: 10
+`
+	scorers, err := loadScorers(strings.NewReader(yaml))
+	require.NoError(t, err)
+	assert.NotNil(t, scorers[0].Modifiers[0].Condition)
+}
+
+func TestLoadScorers_FiresWhen_MissingHTTPBlock_Errors(t *testing.T) {
+	yaml := `
+scorers:
+  - name: s
+    rule_ids: [np.x.1]
+    modifiers:
+      - name: m
+        fires_when:
+          status_code: 200
+        delta: 10
+`
+	_, err := loadScorers(strings.NewReader(yaml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fires_when")
+}
+
+func TestLoadScorers_HTTPBlock_WithoutFiresWhen_Errors(t *testing.T) {
+	yaml := `
+scorers:
+  - name: s
+    rule_ids: [np.x.1]
+    modifiers:
+      - name: m
+        http: {method: GET, url: https://example.com}
+        delta: 10
+`
+	_, err := loadScorers(strings.NewReader(yaml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fires_when")
+}
+
 // Proves that the loader mirrors NewLoaderWithFS from pkg/rule/loader.go:26-30.
 func TestLoadBuiltinScorers_WithCustomFS(t *testing.T) {
 	mockFS := fstest.MapFS{
