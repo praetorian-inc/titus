@@ -115,6 +115,38 @@ func TestHTTPCondition_HeaderContains_CaseInsensitiveHeaderName(t *testing.T) {
 	assert.True(t, fired)
 }
 
+func TestHTTPCondition_StatusCodeIn_DoesNotFire(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 404, `{}`, nil)
+	cond.firesWhen = &statusCodeInLeaf{Codes: []int{200, 201, 204}}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
+
+func TestHTTPCondition_HeaderContains_HeaderAbsent_DoesNotFire(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{}`, nil)
+	cond.firesWhen = &headerContainsLeaf{Name: "x-oauth-scopes", Value: "admin:org"}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
+
+func TestHTTPCondition_JSONPathEquals_DoesNotFire(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{"plan":{"name":"free"}}`, nil)
+	cond.firesWhen = &jsonPathEqualsLeaf{Path: ".plan.name", Value: "enterprise"}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
+
+func TestHTTPCondition_JSONPathMatches_DoesNotFire(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{"login":"github-bot"}`, nil)
+	cond.firesWhen = &jsonPathMatchesLeaf{Path: ".login", Regex: `^octo`}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
+
 func TestHTTPCondition_JSONPathEquals_Fires(t *testing.T) {
 	cond, _ := httpConditionFixture(t, 200, `{"plan":{"name":"enterprise"}}`, nil)
 	cond.firesWhen = &jsonPathEqualsLeaf{Path: ".plan.name", Value: "enterprise"}
