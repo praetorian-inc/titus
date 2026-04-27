@@ -310,3 +310,59 @@ func TestCrossRuleDeduplicator_DeterministicClusterOrder(t *testing.T) {
 		assert.Equal(t, "rule.z", result[2].RuleID, "run %d: third result should be offset 200 (rule.z)", i)
 	}
 }
+
+// TestCrossRuleDeduplicator_WinnerStableUnderInputReorder verifies that the same
+// winner is selected from a cluster regardless of the ORDER matches appear in the
+// input slice. This is the property that was broken before the cluster-sort +
+// ruleID-tiebreaker fix: Go map iteration returned clusters in random order,
+// and pickWinner resolved ties arbitrarily without a deterministic final tiebreaker.
+//
+// Regression for PR #201: ruleID tiebreaker in matchScore.Better and
+// cluster-level sort in clusterBySharedValues.
+func TestCrossRuleDeduplicator_WinnerStableUnderInputReorder(t *testing.T) {
+	rules := makeRules(
+		struct{ id, pattern string }{"np.aws.1", `[A-Z0-9]{20}`},
+		struct{ id, pattern string }{"np.aws.6", `[A-Z0-9]{20}`},
+	)
+	d := NewCrossRuleDeduplicator(rules, nil)
+
+	sharedGroup := "AKIAIOSFODNN7EXAMPLE"
+
+	m1 := &types.Match{
+		RuleID: "np.aws.1",
+		Groups: [][]byte{[]byte(sharedGroup)},
+		Location: types.Location{
+			Offset: types.OffsetSpan{Start: 10, End: 30},
+		},
+	}
+	m2 := &types.Match{
+		RuleID: "np.aws.6",
+		Groups: [][]byte{[]byte(sharedGroup)},
+		Location: types.Location{
+			Offset: types.OffsetSpan{Start: 10, End: 30},
+		},
+	}
+
+	// Run 20 times with alternating input order — winner must always be the same rule.
+	// np.aws.1 < np.aws.6 lexicographically, so np.aws.1 must win (all other score
+	// fields are identical: same hasValidator, groupCount, groupsLen, patternLen).
+	var expectedWinner string
+	for i := 0; i < 20; i++ {
+		var result []*types.Match
+		if i%2 == 0 {
+			result = d.Deduplicate([]*types.Match{m1, m2})
+		} else {
+			result = d.Deduplicate([]*types.Match{m2, m1})
+		}
+		require.Len(t, result, 1, "run %d: expected exactly 1 result after dedup", i)
+		if i == 0 {
+			expectedWinner = result[0].RuleID
+		} else {
+			require.Equal(t, expectedWinner, result[0].RuleID,
+				"run %d: winner changed between orderings (nondeterminism)", i+1)
+		}
+	}
+	// Specifically: np.aws.1 must win (lexicographically smaller ruleID is the tiebreaker).
+	assert.Equal(t, "np.aws.1", expectedWinner,
+		"lexicographically smaller ruleID must win when all other score fields are equal")
+}

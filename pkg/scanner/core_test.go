@@ -4,6 +4,7 @@ package scanner
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -161,4 +162,78 @@ func TestCore_SetCanValidate_PreferValidatedRule(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Matches, 1)
 	assert.Equal(t, "rule.has_validator", result.Matches[0].RuleID)
+}
+
+// TestScannerDeterministicFindingCount verifies that scanning the same content
+// multiple times produces identical finding counts and identical match sets.
+//
+// This is the most important regression test for PR #201: it catches any
+// nondeterminism that reaches the final output, regardless of which layer it
+// comes from — match ordering (matchParallel), dedup (clusterBySharedValues /
+// pickWinner), or entropy filtering (findSecretCapture). A single flaky run
+// in 20 is sufficient to detect the class of bug that was fixed.
+//
+// Content is >10KB to trigger matchParallel. Rules include two patterns that
+// share a capture group value to exercise crossrule dedup.
+func TestScannerDeterministicFindingCount(t *testing.T) {
+	// rule.key_only and rule.key_combo share group[0] (the AWS key), exercising
+	// crossrule deduplication. rule.key_combo wins (more groups).
+	// rule.named has a named group "password" with high entropy, exercising
+	// findSecretCapture's max-entropy named-group selection.
+	rules := []*types.Rule{
+		{
+			ID:      "rule.key_only",
+			Name:    "Key Only",
+			Pattern: `(AKIA[A-Z0-9]{16})`,
+		},
+		{
+			ID:      "rule.key_combo",
+			Name:    "Key and Secret",
+			Pattern: `(AKIA[A-Z0-9]{16}).*?([A-Za-z0-9/+=]{10,40})`,
+		},
+		{
+			ID:      "rule.named",
+			Name:    "Named Group Password",
+			Pattern: `(?P<password>[A-Za-z0-9+/]{40}=)`,
+		},
+	}
+
+	// Padding pushes total content well past the 10KB parallelThreshold so that
+	// matchParallel (the parallel worker path) is exercised on every run.
+	padding := strings.Repeat("// filler line to pad content past 10KB threshold\n", 250)
+	awsLine := "aws_key=AKIAZ52KNG5GARBXTEST credential=wJalrXUtnFEM1K7example\n"
+	secretLine := "SECRET=oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=\n"
+	content := padding + awsLine + secretLine + padding
+
+	require.Greater(t, len(content), 10000,
+		"content must exceed matchParallel threshold to exercise the parallel code path")
+
+	core, err := NewCoreWithRules(rules, nil, nil)
+	require.NoError(t, err)
+	defer core.Close()
+
+	// Run 20 times and assert that both the count and the exact match identities
+	// are stable across all iterations.
+	var firstMatches []*types.Match
+	for i := 0; i < 20; i++ {
+		result, err := core.Scan(content, "determinism-test")
+		require.NoError(t, err)
+
+		if i == 0 {
+			firstMatches = result.Matches
+			require.NotEmpty(t, firstMatches,
+				"first run returned no matches — check rule patterns")
+			continue
+		}
+
+		require.Len(t, result.Matches, len(firstMatches),
+			"run %d: finding count %d != first run count %d (nondeterminism detected)",
+			i+1, len(result.Matches), len(firstMatches))
+
+		for j, m := range result.Matches {
+			assert.Equal(t, firstMatches[j].RuleID, m.RuleID,
+				"run %d match %d: RuleID mismatch (output ordering nondeterminism)",
+				i+1, j)
+		}
+	}
 }
