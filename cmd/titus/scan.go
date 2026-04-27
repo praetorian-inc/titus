@@ -58,6 +58,7 @@ var (
 	scanExtractArchivesFlag extensionsValue
 	extractMaxSize          string
 	extractMaxTotal         string
+	scanAccessibility       string // "public" | "private" | "auto"
 	extractMaxDepth         int
 	scanSQLiteRowLimit      int
 	scanWorkers             int
@@ -96,6 +97,9 @@ func init() {
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
 	scanCmd.Flags().IntVar(&scanReaders, "readers", 0, "Number of parallel file readers (0 = NumCPU)")
 	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
+	scanCmd.Flags().StringVar(&scanAccessibility, "accessibility", "auto",
+		`code accessibility: "public" (no penalty), "private" (-25 to all scores),`+"\n"+
+			`or "auto" (detect via git remote/GitHub API, defaults to private if undetermined)`)
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -183,6 +187,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
 	}
+
+	// Resolve code accessibility for score adjustment.
+	// Use GITHUB_TOKEN env var for auto-detection; the user can also pass --accessibility directly.
+	ghToken := os.Getenv("GITHUB_TOKEN")
+	accessibility := ResolveAccessibility(scanAccessibility, target, ghToken)
 
 	// Create enumerator
 	enumerator, err := createEnumerator(target, scanGit)
@@ -291,6 +300,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 									Groups: match.Groups,
 								}
 								f.Score = engine.Score(f, []*types.Match{match}, rule)
+								if accessibility == AccessibilityPrivate {
+									ApplyAccessibilityModifier(f.Score)
+								}
 								if err := tx.AddFinding(f); err != nil {
 									return fmt.Errorf("storing finding: %w", err)
 								}

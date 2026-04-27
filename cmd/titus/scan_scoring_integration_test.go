@@ -109,11 +109,14 @@ func TestRunScan_E2E_AKIAFinding_PopulatesApplied(t *testing.T) {
 	// Temporarily override package-level scan flags.
 	origOutputPath := scanOutputPath
 	origRuleset := scanRuleset
+	origAccessibility := scanAccessibility
 	scanOutputPath = dsPath
 	scanRuleset = "all" // np.aws.1 is in np.assets, not default
+	scanAccessibility = "public" // disable accessibility penalty so this test isolates engine scoring
 	t.Cleanup(func() {
 		scanOutputPath = origOutputPath
 		scanRuleset = origRuleset
+		scanAccessibility = origAccessibility
 	})
 
 	require.NoError(t, runScan(scanCmd, []string{fixturePath}))
@@ -164,11 +167,14 @@ func TestRunScan_UnscoredRule_StillEmitsFindingWithBaseOnly(t *testing.T) {
 
 	origOutputPath := scanOutputPath
 	origRuleset := scanRuleset
+	origAccessibility := scanAccessibility
 	scanOutputPath = dsPath
 	scanRuleset = "all" // include np.slack.* rules
+	scanAccessibility = "public" // disable accessibility penalty so this test isolates engine scoring
 	t.Cleanup(func() {
 		scanOutputPath = origOutputPath
 		scanRuleset = origRuleset
+		scanAccessibility = origAccessibility
 	})
 
 	require.NoError(t, runScan(scanCmd, []string{fixturePath}))
@@ -238,11 +244,14 @@ func TestRunScan_MultiMatchDedup_ScoredOncePerFinding(t *testing.T) {
 
 	origOutputPath := scanOutputPath
 	origRuleset := scanRuleset
+	origAccessibility := scanAccessibility
 	scanOutputPath = dsPath
 	scanRuleset = "all"
+	scanAccessibility = "public" // disable accessibility penalty so this test isolates engine scoring
 	t.Cleanup(func() {
 		scanOutputPath = origOutputPath
 		scanRuleset = origRuleset
+		scanAccessibility = origAccessibility
 	})
 
 	require.NoError(t, runScan(scanCmd, []string{fixturePath}))
