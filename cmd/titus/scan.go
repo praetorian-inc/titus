@@ -376,7 +376,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Retry any blobs that timed out during the parallel pass.
 	// This runs single-threaded so there is no CPU contention, resolving
 	// starvation-caused false timeouts while still catching real backtracking.
-	if err := drainTimedOutMatches(m, s, ruleMap, engine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, engine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -395,7 +395,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 // pass using the matcher's single-threaded retry queue, then writes the
 // resulting matches and findings to the store. It is called after g.Wait() in
 // each of the scan entry points (runScan, runRepoScan, runS3Scan).
-func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64) error {
+func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64) error {
 	retryMatches, err := m.DrainTimedOut()
 	if err != nil {
 		return fmt.Errorf("drain timed-out blobs: %w", err)
@@ -425,7 +425,7 @@ func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*
 					RuleID: match.RuleID,
 					Groups: match.Groups,
 				}
-				f.Score = engine.Score(context.Background(), f, []*types.Match{match}, rule)
+				f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
 				if err := tx.AddFinding(f); err != nil {
 					return fmt.Errorf("storing retry finding: %w", err)
 				}
@@ -926,7 +926,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
 	}
-	if err := drainTimedOutMatches(m, s, ruleMap, repoEngine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, repoEngine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -1165,7 +1165,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
 	}
-	if err := drainTimedOutMatches(m, s, ruleMap, s3Engine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, s3Engine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
