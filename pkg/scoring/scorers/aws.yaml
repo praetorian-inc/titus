@@ -1,0 +1,39 @@
+# AWS access key ID scorer — static modifiers only (M2 scope).
+# Targets np.aws.1 (standalone key ID) and np.aws.6 (key ID + secret together).
+# Both rules share the same key_id named capture group with identical prefix
+# alternation, so all modifiers below apply unchanged to both.
+# Adjusts score based on prefix semantics:
+#
+#   - AKIA  → long-term user/root access key. Elevated risk: delta +10.
+#   - ASIA  → temporary STS session token. Lower risk (short-lived): delta -10.
+#   - AIDA  → IAM user unique identifier (NOT a credential). Mostly identifier
+#             value only; clamp to 'info' tier: set_score 10.
+#
+# Other AWS prefixes (AROA, AGPA, AIPA, ANPA, ANVA, A3T*) are intentionally
+# not covered in M2 — they ship in follow-on PRs after researching blast radius.
+scorers:
+  - name: aws-key-scope
+    rule_ids:
+      - np.aws.1
+      - np.aws.6
+    modifiers:
+      - name: akia-long-term
+        priority: 100
+        match_group:
+          name: key_id
+          matches: '^AKIA'
+        delta: 10
+
+      - name: asia-temporary-session
+        priority: 100
+        match_group:
+          name: key_id
+          matches: '^ASIA'
+        delta: -10
+
+      - name: aida-user-identifier
+        priority: 100
+        match_group:
+          name: key_id
+          matches: '^AIDA'
+        set_score: 10

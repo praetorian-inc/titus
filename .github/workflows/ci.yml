@@ -29,3 +29,16 @@ jobs:
       build-cmd-path: ./cmd/titus
       build-binary-name: titus
     secrets: inherit
+
+  race:
+    name: Race Detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install Vectorscan/Hyperscan
+        run: sudo apt-get update && sudo apt-get install -y libhyperscan-dev
+      - name: Run tests with race detector
+        run: make test-race

@@ -18,6 +18,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/sarif"
+	"github.com/praetorian-inc/titus/pkg/scoring"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/praetorian-inc/titus/pkg/validator"
@@ -57,6 +58,7 @@ var (
 	scanExtractArchivesFlag extensionsValue
 	extractMaxSize          string
 	extractMaxTotal         string
+	scanAccessibility       string // "public" | "private" | "auto"
 	extractMaxDepth         int
 	scanSQLiteRowLimit      int
 	scanWorkers             int
@@ -95,6 +97,9 @@ func init() {
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
 	scanCmd.Flags().IntVar(&scanReaders, "readers", 0, "Number of parallel file readers (0 = NumCPU)")
 	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
+	scanCmd.Flags().StringVar(&scanAccessibility, "accessibility", "auto",
+		`code accessibility: "public" (no penalty), "private" (-25 to all scores),`+"\n"+
+			`or "auto" (detect via git remote/GitHub API, defaults to private if undetermined)`)
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -176,6 +181,17 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if validationEngine != nil {
 		matcher.SetCanValidate(m, validationEngine.CanValidate)
 	}
+
+	// Build the M2 scoring engine once per scan. Static modifiers only; no HTTP.
+	engine, err := buildScoringEngine()
+	if err != nil {
+		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+
+	// Resolve code accessibility for score adjustment.
+	// Use GITHUB_TOKEN env var for auto-detection; the user can also pass --accessibility directly.
+	ghToken := os.Getenv("GITHUB_TOKEN")
+	accessibility := ResolveAccessibility(scanAccessibility, target, ghToken)
 
 	// Create enumerator
 	enumerator, err := createEnumerator(target, scanGit)
@@ -278,12 +294,16 @@ func runScan(cmd *cobra.Command, args []string) error {
 							}
 							if !exists {
 								findingCount.Add(1)
-								if err := tx.AddFinding(&types.Finding{
+								f := &types.Finding{
 									ID:     findingID,
 									RuleID: match.RuleID,
 									Groups: match.Groups,
-									Score:  synthesizeBaseScore(rule),
-								}); err != nil {
+								}
+								f.Score = engine.Score(f, []*types.Match{match}, rule)
+								if accessibility == AccessibilityPrivate {
+									ApplyAccessibilityModifier(f.Score)
+								}
+								if err := tx.AddFinding(f); err != nil {
 									return fmt.Errorf("storing finding: %w", err)
 								}
 							}
@@ -342,7 +362,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Retry any blobs that timed out during the parallel pass.
 	// This runs single-threaded so there is no CPU contention, resolving
 	// starvation-caused false timeouts while still catching real backtracking.
-	if err := drainTimedOutMatches(m, s, ruleMap, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(m, s, ruleMap, engine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -361,7 +381,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 // pass using the matcher's single-threaded retry queue, then writes the
 // resulting matches and findings to the store. It is called after g.Wait() in
 // each of the scan entry points (runScan, runRepoScan, runS3Scan).
-func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, findingCount, matchCount *atomic.Int64) error {
+func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64) error {
 	retryMatches, err := m.DrainTimedOut()
 	if err != nil {
 		return fmt.Errorf("drain timed-out blobs: %w", err)
@@ -386,12 +406,13 @@ func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*
 			if !exists {
 				findingCount.Add(1)
 				matchCount.Add(1)
-				if err := tx.AddFinding(&types.Finding{
+				f := &types.Finding{
 					ID:     findingID,
 					RuleID: match.RuleID,
 					Groups: match.Groups,
-					Score:  synthesizeBaseScore(rule),
-				}); err != nil {
+				}
+				f.Score = engine.Score(f, []*types.Match{match}, rule)
+				if err := tx.AddFinding(f); err != nil {
 					return fmt.Errorf("storing retry finding: %w", err)
 				}
 			}
@@ -887,7 +908,11 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		}
 	}
 
-	if err := drainTimedOutMatches(m, s, ruleMap, &findingCount, &matchCount); err != nil {
+	repoEngine, err := buildScoringEngine()
+	if err != nil {
+		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+	if err := drainTimedOutMatches(m, s, ruleMap, repoEngine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -1122,7 +1147,11 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 		}
 	}
 
-	if err := drainTimedOutMatches(m, s, ruleMap, &findingCount, &matchCount); err != nil {
+	s3Engine, err := buildScoringEngine()
+	if err != nil {
+		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+	if err := drainTimedOutMatches(m, s, ruleMap, s3Engine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -1399,4 +1428,25 @@ func resolveAutoOutput(target string) string {
 		path = wd
 	}
 	return filepath.Base(path) + ".ds"
+}
+
+// scoringEngineInterface is the narrow surface runScan needs, kept as an
+// interface for ease of swapping in tests (currently always *scoring.Engine).
+type scoringEngineInterface interface {
+	Score(f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score
+}
+
+// buildScoringEngine constructs the M2 scoring engine from the embedded scorer
+// YAMLs. Returns a non-nil engine even when no scorers load — in that case
+// Score() always returns base-only.
+//
+// Loader errors (malformed YAML, bad regex) are hard failures: scan startup
+// must abort rather than silently scoring all findings at base.
+func buildScoringEngine() (scoringEngineInterface, error) {
+	loader := scoring.NewLoader()
+	scorers, err := loader.LoadBuiltinScorers()
+	if err != nil {
+		return nil, fmt.Errorf("loading scorers: %w", err)
+	}
+	return scoring.NewEngine(scorers), nil
 }

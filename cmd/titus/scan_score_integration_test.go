@@ -14,7 +14,7 @@ import (
 func TestScan_EndToEnd_FindingHasScore(t *testing.T) {
 	// This is an integration smoke test: we manually drive the pieces of runScan
 	// that are relevant to scoring — we don't invoke cobra / enumerator / matcher.
-	// Goal: confirm that when AddFinding is called with a synthesized score,
+	// Goal: confirm that when AddFinding is called with a score from the engine,
 	// GetFindings returns the score back.
 
 	tmpDir := t.TempDir()
@@ -22,7 +22,7 @@ func TestScan_EndToEnd_FindingHasScore(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = s.Close() }()
 
-	// Load a real rule so we have a real BaseScore path (BaseScore may be 0 pre-migration).
+	// Load a real rule so we have a real BaseScore path.
 	loader := rule.NewLoader()
 	rules, err := loader.LoadBuiltinRules()
 	require.NoError(t, err)
@@ -33,13 +33,18 @@ func TestScan_EndToEnd_FindingHasScore(t *testing.T) {
 	r := rules[0]
 	require.NoError(t, s.AddRule(r))
 
-	finding := &types.Finding{
+	engine, err := buildScoringEngine()
+	require.NoError(t, err)
+
+	f := &types.Finding{
 		ID:     "test-finding-abc",
 		RuleID: r.ID,
 		Groups: [][]byte{[]byte("synthetic")},
-		Score:  synthesizeBaseScore(r),
 	}
-	require.NoError(t, s.AddFinding(finding))
+	// Pass a match with no named groups — no modifier fires, returns base-only.
+	match := &types.Match{RuleID: r.ID, NamedGroups: map[string][]byte{}}
+	f.Score = engine.Score(f, []*types.Match{match}, r)
+	require.NoError(t, s.AddFinding(f))
 
 	findings, err := s.GetFindings()
 	require.NoError(t, err)

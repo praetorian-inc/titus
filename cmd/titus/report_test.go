@@ -1245,3 +1245,166 @@ func marshaledJSONName(f reflect.StructField) string {
 	}
 	return name
 }
+
+func TestReport_JSON_AppliedPopulated_Golden(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	rule := &types.Rule{ID: "np.aws.1", Name: "AWS API Key", Pattern: `\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b`, BaseScore: 48}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	finding := &types.Finding{
+		ID:     "test-aws-akia",
+		RuleID: "np.aws.1",
+		Groups: [][]byte{[]byte("AKIADEADBEEFDEADBEEF")},
+		Score: &types.Score{
+			Final:             58,
+			Base:              48,
+			SuggestedSeverity: "medium",
+			Applied: []types.ScoreModifier{
+				{Name: "akia-long-term", Scorer: "aws-key-scope", Kind: "delta", Value: 10, Priority: 100},
+			},
+		},
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.aws.1": rule}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportJSON(cmd, s, findings, matches, ruleMap))
+
+	goldenPath := "testdata/golden/score_json_applied.golden.json"
+	wantBytes, err := os.ReadFile(goldenPath)
+	if err != nil {
+		if os.Getenv("UPDATE_GOLDEN") != "" {
+			require.NoError(t, os.WriteFile(goldenPath, buf.Bytes(), 0644))
+			t.Skip("wrote golden file, rerun without UPDATE_GOLDEN")
+		}
+		t.Fatalf("golden file not found (run with UPDATE_GOLDEN=1): %v", err)
+	}
+
+	assert.Equal(t, strings.TrimSpace(string(wantBytes)), strings.TrimSpace(buf.String()),
+		"JSON output mismatch (regenerate with UPDATE_GOLDEN=1)")
+}
+
+// =============================================================================
+// Test 5 — Legacy datastore read compatibility
+// =============================================================================
+
+// TestLegacyDatastore_NilScore_RendersCleanly verifies that datastores written
+// before M2 (where Score is nil on every finding) are readable by the current
+// report code without panics or data corruption.
+//
+// Approach: open a fresh SQLite store, insert a finding with Score explicitly
+// set to nil (simulating a legacy row), then call each report path and assert:
+//   - No panic.
+//   - JSON output renders "Score": null (not absent), proving the field is
+//     present and the omitempty behavior is correct.
+//   - SARIF output renders a result entry without crashing.
+//   - Human output renders without crashing.
+//   - The stored finding's Score remains nil after the read (no unintended mutation).
+func TestLegacyDatastore_NilScore_RendersCleanly(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := store.New(store.Config{Path: filepath.Join(tmpDir, "legacy.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	// Simulate a legacy rule and finding with Score == nil (pre-M2 binary).
+	rule := &types.Rule{
+		ID:        "np.legacy.1",
+		Name:      "Legacy Rule",
+		Pattern:   `\blegacy-secret-\w+\b`,
+		BaseScore: 55,
+	}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	groups := [][]byte{[]byte("legacy-secret-abc")}
+	legacyFinding := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, groups),
+		RuleID: "np.legacy.1",
+		Groups: groups,
+		Score:  nil, // explicit nil — simulates pre-M2 row
+	}
+	require.NoError(t, s.AddFinding(legacyFinding))
+
+	blobID := types.ComputeBlobID([]byte("SECRET=legacy-secret-abc"))
+	require.NoError(t, s.AddBlob(blobID, 24))
+	require.NoError(t, s.AddProvenance(blobID, types.FileProvenance{FilePath: "/repo/creds.txt"}))
+
+	match := &types.Match{
+		StructuralID: "sm-legacy-1",
+		RuleID:       "np.legacy.1",
+		BlobID:       blobID,
+		Groups:       groups,
+		Location:     types.Location{},
+		Snippet:      types.Snippet{Matching: []byte("legacy-secret-abc")},
+	}
+	require.NoError(t, s.AddMatch(match))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	// Score must still be nil after the round-trip — no unintended mutation.
+	assert.Nil(t, findings[0].Score, "legacy finding Score must remain nil after round-trip read")
+
+	allMatches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{"np.legacy.1": rule}
+
+	// --- JSON output must not panic and must render Score as null ---
+	jsonCmd := &cobra.Command{}
+	var jsonBuf bytes.Buffer
+	jsonCmd.SetOut(&jsonBuf)
+	require.NotPanics(t, func() {
+		err = outputReportJSON(jsonCmd, s, findings, allMatches, ruleMap)
+	}, "outputReportJSON must not panic on nil Score finding")
+	require.NoError(t, err)
+
+	// The JSON output should be a valid JSON array.
+	var jsonOut []map[string]interface{}
+	require.NoError(t, json.Unmarshal(jsonBuf.Bytes(), &jsonOut), "JSON output must be valid")
+	require.Len(t, jsonOut, 1)
+
+	// types.Finding embeds Score as a pointer with no json tag. When nil it
+	// marshals as null (not absent). Verify that.
+	// The key name follows Go's default: "Score".
+	scoreVal, hasScore := jsonOut[0]["Score"]
+	assert.True(t, hasScore, "JSON output must contain the Score field (as null)")
+	assert.Nil(t, scoreVal, "Score field in JSON must be null for legacy finding")
+
+	// --- SARIF output must not panic ---
+	sarifCmd := &cobra.Command{}
+	var sarifBuf bytes.Buffer
+	sarifCmd.SetOut(&sarifBuf)
+	require.NotPanics(t, func() {
+		err = outputReportSARIF(sarifCmd, s, findings, allMatches, ruleMap)
+	}, "outputReportSARIF must not panic on nil Score finding")
+	require.NoError(t, err)
+	// SARIF output must be valid JSON.
+	var sarifDoc map[string]interface{}
+	require.NoError(t, json.Unmarshal(sarifBuf.Bytes(), &sarifDoc), "SARIF output must be valid JSON")
+
+	// --- Human output must not panic ---
+	humanCmd := &cobra.Command{}
+	var humanBuf bytes.Buffer
+	humanCmd.SetOut(&humanBuf)
+	require.NotPanics(t, func() {
+		err = outputReportHuman(humanCmd, findings, allMatches, tmpDir, ruleMap)
+	}, "outputReportHuman must not panic on nil Score finding")
+	// Human output may error (e.g., store open fails on tmpDir path) but must NOT panic.
+	// If it succeeded, the output must contain the finding ID.
+	if err == nil {
+		assert.Contains(t, humanBuf.String(), legacyFinding.ID,
+			"human report must contain the finding ID")
+	}
+}

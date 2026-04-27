@@ -1,7 +1,7 @@
 # Titus Makefile
 # Build automation for secrets scanner
 
-.PHONY: all build build-pure build-static build-wasm build-extension test vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint
+.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint
 
 VERSION ?= dev
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
@@ -146,6 +146,10 @@ score-lint:
 # Run unit tests
 test:
 	GOWORK=off CGO_ENABLED=$(CGO_ENABLED) go test $(TAGS_FLAG) -v ./...
+
+# Run tests with Go race detector (CGO required)
+test-race:
+	GOWORK=off CGO_ENABLED=1 go test $(TAGS_FLAG) -race -count=1 ./...
 
 # Run integration tests
 integration-test: build

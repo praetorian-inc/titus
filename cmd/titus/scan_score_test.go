@@ -8,18 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSynthesizeScore_FromRuleBaseScore is a table-driven test for the pure function
-// that will live alongside runScan. It's tested here because the integration path
-// (runScan end-to-end) requires scaffolding; the pure function captures the logic.
-func TestSynthesizeScore_FromRuleBaseScore(t *testing.T) {
+// TestBuildScoringEngine_BaseScoreOnly verifies that for rules with no
+// matching scorer, the engine returns the rule's BaseScore unmodified with
+// an empty Applied slice (matching the M1 synthesizeBaseScore behavior).
+func TestBuildScoringEngine_BaseScoreOnly(t *testing.T) {
+	engine, err := buildScoringEngine()
+	require.NoError(t, err)
+	require.NotNil(t, engine)
+
 	cases := []struct {
 		name string
 		rule *types.Rule
 		want *types.Score
 	}{
 		{
-			name: "critical tier",
-			rule: &types.Rule{ID: "np.aws.1", BaseScore: 85},
+			name: "critical tier — no scorer for this rule",
+			rule: &types.Rule{ID: "np.unscored.1", BaseScore: 85},
 			want: &types.Score{Final: 85, Base: 85, SuggestedSeverity: "critical", Applied: []types.ScoreModifier{}},
 		},
 		{
@@ -35,7 +39,9 @@ func TestSynthesizeScore_FromRuleBaseScore(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := synthesizeBaseScore(c.rule)
+			// Pass a match with no named groups — no modifier will fire.
+			match := &types.Match{RuleID: c.rule.ID, NamedGroups: map[string][]byte{}}
+			got := engine.Score(&types.Finding{RuleID: c.rule.ID}, []*types.Match{match}, c.rule)
 			assert.Equal(t, c.want.Final, got.Final)
 			assert.Equal(t, c.want.Base, got.Base)
 			assert.Equal(t, c.want.SuggestedSeverity, got.SuggestedSeverity)
