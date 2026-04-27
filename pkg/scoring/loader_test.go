@@ -287,6 +287,19 @@ scorers:
 	assert.Contains(t, err.Error(), "fires_when")
 }
 
+func TestLoadBuiltinScorers_OktaScorerParses(t *testing.T) {
+	loader := NewLoader()
+	scorers, err := loader.LoadBuiltinScorers()
+	require.NoError(t, err)
+	var found bool
+	for _, s := range scorers {
+		if s.Name == "okta-api-key-scope" {
+			found = true
+		}
+	}
+	assert.True(t, found, "okta-api-key-scope scorer not found")
+}
+
 func TestLoadBuiltinScorers_SlackScorerParses(t *testing.T) {
 	loader := NewLoader()
 	scorers, err := loader.LoadBuiltinScorers()

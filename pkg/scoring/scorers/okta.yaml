@@ -1,0 +1,68 @@
+# Okta API token scorer — dynamic modifiers (M3 scope).
+#
+# Rule IDs covered:
+#   np.okta.1 — Okta API token (SSWS prefix): base_score 90
+#
+# The Okta rule (np.okta.1) captures a named group "token". There is no
+# domain capture group in the rule pattern, so the URL uses a placeholder
+# that must be resolved in integration: real deployments should configure
+# a domain override or accept that this modifier will skip on network error.
+#
+# Note: The engine logs modifier errors as warnings and skips the modifier,
+# so a missing/incorrect domain causes a graceful skip, not a scan failure.
+scorers:
+  - name: okta-api-key-scope
+    rule_ids:
+      - np.okta.1   # Okta API token (SSWS prefix)
+
+    modifiers:
+      # --- Dynamic: verify token is valid (200 OK from /api/v1/users/me) ---
+      - name: active-token
+        priority: 90
+        http:
+          method: GET
+          url: https://placeholder.okta.com/api/v1/users/me
+          auth:
+            type: header
+            header_name: Authorization
+            secret_group: token
+          headers:
+            - name: Accept
+              value: application/json
+        fires_when:
+          status_code: 200
+        delta: 10   # confirmed active token — elevated risk
+
+      # --- Dynamic: check for SUPER_ADMIN role in /api/v1/users/me/roles ---
+      - name: super-admin-role
+        priority: 85
+        http:
+          method: GET
+          url: https://placeholder.okta.com/api/v1/users/me/roles
+          auth:
+            type: header
+            header_name: Authorization
+            secret_group: token
+          headers:
+            - name: Accept
+              value: application/json
+        fires_when:
+          response_body_contains: "SUPER_ADMIN"
+        set_score: 95   # Super admin = full Okta org control
+
+      # --- Dynamic: check for ORG_ADMIN role ---
+      - name: org-admin-role
+        priority: 80
+        http:
+          method: GET
+          url: https://placeholder.okta.com/api/v1/users/me/roles
+          auth:
+            type: header
+            header_name: Authorization
+            secret_group: token
+          headers:
+            - name: Accept
+              value: application/json
+        fires_when:
+          response_body_contains: "ORG_ADMIN"
+        set_score: 85
