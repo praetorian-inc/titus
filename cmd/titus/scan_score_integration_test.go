@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 
@@ -44,7 +43,7 @@ func TestScan_EndToEnd_FindingHasScore(t *testing.T) {
 	}
 	// Pass a match with no named groups — no modifier fires, returns base-only.
 	match := &types.Match{RuleID: r.ID, NamedGroups: map[string][]byte{}}
-	f.Score = engine.Score(context.Background(), f, []*types.Match{match}, r)
+	f.Score = engine.Score(f, []*types.Match{match}, r)
 	require.NoError(t, s.AddFinding(f))
 
 	findings, err := s.GetFindings()
@@ -55,19 +54,4 @@ func TestScan_EndToEnd_FindingHasScore(t *testing.T) {
 	require.NotNil(t, got.Score, "expected Score to be non-nil after round-trip")
 	assert.Equal(t, r.BaseScore, got.Score.Base)
 	assert.Equal(t, types.SeverityForScore(r.BaseScore), got.Score.SuggestedSeverity)
-}
-
-// TestEngine_Stats_ZeroOnNormalRun verifies that calling Stats() on a fresh
-// engine does not panic and returns zero-value stats (no errors on a normal run
-// with no HTTP modifiers triggered).
-func TestEngine_Stats_ZeroOnNormalRun(t *testing.T) {
-	engine, err := buildScoringEngine()
-	require.NoError(t, err)
-
-	stats := engine.Stats()
-	// Zero value: no timeouts, rate limits, server errors, or network errors.
-	assert.Equal(t, 0, stats.Timeouts)
-	assert.Equal(t, 0, stats.RateLimited)
-	assert.Equal(t, 0, stats.ServerErrors)
-	assert.Equal(t, 0, stats.NetworkErrors)
 }

@@ -1,7 +1,6 @@
 package scoring
 
 import (
-	"context"
 	"regexp"
 	"testing"
 
@@ -73,7 +72,7 @@ func TestMatchGroupCondition_Evaluate(t *testing.T) {
 			require.NoError(t, err)
 			c := &matchGroupCondition{Name: tt.groupName, Regex: re}
 			m := &types.Match{NamedGroups: tt.namedGroups}
-			got, err := c.Evaluate(context.Background(), m)
+			got, err := c.Evaluate(m)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -86,12 +85,12 @@ func TestMatchGroupCondition_Evaluate(t *testing.T) {
 
 func TestMatchGroupCondition_NilSafety(t *testing.T) {
 	c := &matchGroupCondition{Name: "x", Regex: regexp.MustCompile(`.`)}
-	got, err := c.Evaluate(context.Background(), nil)
+	got, err := c.Evaluate(nil)
 	require.NoError(t, err)
 	assert.False(t, got)
 
 	var nilCond *matchGroupCondition
-	_, err = nilCond.Evaluate(context.Background(), &types.Match{})
+	_, err = nilCond.Evaluate(&types.Match{})
 	require.Error(t, err)
 }
 
@@ -155,7 +154,7 @@ func TestSurroundingContextContainsCondition_Evaluate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &surroundingContextContainsCondition{Within: tt.within, Value: tt.value}
-			got, err := c.Evaluate(context.Background(), tt.match)
+			got, err := c.Evaluate(tt.match)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantFired, got)
 		})
@@ -164,7 +163,7 @@ func TestSurroundingContextContainsCondition_Evaluate(t *testing.T) {
 
 func TestSurroundingContextContainsCondition_EmptyValueIsError(t *testing.T) {
 	c := &surroundingContextContainsCondition{Within: 0, Value: ""}
-	_, err := c.Evaluate(context.Background(), &types.Match{})
+	_, err := c.Evaluate(&types.Match{})
 	require.Error(t, err)
 }
 
@@ -192,7 +191,7 @@ func TestMatchLengthCondition_Evaluate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &matchLengthCondition{Op: tt.op, Value: tt.value}
-			got, err := c.Evaluate(context.Background(), tt.match)
+			got, err := c.Evaluate(tt.match)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantFired, got)
 		})
@@ -201,6 +200,6 @@ func TestMatchLengthCondition_Evaluate(t *testing.T) {
 
 func TestMatchLengthCondition_InvalidOpIsError(t *testing.T) {
 	c := &matchLengthCondition{Op: "bogus", Value: 0}
-	_, err := c.Evaluate(context.Background(), &types.Match{Snippet: types.Snippet{Matching: []byte("x")}})
+	_, err := c.Evaluate(&types.Match{Snippet: types.Snippet{Matching: []byte("x")}})
 	require.Error(t, err)
 }

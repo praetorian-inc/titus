@@ -1,23 +1,12 @@
 package scoring
 
 import (
-	"io"
-	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// loadScorers is a test helper that reads YAML from an io.Reader and returns compiled Scorers.
-func loadScorers(r io.Reader) ([]*Scorer, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	return NewLoader().LoadScorers(data)
-}
 
 func TestLoadScorers_ValidSingle(t *testing.T) {
 	loader := NewLoader()
@@ -207,136 +196,6 @@ func TestLoadBuiltinScorers_GitHubScorerParses(t *testing.T) {
 	assert.Equal(t, "fine-grained-pat-prefix", ghScorer.Modifiers[0].Name)
 	assert.Equal(t, ModifierKindDelta, ghScorer.Modifiers[0].Kind)
 	assert.Equal(t, -10, ghScorer.Modifiers[0].Value)
-}
-
-func TestLoadScorers_HTTPModifier_Parses(t *testing.T) {
-	yaml := `
-scorers:
-  - name: github-scope
-    rule_ids: [np.github.1]
-    modifiers:
-      - name: admin-org-scope
-        priority: 90
-        http:
-          method: GET
-          url: https://api.github.com/user
-          auth:
-            type: bearer
-            secret_group: token
-        fires_when:
-          header_contains:
-            name: x-oauth-scopes
-            value: "admin:org"
-        set_score: 90
-`
-	scorers, err := loadScorers(strings.NewReader(yaml))
-	require.NoError(t, err)
-	require.Len(t, scorers, 1)
-	require.Len(t, scorers[0].Modifiers, 1)
-	mod := scorers[0].Modifiers[0]
-	assert.Equal(t, "admin-org-scope", mod.Name)
-	assert.NotNil(t, mod.Condition, "HTTP modifier must have a compiled condition")
-	assert.True(t, mod.IsDynamic())
-}
-
-func TestLoadScorers_FiresWhen_JSONPathEquals_Parses(t *testing.T) {
-	yaml := `
-scorers:
-  - name: s
-    rule_ids: [np.x.1]
-    modifiers:
-      - name: m
-        http: {method: GET, url: https://example.com}
-        fires_when:
-          json_path_equals: {path: ".plan.name", value: enterprise}
-        delta: 10
-`
-	scorers, err := loadScorers(strings.NewReader(yaml))
-	require.NoError(t, err)
-	assert.NotNil(t, scorers[0].Modifiers[0].Condition)
-}
-
-func TestLoadScorers_FiresWhen_MissingHTTPBlock_Errors(t *testing.T) {
-	yaml := `
-scorers:
-  - name: s
-    rule_ids: [np.x.1]
-    modifiers:
-      - name: m
-        fires_when:
-          status_code: 200
-        delta: 10
-`
-	_, err := loadScorers(strings.NewReader(yaml))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "fires_when")
-}
-
-func TestLoadScorers_HTTPBlock_WithoutFiresWhen_Errors(t *testing.T) {
-	yaml := `
-scorers:
-  - name: s
-    rule_ids: [np.x.1]
-    modifiers:
-      - name: m
-        http: {method: GET, url: https://example.com}
-        delta: 10
-`
-	_, err := loadScorers(strings.NewReader(yaml))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "fires_when")
-}
-
-// TestLoadBuiltinScorers_OktaScorerAbsent verifies that the Okta scorer is NOT
-// present in the builtin set. The okta.yaml was removed because all three of
-// its modifiers pointed at https://placeholder.okta.com — a domain that, if
-// registered by an attacker, would exfiltrate every Okta API token seen during
-// a --score-scope scan. The scorer will be re-added once a safe domain
-// substitution mechanism is available.
-func TestLoadBuiltinScorers_OktaScorerAbsent(t *testing.T) {
-	loader := NewLoader()
-	scorers, err := loader.LoadBuiltinScorers()
-	require.NoError(t, err)
-	for _, s := range scorers {
-		assert.NotEqual(t, "okta-api-key-scope", s.Name,
-			"okta-api-key-scope must not be loaded: placeholder.okta.com is a security risk")
-	}
-}
-
-func TestLoadBuiltinScorers_SlackScorerParses(t *testing.T) {
-	loader := NewLoader()
-	scorers, err := loader.LoadBuiltinScorers()
-	require.NoError(t, err)
-	var found bool
-	for _, s := range scorers {
-		if s.Name == "slack-token-scope" {
-			found = true
-			assert.Greater(t, len(s.Modifiers), 0)
-		}
-	}
-	assert.True(t, found, "slack-token-scope scorer not found")
-}
-
-func TestLoadBuiltinScorers_GitHubScorerHasDynamicModifiers(t *testing.T) {
-	loader := NewLoader()
-	scorers, err := loader.LoadBuiltinScorers()
-	require.NoError(t, err)
-	var githubScorer *Scorer
-	for _, s := range scorers {
-		if s.Name == "github-pat-scope" {
-			githubScorer = s
-			break
-		}
-	}
-	require.NotNil(t, githubScorer, "github-pat-scope scorer not found")
-
-	dynamicCount := 0
-	for _, m := range githubScorer.Modifiers {
-		if m.IsDynamic() {
-			dynamicCount++
-		}
-	}
-	assert.Greater(t, dynamicCount, 0, "github scorer should have at least 1 dynamic modifier")
 }
 
 // Proves that the loader mirrors NewLoaderWithFS from pkg/rule/loader.go:26-30.

@@ -1,7 +1,6 @@
 package scoring
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -9,14 +8,17 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// Condition is the scoring DSL leaf interface. Evaluate returns (fired, err).
-// ctx carries the per-modifier deadline; static leaves accept but ignore it.
-// HTTP conditions MUST respect ctx for timeout cancellation.
-// On err != nil, the caller (engine) logs a warning and treats the modifier
-// as not-fired for this finding. Evaluate must never panic; inputs are
-// trusted (post-loader).
+// Condition is the v1 static-DSL leaf interface. Implementations inspect a
+// single *types.Match (the primary/first match for a finding) and return
+// whether the condition fires.
+//
+// M2 has three concrete implementations. Compound conditions (all/any/not)
+// and HTTP conditions are out of scope (M3+).
 type Condition interface {
-	Evaluate(ctx context.Context, m *types.Match) (bool, error)
+	// Evaluate returns (fired, err). On err != nil, the caller (engine)
+	// logs a warning and treats the modifier as not-fired for this finding.
+	// Evaluate must never panic; inputs are trusted (post-loader).
+	Evaluate(m *types.Match) (bool, error)
 }
 
 // -----------------------------------------------------------------------------
@@ -32,7 +34,7 @@ type matchGroupCondition struct {
 }
 
 // Evaluate implements Condition.
-func (c *matchGroupCondition) Evaluate(_ context.Context, m *types.Match) (bool, error) {
+func (c *matchGroupCondition) Evaluate(m *types.Match) (bool, error) {
 	if c == nil || c.Regex == nil {
 		return false, fmt.Errorf("match_group: nil condition or regex")
 	}
@@ -61,7 +63,7 @@ type surroundingContextContainsCondition struct {
 }
 
 // Evaluate implements Condition.
-func (c *surroundingContextContainsCondition) Evaluate(_ context.Context, m *types.Match) (bool, error) {
+func (c *surroundingContextContainsCondition) Evaluate(m *types.Match) (bool, error) {
 	if c == nil {
 		return false, fmt.Errorf("surrounding_context_contains: nil condition")
 	}
@@ -110,7 +112,7 @@ type matchLengthCondition struct {
 }
 
 // Evaluate implements Condition.
-func (c *matchLengthCondition) Evaluate(_ context.Context, m *types.Match) (bool, error) {
+func (c *matchLengthCondition) Evaluate(m *types.Match) (bool, error) {
 	if c == nil {
 		return false, fmt.Errorf("match_length: nil condition")
 	}
