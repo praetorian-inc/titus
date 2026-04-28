@@ -376,7 +376,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Retry any blobs that timed out during the parallel pass.
 	// This runs single-threaded so there is no CPU contention, resolving
 	// starvation-caused false timeouts while still catching real backtracking.
-	if err := drainTimedOutMatches(ctx, m, s, ruleMap, engine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, engine, &findingCount, &matchCount, accessibility); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -401,7 +401,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 // pass using the matcher's single-threaded retry queue, then writes the
 // resulting matches and findings to the store. It is called after g.Wait() in
 // each of the scan entry points (runScan, runRepoScan, runS3Scan).
-func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64) error {
+// The resolvedAccess parameter ensures that retried findings receive the same
+// accessibility penalty as findings scored on the normal path.
+func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64, resolvedAccess Accessibility) error {
 	retryMatches, err := m.DrainTimedOut()
 	if err != nil {
 		return fmt.Errorf("drain timed-out blobs: %w", err)
@@ -432,6 +434,9 @@ func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store,
 					Groups: match.Groups,
 				}
 				f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
+				if resolvedAccess == AccessibilityPrivate {
+					ApplyAccessibilityModifier(f.Score)
+				}
 				if err := tx.AddFinding(f); err != nil {
 					return fmt.Errorf("storing retry finding: %w", err)
 				}
@@ -788,6 +793,20 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		matcher.SetCanValidate(m, validationEngine.CanValidate)
 	}
 
+	// Build the scoring engine before workers start so the main worker pass
+	// can score findings (not just the drain-path retries).
+	repoEngine, err := buildScoringEngine()
+	if err != nil {
+		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+
+	// Resolve accessibility for score penalty (same logic as runScan).
+	ghToken := os.Getenv("GITHUB_TOKEN")
+	if rt.Platform == "gitlab" {
+		ghToken = os.Getenv("GITLAB_TOKEN")
+	}
+	repoAccessibility := ResolveAccessibility(scanAccessibility, rt.FullPath, ghToken)
+
 	ctx := context.Background()
 	var matchCount atomic.Int64
 	var findingCount atomic.Int64
@@ -870,11 +889,16 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 							}
 							if !exists {
 								findingCount.Add(1)
-								if err := tx.AddFinding(&types.Finding{
+								f := &types.Finding{
 									ID:     findingID,
 									RuleID: match.RuleID,
 									Groups: match.Groups,
-								}); err != nil {
+								}
+								f.Score = repoEngine.Score(ctx, f, []*types.Match{match}, rule)
+								if repoAccessibility == AccessibilityPrivate {
+									ApplyAccessibilityModifier(f.Score)
+								}
+								if err := tx.AddFinding(f); err != nil {
 									return fmt.Errorf("storing finding: %w", err)
 								}
 							}
@@ -928,11 +952,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		}
 	}
 
-	repoEngine, err := buildScoringEngine()
-	if err != nil {
-		return fmt.Errorf("initializing scoring engine: %w", err)
-	}
-	if err := drainTimedOutMatches(ctx, m, s, ruleMap, repoEngine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, repoEngine, &findingCount, &matchCount, repoAccessibility); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -991,6 +1011,17 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 	if validationEngine != nil {
 		matcher.SetCanValidate(m, validationEngine.CanValidate)
 	}
+
+	// Build the scoring engine before workers start so the main worker pass
+	// can score findings (not just the drain-path retries).
+	s3Engine, err := buildScoringEngine()
+	if err != nil {
+		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+
+	// S3 objects have no git remote; resolve accessibility from the flag only
+	// (auto falls back to private, which is the conservative default).
+	s3Accessibility := ResolveAccessibility(scanAccessibility, "", "")
 
 	// Parse extraction limits
 	limits := enum.DefaultExtractionLimits()
@@ -1107,11 +1138,16 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 							}
 							if !exists {
 								findingCount.Add(1)
-								if err := tx.AddFinding(&types.Finding{
+								f := &types.Finding{
 									ID:     findingID,
 									RuleID: match.RuleID,
 									Groups: match.Groups,
-								}); err != nil {
+								}
+								f.Score = s3Engine.Score(ctx, f, []*types.Match{match}, rule)
+								if s3Accessibility == AccessibilityPrivate {
+									ApplyAccessibilityModifier(f.Score)
+								}
+								if err := tx.AddFinding(f); err != nil {
 									return fmt.Errorf("storing finding: %w", err)
 								}
 							}
@@ -1167,11 +1203,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 		}
 	}
 
-	s3Engine, err := buildScoringEngine()
-	if err != nil {
-		return fmt.Errorf("initializing scoring engine: %w", err)
-	}
-	if err := drainTimedOutMatches(ctx, m, s, ruleMap, s3Engine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, s3Engine, &findingCount, &matchCount, s3Accessibility); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 

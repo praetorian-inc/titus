@@ -50,10 +50,11 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		return false, nil
 	}
 
-	// Resolve secret bytes for cache key.
+	// Use the template URL (c.url) not the expanded URL as the cache key so
+	// plaintext secrets don't appear in in-memory cache keys. The secret bytes
+	// already provide per-secret uniqueness in the key hash.
 	secretBytes := m.NamedGroups[c.auth.SecretGroup]
-	expandedURL := substituteVarsInURL(c.url, m.NamedGroups)
-	key := httpCacheKey(c.method, expandedURL, secretBytes)
+	key := httpCacheKey(c.method, c.url, secretBytes)
 
 	resp, found := cache.get(key)
 	if !found {
@@ -64,12 +65,14 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		if err != nil {
 			return false, fmt.Errorf("http condition request: %w", err)
 		}
-		// Classify persistent 429/5xx as sentinel errors so trackError can
-		// increment the correct stats counter (Bug 2 fix).
+		// Always cache the response — including 429/5xx — so that subsequent
+		// calls for the same secret/URL fast-fail without hitting the network
+		// again.  Classify persistent 429/5xx as sentinel errors so trackError
+		// can increment the correct stats counter.
+		cache.put(key, resp)
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			return false, classifyHTTPError(resp.StatusCode, nil)
 		}
-		cache.put(key, resp)
 	}
 
 	return c.firesWhen.evaluate(resp)
