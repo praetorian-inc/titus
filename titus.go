@@ -423,6 +423,9 @@ func (s *Scanner) ScanStringWithFindings(ctx context.Context, content string) ([
 
 // ScanFileWithFindings scans a file and returns deduplicated findings.
 func (s *Scanner) ScanFileWithFindings(ctx context.Context, path string) ([]*Finding, error) {
+	// #nosec G304 -- path is supplied by the library caller who controls which
+	// files to scan; reading caller-supplied paths is the intended purpose of
+	// this API, matching the existing ScanFile behaviour.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading file: %w", err)
