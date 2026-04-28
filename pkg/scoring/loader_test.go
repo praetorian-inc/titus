@@ -287,17 +287,20 @@ scorers:
 	assert.Contains(t, err.Error(), "fires_when")
 }
 
-func TestLoadBuiltinScorers_OktaScorerParses(t *testing.T) {
+// TestLoadBuiltinScorers_OktaScorerAbsent verifies that the Okta scorer is NOT
+// present in the builtin set. The okta.yaml was removed because all three of
+// its modifiers pointed at https://placeholder.okta.com — a domain that, if
+// registered by an attacker, would exfiltrate every Okta API token seen during
+// a --score-scope scan. The scorer will be re-added once a safe domain
+// substitution mechanism is available.
+func TestLoadBuiltinScorers_OktaScorerAbsent(t *testing.T) {
 	loader := NewLoader()
 	scorers, err := loader.LoadBuiltinScorers()
 	require.NoError(t, err)
-	var found bool
 	for _, s := range scorers {
-		if s.Name == "okta-api-key-scope" {
-			found = true
-		}
+		assert.NotEqual(t, "okta-api-key-scope", s.Name,
+			"okta-api-key-scope must not be loaded: placeholder.okta.com is a security risk")
 	}
-	assert.True(t, found, "okta-api-key-scope scorer not found")
 }
 
 func TestLoadBuiltinScorers_SlackScorerParses(t *testing.T) {
