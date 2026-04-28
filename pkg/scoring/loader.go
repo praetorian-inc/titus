@@ -9,6 +9,47 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// buildFiresWhenLeaf converts a yamlFiresWhen into a firesWhenLeaf implementation.
+// Exactly one field must be set; returns an error if zero or multiple are set.
+func buildFiresWhenLeaf(fw *yamlFiresWhen) (firesWhenLeaf, error) {
+	switch {
+	case fw.StatusCode != nil:
+		return &statusCodeLeaf{Code: *fw.StatusCode}, nil
+	case len(fw.StatusCodeIn) > 0:
+		return &statusCodeInLeaf{Codes: fw.StatusCodeIn}, nil
+	case fw.ResponseBodyContains != "":
+		return &responseBodyContainsLeaf{Value: fw.ResponseBodyContains}, nil
+	case fw.HeaderContains != nil:
+		return &headerContainsLeaf{Name: fw.HeaderContains.Name, Value: fw.HeaderContains.Value}, nil
+	case fw.JSONPathEquals != nil:
+		return &jsonPathEqualsLeaf{Path: fw.JSONPathEquals.Path, Value: fw.JSONPathEquals.Value}, nil
+	case fw.JSONPathMatches != nil:
+		re, err := regexp.Compile(fw.JSONPathMatches.Regex)
+		if err != nil {
+			return nil, fmt.Errorf("json_path_matches regex: %w", err)
+		}
+		return &jsonPathMatchesLeaf{Path: fw.JSONPathMatches.Path, Regex: fw.JSONPathMatches.Regex, re: re}, nil
+	case fw.JSONArrayLengthGte != nil:
+		return &jsonArrayLengthGteLeaf{Path: fw.JSONArrayLengthGte.Path, Value: fw.JSONArrayLengthGte.Value}, nil
+	default:
+		return nil, fmt.Errorf("fires_when: no leaf condition specified (need status_code, header_contains, etc.)")
+	}
+}
+
+// yamlAuthToScorerAuth converts a YAML auth definition to the internal scorerAuth type.
+func yamlAuthToScorerAuth(a yamlScorerAuth) scorerAuth {
+	return scorerAuth(a)
+}
+
+// yamlHeadersToScorerHeaders converts a slice of YAML header definitions to scorerHeaders.
+func yamlHeadersToScorerHeaders(hs []yamlHeader) []scorerHeader {
+	out := make([]scorerHeader, len(hs))
+	for i, h := range hs {
+		out[i] = scorerHeader(h)
+	}
+	return out
+}
+
 // ScorerLoader handles loading scorer YAML files. Mirrors pkg/rule.Loader.
 type ScorerLoader struct {
 	fs fs.FS
@@ -107,6 +148,15 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 	if ym.Name == "" {
 		return Modifier{}, fmt.Errorf("modifier name is required")
 	}
+
+	// Validate http: and fires_when: must appear together.
+	if ym.HTTP != nil && ym.FiresWhen == nil {
+		return Modifier{}, fmt.Errorf("http: block requires a fires_when: block")
+	}
+	if ym.FiresWhen != nil && ym.HTTP == nil {
+		return Modifier{}, fmt.Errorf("fires_when: block requires an http: block")
+	}
+
 	// Condition: exactly one
 	condCount := 0
 	var cond Condition
@@ -146,6 +196,21 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 			return Modifier{}, fmt.Errorf("match_length.op must be gt|lt|eq, got %q", ym.MatchLength.Op)
 		}
 		cond = &matchLengthCondition{Op: op, Value: ym.MatchLength.Value}
+	}
+	if ym.HTTP != nil && ym.FiresWhen != nil {
+		condCount++
+		leaf, err := buildFiresWhenLeaf(ym.FiresWhen)
+		if err != nil {
+			return Modifier{}, fmt.Errorf("modifier %q fires_when: %w", ym.Name, err)
+		}
+		cond = &httpCondition{
+			method:    ym.HTTP.Method,
+			url:       ym.HTTP.URL,
+			auth:      yamlAuthToScorerAuth(ym.HTTP.Auth),
+			headers:   yamlHeadersToScorerHeaders(ym.HTTP.Headers),
+			body:      ym.HTTP.Body,
+			firesWhen: leaf,
+		}
 	}
 	if condCount != 1 {
 		return Modifier{}, fmt.Errorf("exactly one condition leaf required (got %d)", condCount)

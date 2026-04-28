@@ -36,6 +36,12 @@ type Scorer struct {
 	Modifiers []Modifier // in declaration order (YAML-ASC for tie-breaking)
 }
 
+// IsDynamic returns true if this modifier's condition requires an HTTP call.
+func (m *Modifier) IsDynamic() bool {
+	_, ok := m.Condition.(*httpCondition)
+	return ok
+}
+
 // canScore returns true if this scorer targets the given rule ID.
 func (s *Scorer) canScore(ruleID string) bool {
 	for _, id := range s.RuleIDs {
