@@ -18,9 +18,36 @@ func TestGitHubAppTokenValidator_Name(t *testing.T) {
 func TestGitHubAppTokenValidator_CanValidate(t *testing.T) {
 	v := NewGitHubAppTokenValidator()
 	assert.True(t, v.CanValidate("np.github.3"))
+	assert.True(t, v.CanValidate("np.github.8"))
 	assert.False(t, v.CanValidate("np.github.1"))
 	assert.False(t, v.CanValidate("np.github.2"))
 	assert.False(t, v.CanValidate("np.github.7"))
+}
+
+// TestGitHubAppTokenValidator_GHS_JWT_ExtractToken verifies that the validator
+// can extract the token named group from a np.github.8 (JWT-format) match.
+func TestGitHubAppTokenValidator_GHS_JWT_ExtractToken(t *testing.T) {
+	v := NewGitHubAppTokenValidator()
+	jwtToken := "ghs_123456_eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJhcHBfaWQifQ.signature_here"
+	match := &types.Match{
+		RuleID: "np.github.8",
+		NamedGroups: map[string][]byte{
+			"token": []byte(jwtToken),
+		},
+	}
+	assert.Equal(t, jwtToken, v.extractToken(match))
+	assert.True(t, hasPrefix(v.extractToken(match), "ghs_"), "JWT-format token should route to installation endpoint")
+}
+
+// TestGitHubAppTokenValidator_GHS_JWT_Validate_NoToken verifies undetermined
+// status when no token is present in a np.github.8 match.
+func TestGitHubAppTokenValidator_GHS_JWT_Validate_NoToken(t *testing.T) {
+	v := NewGitHubAppTokenValidator()
+	match := &types.Match{RuleID: "np.github.8"}
+
+	result, err := v.Validate(t.Context(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
 }
 
 func TestGitHubAppTokenValidator_GHU_Valid(t *testing.T) {

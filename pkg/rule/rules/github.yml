@@ -123,6 +123,40 @@ rules:
       GITHUB_SECRET=37d02377a3e9d849e18704c3ec883f9c5787d857
 
 
+- name: GitHub App Installation Token (JWT format)
+  id: np.github.8
+  base_score: 85
+  # GitHub announced on April 24, 2026 that server-to-server installation tokens
+  # (ghs_ prefix) are transitioning to a new JWT-based format:
+  #   ghs_<APPID>_<JWT>
+  # where APPID is numeric and the JWT has three base64url-encoded dot-separated
+  # segments (header.payload.signature). Rollout began April 27, 2026 for
+  # GITHUB_TOKEN in Actions, expanding to all installation tokens mid-May to
+  # late June 2026. Affects GitHub.com (Cloud + Data Residency) only; GHES
+  # continues using the legacy ghs_[a-zA-Z0-9]{36} format (detected by np.github.3).
+  #
+  # Format: ghs_<numeric_app_id>_<base64url_header>.<base64url_payload>.<base64url_sig>
+  # Total length: ~520 chars (variable)
+  pattern: '\b(?P<token>ghs_[0-9]+_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b'
+
+  categories: [api, secret]
+
+  references:
+  - https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github
+  - https://github.blog/changelog/2026-04-24-upcoming-format-change-for-github_token-and-installation-access-tokens/
+  - https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation
+
+  examples:
+  - 'ghs_123456_eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJhcHBfaWQiLCJpYXQiOjE3MTQyMDgwMDAsImV4cCI6MTcxNDIwODMwMH0.EXAMPLE_SIGNATURE_BASE64URL'
+  - 'GITHUB_TOKEN=ghs_98765_eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpbnN0YWxsYXRpb25faWQiOjEyMzQ1Nn0.EXAMPLE_SIGNATURE_CHARS'
+
+  negative_examples:
+  - 'ghs_RguXIkihJjwHAP6eXEYxaPNvywurTr5IOAbg'  # Legacy format (36 chars, detected by np.github.3)
+  - 'ghs_abc_header.payload.sig'                  # Non-numeric app ID — not a valid JWT-format token
+  - 'ghs_123456_onlyone.part'                     # Only two dot-separated segments (JWT requires three)
+  - 'ghs_'                                        # Prefix only, no token body
+
+
 - name: GitHub Personal Access Token (fine-grained permissions)
   id: np.github.7
   base_score: 65
