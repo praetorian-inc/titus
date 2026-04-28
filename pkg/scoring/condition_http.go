@@ -3,6 +3,7 @@ package scoring
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 
@@ -62,6 +63,11 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		})
 		if err != nil {
 			return false, fmt.Errorf("http condition request: %w", err)
+		}
+		// Classify persistent 429/5xx as sentinel errors so trackError can
+		// increment the correct stats counter (Bug 2 fix).
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return false, classifyHTTPError(resp.StatusCode, nil)
 		}
 		cache.put(key, resp)
 	}

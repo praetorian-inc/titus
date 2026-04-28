@@ -243,6 +243,40 @@ func TestEngine_ConcurrentScore_NoRace(t *testing.T) {
 	wg.Wait()
 }
 
+// TestEngine_RateLimitedStats verifies that a 429 response from a dynamic
+// modifier increments engine.Stats().RateLimited. This test should FAIL before
+// the fix (classifyHTTPError not called) and PASS after.
+func TestEngine_RateLimitedStats(t *testing.T) {
+	// Mock server that always returns 429 (even on retry).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(srv.Close)
+
+	cond := &httpCondition{
+		method:    "GET",
+		url:       srv.URL,
+		auth:      scorerAuth{},
+		firesWhen: &statusCodeLeaf{Code: 200},
+	}
+	scorer := &Scorer{
+		Name:    "rate-limit-scorer",
+		RuleIDs: []string{"np.rl.1"},
+		Modifiers: []Modifier{
+			{Name: "check", Kind: ModifierKindDelta, Value: 10, Condition: cond},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer}, EngineConfig{ScopeEnabled: true, Timeout: 5 * defaultModifierTimeout})
+	rule := &types.Rule{ID: "np.rl.1", BaseScore: 50}
+	finding := &types.Finding{RuleID: rule.ID}
+	match := &types.Match{NamedGroups: map[string][]byte{}}
+
+	engine.Score(context.Background(), finding, []*types.Match{match}, rule)
+
+	stats := engine.Stats()
+	assert.Equal(t, 1, stats.RateLimited, "RateLimited counter must be incremented after a 429 response")
+}
+
 func TestEngine_ConditionError_SkipsModifier_ContinuesScoring(t *testing.T) {
 	var warnings []string
 	scorer := &Scorer{
