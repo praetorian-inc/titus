@@ -3,6 +3,9 @@ package scoring
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -194,6 +197,50 @@ func TestEngine_TieBreak_YAMLOrderASC(t *testing.T) {
 	assert.Equal(t, "A", score.Applied[0].Name)
 	assert.Equal(t, "B", score.Applied[1].Name)
 	assert.Equal(t, "C", score.Applied[2].Name)
+}
+
+// TestEngine_ConcurrentScore_NoRace verifies that calling Score() concurrently
+// from many goroutines does not produce a data race on shared *httpCondition
+// state. This test must be run with -race; it should FAIL before the fix
+// (per-finding cache mutation) and PASS after (engine-level cache via
+// evaluateWithCache).
+func TestEngine_ConcurrentScore_NoRace(t *testing.T) {
+	// Start a mock HTTP server that always returns 200.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	// Build a scorer with a SHARED *httpCondition (as the engine does in Score).
+	sharedCond := &httpCondition{
+		method:    "GET",
+		url:       srv.URL,
+		auth:      scorerAuth{},
+		firesWhen: &statusCodeLeaf{Code: 200},
+	}
+	scorer := &Scorer{
+		Name:    "race-scorer",
+		RuleIDs: []string{"np.race.1"},
+		Modifiers: []Modifier{
+			{Name: "active", Kind: ModifierKindDelta, Value: 10,
+				Condition: sharedCond},
+		},
+	}
+	engine := NewEngine([]*Scorer{scorer}, EngineConfig{ScopeEnabled: true, Timeout: 5 * defaultModifierTimeout})
+	rule := &types.Rule{ID: "np.race.1", BaseScore: 50}
+
+	const workers = 20
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			finding := &types.Finding{RuleID: rule.ID}
+			match := &types.Match{NamedGroups: map[string][]byte{}}
+			engine.Score(context.Background(), finding, []*types.Match{match}, rule)
+		}()
+	}
+	wg.Wait()
 }
 
 func TestEngine_ConditionError_SkipsModifier_ContinuesScoring(t *testing.T) {

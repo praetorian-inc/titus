@@ -217,7 +217,6 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 			headers:   yamlHeadersToScorerHeaders(ym.HTTP.Headers),
 			body:      ym.HTTP.Body,
 			firesWhen: leaf,
-			cache:     nil, // injected by engine at Score() time
 		}
 	}
 	if condCount != 1 {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -34,7 +35,9 @@ type Engine struct {
 	// warnf is pluggable for tests; defaults to stderr logging to match the
 	// matcher's warning style (cmd/titus/scan.go).
 	warnf func(format string, args ...any)
-	stats HTTPModifierStats // aggregate HTTP modifier outcomes
+	stats   HTTPModifierStats // aggregate HTTP modifier outcomes
+	statsMu sync.Mutex        // protects stats from concurrent Score() callers
+	cache   *httpResponseCache // per-scan shared HTTP response cache
 }
 
 // NewEngine constructs an Engine. Passing nil scorers gives a base-only engine.
@@ -46,7 +49,7 @@ func NewEngine(scorers []*Scorer, cfg EngineConfig) *Engine {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = defaultModifierTimeout
 	}
-	return &Engine{scorers: scorers, cfg: cfg, warnf: warnf}
+	return &Engine{scorers: scorers, cfg: cfg, warnf: warnf, cache: newHTTPResponseCache()}
 }
 
 // Score computes the finding's score. It never returns an error — condition
@@ -101,14 +104,6 @@ func (e *Engine) Score(ctx context.Context, f *types.Finding, matches []*types.M
 		return ordered[i].yamlIdx < ordered[j].yamlIdx
 	})
 
-	// Inject shared cache into HTTP conditions before evaluation.
-	cache := newHTTPResponseCache()
-	for i := range ordered {
-		if hc, ok := ordered[i].mod.Condition.(*httpCondition); ok {
-			hc.cache = cache
-		}
-	}
-
 	current := score.Final
 	for _, im := range ordered {
 		m := im.mod
@@ -120,7 +115,15 @@ func (e *Engine) Score(ctx context.Context, f *types.Finding, matches []*types.M
 
 		// Per-modifier timeout sub-context.
 		modCtx, modCancel := context.WithTimeout(findingCtx, e.cfg.Timeout)
-		fired, err := m.Condition.Evaluate(modCtx, primary)
+		var fired bool
+		var err error
+		if hc, ok := m.Condition.(*httpCondition); ok {
+			// Use evaluateWithCache to pass the engine's shared cache without
+			// mutating the shared *httpCondition.cache field (race fix).
+			fired, err = hc.evaluateWithCache(modCtx, primary, e.cache)
+		} else {
+			fired, err = m.Condition.Evaluate(modCtx, primary)
+		}
 		modCancel()
 
 		if err != nil {
@@ -163,7 +166,10 @@ func (e *Engine) Score(ctx context.Context, f *types.Finding, matches []*types.M
 }
 
 // trackError increments the relevant stats counter based on error type.
+// It is safe to call concurrently from multiple Score() goroutines.
 func (e *Engine) trackError(err error) {
+	e.statsMu.Lock()
+	defer e.statsMu.Unlock()
 	switch {
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled):
 		e.stats.Timeouts++
@@ -177,7 +183,12 @@ func (e *Engine) trackError(err error) {
 }
 
 // Stats returns aggregate HTTP modifier outcomes for the scan stats line.
-func (e *Engine) Stats() HTTPModifierStats { return e.stats }
+// Safe to call after all Score() goroutines have completed.
+func (e *Engine) Stats() HTTPModifierStats {
+	e.statsMu.Lock()
+	defer e.statsMu.Unlock()
+	return e.stats
+}
 
 // findScorer returns the first scorer targeting the given ruleID, or nil.
 func (e *Engine) findScorer(ruleID string) *Scorer {

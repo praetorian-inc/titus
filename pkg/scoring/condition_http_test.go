@@ -33,7 +33,6 @@ func httpConditionFixture(t *testing.T, status int, body string, hdrs map[string
 		url:       srv.URL,
 		auth:      scorerAuth{},
 		firesWhen: &statusCodeLeaf{Code: status},
-		cache:     newHTTPResponseCache(),
 	}
 	return cond, srv.URL
 }
@@ -71,13 +70,17 @@ func TestHTTPCondition_UsesCache(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	// evaluateWithCache takes the cache as an explicit parameter so that the
+	// shared *httpCondition state is never mutated (race fix). The deduplication
+	// guarantee now lives at the call site — callers (Engine) pass the same cache
+	// instance for all findings in a scan.
 	cache := newHTTPResponseCache()
-	cond := &httpCondition{method: "GET", url: srv.URL, auth: scorerAuth{}, firesWhen: &statusCodeLeaf{Code: 200}, cache: cache}
+	cond := &httpCondition{method: "GET", url: srv.URL, auth: scorerAuth{}, firesWhen: &statusCodeLeaf{Code: 200}}
 	m := matchWithGroups(nil)
 
-	_, err := cond.Evaluate(context.Background(), m)
+	_, err := cond.evaluateWithCache(context.Background(), m, cache)
 	require.NoError(t, err)
-	_, err = cond.Evaluate(context.Background(), m) // second call — should use cache
+	_, err = cond.evaluateWithCache(context.Background(), m, cache) // second call — should use cache
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, callCount, "cache should prevent second HTTP call")

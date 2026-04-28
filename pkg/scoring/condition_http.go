@@ -18,28 +18,43 @@ type firesWhenLeaf interface {
 // httpCondition is a dynamic Condition that makes an HTTP call then delegates
 // to a firesWhenLeaf for the actual decision. It implements Condition and
 // therefore satisfies the M3 Condition interface (with context).
+//
+// The cache is passed as an explicit argument to evaluateWithCache rather than
+// stored as a field. This avoids the data race that occurred when Score()
+// goroutines concurrently wrote to the cache field of shared *httpCondition
+// instances.
 type httpCondition struct {
 	method    string
-	url       string       // may contain {{group}} placeholders
+	url       string         // may contain {{group}} placeholders
 	headers   []scorerHeader
 	body      string
 	auth      scorerAuth
 	firesWhen firesWhenLeaf
-	cache     *httpResponseCache // per-scan cache; shared via engine
 }
 
-// Evaluate executes the HTTP call (or uses cache) then applies firesWhen.
+// Evaluate executes the HTTP call using the condition's own local cache.
+// This is used by test fixtures that call the condition directly.
+// Production code calls evaluateWithCache instead to use the engine's shared
+// cache without mutating this struct's fields.
 func (c *httpCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
+	return c.evaluateWithCache(ctx, m, newHTTPResponseCache())
+}
+
+// evaluateWithCache executes the HTTP call (or uses the provided cache) then
+// applies firesWhen. The cache parameter is the engine's shared per-scan cache;
+// passing it as an argument avoids any mutation of the shared *httpCondition
+// state, which would be a data race when Score() runs concurrently.
+func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, cache *httpResponseCache) (bool, error) {
 	if m == nil {
 		return false, nil
 	}
 
-	// Resolve secret bytes for cache key
+	// Resolve secret bytes for cache key.
 	secretBytes := m.NamedGroups[c.auth.SecretGroup]
 	expandedURL := substituteVarsInURL(c.url, m.NamedGroups)
 	key := httpCacheKey(c.method, expandedURL, secretBytes)
 
-	resp, found := c.cache.get(key)
+	resp, found := cache.get(key)
 	if !found {
 		var err error
 		resp, err = withRetry(ctx, func() (*cachedHTTPResponse, error) {
@@ -48,7 +63,7 @@ func (c *httpCondition) Evaluate(ctx context.Context, m *types.Match) (bool, err
 		if err != nil {
 			return false, fmt.Errorf("http condition request: %w", err)
 		}
-		c.cache.put(key, resp)
+		cache.put(key, resp)
 	}
 
 	return c.firesWhen.evaluate(resp)
