@@ -65,6 +65,11 @@ var (
 	scanReaders             int
 	scanRuleset             string
 	scanIgnoreFile          string
+
+	// Dynamic scoring flags (M3).
+	scanScopeEnabled bool
+	scanScoreTimeout time.Duration
+	scanScoreBudget  time.Duration
 )
 
 var scanCmd = &cobra.Command{
@@ -100,6 +105,12 @@ func init() {
 	scanCmd.Flags().StringVar(&scanAccessibility, "accessibility", "auto",
 		`code accessibility: "public" (no penalty), "private" (-25 to all scores),`+"\n"+
 			`or "auto" (detect via git remote/GitHub API, defaults to private if undetermined)`)
+	scanCmd.Flags().BoolVar(&scanScopeEnabled, "score-scope", false,
+		"enable HTTP dynamic scoring modifiers (calls external APIs to determine secret scope/permissions)")
+	scanCmd.Flags().DurationVar(&scanScoreTimeout, "score-timeout", 10*time.Second,
+		"per-modifier HTTP timeout for dynamic scoring (default 10s)")
+	scanCmd.Flags().DurationVar(&scanScoreBudget, "score-budget", 60*time.Second,
+		"per-finding overall scoring budget across all modifiers (default 60s; 0 = unlimited)")
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -182,10 +193,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 		matcher.SetCanValidate(m, validationEngine.CanValidate)
 	}
 
-	// Build the M2 scoring engine once per scan. Static modifiers only; no HTTP.
+	// Build the scoring engine once per scan.
 	engine, err := buildScoringEngine()
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+	if scanScopeEnabled && !scanValidate {
+		fmt.Fprintf(os.Stderr, "[warn] --score-scope set without --validate; dynamic modifiers will use unvalidated credentials (results may be less accurate)\n")
 	}
 
 	// Resolve code accessibility for score adjustment.
@@ -299,7 +313,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 									RuleID: match.RuleID,
 									Groups: match.Groups,
 								}
-								f.Score = engine.Score(f, []*types.Match{match}, rule)
+								f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
 								if accessibility == AccessibilityPrivate {
 									ApplyAccessibilityModifier(f.Score)
 								}
@@ -362,8 +376,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Retry any blobs that timed out during the parallel pass.
 	// This runs single-threaded so there is no CPU contention, resolving
 	// starvation-caused false timeouts while still catching real backtracking.
-	if err := drainTimedOutMatches(m, s, ruleMap, engine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, engine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
+	}
+
+	// Emit aggregate dynamic modifier stats if any errors occurred.
+	if s := engine.Stats(); s.Any() {
+		fmt.Fprintf(os.Stderr, "[scoring] Dynamic modifiers: %d timeouts, %d rate-limited, %d server errors, %d network errors\n",
+			s.Timeouts, s.RateLimited, s.ServerErrors, s.NetworkErrors)
 	}
 
 	if verbose {
@@ -381,7 +401,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 // pass using the matcher's single-threaded retry queue, then writes the
 // resulting matches and findings to the store. It is called after g.Wait() in
 // each of the scan entry points (runScan, runRepoScan, runS3Scan).
-func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64) error {
+func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64) error {
 	retryMatches, err := m.DrainTimedOut()
 	if err != nil {
 		return fmt.Errorf("drain timed-out blobs: %w", err)
@@ -411,7 +431,7 @@ func drainTimedOutMatches(m matcher.Matcher, s store.Store, ruleMap map[string]*
 					RuleID: match.RuleID,
 					Groups: match.Groups,
 				}
-				f.Score = engine.Score(f, []*types.Match{match}, rule)
+				f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
 				if err := tx.AddFinding(f); err != nil {
 					return fmt.Errorf("storing retry finding: %w", err)
 				}
@@ -912,7 +932,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
 	}
-	if err := drainTimedOutMatches(m, s, ruleMap, repoEngine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, repoEngine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -1151,7 +1171,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
 	}
-	if err := drainTimedOutMatches(m, s, ruleMap, s3Engine, &findingCount, &matchCount); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, s3Engine, &findingCount, &matchCount); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -1433,7 +1453,8 @@ func resolveAutoOutput(target string) string {
 // scoringEngineInterface is the narrow surface runScan needs, kept as an
 // interface for ease of swapping in tests (currently always *scoring.Engine).
 type scoringEngineInterface interface {
-	Score(f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score
+	Score(ctx context.Context, f *types.Finding, matches []*types.Match, rule *types.Rule) *types.Score
+	Stats() scoring.HTTPModifierStats
 }
 
 // buildScoringEngine constructs the M2 scoring engine from the embedded scorer
@@ -1448,5 +1469,10 @@ func buildScoringEngine() (scoringEngineInterface, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading scorers: %w", err)
 	}
-	return scoring.NewEngine(scorers), nil
+	cfg := scoring.EngineConfig{
+		ScopeEnabled: scanScopeEnabled,
+		Timeout:      scanScoreTimeout,
+		Budget:       scanScoreBudget,
+	}
+	return scoring.NewEngine(scorers, cfg), nil
 }

@@ -1,0 +1,78 @@
+# Slack token scorer — static + dynamic modifiers (M3 scope).
+#
+# Rule IDs covered:
+#   np.slack.2 — bot token (xoxb-, long format): base_score 70
+#   np.slack.4 — user token (xoxp-): base_score 75
+#   np.slack.6 — bot token (xoxb-, short format): base_score 65
+#
+# All three patterns capture a named group "token", making them suitable for
+# bearer auth injection in HTTP modifiers.
+#
+# API documentation:
+#   auth.test (ok field, enterprise_id):
+#     https://docs.slack.dev/reference/methods/auth.test
+#   Enterprise Grid enterprise_id identification:
+#     https://docs.slack.dev/enterprise-grid/developing-for-enterprise-grid/#enterprise-ids
+#
+# Note: legacy api.slack.com/methods/* URLs redirect to docs.slack.dev/reference/methods/*.
+scorers:
+  - name: slack-token-scope
+    rule_ids:
+      - np.slack.2   # bot token (xoxb-, long format)
+      - np.slack.4   # user token (xoxp-)
+      - np.slack.6   # bot token (xoxb-, short format)
+
+    modifiers:
+      # --- Static: bot tokens have workspace-wide permissions ---
+      - name: bot-token-prefix
+        priority: 100
+        match_group:
+          name: token
+          matches: '^xoxb-'
+        delta: 5   # bot tokens slightly higher risk than user tokens
+
+      # --- Dynamic: verify token is active via auth.test ---
+      - name: valid-active-token
+        priority: 90
+        http:
+          method: POST
+          url: https://slack.com/api/auth.test
+          auth:
+            type: bearer
+            secret_group: token
+          headers:
+            - name: Content-Type
+              value: application/json
+        fires_when:
+          # Note: auth.test returns ok as a JSON boolean. Our json_path_equals
+          # comparator uses fmt.Sprintf("%v", v) which converts bool true →
+          # "true", matching YAML value: true → "true". This is intentional
+          # and documented behavior.
+          json_path_equals:
+            path: ".ok"
+            value: true
+        delta: 10   # confirmed live token — elevated risk
+
+      # --- Dynamic: check if token belongs to an enterprise grid ---
+      # auth.test includes enterprise_id as a top-level string field; it is
+      # only present (non-empty) for Enterprise Grid workspaces. The previous
+      # implementation used team.info with .team.is_enterprise_install, but
+      # auth.test's team field is a string (workspace name), not an object —
+      # is_enterprise_install does not exist at that path. Using auth.test
+      # here also avoids a second HTTP call since the engine caches by URL.
+      - name: enterprise-grid-member
+        priority: 70
+        http:
+          method: POST
+          url: https://slack.com/api/auth.test
+          auth:
+            type: bearer
+            secret_group: token
+          headers:
+            - name: Content-Type
+              value: application/json
+        fires_when:
+          json_path_matches:
+            path: ".enterprise_id"
+            regex: "^E[A-Z0-9]+"
+        delta: 15   # enterprise grid = broader blast radius
