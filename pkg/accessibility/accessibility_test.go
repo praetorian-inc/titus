@@ -183,8 +183,28 @@ func TestGitlabRepoIsPrivate_PathEncoding(t *testing.T) {
 
 	_, err := gitlabRepoIsPrivate("group/subgroup/repo", "")
 	require.NoError(t, err)
-	assert.Equal(t, "/projects/group%2Fsubgroup%2Frepo", capturedRequestURI,
-		"nested group path should be URL-encoded with %%2F separators on the wire")
+	assert.Equal(t, "/api/v4/projects/group%2Fsubgroup%2Frepo", capturedRequestURI,
+		"nested group path should be URL-encoded with %%2F separators on the wire and include /api/v4/ prefix")
+}
+
+func TestGitlabRepoIsPrivate_SimplePathIncludesAPIPrefix(t *testing.T) {
+	var capturedRequestURI string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRequestURI = r.RequestURI
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"visibility":"public"}`))
+	}))
+	defer srv.Close()
+
+	orig := gitlabAPIBase
+	gitlabAPIBase = srv.URL
+	defer func() { gitlabAPIBase = orig }()
+
+	_, err := gitlabRepoIsPrivate("owner/repo", "")
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v4/projects/owner%2Frepo", capturedRequestURI,
+		"simple owner/repo path must include /api/v4/ prefix to hit the API, not the web UI")
 }
 
 func TestGitlabRepoIsPrivate_UnexpectedStatusReturnsError(t *testing.T) {

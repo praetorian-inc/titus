@@ -196,9 +196,9 @@ func gitlabRepoIsPrivate(repoPath, token string) (bool, error) {
 	// normalizing %2F back to / before sending the request.
 	cleanPath := strings.TrimPrefix(repoPath, "/")
 	encoded := strings.ReplaceAll(cleanPath, "/", "%2F")
-	rawPath := "/projects/" + encoded
+	rawPath := "/api/v4/projects/" + encoded
 	// Path uses the decoded form so url.URL is internally consistent.
-	decodedPath := "/projects/" + strings.ReplaceAll(cleanPath, "/", "/")
+	decodedPath := "/api/v4/projects/" + cleanPath
 
 	base, err := url.Parse(gitlabAPIBase)
 	if err != nil {
@@ -214,6 +214,7 @@ func gitlabRepoIsPrivate(repoPath, token string) (bool, error) {
 	// Restore RawPath after NewRequest parses the URL (NewRequest may clear it).
 	req.URL.Path = decodedPath
 	req.URL.RawPath = rawPath
+
 	req.Header.Set("Accept", "application/json")
 	if token != "" {
 		req.Header.Set("PRIVATE-TOKEN", token)
