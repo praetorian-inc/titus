@@ -1,11 +1,28 @@
 package scoring_test
 
-// Tests that verify each dynamic scorer YAML condition against
-// realistic API response fixtures based on official API documentation.
-// These tests do NOT make real network calls.
+// Tests that verify each dynamic scorer YAML condition against realistic API
+// response fixtures based on official API documentation. These tests do NOT
+// make real network calls — all HTTP is served by httptest.NewServer.
 //
-// GitHub API docs: https://docs.github.com/en/rest/users/users
-// Slack API docs: https://api.slack.com/methods/auth.test
+// API documentation references (verified 2026-04-28):
+//
+//   GitHub GET /user (plan.name field, x-oauth-scopes header):
+//     https://docs.github.com/en/rest/users/users#get-the-authenticated-user
+//
+//   GitHub X-OAuth-Scopes response header documentation:
+//     https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#check-headers-to-see-what-oauth-scopes-you-have-and-what-the-api-action-accepts
+//
+//   GitHub GET /user/orgs (array of org objects):
+//     https://docs.github.com/en/rest/orgs/orgs#list-organizations-for-the-authenticated-user
+//
+//   Slack auth.test (ok boolean, enterprise_id field):
+//     https://docs.slack.dev/reference/methods/auth.test
+//
+//   Slack Enterprise Grid enterprise_id identification:
+//     https://docs.slack.dev/enterprise-grid/developing-for-enterprise-grid/#enterprise-ids
+//
+// Note on Slack URL: the legacy api.slack.com/methods/* URLs now redirect to
+// docs.slack.dev/reference/methods/*. Always use the docs.slack.dev form.
 
 import (
 	"context"
@@ -60,6 +77,9 @@ func scoreWithYAML(t *testing.T, scorerYAML string, ruleID string, baseScore int
 // GitHub scorer fixture tests
 // =============================================================================
 
+// GitHub admin:org scope is verified via the X-OAuth-Scopes response header.
+// Source: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#check-headers-to-see-what-oauth-scopes-you-have-and-what-the-api-action-accepts
+// The header is a comma-separated list; header_contains does substring match.
 func TestGitHubScorer_AdminOrgScope_FiringConditions(t *testing.T) {
 	// admin:org in x-oauth-scopes header → modifier fires → set_score: 90
 	srv := mockAPIServer(t, 200, loadFixture(t, "github_user_enterprise.json"),
@@ -119,6 +139,10 @@ scorers:
 	assert.Empty(t, score.Applied)
 }
 
+// GitHub plan.name is a required string field in the GET /user response.
+// Source: https://docs.github.com/en/rest/users/users#get-the-authenticated-user
+// Note: the docs confirm the field exists but do not enumerate values inline.
+// Known values: "free", "pro", "team", "enterprise" (confirmed empirically).
 func TestGitHubScorer_EnterprisePlan_FiresForEnterpriseUser(t *testing.T) {
 	srv := mockAPIServer(t, 200, loadFixture(t, "github_user_enterprise.json"), nil)
 	defer srv.Close()
@@ -171,6 +195,8 @@ scorers:
 	assert.Equal(t, 70, score.Final, "free plan should not fire")
 }
 
+// GET /user/orgs returns a top-level array of organization objects.
+// Source: https://docs.github.com/en/rest/orgs/orgs#list-organizations-for-the-authenticated-user
 func TestGitHubScorer_MultiOrg_FiresForManyOrgs(t *testing.T) {
 	srv := mockAPIServer(t, 200, loadFixture(t, "github_orgs_many.json"), nil)
 	defer srv.Close()
@@ -201,6 +227,10 @@ scorers:
 // Slack scorer fixture tests
 // =============================================================================
 
+// auth.test returns {"ok": true} on success. The ok field is a JSON boolean.
+// Source: https://docs.slack.dev/reference/methods/auth.test
+// Implementation note: json_path_equals uses fmt.Sprintf("%v", v) for comparison,
+// so YAML value: true (bool) becomes "true" and matches JSON boolean true.
 func TestSlackScorer_ValidToken_FiresOnSuccess(t *testing.T) {
 	// auth.test returns {"ok": true} → token is valid → modifier fires.
 	// Note: json_path_equals compares using fmt.Sprintf("%v") which converts
@@ -259,6 +289,11 @@ scorers:
 	assert.Equal(t, 60, score.Final, "revoked token (ok:false) should not fire")
 }
 
+// Enterprise Grid workspaces include enterprise_id in the auth.test response.
+// Source: https://docs.slack.dev/enterprise-grid/developing-for-enterprise-grid/#enterprise-ids
+// "When working against a team within an Enterprise organization, you'll also
+// find their enterprise_id [in auth.test]." Pattern ^E[A-Z0-9]+ matches Slack's
+// Enterprise org IDs (e.g. "E12345").
 func TestSlackScorer_EnterpriseGrid_FiresWhenEnterpriseIDPresent(t *testing.T) {
 	// enterprise_id is non-empty → Enterprise Grid workspace → modifier fires.
 	// auth.test includes enterprise_id as a top-level string field; it is only

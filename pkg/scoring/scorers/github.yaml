@@ -7,6 +7,14 @@
 # Scorer "github-pat-scope" (M3) covers np.github.1 and np.github.2. Classic
 # PATs and OAuth tokens have wide-open default scope and require live HTTP
 # scope detection to rank accurately.
+#
+# API documentation:
+#   GET /user (plan.name, x-oauth-scopes):
+#     https://docs.github.com/en/rest/users/users#get-the-authenticated-user
+#   X-OAuth-Scopes header:
+#     https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#check-headers-to-see-what-oauth-scopes-you-have-and-what-the-api-action-accepts
+#   GET /user/orgs:
+#     https://docs.github.com/en/rest/orgs/orgs#list-organizations-for-the-authenticated-user
 scorers:
   - name: github-fine-grained-pat
     rule_ids:

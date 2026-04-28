@@ -7,6 +7,14 @@
 #
 # All three patterns capture a named group "token", making them suitable for
 # bearer auth injection in HTTP modifiers.
+#
+# API documentation:
+#   auth.test (ok field, enterprise_id):
+#     https://docs.slack.dev/reference/methods/auth.test
+#   Enterprise Grid enterprise_id identification:
+#     https://docs.slack.dev/enterprise-grid/developing-for-enterprise-grid/#enterprise-ids
+#
+# Note: legacy api.slack.com/methods/* URLs redirect to docs.slack.dev/reference/methods/*.
 scorers:
   - name: slack-token-scope
     rule_ids:
