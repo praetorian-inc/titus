@@ -1,7 +1,54 @@
 rules:
 
-# FIXME: also add an entry for stripe "Publishable Keys"? Those are public, but having it along with the secret key would be problematic.
-# Example: STRIPE_PUBLISHABLE_KEY=pk_test_aQbfVWeaCesES5FRSY7iIjk9
+- name: Stripe Publishable API Key
+  id: np.stripe.3
+  base_score: 5
+
+  # Publishable keys (pk_live_*, pk_test_*) are intentionally designed to be embedded
+  # in client-side code (browsers, mobile apps). They identify a merchant account for
+  # display and payment-form purposes only — they cannot initiate charges, access user
+  # data, or perform any sensitive server-side operation. Stripe and other payment
+  # processors (e.g. Moonpay) use the same pk_live_ / pk_test_ prefix convention.
+  #
+  # Detection is informational only. The finding should not be treated as a credential
+  # leak; its presence in source code is expected and intentional.
+  #
+  # The pattern includes the same apikey/access_key keyword context as np.generic.2 so
+  # cross-rule deduplication clusters both matches and selects this more specific rule
+  # (longer pattern, named capture group) over the generic one.
+  pattern: |
+    (?x)(?i)
+    (?: publishable_key | publishablekey
+      | api_key | apikey | access_key | accesskey )
+    .{0,3}
+    [\ \t]* (?: : | = | := | => | , | ' | " ) [\ \t]*
+    .{0,3}
+    (?P<key> pk_ (?:live|test) _ [a-z0-9]{24,} )
+
+  categories:
+  - api
+  - informational
+
+  references:
+  - https://stripe.com/docs/keys
+  - https://dev.moonpay.com/docs/api-authentication
+
+  examples:
+  - 'apiKey=pk_live_51H2Bv2eZvKYlo2C0qTNQN6z'
+  - 'STRIPE_PUBLISHABLE_KEY=pk_test_aQbfVWeaCesES5FRSY7iIjk9'
+  - 'publishable_key: "pk_live_AbCdEfGhIjKlMnOpQrStUvWx"'
+
+  negative_examples:
+  - 'apiKey=sk_live_dhhfUUyfrAace5dBAZ10JrAD'   # secret key — caught by np.stripe.1
+  - 'pk_live_short'                              # too short — not a valid publishable key
+
+  description: |
+    Stripe (and compatible) publishable API key found in source code. Publishable keys
+    are intentionally public — they are designed to be embedded in browser or mobile
+    app code to associate payment forms with a merchant account. They cannot be used
+    to initiate charges, read transaction data, or perform any sensitive operation.
+    This finding is informational and typically does not require remediation unless
+    the key appears alongside a secret key (sk_live_*) in the same context.
 
 - name: Stripe API Key
   id: np.stripe.1
