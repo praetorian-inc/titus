@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/praetorian-inc/titus/pkg/scoring"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,17 +72,3 @@ func TestBuildScoringEngine_WithScopeEnabled(t *testing.T) {
 	// Engine is opaque; just verify it builds without error when scope is enabled.
 }
 
-// stubScoringEngine implements scoringEngineInterface for use in unit tests
-// that need to inject a controlled engine without loading real scorers.
-type stubScoringEngine struct {
-	score *types.Score
-	stats scoring.HTTPModifierStats
-}
-
-func (s *stubScoringEngine) Score(_ context.Context, _ *types.Finding, _ []*types.Match, _ *types.Rule) *types.Score {
-	return s.score
-}
-
-func (s *stubScoringEngine) Stats() scoring.HTTPModifierStats {
-	return s.stats
-}

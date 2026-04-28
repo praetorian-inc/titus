@@ -38,21 +38,14 @@ func buildFiresWhenLeaf(fw *yamlFiresWhen) (firesWhenLeaf, error) {
 
 // yamlAuthToScorerAuth converts a YAML auth definition to the internal scorerAuth type.
 func yamlAuthToScorerAuth(a yamlScorerAuth) scorerAuth {
-	return scorerAuth{
-		Type:        a.Type,
-		SecretGroup: a.SecretGroup,
-		HeaderName:  a.HeaderName,
-		QueryParam:  a.QueryParam,
-		Username:    a.Username,
-		KeyPrefix:   a.KeyPrefix,
-	}
+	return scorerAuth(a)
 }
 
 // yamlHeadersToScorerHeaders converts a slice of YAML header definitions to scorerHeaders.
 func yamlHeadersToScorerHeaders(hs []yamlHeader) []scorerHeader {
 	out := make([]scorerHeader, len(hs))
 	for i, h := range hs {
-		out[i] = scorerHeader{Name: h.Name, Value: h.Value}
+		out[i] = scorerHeader(h)
 	}
 	return out
 }

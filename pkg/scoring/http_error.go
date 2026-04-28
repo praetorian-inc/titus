@@ -47,7 +47,3 @@ func (s HTTPModifierStats) Any() bool {
 	return s.Timeouts > 0 || s.RateLimited > 0 || s.NetworkErrors > 0 || s.ServerErrors > 0
 }
 
-// any is a package-internal alias for Any.
-func (s *HTTPModifierStats) any() bool {
-	return s.Any()
-}

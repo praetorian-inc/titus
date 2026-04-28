@@ -138,6 +138,8 @@ func detectAccessibility(target, token string) Accessibility {
 // gitRemoteURL returns the URL of the git remote named "origin" for the given
 // directory, or an error if the directory is not a git repo or has no remote.
 func gitRemoteURL(dir string) (string, error) {
+	// #nosec G204 -- dir is the user's own scan target path, not external input.
+	// The only arguments passed to git are fixed strings; dir controls where git runs.
 	cmd := exec.Command("git", "-C", dir, "config", "--get", "remote.origin.url")
 	out, err := cmd.Output()
 	if err != nil {

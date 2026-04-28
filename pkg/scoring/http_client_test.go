@@ -37,9 +37,7 @@ func TestSubstituteTemplateVars_ReplacesNamedGroups(t *testing.T) {
 func TestMakeHTTPRequest_CancelsOnContextDone(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate slow server — client should cancel
-		select {
-		case <-r.Context().Done():
-		}
+		<-r.Context().Done()
 	}))
 	defer srv.Close()
 
