@@ -36,22 +36,35 @@ scorers:
             - name: Content-Type
               value: application/json
         fires_when:
+          # Note: auth.test returns ok as a JSON boolean. Our json_path_equals
+          # comparator uses fmt.Sprintf("%v", v) which converts bool true →
+          # "true", matching YAML value: true → "true". This is intentional
+          # and documented behavior.
           json_path_equals:
             path: ".ok"
-            value: "true"
+            value: true
         delta: 10   # confirmed live token — elevated risk
 
       # --- Dynamic: check if token belongs to an enterprise grid ---
+      # auth.test includes enterprise_id as a top-level string field; it is
+      # only present (non-empty) for Enterprise Grid workspaces. The previous
+      # implementation used team.info with .team.is_enterprise_install, but
+      # auth.test's team field is a string (workspace name), not an object —
+      # is_enterprise_install does not exist at that path. Using auth.test
+      # here also avoids a second HTTP call since the engine caches by URL.
       - name: enterprise-grid-member
         priority: 70
         http:
-          method: GET
-          url: https://slack.com/api/team.info
+          method: POST
+          url: https://slack.com/api/auth.test
           auth:
             type: bearer
             secret_group: token
+          headers:
+            - name: Content-Type
+              value: application/json
         fires_when:
-          json_path_equals:
-            path: ".team.is_enterprise_install"
-            value: "true"
+          json_path_matches:
+            path: ".enterprise_id"
+            regex: "^E[A-Z0-9]+"
         delta: 15   # enterprise grid = broader blast radius
