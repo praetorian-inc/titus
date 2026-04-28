@@ -264,7 +264,7 @@ func bitbucketRepoIsPrivate(workspace, repoSlug, token string) (bool, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return true, fmt.Errorf("Bitbucket API request: %w", err)
+		return true, fmt.Errorf("bitbucket API request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -272,14 +272,14 @@ func bitbucketRepoIsPrivate(workspace, repoSlug, token string) (bool, error) {
 		return true, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return true, fmt.Errorf("Bitbucket API returned %d", resp.StatusCode)
+		return true, fmt.Errorf("bitbucket API returned %d", resp.StatusCode)
 	}
 
 	var payload struct {
 		IsPrivate bool `json:"is_private"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return true, fmt.Errorf("Bitbucket API response: %w", err)
+		return true, fmt.Errorf("bitbucket API response: %w", err)
 	}
 	return payload.IsPrivate, nil
 }
