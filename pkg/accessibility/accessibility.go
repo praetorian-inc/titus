@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -33,8 +34,21 @@ const Penalty = -25
 // ModifierName is the audit-trail name shown in Score.Applied.
 const ModifierName = "code-accessibility"
 
+// API base URLs — overridable in tests.
+var (
+	gitlabAPIBase    = "https://gitlab.com/api/v4"
+	bitbucketAPIBase = "https://api.bitbucket.org/2.0"
+)
+
 // githubRepoPattern matches "github.com/owner/repo" (with or without .git suffix).
 var githubRepoPattern = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/.]+?)(?:\.git)?$`)
+
+// gitlabRepoPattern matches "gitlab.com/owner/repo" or nested groups like
+// "gitlab.com/group/subgroup/repo" (with or without .git suffix).
+var gitlabRepoPattern = regexp.MustCompile(`gitlab\.com[:/](.+?)(?:\.git)?$`)
+
+// bitbucketRepoPattern matches "bitbucket.org/workspace/repo" (with or without .git suffix).
+var bitbucketRepoPattern = regexp.MustCompile(`bitbucket\.org[:/]([^/]+)/([^/.]+?)(?:\.git)?$`)
 
 // GitHubRepoPattern returns the compiled regular expression used to extract
 // owner and repo from a GitHub remote URL. Exported for CLI wrapper use.
@@ -43,7 +57,7 @@ func GitHubRepoPattern() *regexp.Regexp {
 }
 
 // Resolve returns the actual Public or Private value given the mode string
-// ("public", "private", "auto"), target directory, and optional GitHub token.
+// ("public", "private", "auto"), target directory, and optional SCM token.
 // Always returns Public or Private (never Auto).
 func Resolve(mode, target, token string) Accessibility {
 	switch strings.ToLower(mode) {
@@ -58,6 +72,7 @@ func Resolve(mode, target, token string) Accessibility {
 
 // detectAccessibility inspects the git remote of target to determine visibility.
 // Falls back to Private on any error (conservative default).
+// Detection is attempted in order: GitHub → GitLab → Bitbucket.
 func detectAccessibility(target, token string) Accessibility {
 	remoteURL, err := gitRemoteURL(target)
 	if err != nil {
@@ -65,24 +80,59 @@ func detectAccessibility(target, token string) Accessibility {
 		return Private
 	}
 
-	m := githubRepoPattern.FindStringSubmatch(remoteURL)
-	if m == nil {
-		// Not a GitHub remote — can't auto-detect, assume private
-		return Private
+	// GitHub
+	if m := githubRepoPattern.FindStringSubmatch(remoteURL); m != nil {
+		tok := token
+		if tok == "" {
+			tok = os.Getenv("GITHUB_TOKEN")
+		}
+		isPrivate, err := githubRepoIsPrivate(m[1], m[2], tok)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via GitHub API (%v); assuming private\n", err)
+			return Private
+		}
+		if isPrivate {
+			return Private
+		}
+		return Public
 	}
 
-	owner, repo := m[1], m[2]
-	isPrivate, err := githubRepoIsPrivate(owner, repo, token)
-	if err != nil {
-		// API call failed — conservative default
-		fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via GitHub API (%v); assuming private (use --accessibility to override)\n", err)
-		return Private
+	// GitLab
+	if m := gitlabRepoPattern.FindStringSubmatch(remoteURL); m != nil {
+		tok := token
+		if tok == "" {
+			tok = os.Getenv("GITLAB_TOKEN")
+		}
+		isPrivate, err := gitlabRepoIsPrivate(m[1], tok)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via GitLab API (%v); assuming private\n", err)
+			return Private
+		}
+		if isPrivate {
+			return Private
+		}
+		return Public
 	}
 
-	if isPrivate {
-		return Private
+	// Bitbucket
+	if m := bitbucketRepoPattern.FindStringSubmatch(remoteURL); m != nil {
+		tok := token
+		if tok == "" {
+			tok = os.Getenv("BITBUCKET_TOKEN")
+		}
+		isPrivate, err := bitbucketRepoIsPrivate(m[1], m[2], tok)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via Bitbucket API (%v); assuming private\n", err)
+			return Private
+		}
+		if isPrivate {
+			return Private
+		}
+		return Public
 	}
-	return Public
+
+	// Unknown hosting platform — assume private
+	return Private
 }
 
 // gitRemoteURL returns the URL of the git remote named "origin" for the given
@@ -133,6 +183,102 @@ func githubRepoIsPrivate(owner, repo, token string) (bool, error) {
 		return true, fmt.Errorf("GitHub API response: %w", err)
 	}
 	return payload.Private, nil
+}
+
+// gitlabRepoIsPrivate queries the GitLab REST API to check whether the given
+// repo path (e.g. "group/subgroup/repo") is private. An empty token causes an
+// unauthenticated request. "internal" visibility is treated as private because
+// it is only visible to authenticated GitLab members, not the public.
+// 401 Unauthorized is also treated as private.
+func gitlabRepoIsPrivate(repoPath, token string) (bool, error) {
+	// URL-encode the path: "group/subgroup/repo" → "group%2Fsubgroup%2Frepo"
+	// We must use url.URL with RawPath to prevent Go's HTTP transport from
+	// normalizing %2F back to / before sending the request.
+	cleanPath := strings.TrimPrefix(repoPath, "/")
+	encoded := strings.ReplaceAll(cleanPath, "/", "%2F")
+	rawPath := "/projects/" + encoded
+	// Path uses the decoded form so url.URL is internally consistent.
+	decodedPath := "/projects/" + strings.ReplaceAll(cleanPath, "/", "/")
+
+	base, err := url.Parse(gitlabAPIBase)
+	if err != nil {
+		return true, fmt.Errorf("GitLab API base URL: %w", err)
+	}
+	base.Path = decodedPath
+	base.RawPath = rawPath
+
+	req, err := http.NewRequest(http.MethodGet, base.String(), nil)
+	if err != nil {
+		return true, err
+	}
+	// Restore RawPath after NewRequest parses the URL (NewRequest may clear it).
+	req.URL.Path = decodedPath
+	req.URL.RawPath = rawPath
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("PRIVATE-TOKEN", token)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return true, fmt.Errorf("GitLab API request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized {
+		// not found or forbidden = private
+		return true, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return true, fmt.Errorf("GitLab API returned %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		Visibility string `json:"visibility"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return true, fmt.Errorf("GitLab API response: %w", err)
+	}
+	// "internal" = only GitLab members, not truly public → treat as private
+	return payload.Visibility != "public", nil
+}
+
+// bitbucketRepoIsPrivate queries the Bitbucket REST API to check whether the
+// given workspace/repoSlug is private. An empty token causes an unauthenticated
+// request. 403 Forbidden is treated as private.
+func bitbucketRepoIsPrivate(workspace, repoSlug, token string) (bool, error) {
+	url := fmt.Sprintf("%s/repositories/%s/%s", bitbucketAPIBase, workspace, repoSlug)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return true, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return true, fmt.Errorf("Bitbucket API request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden {
+		return true, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return true, fmt.Errorf("Bitbucket API returned %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		IsPrivate bool `json:"is_private"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return true, fmt.Errorf("Bitbucket API response: %w", err)
+	}
+	return payload.IsPrivate, nil
 }
 
 // Apply applies the private-code score penalty to a finding's Score in-place.

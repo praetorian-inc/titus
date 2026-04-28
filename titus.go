@@ -147,7 +147,7 @@ type scannerConfig struct {
 	// Accessibility fields
 	accessibility       string // "public", "private", "auto"
 	accessibilityTarget string // for auto-detection: git repo root path
-	githubToken         string // for auto-detection: GitHub API token
+	scmToken            string // for auto-detection: SCM API token (GitHub, GitLab, or Bitbucket)
 }
 
 // Option configures a Scanner.
@@ -217,7 +217,7 @@ func WithScopeBudget(d time.Duration) Option {
 // Accepted values: AccessibilityPublic, AccessibilityPrivate, AccessibilityAuto.
 // Private code receives a -25 score penalty on all findings.
 // Auto-detection inspects the git remote of target (set via WithAccessibilityTarget)
-// and calls the GitHub API with the token set via WithGitHubToken.
+// and calls the appropriate SCM API with the token set via WithSCMToken.
 // Defaults to no accessibility adjustment (same as not calling this option).
 func WithAccessibility(mode string) Option {
 	return func(c *scannerConfig) { c.accessibility = mode }
@@ -229,10 +229,18 @@ func WithAccessibilityTarget(target string) Option {
 	return func(c *scannerConfig) { c.accessibilityTarget = target }
 }
 
-// WithGitHubToken sets the GitHub API token used for repository visibility
-// detection when WithAccessibility(AccessibilityAuto) is configured.
-func WithGitHubToken(token string) Option {
-	return func(c *scannerConfig) { c.githubToken = token }
+// WithSCMToken sets the SCM API token used for repository visibility detection
+// when WithAccessibility(AccessibilityAuto) is configured. The token is forwarded
+// to whichever SCM platform matches the git remote URL:
+//   - GitHub: sent as Authorization: Bearer {token}
+//   - GitLab: sent as PRIVATE-TOKEN: {token}
+//   - Bitbucket: sent as Authorization: Bearer {token}
+//
+// Each platform also accepts a platform-specific environment variable as a
+// fallback (GITHUB_TOKEN, GITLAB_TOKEN, BITBUCKET_TOKEN) when no token is
+// supplied via this option.
+func WithSCMToken(token string) Option {
+	return func(c *scannerConfig) { c.scmToken = token }
 }
 
 // NewScanner creates a new Scanner with the given options.
@@ -316,7 +324,7 @@ func NewScanner(opts ...Option) (*Scanner, error) {
 		resolvedAccess = accessibility.Resolve(
 			config.accessibility,
 			config.accessibilityTarget,
-			config.githubToken,
+			config.scmToken,
 		)
 	}
 
