@@ -1,0 +1,5 @@
+{
+  "login": "corp-bot",
+  "id": 2,
+  "plan": {"name": "enterprise", "space": 976562499, "collaborators": 100, "private_repos": 500}
+}
