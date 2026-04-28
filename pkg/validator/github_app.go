@@ -37,7 +37,7 @@ func (v *GitHubAppTokenValidator) Name() string {
 }
 
 func (v *GitHubAppTokenValidator) CanValidate(ruleID string) bool {
-	return ruleID == "np.github.3"
+	return ruleID == "np.github.3" || ruleID == "np.github.8"
 }
 
 func (v *GitHubAppTokenValidator) Validate(ctx context.Context, match *types.Match) (*types.ValidationResult, error) {
