@@ -10,8 +10,8 @@ type Score struct {
 	Base int
 	// SuggestedSeverity is a tier hint derived from Final. Downstream
 	// consumers (Chariot, SARIF) may remap these bands.
-	// Values: "info" (0-19), "low" (20-39), "medium" (40-59),
-	//         "high" (60-79), "critical" (80-100).
+	// Values: "info" (0-20), "low" (21-40), "medium" (41-60),
+	//         "high" (61-80), "critical" (81-100).
 	SuggestedSeverity string
 	// Applied is the audit trail of modifiers that fired, in evaluation order.
 	// For Milestone 1 this is always empty (no engine yet) — the engine lands
@@ -29,16 +29,17 @@ type ScoreModifier struct {
 }
 
 // SeverityForScore maps a numeric score to its suggested severity tier.
+// Bands: info (0-20), low (21-40), medium (41-60), high (61-80), critical (81-100).
 // Out-of-range inputs are clamped (below 0 → info, above 100 → critical).
 func SeverityForScore(score int) string {
 	switch {
-	case score < 20:
+	case score <= 20:
 		return "info"
-	case score < 40:
+	case score <= 40:
 		return "low"
-	case score < 60:
+	case score <= 60:
 		return "medium"
-	case score < 80:
+	case score <= 80:
 		return "high"
 	default:
 		return "critical"

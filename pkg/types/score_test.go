@@ -13,11 +13,11 @@ func TestSeverityForScore(t *testing.T) {
 		score int
 		want  string
 	}{
-		{0, "info"}, {10, "info"}, {19, "info"},
-		{20, "low"}, {30, "low"}, {39, "low"},
-		{40, "medium"}, {50, "medium"}, {59, "medium"},
-		{60, "high"}, {70, "high"}, {79, "high"},
-		{80, "critical"}, {90, "critical"}, {100, "critical"},
+		{0, "info"}, {10, "info"}, {19, "info"}, {20, "info"},
+		{21, "low"}, {30, "low"}, {39, "low"}, {40, "low"},
+		{41, "medium"}, {50, "medium"}, {59, "medium"}, {60, "medium"},
+		{61, "high"}, {70, "high"}, {79, "high"}, {80, "high"},
+		{81, "critical"}, {90, "critical"}, {100, "critical"},
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, SeverityForScore(c.score), "SeverityForScore(%d)", c.score)
