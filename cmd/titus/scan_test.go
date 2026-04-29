@@ -1,11 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
+	"github.com/praetorian-inc/titus/pkg/rule"
+	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -219,4 +223,129 @@ func init() {
 	if extractMaxDepth == 0 {
 		extractMaxDepth = 5
 	}
+}
+
+func TestLoadCustomRulesPath_SingleFileSingleRule(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "one.yml")
+	writeRulesYAML(t, path, []ruleStub{{ID: "np.test.path.solo", BaseScore: 50}})
+
+	loader := newRuleLoader(t)
+	rules, err := loadCustomRulesPath(loader, path)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	assert.Equal(t, "np.test.path.solo", rules[0].ID)
+}
+
+func TestLoadCustomRulesPath_SingleFileMultiRule(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "multi.yml")
+	writeRulesYAML(t, path, []ruleStub{
+		{ID: "np.test.path.multi.1", BaseScore: 50},
+		{ID: "np.test.path.multi.2", BaseScore: 60},
+		{ID: "np.test.path.multi.3", BaseScore: 70},
+	})
+
+	loader := newRuleLoader(t)
+	rules, err := loadCustomRulesPath(loader, path)
+	require.NoError(t, err)
+	require.Len(t, rules, 3)
+	ids := ruleIDs(rules)
+	assert.ElementsMatch(t, []string{
+		"np.test.path.multi.1",
+		"np.test.path.multi.2",
+		"np.test.path.multi.3",
+	}, ids)
+}
+
+func TestLoadCustomRulesPath_DirectoryMixedExtensions(t *testing.T) {
+	dir := t.TempDir()
+	writeRulesYAML(t, filepath.Join(dir, "a.yml"), []ruleStub{{ID: "np.test.dir.a", BaseScore: 50}})
+	writeRulesYAML(t, filepath.Join(dir, "b.yaml"), []ruleStub{
+		{ID: "np.test.dir.b1", BaseScore: 50},
+		{ID: "np.test.dir.b2", BaseScore: 60},
+	})
+	writeRulesYAML(t, filepath.Join(dir, "C.YAML"), []ruleStub{{ID: "np.test.dir.c", BaseScore: 50}})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("ignore me"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.md"), []byte("# ignore"), 0o644))
+
+	loader := newRuleLoader(t)
+	rules, err := loadCustomRulesPath(loader, dir)
+	require.NoError(t, err)
+	ids := ruleIDs(rules)
+	assert.ElementsMatch(t, []string{
+		"np.test.dir.a",
+		"np.test.dir.b1",
+		"np.test.dir.b2",
+		"np.test.dir.c",
+	}, ids)
+}
+
+func TestLoadCustomRulesPath_EmptyDirectory(t *testing.T) {
+	dir := t.TempDir()
+	loader := newRuleLoader(t)
+	_, err := loadCustomRulesPath(loader, dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no .yml or .yaml files found")
+}
+
+func TestLoadCustomRulesPath_NestedSubdirectory(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "sub", "deeper")
+	require.NoError(t, os.MkdirAll(nested, 0o755))
+	writeRulesYAML(t, filepath.Join(dir, "top.yml"), []ruleStub{{ID: "np.test.nested.top", BaseScore: 50}})
+	writeRulesYAML(t, filepath.Join(nested, "deep.yaml"), []ruleStub{{ID: "np.test.nested.deep", BaseScore: 50}})
+
+	loader := newRuleLoader(t)
+	rules, err := loadCustomRulesPath(loader, dir)
+	require.NoError(t, err)
+	ids := ruleIDs(rules)
+	assert.ElementsMatch(t, []string{
+		"np.test.nested.top",
+		"np.test.nested.deep",
+	}, ids)
+}
+
+func TestLoadCustomRulesPath_MissingPath(t *testing.T) {
+	loader := newRuleLoader(t)
+	_, err := loadCustomRulesPath(loader, filepath.Join(t.TempDir(), "does-not-exist"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stat ")
+}
+
+// ruleStub describes a synthetic rule used in tests for loadCustomRulesPath.
+type ruleStub struct {
+	ID        string
+	BaseScore int
+}
+
+// writeRulesYAML serializes the given rule stubs as a YAML rules file at path.
+// Patterns are synthetic placeholders; no real secret material is used.
+func writeRulesYAML(t *testing.T, path string, rules []ruleStub) {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString("rules:\n")
+	for i, r := range rules {
+		fmt.Fprintf(&b, "  - name: Synthetic Rule %d\n", i+1)
+		fmt.Fprintf(&b, "    id: %s\n", r.ID)
+		fmt.Fprintf(&b, "    pattern: synthetic_%d_[A-Za-z0-9]{8}\n", i+1)
+		fmt.Fprintf(&b, "    description: synthetic test rule\n")
+		fmt.Fprintf(&b, "    base_score: %d\n", r.BaseScore)
+	}
+	require.NoError(t, os.WriteFile(path, []byte(b.String()), 0o644))
+}
+
+// newRuleLoader returns a fresh rule.Loader for tests.
+func newRuleLoader(t *testing.T) *rule.Loader {
+	t.Helper()
+	return rule.NewLoader()
+}
+
+// ruleIDs extracts rule IDs from a slice of *types.Rule for set-based assertions.
+func ruleIDs(rules []*types.Rule) []string {
+	ids := make([]string, len(rules))
+	for i, r := range rules {
+		ids[i] = r.ID
+	}
+	return ids
 }

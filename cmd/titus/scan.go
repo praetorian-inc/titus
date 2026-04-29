@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -462,11 +463,11 @@ func loadRules(path, include, exclude, rulesetID string) ([]*types.Rule, error) 
 		if err != nil {
 			return nil, err
 		}
-		custom, err := loader.LoadRuleFile(path)
+		custom, err := loadCustomRulesPath(loader, path)
 		if err != nil {
 			return nil, err
 		}
-		rules = append(builtins, custom)
+		rules = append(builtins, custom...)
 	} else {
 		// Builtin rules
 		rules, err = loader.LoadBuiltinRules()
@@ -505,6 +506,53 @@ func loadRules(path, include, exclude, rulesetID string) ([]*types.Rule, error) 
 	}
 
 	return rules, nil
+}
+
+// loadCustomRulesPath loads rules from a file or directory.
+// If path is a file, it is parsed as a (possibly multi-rule) YAML file.
+// If path is a directory, it is walked recursively for .yml/.yaml files
+// (case-insensitive) and all rules from all files are returned.
+func loadCustomRulesPath(loader *rule.Loader, path string) ([]*types.Rule, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+
+	var files []string
+	if info.IsDir() {
+		walkErr := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(p))
+			if ext == ".yml" || ext == ".yaml" {
+				files = append(files, p)
+			}
+			return nil
+		})
+		if walkErr != nil {
+			return nil, fmt.Errorf("walking %s: %w", path, walkErr)
+		}
+	} else {
+		files = []string{path}
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no .yml or .yaml files found in %s", path)
+	}
+
+	var allRules []*types.Rule
+	for _, f := range files {
+		fileRules, err := loader.LoadRulesFromFileMulti(f)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", f, err)
+		}
+		allRules = append(allRules, fileRules...)
+	}
+	return allRules, nil
 }
 
 // openScanStore creates the store backend based on the output path configuration.
@@ -593,7 +641,7 @@ func outputScanResults(cmd *cobra.Command, s store.Store, rules []*types.Rule, r
 // parseSize converts size strings like "10MB" to bytes.
 func parseSize(sizeStr string) (int64, error) {
 	sizeStr = strings.TrimSpace(strings.ToUpper(sizeStr))
-	
+
 	// Parse multiplier suffix
 	multiplier := int64(1)
 	if strings.HasSuffix(sizeStr, "KB") {
@@ -606,20 +654,20 @@ func parseSize(sizeStr string) (int64, error) {
 		multiplier = 1024 * 1024 * 1024
 		sizeStr = strings.TrimSuffix(sizeStr, "GB")
 	}
-	
+
 	// Parse numeric value
 	val, err := strconv.ParseInt(strings.TrimSpace(sizeStr), 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("invalid size format: %s", sizeStr)
 	}
-	
+
 	return val * multiplier, nil
 }
 
 func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	// Parse extraction limits
 	limits := enum.DefaultExtractionLimits()
-	
+
 	if extractMaxSize != "" {
 		size, err := parseSize(extractMaxSize)
 		if err != nil {
@@ -627,7 +675,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 		}
 		limits.MaxSize = size
 	}
-	
+
 	if extractMaxTotal != "" {
 		size, err := parseSize(extractMaxTotal)
 		if err != nil {
@@ -635,7 +683,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 		}
 		limits.MaxTotal = size
 	}
-	
+
 	limits.MaxDepth = extractMaxDepth
 	limits.SQLiteRowLimit = scanSQLiteRowLimit
 
