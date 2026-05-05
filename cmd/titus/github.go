@@ -7,9 +7,6 @@ import (
 	"time"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
-	"github.com/praetorian-inc/titus/pkg/matcher"
-	"github.com/praetorian-inc/titus/pkg/store"
-	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
 )
 
@@ -141,49 +138,19 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		User:      githubUser,
 		SkipForks: githubSkipForks,
 		Config: enum.Config{
-			MaxFileSize: 10 * 1024 * 1024,
+			MaxFileSize: scanMaxFileSize,
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating GitHub client: %w", err)
 	}
 
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
-	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
-	ruleMap := make(map[string]*types.Rule)
-	for _, r := range rules {
-		ruleMap[r.ID] = r
-	}
-
-	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: 3,
-	})
-	if err != nil {
-		return fmt.Errorf("creating matcher: %w", err)
-	}
-	defer func() { _ = m.Close() }()
-
-	s, err := store.New(store.Config{
-		Path: scanOutputPath,
-	})
-	if err != nil {
-		return fmt.Errorf("creating store: %w", err)
-	}
-	defer func() { _ = s.Close() }()
-
-	for _, r := range rules {
-		if err := s.AddRule(r); err != nil {
-			return fmt.Errorf("storing rule: %w", err)
-		}
-	}
-
-	ctx := context.Background()
 	var enumerator enum.Enumerator
-
 	if githubNoClone {
 		enumerator = ghEnum
 	} else {
@@ -192,11 +159,11 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("listing repositories: %w", err)
 		}
-
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Found %d repositories to scan\n\n", len(repos))
 
 		cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
-			MaxFileSize: 10 * 1024 * 1024,
+			MaxFileSize: scanMaxFileSize,
+			IgnoreFile:  scanIgnoreFile,
 		})
 		cloneEnum.Git = githubGit
 		cloneEnum.Token = token
@@ -206,85 +173,21 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		enumerator = cloneEnum
 	}
 
-	matchCount := 0
-	findingCount := 0
+	target := repo
+	if githubOrg != "" {
+		target = githubOrg
+	} else if githubUser != "" {
+		target = githubUser
+	} else if owner != "" {
+		target = owner + "/" + repo
+	}
 
-	err = enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		if err := s.AddBlob(blobID, int64(len(content))); err != nil {
-			return fmt.Errorf("storing blob: %w", err)
-		}
-
-		if err := s.AddProvenance(blobID, prov); err != nil {
-			return fmt.Errorf("storing provenance: %w", err)
-		}
-
-		matches, err := m.MatchWithBlobID(content, blobID)
-		if err != nil {
-			return fmt.Errorf("matching content: %w", err)
-		}
-
-		for _, match := range matches {
-			startLine, startCol := types.ComputeLineColumn(content, int(match.Location.Offset.Start))
-			endLine, endCol := types.ComputeLineColumn(content, int(match.Location.Offset.End))
-			match.Location.Source.Start.Line = startLine
-			match.Location.Source.Start.Column = startCol
-			match.Location.Source.End.Line = endLine
-			match.Location.Source.End.Column = endCol
-		}
-
-		for _, match := range matches {
-			matchCount++
-
-			if err := s.AddMatch(match); err != nil {
-				return fmt.Errorf("storing match: %w", err)
-			}
-
-			rule, ok := ruleMap[match.RuleID]
-			if !ok {
-				return fmt.Errorf("rule not found: %s", match.RuleID)
-			}
-			findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
-			exists, err := s.FindingExists(findingID)
-			if err != nil {
-				return fmt.Errorf("checking finding: %w", err)
-			}
-
-			if !exists {
-				findingCount++
-				finding := &types.Finding{
-					ID:     findingID,
-					RuleID: match.RuleID,
-					Groups: match.Groups,
-				}
-				if err := s.AddFinding(finding); err != nil {
-					return fmt.Errorf("storing finding: %w", err)
-				}
-			}
-		}
-
-		return nil
+	return runPipeline(ctx, cmd, enumerator, pipelineOpts{
+		Target:       target,
+		OutputPath:   scanOutputPath,
+		OutputFormat: scanOutputFormat,
+		TokenEnvVar:  "GITHUB_TOKEN",
 	})
-
-	if err != nil {
-		return fmt.Errorf("scanning GitHub: %w", err)
-	}
-
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "GitHub scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
-
-	if scanOutputFormat == "json" {
-		matches, err := s.GetAllMatches()
-		if err != nil {
-			return fmt.Errorf("retrieving matches: %w", err)
-		}
-		return outputMatches(cmd, matches)
-	}
-
-	findings, err := s.GetFindings()
-	if err != nil {
-		return fmt.Errorf("retrieving findings: %w", err)
-	}
-	return outputFindings(cmd, findings)
 }
 
 // splitOwnerRepo splits "owner/repo" into ["owner", "repo"].
