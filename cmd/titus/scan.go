@@ -1497,7 +1497,7 @@ type scoringEngineInterface interface {
 // must abort rather than silently scoring all findings at base.
 func buildScoringEngine() (scoringEngineInterface, error) {
 	loader := scoring.NewLoader()
-	scorers, err := loader.LoadBuiltinScorers()
+	yamlScorers, err := loader.LoadBuiltinScorers()
 	if err != nil {
 		return nil, fmt.Errorf("loading scorers: %w", err)
 	}
@@ -1506,5 +1506,6 @@ func buildScoringEngine() (scoringEngineInterface, error) {
 		Timeout:      scanScoreTimeout,
 		Budget:       scanScoreBudget,
 	}
-	return scoring.NewEngine(scorers, cfg), nil
+	allScorers := append(scoring.BuiltinGoScorers(), yamlScorers...)
+	return scoring.NewEngine(allScorers, cfg), nil
 }
