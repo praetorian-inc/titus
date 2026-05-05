@@ -111,7 +111,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Filesystem
 	if _, err := os.Stat(target); err != nil {
-		return fmt.Errorf("target does not exist: %s", target)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("target does not exist: %s", target)
+		}
+		return fmt.Errorf("stat target %s: %w", target, err)
 	}
 
 	enumerator, err := createEnumerator(target, scanGit)
@@ -149,13 +152,13 @@ func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store,
 			if err := tx.AddMatch(match); err != nil {
 				return fmt.Errorf("storing retry match: %w", err)
 			}
+			matchCount.Add(1)
 			added, err := upsertFinding(ctx, tx, match, ruleMap, engine, resolvedAccess)
 			if err != nil {
 				return err
 			}
 			if added {
 				findingCount.Add(1)
-				matchCount.Add(1)
 			}
 		}
 		return nil
@@ -379,28 +382,37 @@ func parseSize(sizeStr string) (int64, error) {
 	return val * multiplier, nil
 }
 
-func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
-	// Parse extraction limits
+// resolveExtractionLimits builds enum.ExtractionLimits from the package-level
+// scan flags. Shared by every code path that constructs an enum.Config so
+// --extract-max-size / --extract-max-total / --extract-max-depth /
+// --sqlite-row-limit apply uniformly across filesystem, S3, and clone
+// enumerators.
+func resolveExtractionLimits() (enum.ExtractionLimits, error) {
 	limits := enum.DefaultExtractionLimits()
-
 	if extractMaxSize != "" {
 		size, err := parseSize(extractMaxSize)
 		if err != nil {
-			return nil, fmt.Errorf("parsing extract-max-size: %w", err)
+			return limits, fmt.Errorf("parsing extract-max-size: %w", err)
 		}
 		limits.MaxSize = size
 	}
-
 	if extractMaxTotal != "" {
 		size, err := parseSize(extractMaxTotal)
 		if err != nil {
-			return nil, fmt.Errorf("parsing extract-max-total: %w", err)
+			return limits, fmt.Errorf("parsing extract-max-total: %w", err)
 		}
 		limits.MaxTotal = size
 	}
-
 	limits.MaxDepth = extractMaxDepth
 	limits.SQLiteRowLimit = scanSQLiteRowLimit
+	return limits, nil
+}
+
+func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
+	limits, err := resolveExtractionLimits()
+	if err != nil {
+		return nil, err
+	}
 
 	config := enum.Config{
 		Root:            target,
@@ -493,11 +505,17 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		cloneURL = "https://gitlab.com/" + rt.FullPath + ".git"
 	}
 
+	limits, err := resolveExtractionLimits()
+	if err != nil {
+		return err
+	}
 	cloneEnum := enum.NewCloneEnumerator(
 		[]enum.RepoInfo{{Name: rt.FullPath, CloneURL: cloneURL}},
 		enum.Config{
-			MaxFileSize: scanMaxFileSize,
-			IgnoreFile:  scanIgnoreFile,
+			MaxFileSize:     scanMaxFileSize,
+			IgnoreFile:      scanIgnoreFile,
+			ExtractArchives: string(scanExtractArchivesFlag),
+			ExtractLimits:   limits,
 		})
 	cloneEnum.Git = scanGit
 	cloneEnum.Token = token
@@ -516,23 +534,10 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 
 // runS3Scan handles scanning of S3 buckets detected from s3:// URLs.
 func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
-	limits := enum.DefaultExtractionLimits()
-	if extractMaxSize != "" {
-		size, err := parseSize(extractMaxSize)
-		if err != nil {
-			return fmt.Errorf("parsing extract-max-size: %w", err)
-		}
-		limits.MaxSize = size
+	limits, err := resolveExtractionLimits()
+	if err != nil {
+		return err
 	}
-	if extractMaxTotal != "" {
-		size, err := parseSize(extractMaxTotal)
-		if err != nil {
-			return fmt.Errorf("parsing extract-max-total: %w", err)
-		}
-		limits.MaxTotal = size
-	}
-	limits.MaxDepth = extractMaxDepth
-	limits.SQLiteRowLimit = scanSQLiteRowLimit
 
 	s3Enum := enum.NewS3Enumerator(bucket, prefix, enum.Config{
 		MaxFileSize:     scanMaxFileSize,
