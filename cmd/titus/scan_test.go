@@ -78,7 +78,7 @@ func TestCreateEnumerator_InvalidTarget(t *testing.T) {
 }
 
 func TestLoadRules_DefaultRuleset(t *testing.T) {
-	rules, err := loadRules("", "", "", "default")
+	rules, err := loadRules("", "", "", "default", false)
 	require.NoError(t, err)
 	ruleIDs := make(map[string]bool)
 	for _, r := range rules {
@@ -90,7 +90,7 @@ func TestLoadRules_DefaultRuleset(t *testing.T) {
 }
 
 func TestLoadRules_AllRuleset(t *testing.T) {
-	rules, err := loadRules("", "", "", "all")
+	rules, err := loadRules("", "", "", "all", false)
 	require.NoError(t, err)
 	ruleIDs := make(map[string]bool)
 	for _, r := range rules {
@@ -101,12 +101,12 @@ func TestLoadRules_AllRuleset(t *testing.T) {
 }
 
 func TestLoadRules_UnknownRuleset(t *testing.T) {
-	_, err := loadRules("", "", "", "bogus")
+	_, err := loadRules("", "", "", "bogus", false)
 	assert.Error(t, err, "expected error for unknown ruleset")
 }
 
 func TestLoadRules_RulesetThenIncludeExclude(t *testing.T) {
-	rules, err := loadRules("", "np\\.aws\\.", "", "default")
+	rules, err := loadRules("", "np\\.aws\\.", "", "default", false)
 	require.NoError(t, err)
 	ruleIDs := make(map[string]bool)
 	for _, r := range rules {
@@ -117,7 +117,7 @@ func TestLoadRules_RulesetThenIncludeExclude(t *testing.T) {
 }
 
 func TestLoadRules_AssetsRuleset(t *testing.T) {
-	rules, err := loadRules("", "", "", "np.assets")
+	rules, err := loadRules("", "", "", "np.assets", false)
 	require.NoError(t, err)
 	ruleIDs := make(map[string]bool)
 	for _, r := range rules {

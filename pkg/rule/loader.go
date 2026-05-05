@@ -211,6 +211,7 @@ func convertYAMLRule(yr yamlRule) (*types.Rule, error) {
 		Categories:       yr.Categories,
 		MinEntropy:       yr.MinEntropy,
 		BaseScore:        score,
+		Noisy:            yr.Noisy,
 	}
 	if yr.PatternRequirements != nil {
 		r.PatternRequirements = &types.PatternRequirements{

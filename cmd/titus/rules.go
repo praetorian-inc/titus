@@ -11,10 +11,11 @@ import (
 )
 
 var (
-	rulesPath    string
-	rulesInclude string
-	rulesExclude string
-	outputFormat string
+	rulesPath         string
+	rulesInclude      string
+	rulesExclude      string
+	outputFormat      string
+	rulesIncludeNoisy bool
 )
 
 var rulesCmd = &cobra.Command{
@@ -36,6 +37,7 @@ func init() {
 	rulesListCmd.Flags().StringVar(&rulesInclude, "include", "", "Include rules matching regex pattern (comma-separated)")
 	rulesListCmd.Flags().StringVar(&rulesExclude, "exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	rulesListCmd.Flags().StringVar(&outputFormat, "format", "table", "Output format: table, json")
+	rulesListCmd.Flags().BoolVar(&rulesIncludeNoisy, "include-noisy", false, "Include rules marked noisy: true (off by default; high false-positive rate)")
 }
 
 func runRulesList(cmd *cobra.Command, args []string) error {
@@ -59,6 +61,9 @@ func runRulesList(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("loading builtin rules: %w", err)
 		}
 	}
+
+	// Drop noisy rules unless the user opted in.
+	rules = rule.FilterNoisy(rules, rulesIncludeNoisy)
 
 	// Apply filtering if patterns specified
 	if rulesInclude != "" || rulesExclude != "" {

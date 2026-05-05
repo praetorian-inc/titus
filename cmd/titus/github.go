@@ -162,7 +162,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating GitHub client: %w", err)
 	}
 
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}

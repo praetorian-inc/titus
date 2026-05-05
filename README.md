@@ -152,6 +152,9 @@ titus scan path/to/code --rules-exclude "kingfisher.generic"
 
 # Use a custom rules file for organization-specific secrets
 titus scan path/to/code --rules path/to/custom-rules.yaml
+
+# Opt in to rules marked noisy: true (high false-positive rate, off by default)
+titus scan path/to/code --include-noisy
 ```
 
 ### Extracting Secrets from Binary Files
