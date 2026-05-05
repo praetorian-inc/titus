@@ -494,20 +494,18 @@ func parseRepoURL(target string) (repoTarget, bool) {
 
 // runRepoScan handles scanning of GitHub/GitLab repositories detected from URL-like targets.
 func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
-	// Resolve token from environment
-	var token string
+	var tokenEnv string
 	switch rt.Platform {
 	case "github":
-		token = os.Getenv("GITHUB_TOKEN")
+		tokenEnv = "GITHUB_TOKEN"
 	case "gitlab":
-		token = os.Getenv("GITLAB_TOKEN")
+		tokenEnv = "GITLAB_TOKEN"
 	}
-
+	token := os.Getenv(tokenEnv)
 	if token == "" {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Note: No %s token provided. Using unauthenticated access (public repos only).\n\n", rt.Platform)
 	}
 
-	// Build clone URL
 	var cloneURL string
 	switch rt.Platform {
 	case "github":
@@ -516,234 +514,25 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		cloneURL = "https://gitlab.com/" + rt.FullPath + ".git"
 	}
 
-	repos := []enum.RepoInfo{{
-		Name:     rt.FullPath,
-		CloneURL: cloneURL,
-	}}
-
-	cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
-		MaxFileSize: scanMaxFileSize,
-		IgnoreFile:  scanIgnoreFile,
-	})
+	cloneEnum := enum.NewCloneEnumerator(
+		[]enum.RepoInfo{{Name: rt.FullPath, CloneURL: cloneURL}},
+		enum.Config{
+			MaxFileSize: scanMaxFileSize,
+			IgnoreFile:  scanIgnoreFile,
+		})
 	cloneEnum.Git = scanGit
 	cloneEnum.Token = token
 
-	// Load rules
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
-	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
-	ruleMap := make(map[string]*types.Rule)
-	for _, r := range rules {
-		ruleMap[r.ID] = r
-	}
-
-	// Create matcher
-	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: scanContextLines,
-		WarnFunc: func(format string, args ...any) {
-			fmt.Fprintf(os.Stderr, format, args...)
-		},
+	return runPipeline(ctx, cmd, cloneEnum, pipelineOpts{
+		Target:       rt.FullPath,
+		OutputPath:   scanOutputPath,
+		OutputFormat: scanOutputFormat,
+		TokenEnvVar:  tokenEnv,
 	})
-	if err != nil {
-		return fmt.Errorf("creating matcher: %w", err)
-	}
-	defer m.Close()
-
-	// Create store
-	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
-	if err != nil {
-		return err
-	}
-	if ds != nil {
-		defer ds.Close()
-	} else {
-		defer s.Close()
-	}
-
-	for _, r := range rules {
-		if err := s.AddRule(r); err != nil {
-			return fmt.Errorf("storing rule: %w", err)
-		}
-	}
-
-	validationEngine := initValidationEngine()
-
-	// Wire validator awareness into the matcher's built-in deduplicator
-	if validationEngine != nil {
-		matcher.SetCanValidate(m, validationEngine.CanValidate)
-	}
-
-	// Build the scoring engine before workers start so the main worker pass
-	// can score findings (not just the drain-path retries).
-	repoEngine, err := buildScoringEngine()
-	if err != nil {
-		return fmt.Errorf("initializing scoring engine: %w", err)
-	}
-
-	// Resolve accessibility for score penalty (same logic as runScan).
-	ghToken := os.Getenv("GITHUB_TOKEN")
-	if rt.Platform == "gitlab" {
-		ghToken = os.Getenv("GITLAB_TOKEN")
-	}
-	repoAccessibility := ResolveAccessibility(scanAccessibility, rt.FullPath, ghToken)
-
-	ctx := context.Background()
-	var matchCount atomic.Int64
-	var findingCount atomic.Int64
-	var skippedCount atomic.Int64
-	var totalBytes atomic.Int64
-	var blobCount atomic.Int64
-	startTime := time.Now()
-
-	numWorkers := scanWorkers
-	if numWorkers < 1 {
-		numWorkers = 1
-	}
-	jobs := make(chan blobJob, 2*numWorkers)
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	// Producer
-	g.Go(func() error {
-		defer close(jobs)
-		return cloneEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-			totalBytes.Add(int64(len(content)))
-			blobCount.Add(1)
-
-			if scanIncremental {
-				exists, err := s.BlobExists(blobID)
-				if err != nil {
-					return fmt.Errorf("checking blob: %w", err)
-				}
-				if exists {
-					skippedCount.Add(1)
-					return nil
-				}
-			}
-
-			select {
-			case jobs <- blobJob{content: content, blobID: blobID, prov: prov}:
-				return nil
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		})
-	})
-
-	// Consumer workers (same as runScan)
-	const batchSize = 64
-	for i := 0; i < numWorkers; i++ {
-		g.Go(func() error {
-			type batchItem struct {
-				blobID  types.BlobID
-				prov    types.Provenance
-				size    int64
-				matches []*types.Match
-			}
-			var batch []batchItem
-
-			flush := func() error {
-				if len(batch) == 0 {
-					return nil
-				}
-				err := s.ExecBatch(func(tx store.Store) error {
-					for _, item := range batch {
-						if err := tx.AddBlob(item.blobID, item.size); err != nil {
-							return fmt.Errorf("storing blob: %w", err)
-						}
-						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
-							return fmt.Errorf("storing provenance: %w", err)
-						}
-						for _, match := range item.matches {
-							if err := tx.AddMatch(match); err != nil {
-								return fmt.Errorf("storing match: %w", err)
-							}
-							rule, ok := ruleMap[match.RuleID]
-							if !ok {
-								return fmt.Errorf("rule not found: %s", match.RuleID)
-							}
-							findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
-							exists, err := tx.FindingExists(findingID)
-							if err != nil {
-								return fmt.Errorf("checking finding: %w", err)
-							}
-							if !exists {
-								findingCount.Add(1)
-								f := &types.Finding{
-									ID:     findingID,
-									RuleID: match.RuleID,
-									Groups: match.Groups,
-								}
-								f.Score = repoEngine.Score(ctx, f, []*types.Match{match}, rule)
-								if repoAccessibility == AccessibilityPrivate {
-									ApplyAccessibilityModifier(f.Score)
-								}
-								if err := tx.AddFinding(f); err != nil {
-									return fmt.Errorf("storing finding: %w", err)
-								}
-							}
-						}
-					}
-					return nil
-				})
-				batch = batch[:0]
-				return err
-			}
-
-			for job := range jobs {
-				matches, err := m.MatchWithBlobID(job.content, job.blobID)
-				if err != nil {
-					return fmt.Errorf("matching content: %w", err)
-				}
-
-				for _, match := range matches {
-					startLine, startCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.Start))
-					endLine, endCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.End))
-					match.Location.Source.Start.Line = startLine
-					match.Location.Source.Start.Column = startCol
-					match.Location.Source.End.Line = endLine
-					match.Location.Source.End.Column = endCol
-				}
-
-				validateMatches(ctx, validationEngine, matches, verbose)
-				matchCount.Add(int64(len(matches)))
-
-				batch = append(batch, batchItem{
-					blobID:  job.blobID,
-					prov:    job.prov,
-					size:    int64(len(job.content)),
-					matches: matches,
-				})
-				if len(batch) >= batchSize {
-					if err := flush(); err != nil {
-						return err
-					}
-				}
-			}
-			return flush()
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
-			// Normal shutdown via Ctrl+C, not an error
-		} else {
-			return fmt.Errorf("scanning: %w", err)
-		}
-	}
-
-	if err := drainTimedOutMatches(ctx, m, s, ruleMap, repoEngine, &findingCount, &matchCount, repoAccessibility); err != nil {
-		return fmt.Errorf("retrying timed-out blobs: %w", err)
-	}
-
-	duration := time.Since(startTime)
-	printScanStats(cmd, scanOutputFormat, scanOutputPath,
-		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
-
-	return outputScanResults(cmd, s, rules, ruleMap)
 }
 
 // runS3Scan handles scanning of S3 buckets detected from s3:// URLs.
