@@ -161,9 +161,15 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Found %d repositories to scan\n\n", len(repos))
 
+		limits, err := resolveExtractionLimits()
+		if err != nil {
+			return err
+		}
 		cloneEnum := enum.NewCloneEnumerator(repos, enum.Config{
-			MaxFileSize: scanMaxFileSize,
-			IgnoreFile:  scanIgnoreFile,
+			MaxFileSize:     scanMaxFileSize,
+			IgnoreFile:      scanIgnoreFile,
+			ExtractArchives: string(scanExtractArchivesFlag),
+			ExtractLimits:   limits,
 		})
 		cloneEnum.Git = githubGit
 		cloneEnum.Token = token
