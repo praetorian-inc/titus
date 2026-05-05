@@ -124,6 +124,32 @@ func extractUsernameFromARN(arn string) string {
 	return arn[idx+len(prefix):]
 }
 
+// iamCanAssumeRolesCondition fires when the credential can enumerate IAM roles,
+// indicating broad sts:AssumeRole scope is likely available.
+type iamCanAssumeRolesCondition struct{}
+
+func (c *iamCanAssumeRolesCondition) markDynamic() {}
+
+func (c *iamCanAssumeRolesCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
+	keyID, secretKey, ok := extractAWSCredentials(m)
+	if !ok {
+		return false, nil
+	}
+	cfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(keyID, secretKey, ""),
+		),
+		awsconfig.WithRegion("us-east-1"),
+	)
+	if err != nil {
+		return false, fmt.Errorf("aws config: %w", err)
+	}
+	client := iam.NewFromConfig(cfg)
+	// ListRoles requires iam:ListRoles — if it succeeds, the key has broad IAM read
+	_, err = client.ListRoles(ctx, &iam.ListRolesInput{MaxItems: awslib.Int32(1)})
+	return err == nil, nil
+}
+
 // stsKeyActiveCondition fires when the key is a live, working AWS credential.
 // Uses STS GetCallerIdentity which requires no IAM permissions.
 // Implements networkCondition so it is gated behind --score-scope.

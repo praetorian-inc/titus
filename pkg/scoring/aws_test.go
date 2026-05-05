@@ -52,3 +52,8 @@ func TestExtractUsernameFromARN(t *testing.T) {
 	assert.Equal(t, "", extractUsernameFromARN("arn:aws:sts::123456789012:assumed-role/MyRole/session"))
 	assert.Equal(t, "", extractUsernameFromARN(""))
 }
+
+func TestIAMCanAssumeRolesCondition_IsDynamic(t *testing.T) {
+	mod := Modifier{Condition: &iamCanAssumeRolesCondition{}}
+	assert.True(t, mod.IsDynamic())
+}
