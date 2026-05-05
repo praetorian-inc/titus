@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -82,36 +81,10 @@ var scanCmd = &cobra.Command{
 }
 
 func init() {
-	scanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory")
-	scanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
-	scanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
-	scanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
-	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.ds", "Output datastore path (:memory: for in-memory, :auto: to derive from target name)")
-	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
+	addRulesFlags(scanCmd)
+	addOutputFlags(scanCmd)
+	addPipelineFlags(scanCmd)
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
-	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
-	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
-	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
-	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
-	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
-	scanCmd.Flags().BoolVar(&scanStoreBlobs, "store-blobs", false, "Store file contents in blobs/ directory")
-	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract", "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')")
-	scanCmd.Flags().StringVar(&extractMaxSize, "extract-max-size", "10MB", "Max uncompressed size per extracted file")
-	scanCmd.Flags().StringVar(&extractMaxTotal, "extract-max-total", "100MB", "Max total bytes to extract from one archive")
-	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
-	scanCmd.Flags().IntVar(&scanSQLiteRowLimit, "sqlite-row-limit", 1000, "Max rows per table for SQLite extraction (0 for unlimited)")
-	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
-	scanCmd.Flags().IntVar(&scanReaders, "readers", 0, "Number of parallel file readers (0 = NumCPU)")
-	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
-	scanCmd.Flags().StringVar(&scanAccessibility, "accessibility", "auto",
-		`code accessibility: "public" (no penalty), "private" (-25 to all scores),`+"\n"+
-			`or "auto" (detect via git remote/GitHub API, defaults to private if undetermined)`)
-	scanCmd.Flags().BoolVar(&scanScopeEnabled, "score-scope", false,
-		"enable HTTP dynamic scoring modifiers (calls external APIs to determine secret scope/permissions)")
-	scanCmd.Flags().DurationVar(&scanScoreTimeout, "score-timeout", 10*time.Second,
-		"per-modifier HTTP timeout for dynamic scoring (default 10s)")
-	scanCmd.Flags().DurationVar(&scanScoreBudget, "score-budget", 60*time.Second,
-		"per-finding overall scoring budget across all modifiers (default 60s; 0 = unlimited)")
 }
 
 // blobJob represents a unit of work for the worker pool.
