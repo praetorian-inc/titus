@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,49 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRunPipeline_FilesystemEquivalence(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "leak.txt"),
+		[]byte("AKIAIOSFODNN7EXAMPLE\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reset relevant globals to known defaults.
+	scanWorkers = 2
+	scanMaxFileSize = 10 * 1024 * 1024
+	scanContextLines = 3
+	scanRulesPath = ""
+	scanRulesInclude = ""
+	scanRulesExclude = ""
+	scanRuleset = "default"
+	scanAccessibility = "public"
+	scanOutputPath = filepath.Join(t.TempDir(), "out.ds")
+	scanOutputFormat = "human"
+
+	enumerator, err := createEnumerator(dir, false)
+	if err != nil {
+		t.Fatalf("createEnumerator: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "x"}
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	if err := runPipeline(context.Background(), cmd, enumerator, pipelineOpts{
+		Target:       dir,
+		OutputPath:   scanOutputPath,
+		OutputFormat: scanOutputFormat,
+	}); err != nil {
+		t.Fatalf("runPipeline: %v", err)
+	}
+
+	for _, sub := range []string{"clones", "scratch", ".gitignore"} {
+		if _, err := os.Stat(filepath.Join(scanOutputPath, sub)); err != nil {
+			t.Errorf("missing %s in datastore: %v", sub, err)
+		}
+	}
+}
 
 func TestScanCommand_Exists(t *testing.T) {
 	cmd, _, err := rootCmd.Find([]string{"scan"})
