@@ -24,6 +24,7 @@ type yamlRule struct {
 	MinEntropy          float64                  `yaml:"min_entropy,omitempty"`
 	PatternRequirements *yamlPatternRequirements `yaml:"pattern_requirements,omitempty"`
 	BaseScore           *int                     `yaml:"base_score"`
+	Noisy               bool                     `yaml:"noisy,omitempty"`
 }
 
 // yamlRulesFile represents the top-level structure of a rules YAML file.

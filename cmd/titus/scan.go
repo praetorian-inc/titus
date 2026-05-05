@@ -65,6 +65,7 @@ var (
 	scanReaders             int
 	scanRuleset             string
 	scanIgnoreFile          string
+	scanIncludeNoisy        bool
 
 	// Dynamic scoring flags (M3).
 	scanScopeEnabled bool
@@ -102,6 +103,7 @@ func init() {
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
 	scanCmd.Flags().IntVar(&scanReaders, "readers", 0, "Number of parallel file readers (0 = NumCPU)")
 	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
+	scanCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Enable rules marked noisy: true (off by default; high false-positive rate)")
 	scanCmd.Flags().StringVar(&scanAccessibility, "accessibility", "auto",
 		`code accessibility: "public" (no penalty), "private" (-25 to all scores),`+"\n"+
 			`or "auto" (detect via git remote/GitHub API, defaults to private if undetermined)`)
@@ -143,7 +145,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load rules
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
@@ -450,7 +452,7 @@ func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store,
 // HELPERS
 // =============================================================================
 
-func loadRules(path, include, exclude, rulesetID string) ([]*types.Rule, error) {
+func loadRules(path, include, exclude, rulesetID string, includeNoisy bool) ([]*types.Rule, error) {
 	loader := rule.NewLoader()
 
 	var rules []*types.Rule
@@ -491,6 +493,9 @@ func loadRules(path, include, exclude, rulesetID string) ([]*types.Rule, error) 
 			rules = rule.ApplyRuleset(rules, rs)
 		}
 	}
+
+	// Drop noisy rules unless the user opted in.
+	rules = rule.FilterNoisy(rules, includeNoisy)
 
 	// Apply regex filtering if patterns specified
 	if include != "" || exclude != "" {
@@ -746,7 +751,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	cloneEnum.Token = token
 
 	// Load rules
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
@@ -966,7 +971,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 // runS3Scan handles scanning of S3 buckets detected from s3:// URLs.
 func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 	// Load rules
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}

@@ -61,6 +61,7 @@ func init() {
 	gitlabScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	gitlabScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	gitlabScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	gitlabScanCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Enable rules marked noisy: true (off by default; high false-positive rate)")
 
 	gitlabCmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
 	gitlabCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
@@ -75,6 +76,7 @@ func init() {
 	gitlabCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	gitlabCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	gitlabCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	gitlabCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Enable rules marked noisy: true (off by default; high false-positive rate)")
 
 	gitlabCmd.AddCommand(gitlabScanCmd)
 }
@@ -135,7 +137,7 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating GitLab client: %w", err)
 	}
 
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}

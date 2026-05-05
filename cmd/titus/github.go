@@ -79,6 +79,7 @@ func init() {
 	githubScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	githubScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	githubScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	githubScanCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Enable rules marked noisy: true (off by default; high false-positive rate)")
 
 	githubCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
 	githubCmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
@@ -94,6 +95,7 @@ func init() {
 	githubCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	githubCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	githubCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	githubCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Enable rules marked noisy: true (off by default; high false-positive rate)")
 
 	githubCmd.AddCommand(githubScanCmd)
 }
@@ -162,7 +164,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating GitHub client: %w", err)
 	}
 
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
