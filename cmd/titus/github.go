@@ -170,6 +170,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 			IgnoreFile:      scanIgnoreFile,
 			ExtractArchives: string(scanExtractArchivesFlag),
 			ExtractLimits:   limits,
+			NumReaders:      scanReaders,
 		})
 		cloneEnum.Git = githubGit
 		cloneEnum.Token = token

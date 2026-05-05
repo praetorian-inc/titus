@@ -140,6 +140,7 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 			IgnoreFile:      scanIgnoreFile,
 			ExtractArchives: string(scanExtractArchivesFlag),
 			ExtractLimits:   limits,
+			NumReaders:      scanReaders,
 		})
 		cloneEnum.Git = gitlabGit
 		cloneEnum.Token = token
