@@ -22,7 +22,7 @@ type pipelineOpts struct {
 	Target       string // for accessibility detection + log messages
 	OutputPath   string // already :auto:-resolved by caller
 	OutputFormat string // "json" | "sarif" | "human"
-	TokenEnvVar  string // env var name for accessibility token; "" = filesystem/no token
+	Token        string // resolved API token for accessibility detection; "" if none
 }
 
 // runPipeline executes the full scan pipeline (rules -> matcher -> store ->
@@ -91,11 +91,7 @@ func runPipeline(ctx context.Context, cmd *cobra.Command, enumerator enum.Enumer
 	}
 
 	// Resolve code accessibility for score adjustment.
-	var token string
-	if opts.TokenEnvVar != "" {
-		token = os.Getenv(opts.TokenEnvVar)
-	}
-	accessibility := ResolveAccessibility(scanAccessibility, opts.Target, token)
+	accessibility := ResolveAccessibility(scanAccessibility, opts.Target, opts.Token)
 
 	// Scan with parallel workers
 	var matchCount atomic.Int64
@@ -236,17 +232,21 @@ func runPipeline(ctx context.Context, cmd *cobra.Command, enumerator enum.Enumer
 	}
 
 	if err := g.Wait(); err != nil {
-		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
-			// Normal shutdown, not an error
-		} else {
-			return fmt.Errorf("scanning: %w", err)
+		if errors.Is(err, context.Canceled) {
+			// Normal shutdown (parent canceled or producer exited early via
+			// ctx.Done). Skip drain — its scoring would short-circuit anyway.
+			return nil
 		}
+		return fmt.Errorf("scanning: %w", err)
 	}
 
 	// Retry any blobs that timed out during the parallel pass. Use parentCtx
-	// because the errgroup-derived ctx is canceled by g.Wait().
-	if err := drainTimedOutMatches(parentCtx, m, s, ruleMap, engine, &findingCount, &matchCount, accessibility); err != nil {
-		return fmt.Errorf("retrying timed-out blobs: %w", err)
+	// because the errgroup-derived ctx is canceled by g.Wait(). If the parent
+	// itself was canceled, skip drain.
+	if parentCtx.Err() == nil {
+		if err := drainTimedOutMatches(parentCtx, m, s, ruleMap, engine, &findingCount, &matchCount, accessibility); err != nil {
+			return fmt.Errorf("retrying timed-out blobs: %w", err)
+		}
 	}
 
 	// Emit aggregate dynamic modifier stats if any errors occurred.

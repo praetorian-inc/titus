@@ -127,7 +127,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		Target:       target,
 		OutputPath:   scanOutputPath,
 		OutputFormat: scanOutputFormat,
-		TokenEnvVar:  "GITHUB_TOKEN",
+		Token:        os.Getenv("GITHUB_TOKEN"),
 	})
 }
 
@@ -474,14 +474,13 @@ func parseRepoURL(target string) (repoTarget, bool) {
 
 // runRepoScan handles scanning of GitHub/GitLab repositories detected from URL-like targets.
 func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
-	var tokenEnv string
+	var token string
 	switch rt.Platform {
 	case "github":
-		tokenEnv = "GITHUB_TOKEN"
+		token = os.Getenv("GITHUB_TOKEN")
 	case "gitlab":
-		tokenEnv = "GITLAB_TOKEN"
+		token = os.Getenv("GITLAB_TOKEN")
 	}
-	token := os.Getenv(tokenEnv)
 	if token == "" {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Note: No %s token provided. Using unauthenticated access (public repos only).\n\n", rt.Platform)
 	}
@@ -511,7 +510,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		Target:       rt.FullPath,
 		OutputPath:   scanOutputPath,
 		OutputFormat: scanOutputFormat,
-		TokenEnvVar:  tokenEnv,
+		Token:        token,
 	})
 }
 
@@ -549,7 +548,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 		Target:       "s3://" + bucket + "/" + prefix,
 		OutputPath:   scanOutputPath,
 		OutputFormat: scanOutputFormat,
-		TokenEnvVar:  "", // S3 has no git remote
+		Token:        "", // S3 has no git remote
 	})
 }
 
