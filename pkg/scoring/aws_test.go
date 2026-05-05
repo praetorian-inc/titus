@@ -40,3 +40,15 @@ func TestSTSKeyActiveCondition_IsDynamic(t *testing.T) {
 	mod := Modifier{Condition: cond}
 	assert.True(t, mod.IsDynamic(), "stsKeyActiveCondition should be dynamic (requires network)")
 }
+
+func TestIAMPolicyCondition_IsDynamic(t *testing.T) {
+	cond := &iamPolicyCondition{matchPolicies: []string{"AdministratorAccess"}}
+	mod := Modifier{Condition: cond}
+	assert.True(t, mod.IsDynamic())
+}
+
+func TestExtractUsernameFromARN(t *testing.T) {
+	assert.Equal(t, "MyUser", extractUsernameFromARN("arn:aws:iam::123456789012:user/MyUser"))
+	assert.Equal(t, "", extractUsernameFromARN("arn:aws:sts::123456789012:assumed-role/MyRole/session"))
+	assert.Equal(t, "", extractUsernameFromARN(""))
+}
