@@ -184,3 +184,31 @@ func TestResolveAutoName(t *testing.T) {
 		})
 	}
 }
+
+func TestGitLabScanCmd_DefaultOutputIsDatastore(t *testing.T) {
+	flag := gitlabScanCmd.Flags().Lookup("output")
+	if flag == nil {
+		t.Fatal("--output flag missing")
+	}
+	if flag.DefValue != "titus.ds" {
+		t.Errorf("expected default 'titus.ds', got %q", flag.DefValue)
+	}
+}
+
+func TestGitLabScanCmd_HasPipelineFlags(t *testing.T) {
+	for _, name := range []string{"workers", "validate", "accessibility", "store-blobs", "ignore"} {
+		if gitlabScanCmd.Flags().Lookup(name) == nil {
+			t.Errorf("gitlab scan: missing pipeline flag --%s", name)
+		}
+	}
+}
+
+func TestGitLabScanCmd_WorkersFlagAcceptsValues(t *testing.T) {
+	flag := gitlabScanCmd.Flags().Lookup("workers")
+	if flag == nil {
+		t.Fatal("--workers flag missing")
+	}
+	if flag.Value.Type() != "int" {
+		t.Errorf("expected int flag, got %s", flag.Value.Type())
+	}
+}
