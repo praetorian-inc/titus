@@ -23,3 +23,10 @@ func TestExtractGitHubToken_Missing(t *testing.T) {
 	_, ok := extractGitHubToken(m)
 	assert.False(t, ok)
 }
+
+func TestGitHubFineGrainedPermCondition_IsDynamic(t *testing.T) {
+	cond := &githubFineGrainedPermCondition{requiredPerm: "write"}
+	var mod Modifier
+	mod.Condition = cond
+	assert.True(t, mod.IsDynamic())
+}
