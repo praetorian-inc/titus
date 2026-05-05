@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -23,7 +22,6 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/praetorian-inc/titus/pkg/validator"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 )
 
 // extensionsValue is a custom flag type that displays as "extensions" in help
@@ -537,65 +535,6 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 
 // runS3Scan handles scanning of S3 buckets detected from s3:// URLs.
 func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
-	// Load rules
-	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
-	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
-	}
-
-	ruleMap := make(map[string]*types.Rule)
-	for _, r := range rules {
-		ruleMap[r.ID] = r
-	}
-
-	// Create matcher
-	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: scanContextLines,
-		WarnFunc: func(format string, args ...any) {
-			fmt.Fprintf(os.Stderr, format, args...)
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("creating matcher: %w", err)
-	}
-	defer m.Close()
-
-	// Create store
-	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
-	if err != nil {
-		return err
-	}
-	if ds != nil {
-		defer ds.Close()
-	} else {
-		defer s.Close()
-	}
-
-	// Store rules for foreign key constraints
-	for _, r := range rules {
-		if err := s.AddRule(r); err != nil {
-			return fmt.Errorf("storing rule: %w", err)
-		}
-	}
-
-	validationEngine := initValidationEngine()
-	if validationEngine != nil {
-		matcher.SetCanValidate(m, validationEngine.CanValidate)
-	}
-
-	// Build the scoring engine before workers start so the main worker pass
-	// can score findings (not just the drain-path retries).
-	s3Engine, err := buildScoringEngine()
-	if err != nil {
-		return fmt.Errorf("initializing scoring engine: %w", err)
-	}
-
-	// S3 objects have no git remote; resolve accessibility from the flag only
-	// (auto falls back to private, which is the conservative default).
-	s3Accessibility := ResolveAccessibility(scanAccessibility, "", "")
-
-	// Parse extraction limits
 	limits := enum.DefaultExtractionLimits()
 	if extractMaxSize != "" {
 		size, err := parseSize(extractMaxSize)
@@ -620,174 +559,16 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 		ExtractLimits:   limits,
 	})
 
-	ctx := context.Background()
-	var matchCount atomic.Int64
-	var findingCount atomic.Int64
-	var skippedCount atomic.Int64
-	var totalBytes atomic.Int64
-	var blobCount atomic.Int64
-	startTime := time.Now()
-
-	numWorkers := scanWorkers
-	if numWorkers < 1 {
-		numWorkers = 1
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
-	if verbose {
-		fmt.Fprintf(os.Stderr, "[scan] Starting S3 scan of s3://%s/%s with %d workers and %d rules\n", bucket, prefix, numWorkers, len(rules))
-	}
-
-	jobs := make(chan blobJob, 2*numWorkers)
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	// Producer
-	g.Go(func() error {
-		defer close(jobs)
-		return s3Enum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-			totalBytes.Add(int64(len(content)))
-			count := blobCount.Add(1)
-			if verbose && count%1000 == 0 {
-				fmt.Fprintf(os.Stderr, "[enumerate] %d objects processed (%d bytes)\n", count, totalBytes.Load())
-			}
-
-			if scanIncremental {
-				exists, err := s.BlobExists(blobID)
-				if err != nil {
-					return fmt.Errorf("checking blob: %w", err)
-				}
-				if exists {
-					skippedCount.Add(1)
-					return nil
-				}
-			}
-
-			select {
-			case jobs <- blobJob{content: content, blobID: blobID, prov: prov}:
-				return nil
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		})
+	return runPipeline(ctx, cmd, s3Enum, pipelineOpts{
+		Target:       "s3://" + bucket + "/" + prefix,
+		OutputPath:   scanOutputPath,
+		OutputFormat: scanOutputFormat,
+		TokenEnvVar:  "", // S3 has no git remote
 	})
-
-	// Consumer workers
-	const batchSize = 64
-	for i := 0; i < numWorkers; i++ {
-		g.Go(func() error {
-			type batchItem struct {
-				blobID  types.BlobID
-				prov    types.Provenance
-				size    int64
-				matches []*types.Match
-			}
-			var batch []batchItem
-
-			flush := func() error {
-				if len(batch) == 0 {
-					return nil
-				}
-				err := s.ExecBatch(func(tx store.Store) error {
-					for _, item := range batch {
-						if err := tx.AddBlob(item.blobID, item.size); err != nil {
-							return fmt.Errorf("storing blob: %w", err)
-						}
-						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
-							return fmt.Errorf("storing provenance: %w", err)
-						}
-						for _, match := range item.matches {
-							if err := tx.AddMatch(match); err != nil {
-								return fmt.Errorf("storing match: %w", err)
-							}
-							rule, ok := ruleMap[match.RuleID]
-							if !ok {
-								return fmt.Errorf("rule not found: %s", match.RuleID)
-							}
-							findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
-							exists, err := tx.FindingExists(findingID)
-							if err != nil {
-								return fmt.Errorf("checking finding: %w", err)
-							}
-							if !exists {
-								findingCount.Add(1)
-								f := &types.Finding{
-									ID:     findingID,
-									RuleID: match.RuleID,
-									Groups: match.Groups,
-								}
-								f.Score = s3Engine.Score(ctx, f, []*types.Match{match}, rule)
-								if s3Accessibility == AccessibilityPrivate {
-									ApplyAccessibilityModifier(f.Score)
-								}
-								if err := tx.AddFinding(f); err != nil {
-									return fmt.Errorf("storing finding: %w", err)
-								}
-							}
-						}
-					}
-					return nil
-				})
-				batch = batch[:0]
-				return err
-			}
-
-			for job := range jobs {
-				matches, err := m.MatchWithBlobID(job.content, job.blobID)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "[warn] match error (skipping blob %s): %v\n", job.blobID.Hex(), err)
-					continue
-				}
-
-				for _, match := range matches {
-					startLine, startCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.Start))
-					endLine, endCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.End))
-					match.Location.Source.Start.Line = startLine
-					match.Location.Source.Start.Column = startCol
-					match.Location.Source.End.Line = endLine
-					match.Location.Source.End.Column = endCol
-				}
-
-				validateMatches(ctx, validationEngine, matches, verbose)
-				matchCount.Add(int64(len(matches)))
-
-				batch = append(batch, batchItem{
-					blobID:  job.blobID,
-					prov:    job.prov,
-					size:    int64(len(job.content)),
-					matches: matches,
-				})
-				if len(batch) >= batchSize {
-					if err := flush(); err != nil {
-						return err
-					}
-				}
-			}
-			return flush()
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		// Suppress context.Canceled errors during shutdown
-		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
-			// Normal shutdown via Ctrl+C, not an error
-		} else {
-			return fmt.Errorf("scanning: %w", err)
-		}
-	}
-
-	if err := drainTimedOutMatches(ctx, m, s, ruleMap, s3Engine, &findingCount, &matchCount, s3Accessibility); err != nil {
-		return fmt.Errorf("retrying timed-out blobs: %w", err)
-	}
-
-	if verbose {
-		fmt.Fprintf(os.Stderr, "[scan] S3 scan complete: %d objects, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
-	}
-
-	duration := time.Since(startTime)
-	printScanStats(cmd, scanOutputFormat, scanOutputPath,
-		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
-
-	return outputScanResults(cmd, s, rules, ruleMap)
 }
 
 // outputNoseyParkerSummary outputs findings in noseyparker table format
