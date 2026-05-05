@@ -57,6 +57,10 @@ func init() {
 	gitlabScanCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabScanCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
 	gitlabScanCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
+	gitlabScanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
+	gitlabScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
+	gitlabScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
+	gitlabScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
 
 	gitlabCmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
 	gitlabCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
@@ -67,6 +71,10 @@ func init() {
 	gitlabCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
 	gitlabCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
+	gitlabCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
+	gitlabCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
+	gitlabCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
+	gitlabCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
 
 	gitlabCmd.AddCommand(gitlabScanCmd)
 }
@@ -127,7 +135,7 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating GitLab client: %w", err)
 	}
 
-	rules, err := loadRules("", "", "", scanRuleset)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
