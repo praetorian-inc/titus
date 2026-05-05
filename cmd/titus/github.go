@@ -190,11 +190,23 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	}
 
 	return runPipeline(ctx, cmd, enumerator, pipelineOpts{
-		Target:       target,
-		OutputPath:   scanOutputPath,
-		OutputFormat: scanOutputFormat,
-		Token:        token,
+		Target:        target,
+		OutputPath:    scanOutputPath,
+		OutputFormat:  scanOutputFormat,
+		Accessibility: resolveRemoteAccessibility(scanAccessibility),
 	})
+}
+
+// resolveRemoteAccessibility maps the --accessibility flag for subcommands that
+// scan remote-only targets (no local checkout to inspect). On "auto" we default
+// to public so that auto-detection's "fall back to private" behavior — designed
+// for local clones — does not silently apply a -25 penalty to every finding.
+// Explicit "public"/"private" are still honored.
+func resolveRemoteAccessibility(flag string) Accessibility {
+	if flag == "auto" || flag == "" {
+		return AccessibilityPublic
+	}
+	return ResolveAccessibility(flag, "", "")
 }
 
 // splitOwnerRepo splits "owner/repo" into ["owner", "repo"].

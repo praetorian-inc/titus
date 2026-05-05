@@ -158,9 +158,9 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	}
 
 	return runPipeline(ctx, cmd, enumerator, pipelineOpts{
-		Target:       target,
-		OutputPath:   scanOutputPath,
-		OutputFormat: scanOutputFormat,
-		Token:        token,
+		Target:        target,
+		OutputPath:    scanOutputPath,
+		OutputFormat:  scanOutputFormat,
+		Accessibility: resolveRemoteAccessibility(scanAccessibility),
 	})
 }
