@@ -127,7 +127,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		Target:       target,
 		OutputPath:   scanOutputPath,
 		OutputFormat: scanOutputFormat,
-		Token:        os.Getenv("GITHUB_TOKEN"),
+		Token:        "", // filesystem targets have no remote token
 	})
 }
 
