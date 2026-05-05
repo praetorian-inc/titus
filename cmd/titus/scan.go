@@ -516,6 +516,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 			IgnoreFile:      scanIgnoreFile,
 			ExtractArchives: string(scanExtractArchivesFlag),
 			ExtractLimits:   limits,
+			NumReaders:      scanReaders,
 		})
 	cloneEnum.Git = scanGit
 	cloneEnum.Token = token
@@ -543,6 +544,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 		MaxFileSize:     scanMaxFileSize,
 		ExtractArchives: string(scanExtractArchivesFlag),
 		ExtractLimits:   limits,
+		NumReaders:      scanReaders,
 	})
 
 	ctx := cmd.Context()
