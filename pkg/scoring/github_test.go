@@ -30,3 +30,10 @@ func TestGitHubFineGrainedPermCondition_IsDynamic(t *testing.T) {
 	mod.Condition = cond
 	assert.True(t, mod.IsDynamic())
 }
+
+func TestGitHubOrgMemberCondition_IsDynamic(t *testing.T) {
+	cond := &githubOrgMemberCondition{}
+	var mod Modifier
+	mod.Condition = cond
+	assert.True(t, mod.IsDynamic())
+}
