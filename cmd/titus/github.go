@@ -14,16 +14,14 @@ import (
 )
 
 var (
-	githubToken        string
-	githubBaseURL      string
-	githubOrg          string
-	githubUser         string
-	githubOutputPath   string
-	githubOutputFormat string
-	githubNoClone      bool
-	githubGit          bool
-	githubSkipForks    bool
-	githubRateLimit    float64
+	githubToken     string
+	githubBaseURL   string
+	githubOrg       string
+	githubUser      string
+	githubNoClone   bool
+	githubGit       bool
+	githubSkipForks bool
+	githubRateLimit float64
 )
 
 var githubCmd = &cobra.Command{
@@ -65,37 +63,25 @@ Use --no-clone to fetch files via API instead of cloning (requires token).`,
 }
 
 func init() {
-	githubScanCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
-	githubScanCmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
-	githubScanCmd.Flags().StringVar(&githubOrg, "org", "", "Scan all repositories in organization")
-	githubScanCmd.Flags().StringVar(&githubUser, "user", "", "Scan all repositories for user")
-	githubScanCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path (:memory: for in-memory, :auto: to derive from target name)")
-	githubScanCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
-	githubScanCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
-	githubScanCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
-	githubScanCmd.Flags().BoolVar(&githubSkipForks, "skip-forks", false, "Skip forked repositories when scanning orgs or users")
-	githubScanCmd.Flags().Float64Var(&githubRateLimit, "rate-limit", 0, "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)")
-	githubScanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
-	githubScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
-	githubScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
-	githubScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
-
-	githubCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
-	githubCmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
-	githubCmd.Flags().StringVar(&githubOrg, "org", "", "Scan all repositories in organization")
-	githubCmd.Flags().StringVar(&githubUser, "user", "", "Scan all repositories for user")
-	githubCmd.Flags().StringVar(&githubOutputPath, "output", "titus.db", "Output database path (:memory: for in-memory, :auto: to derive from target name)")
-	githubCmd.Flags().StringVar(&githubOutputFormat, "format", "human", "Output format: json, human")
-	githubCmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
-	githubCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
-	githubCmd.Flags().BoolVar(&githubSkipForks, "skip-forks", false, "Skip forked repositories when scanning orgs or users")
-	githubCmd.Flags().Float64Var(&githubRateLimit, "rate-limit", 0, "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)")
-	githubCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
-	githubCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
-	githubCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
-	githubCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
-
+	registerGitHubFlags(githubScanCmd)
+	registerGitHubFlags(githubCmd)
 	githubCmd.AddCommand(githubScanCmd)
+}
+
+// registerGitHubFlags binds every flag the github subcommand supports onto cmd.
+// Used for both `titus github` and `titus github scan`.
+func registerGitHubFlags(cmd *cobra.Command) {
+	addRulesFlags(cmd)
+	addOutputFlags(cmd)
+	addPipelineFlags(cmd)
+	cmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
+	cmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
+	cmd.Flags().StringVar(&githubOrg, "org", "", "Scan all repositories in organization")
+	cmd.Flags().StringVar(&githubUser, "user", "", "Scan all repositories for user")
+	cmd.Flags().BoolVar(&githubNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
+	cmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
+	cmd.Flags().BoolVar(&githubSkipForks, "skip-forks", false, "Skip forked repositories when scanning orgs or users")
+	cmd.Flags().Float64Var(&githubRateLimit, "rate-limit", 0, "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)")
 }
 
 func runGitHubScan(cmd *cobra.Command, args []string) error {
@@ -138,8 +124,8 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		owner, repo = parts[0], parts[1]
 	}
 
-	if githubOutputPath == ":auto:" {
-		githubOutputPath = resolveAutoName(githubOrg, githubUser, repo)
+	if scanOutputPath == ":auto:" {
+		scanOutputPath = resolveAutoName(githubOrg, githubUser, repo)
 	}
 
 	if repo == "" && githubOrg == "" && githubUser == "" {
@@ -182,7 +168,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	defer func() { _ = m.Close() }()
 
 	s, err := store.New(store.Config{
-		Path: githubOutputPath,
+		Path: scanOutputPath,
 	})
 	if err != nil {
 		return fmt.Errorf("creating store: %w", err)
@@ -284,9 +270,9 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "GitHub scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", githubOutputPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
 
-	if githubOutputFormat == "json" {
+	if scanOutputFormat == "json" {
 		matches, err := s.GetAllMatches()
 		if err != nil {
 			return fmt.Errorf("retrieving matches: %w", err)
