@@ -14,15 +14,13 @@ import (
 )
 
 var (
-	gitlabToken        string
-	gitlabGroup        string
-	gitlabUser         string
-	gitlabBaseURL      string
-	gitlabOutputPath   string
-	gitlabOutputFormat string
-	gitlabNoClone      bool
-	gitlabGit          bool
-	gitlabRateLimit    float64
+	gitlabToken     string
+	gitlabGroup     string
+	gitlabUser      string
+	gitlabBaseURL   string
+	gitlabNoClone   bool
+	gitlabGit       bool
+	gitlabRateLimit float64
 )
 
 var gitlabCmd = &cobra.Command{
@@ -48,35 +46,24 @@ Use --git to also scan full git history.`,
 }
 
 func init() {
-	gitlabScanCmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
-	gitlabScanCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
-	gitlabScanCmd.Flags().StringVar(&gitlabUser, "user", "", "Scan all projects for user")
-	gitlabScanCmd.Flags().StringVar(&gitlabBaseURL, "url", "", "GitLab base URL (default: gitlab.com)")
-	gitlabScanCmd.Flags().StringVar(&gitlabOutputPath, "output", "titus.db", "Output database path (:memory: for in-memory, :auto: to derive from target name)")
-	gitlabScanCmd.Flags().StringVar(&gitlabOutputFormat, "format", "human", "Output format: json, human")
-	gitlabScanCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
-	gitlabScanCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
-	gitlabScanCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
-	gitlabScanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
-	gitlabScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
-	gitlabScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
-	gitlabScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
-
-	gitlabCmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
-	gitlabCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
-	gitlabCmd.Flags().StringVar(&gitlabUser, "user", "", "Scan all projects for user")
-	gitlabCmd.Flags().StringVar(&gitlabBaseURL, "url", "", "GitLab base URL (default: gitlab.com)")
-	gitlabCmd.Flags().StringVar(&gitlabOutputPath, "output", "titus.db", "Output database path (:memory: for in-memory, :auto: to derive from target name)")
-	gitlabCmd.Flags().StringVar(&gitlabOutputFormat, "format", "human", "Output format: json, human")
-	gitlabCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
-	gitlabCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
-	gitlabCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
-	gitlabCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
-	gitlabCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
-	gitlabCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
-	gitlabCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
-
+	registerGitLabFlags(gitlabScanCmd)
+	registerGitLabFlags(gitlabCmd)
 	gitlabCmd.AddCommand(gitlabScanCmd)
+}
+
+// registerGitLabFlags binds every flag the gitlab subcommand supports onto cmd.
+// Used for both `titus gitlab` and `titus gitlab scan`.
+func registerGitLabFlags(cmd *cobra.Command) {
+	addRulesFlags(cmd)
+	addOutputFlags(cmd)
+	addPipelineFlags(cmd)
+	cmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
+	cmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
+	cmd.Flags().StringVar(&gitlabUser, "user", "", "Scan all projects for user")
+	cmd.Flags().StringVar(&gitlabBaseURL, "url", "", "GitLab base URL (default: gitlab.com)")
+	cmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
+	cmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
+	cmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
 }
 
 func runGitLabScan(cmd *cobra.Command, args []string) error {
@@ -104,12 +91,12 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if gitlabOutputPath == ":auto:" {
+	if scanOutputPath == ":auto:" {
 		var project string
 		if len(args) > 0 {
 			project = args[0]
 		}
-		gitlabOutputPath = resolveAutoName(gitlabGroup, gitlabUser, project)
+		scanOutputPath = resolveAutoName(gitlabGroup, gitlabUser, project)
 	}
 
 	var project string
@@ -151,7 +138,7 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = m.Close() }()
 
-	s, err := store.New(store.Config{Path: gitlabOutputPath})
+	s, err := store.New(store.Config{Path: scanOutputPath})
 	if err != nil {
 		return fmt.Errorf("creating store: %w", err)
 	}
@@ -252,9 +239,9 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "GitLab scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", gitlabOutputPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", scanOutputPath)
 
-	if gitlabOutputFormat == "json" {
+	if scanOutputFormat == "json" {
 		matches, err := s.GetAllMatches()
 		if err != nil {
 			return fmt.Errorf("retrieving matches: %w", err)
