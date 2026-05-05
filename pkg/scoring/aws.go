@@ -2,13 +2,10 @@ package scoring
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"strings"
 
 	awslib "github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -36,6 +33,7 @@ func extractAWSCredentials(m *types.Match) (keyID, secretKey string, ok bool) {
 type iamPolicyCondition struct {
 	matchPolicies   []string // e.g. ["AdministratorAccess", "PowerUserAccess"]
 	onlyIfExclusive bool     // true = fires only when no other policies are attached
+	clientFactory   awsClientFactory
 }
 
 func (c *iamPolicyCondition) markDynamic() {}
@@ -46,18 +44,16 @@ func (c *iamPolicyCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 		return false, nil
 	}
 
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(keyID, secretKey, ""),
-		),
-		awsconfig.WithRegion("us-east-1"),
-	)
+	factory := c.clientFactory
+	if factory == nil {
+		factory = defaultAWSClientFactory
+	}
+	stsClient, iamClient, err := factory(ctx, keyID, secretKey)
 	if err != nil {
-		return false, fmt.Errorf("aws config: %w", err)
+		return false, nil
 	}
 
 	// Get the caller's IAM username from STS
-	stsClient := sts.NewFromConfig(cfg)
 	identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
 		return false, nil // credential doesn't work; upstream stsKeyActive handles this
@@ -70,7 +66,6 @@ func (c *iamPolicyCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 	}
 
 	// List attached managed policies with pagination
-	iamClient := iam.NewFromConfig(cfg)
 	var attached []string
 	paginator := iam.NewListAttachedUserPoliciesPaginator(iamClient, &iam.ListAttachedUserPoliciesInput{
 		UserName: awslib.String(username),
@@ -127,7 +122,9 @@ func extractUsernameFromARN(arn string) string {
 
 // iamCanAssumeRolesCondition fires when the credential can enumerate IAM roles,
 // indicating broad sts:AssumeRole scope is likely available.
-type iamCanAssumeRolesCondition struct{}
+type iamCanAssumeRolesCondition struct {
+	clientFactory awsClientFactory
+}
 
 func (c *iamCanAssumeRolesCondition) markDynamic() {}
 
@@ -136,25 +133,25 @@ func (c *iamCanAssumeRolesCondition) Evaluate(ctx context.Context, m *types.Matc
 	if !ok {
 		return false, nil
 	}
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(keyID, secretKey, ""),
-		),
-		awsconfig.WithRegion("us-east-1"),
-	)
-	if err != nil {
-		return false, fmt.Errorf("aws config: %w", err)
+	factory := c.clientFactory
+	if factory == nil {
+		factory = defaultAWSClientFactory
 	}
-	client := iam.NewFromConfig(cfg)
+	_, iamClient, err := factory(ctx, keyID, secretKey)
+	if err != nil {
+		return false, nil
+	}
 	// ListRoles requires iam:ListRoles — if it succeeds, the key has broad IAM read
-	_, err = client.ListRoles(ctx, &iam.ListRolesInput{MaxItems: awslib.Int32(1)})
+	_, err = iamClient.ListRoles(ctx, &iam.ListRolesInput{MaxItems: awslib.Int32(1)})
 	return err == nil, nil
 }
 
 // stsKeyActiveCondition fires when the key is a live, working AWS credential.
 // Uses STS GetCallerIdentity which requires no IAM permissions.
 // Implements networkCondition so it is gated behind --score-scope.
-type stsKeyActiveCondition struct{}
+type stsKeyActiveCondition struct {
+	clientFactory awsClientFactory
+}
 
 func (c *stsKeyActiveCondition) markDynamic() {}
 
@@ -164,18 +161,15 @@ func (c *stsKeyActiveCondition) Evaluate(ctx context.Context, m *types.Match) (b
 		return false, nil
 	}
 
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(keyID, secretKey, ""),
-		),
-		awsconfig.WithRegion("us-east-1"),
-	)
-	if err != nil {
-		return false, fmt.Errorf("aws config: %w", err)
+	factory := c.clientFactory
+	if factory == nil {
+		factory = defaultAWSClientFactory
 	}
-
-	client := sts.NewFromConfig(cfg)
-	_, err = client.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	stsClient, _, err := factory(ctx, keyID, secretKey)
+	if err != nil {
+		return false, nil
+	}
+	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
 		// Credential rejected — not an error in the scoring sense, just doesn't fire
 		return false, nil
