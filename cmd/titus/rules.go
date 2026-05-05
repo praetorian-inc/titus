@@ -46,12 +46,12 @@ func runRulesList(cmd *cobra.Command, args []string) error {
 
 	// Load rules (builtin or custom)
 	if rulesPath != "" {
-		// Custom rules from file
-		r, loadErr := loader.LoadRuleFile(rulesPath)
+		// Custom rules from file or directory
+		custom, loadErr := loadCustomRulesPath(loader, rulesPath)
 		if loadErr != nil {
 			return fmt.Errorf("loading rules from %s: %w", rulesPath, loadErr)
 		}
-		rules = []*types.Rule{r}
+		rules = custom
 	} else {
 		// Builtin rules
 		rules, err = loader.LoadBuiltinRules()

@@ -1,6 +1,8 @@
 package rule
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -518,5 +520,154 @@ func TestFindRuleset(t *testing.T) {
 	rs = FindRuleset(rulesets, "nonexistent")
 	if rs != nil {
 		t.Error("expected nil for nonexistent ruleset")
+	}
+}
+
+func TestLoadRulesFromFileMulti_MultipleRules(t *testing.T) {
+	loader := NewLoader()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.yml")
+
+	yamlData := `rules:
+  - name: Test Rule One
+    id: np.test.multi.1
+    pattern: AKIA[A-Z0-9]{16}
+    description: First synthetic test rule
+    base_score: 50
+  - name: Test Rule Two
+    id: np.test.multi.2
+    pattern: ghp_[A-Za-z0-9]{36}
+    description: Second synthetic test rule
+    base_score: 60
+  - name: Test Rule Three
+    id: np.test.multi.3
+    pattern: xoxb-[A-Za-z0-9-]+
+    description: Third synthetic test rule
+    base_score: 70
+`
+	if err := os.WriteFile(path, []byte(yamlData), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rules, err := loader.LoadRulesFromFileMulti(path)
+	if err != nil {
+		t.Fatalf("LoadRulesFromFileMulti failed: %v", err)
+	}
+	if len(rules) != 3 {
+		t.Fatalf("expected 3 rules, got %d", len(rules))
+	}
+	wantIDs := map[string]bool{
+		"np.test.multi.1": false,
+		"np.test.multi.2": false,
+		"np.test.multi.3": false,
+	}
+	for _, r := range rules {
+		if _, ok := wantIDs[r.ID]; !ok {
+			t.Errorf("unexpected rule ID %q", r.ID)
+			continue
+		}
+		wantIDs[r.ID] = true
+		if r.StructuralID == "" {
+			t.Errorf("rule %s: expected StructuralID to be computed", r.ID)
+		}
+	}
+	for id, found := range wantIDs {
+		if !found {
+			t.Errorf("missing rule ID %q", id)
+		}
+	}
+}
+
+func TestLoadRulesFromFileMulti_SingleRule(t *testing.T) {
+	loader := NewLoader()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "single.yaml")
+
+	yamlData := `rules:
+  - name: Solo Rule
+    id: np.test.solo
+    pattern: solo[0-9]{8}
+    description: Single rule in a file
+    base_score: 42
+`
+	if err := os.WriteFile(path, []byte(yamlData), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	rules, err := loader.LoadRulesFromFileMulti(path)
+	if err != nil {
+		t.Fatalf("LoadRulesFromFileMulti failed: %v", err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(rules))
+	}
+	if rules[0].ID != "np.test.solo" {
+		t.Errorf("expected np.test.solo, got %q", rules[0].ID)
+	}
+}
+
+func TestLoadRulesFromFileMulti_EmptyRules(t *testing.T) {
+	loader := NewLoader()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.yml")
+	if err := os.WriteFile(path, []byte("rules: []\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := loader.LoadRulesFromFileMulti(path)
+	if err == nil {
+		t.Fatal("expected error for empty rules array")
+	}
+	if !strings.Contains(err.Error(), "no rules found") {
+		t.Errorf("expected error to mention 'no rules found', got: %v", err)
+	}
+}
+
+func TestLoadRulesFromFileMulti_MalformedYAML(t *testing.T) {
+	loader := NewLoader()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.yml")
+	if err := os.WriteFile(path, []byte("rules: [[[ not yaml"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := loader.LoadRulesFromFileMulti(path)
+	if err == nil {
+		t.Fatal("expected error for malformed YAML")
+	}
+}
+
+func TestLoadRulesFromFileMulti_MissingFile(t *testing.T) {
+	loader := NewLoader()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "does-not-exist.yml")
+
+	_, err := loader.LoadRulesFromFileMulti(path)
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+	if !strings.Contains(err.Error(), "failed to read file") {
+		t.Errorf("expected error to mention 'failed to read file', got: %v", err)
+	}
+}
+
+func TestLoadRulesFromFileMulti_InvalidRule(t *testing.T) {
+	loader := NewLoader()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "invalid.yml")
+
+	// Missing required base_score should bubble up from convertYAMLRule.
+	yamlData := `rules:
+  - name: No Score
+    id: np.test.noscore
+    pattern: foo
+`
+	if err := os.WriteFile(path, []byte(yamlData), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := loader.LoadRulesFromFileMulti(path)
+	if err == nil {
+		t.Fatal("expected error for rule missing base_score")
 	}
 }
