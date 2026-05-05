@@ -456,10 +456,12 @@ jobs:
 
         # Generate "What's Changed" changelog via GitHub API
         if [ -n "$PREV_TAG" ]; then
-          gh api repos/${{ github.repository }}/releases/generate-notes \
+          if ! gh api repos/${{ github.repository }}/releases/generate-notes \
             -f tag_name="${{ env.VERSION }}" \
             -f previous_tag_name="$PREV_TAG" \
-            --jq '.body' > changelog.md 2>/dev/null || true
+            --jq '.body' > changelog.md; then
+            echo "Warning: GitHub API could not generate release notes; 'What's Changed' section will be omitted." >&2
+          fi
         fi
 
         # Build release notes: changelog first, then install reference
@@ -479,8 +481,8 @@ jobs:
           printf '\n## Extensions\n\n'
           printf '| Extension | File | Notes |\n'
           printf '|-----------|------|-------|\n'
-          printf '| Burp Suite | `titus-burp.jar` | Load in Extensions → Add |\n'
-          printf '| Chrome/Firefox | `titus-browser-extension.zip` | Load as unpacked extension |\n'
+          printf '| Burp Suite | `titus-burp-${{ env.VERSION }}.jar` | Load in Extensions → Add |\n'
+          printf '| Chrome/Firefox | `titus-browser-extension-${{ env.VERSION }}.zip` | Load as unpacked extension |\n'
           printf '\n## Installation\n\n'
           printf 'Download the appropriate binary for your platform from the assets below.\n\n'
           printf '**Linux/macOS:**\n```bash\nchmod +x titus-*\nsudo mv titus-* /usr/local/bin/titus\n```\n\n'
