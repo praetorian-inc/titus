@@ -137,43 +137,43 @@ func TestResolveAutoName(t *testing.T) {
 		{
 			name:     "group with nested path",
 			group:    "ctp1/tmna-ct/tmna-ev",
-			expected: "tmna-ev.db",
+			expected: "tmna-ev.ds",
 		},
 		{
 			name:     "simple group",
 			group:    "mygroup",
-			expected: "mygroup.db",
+			expected: "mygroup.ds",
 		},
 		{
 			name:     "user",
 			user:     "octocat",
-			expected: "octocat.db",
+			expected: "octocat.ds",
 		},
 		{
 			name:     "project with owner",
 			project:  "owner/repo",
-			expected: "repo.db",
+			expected: "repo.ds",
 		},
 		{
 			name:     "project without owner",
 			project:  "myrepo",
-			expected: "myrepo.db",
+			expected: "myrepo.ds",
 		},
 		{
 			name:     "group takes priority over user",
 			group:    "mygroup",
 			user:     "myuser",
-			expected: "mygroup.db",
+			expected: "mygroup.ds",
 		},
 		{
 			name:     "nothing provided",
-			expected: "output.db",
+			expected: "output.ds",
 		},
 		{
 			name:     "user takes priority over project",
 			user:     "myuser",
 			project:  "owner/repo",
-			expected: "myuser.db",
+			expected: "myuser.ds",
 		},
 	}
 

@@ -771,17 +771,17 @@ func resolveAutoName(group, user, project string) string {
 	if group != "" {
 		// Use last segment of group path (e.g. "ctp1/tmna-ct/tmna-ev" → "tmna-ev")
 		parts := strings.Split(group, "/")
-		return parts[len(parts)-1] + ".db"
+		return parts[len(parts)-1] + ".ds"
 	}
 	if user != "" {
-		return user + ".db"
+		return user + ".ds"
 	}
 	if project != "" {
 		// project may be "owner/repo" — take repo part
 		parts := strings.Split(project, "/")
-		return parts[len(parts)-1] + ".db"
+		return parts[len(parts)-1] + ".ds"
 	}
-	return "output.db"
+	return "output.ds"
 }
 
 // resolveAutoOutput derives a datastore name from a scan target.
