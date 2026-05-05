@@ -108,6 +108,24 @@ func matchesAny(ruleID string, regexes []*regexp.Regexp) bool {
 	return false
 }
 
+// FilterNoisy returns rules with Noisy entries removed when includeNoisy is false.
+// When includeNoisy is true, the input slice is returned unchanged.
+// Noisy rules are detection patterns known to be false-positive heavy and are
+// excluded from the default rule set; users opt in via CLI flag.
+func FilterNoisy(rules []*types.Rule, includeNoisy bool) []*types.Rule {
+	if includeNoisy {
+		return rules
+	}
+	out := make([]*types.Rule, 0, len(rules))
+	for _, r := range rules {
+		if r.Noisy {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // ApplyRuleset filters rules to only those whose ID appears in the ruleset.
 // If ruleset is nil, all rules are returned unfiltered.
 func ApplyRuleset(rules []*types.Rule, ruleset *types.Ruleset) []*types.Rule {

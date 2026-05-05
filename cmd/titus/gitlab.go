@@ -127,7 +127,7 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating GitLab client: %w", err)
 	}
 
-	rules, err := loadRules("", "", "", scanRuleset)
+	rules, err := loadRules("", "", "", scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}

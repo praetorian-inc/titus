@@ -609,3 +609,79 @@ rules:
           return jsonify({'success': True, 'message': 'Login successful'}), 200
       else:
           return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+
+
+# The next two rules cover credentials inlined in minified JS object literals
+# (e.g. compiled Angular/React/Vue env-config blobs). They run on a corpus that
+# the existing np.generic.3-6 rules don't cover well, but they are also easy
+# to trip on UI label/forgot-password scaffolding. Marked noisy and gated
+# behind --include-noisy on the CLI so the default scan stays clean.
+
+- name: Generic Password in JavaScript Object
+  id: np.generic.17
+  base_score: 50
+  noisy: true
+
+  pattern: |
+    (?x)(?i)
+    [a-zA-Z0-9_]{1,40}                              (?# camelCase key prefix, e.g. "oauth" )
+    (?: pass (?:word|wd|phrase)? | passwd )          (?# password suffix keyword )
+    ["']?                                            (?# optional quote around key )
+    \s* : \s*                                        (?# colon binder - JS object / JSON style )
+    "
+    ( [^"$\n<>{}\[\]]{6,100} )                       (?# quoted password value )
+    "
+
+  categories: [fuzzy, generic, secret]
+
+  examples:
+  - 'adminPassword:"thisismypassword"'
+  - 'dbPasswd:"s3cr3tP@ss!"'
+  - '"userPass":"open_sesame123"'
+  - 'appPassphrase:"correct horse battery"'
+
+  # The OP's pattern intentionally does not require URL-shaped or fragment
+  # values to be excluded; those cases (e.g. forgotPassword reset links,
+  # changePassword anchor IDs) still match. They are part of the noisy
+  # surface this rule covers — opt-in via --include-noisy.
+  negative_examples:
+  - 'passwordLabel:"Password:"'
+  - 'password:""'
+  - 'password:"$ENV_VAR"'
+  - 'usernameLabel:"Username or email:",passwordLabel:"Password:",rememberMeLabel:"Remember me:"'
+
+
+- name: Generic Username and Password in JavaScript Object
+  id: np.generic.18
+  base_score: 50
+  noisy: true
+
+  pattern: |
+    (?x)(?i)
+    [a-zA-Z0-9_]{0,40}                              (?# camelCase key prefix )
+    (?: user (?:name)? )                             (?# user suffix keyword )
+    ["']?                                            (?# optional quote around key )
+    \s* : \s*                                        (?# colon binder )
+    " ( [^"\n]{3,50} ) "                             (?# username value )
+    \s* , \s*                                        (?# JS object comma separator )
+    [a-zA-Z0-9_]{0,40}                              (?# camelCase key prefix )
+    (?: pass (?:word|wd|phrase)? | passwd )          (?# password suffix keyword )
+    ["']?                                            (?# optional quote around key )
+    \s* : \s*                                        (?# colon binder )
+    " ( [^"$\n]{6,100} ) "                           (?# password value )
+
+  categories: [fuzzy, generic, secret]
+
+  # The pattern's second key prefix is [a-zA-Z0-9_]{0,40}, which does not
+  # allow a leading double-quote between the comma and the password key.
+  # The fully-quoted-key variant '"appUser":"...","appPass":"..."' is therefore
+  # not matched by this rule on its own — np.generic.17 picks the password up
+  # in that shape.
+  examples:
+  - 'dbUser:"admin",dbPassword:"s3cr3tP@ss!"'
+  - 'oauthUser:"service-account",oauthPassword:"XKskiswok812KS"'
+
+  negative_examples:
+  - 'usernameLabel:"Username:",passwordLabel:"Password:"'
+  - 'user:"$USER",pass:"$PASS"'
+  - 'user:"",password:"tooshort"'

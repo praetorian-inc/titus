@@ -42,6 +42,11 @@ type Rule struct {
 	// BaseScore is the inherent severity of this rule's secret class,
 	// ranging 0-100. Assigned via research per rule. Required.
 	BaseScore int
+
+	// Noisy marks rules that produce many false positives and should be
+	// disabled by default. Callers opt in via the CLI's --include-noisy flag
+	// (or by filtering the slice returned by LoadBuiltinRules themselves).
+	Noisy bool
 }
 
 // namedGroupRe matches named capture groups like (?P<name>...) and replaces
