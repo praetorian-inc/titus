@@ -4,7 +4,7 @@ package scoring
 // Prepended to YAML scorers so they take first-match-wins precedence.
 func BuiltinGoScorers() []*Scorer {
 	return []*Scorer{
-		// AWSGoScorer(),    // Phase 1
+		AWSGoScorer(),
 		// GitHubGoScorer(), // Phase 2
 	}
 }

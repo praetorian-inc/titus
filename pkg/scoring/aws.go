@@ -3,6 +3,7 @@ package scoring
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	awslib "github.com/aws/aws-sdk-go-v2/aws"
@@ -180,4 +181,95 @@ func (c *stsKeyActiveCondition) Evaluate(ctx context.Context, m *types.Match) (b
 		return false, nil
 	}
 	return true, nil
+}
+
+// AWSGoScorer returns a *Scorer targeting AWS credential rules.
+// It supersedes the YAML aws-key-scope scorer when registered first
+// in buildScoringEngine().
+//
+// Targets np.aws.6 (combined key+secret) since STS/IAM calls require both.
+// Static AKIA/ASIA/AIDA prefix modifiers are included so the scorer remains
+// useful even when --score-scope is disabled.
+func AWSGoScorer() *Scorer {
+	return &Scorer{
+		Name:    "aws-iam-scope",
+		RuleIDs: []string{"np.aws.6"},
+		Modifiers: []Modifier{
+			// Static (always run, no network)
+			{
+				Name:     "akia-long-term",
+				Priority: 100,
+				Kind:     ModifierKindDelta,
+				Value:    10,
+				Condition: &matchGroupCondition{
+					Name:  "key_id",
+					Regex: regexp.MustCompile(`(?i)^AKIA`),
+				},
+			},
+			{
+				Name:     "asia-temporary-session",
+				Priority: 100,
+				Kind:     ModifierKindDelta,
+				Value:    -10,
+				Condition: &matchGroupCondition{
+					Name:  "key_id",
+					Regex: regexp.MustCompile(`(?i)^ASIA`),
+				},
+			},
+			{
+				Name:     "aida-identifier-only",
+				Priority: 100,
+				Kind:     ModifierKindSetScore,
+				Value:    10,
+				Condition: &matchGroupCondition{
+					Name:  "key_id",
+					Regex: regexp.MustCompile(`(?i)^AIDA`),
+				},
+			},
+			// Dynamic (network, requires --score-scope)
+			{
+				Name:      "key-active",
+				Priority:  95,
+				Kind:      ModifierKindDelta,
+				Value:     5,
+				Condition: &stsKeyActiveCondition{},
+			},
+			{
+				Name:     "iam-admin",
+				Priority: 90,
+				Kind:     ModifierKindSetScore,
+				Value:    99,
+				Condition: &iamPolicyCondition{
+					matchPolicies: []string{"AdministratorAccess", "PowerUserAccess"},
+				},
+			},
+			{
+				Name:     "iam-write-access",
+				Priority: 80,
+				Kind:     ModifierKindSetScore,
+				Value:    85,
+				Condition: &iamPolicyCondition{
+					matchPolicies: []string{"IAMFullAccess", "AmazonEC2FullAccess",
+						"AmazonS3FullAccess", "AmazonRDSFullAccess"},
+				},
+			},
+			{
+				Name:     "iam-read-only",
+				Priority: 70,
+				Kind:     ModifierKindDelta,
+				Value:    -20,
+				Condition: &iamPolicyCondition{
+					matchPolicies:   []string{"ReadOnlyAccess"},
+					onlyIfExclusive: true,
+				},
+			},
+			{
+				Name:      "iam-can-assume-roles",
+				Priority:  60,
+				Kind:      ModifierKindDelta,
+				Value:     10,
+				Condition: &iamCanAssumeRolesCondition{},
+			},
+		},
+	}
 }
