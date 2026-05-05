@@ -116,7 +116,11 @@ func runPipeline(ctx context.Context, cmd *cobra.Command, enumerator enum.Enumer
 
 	jobs := make(chan blobJob, 2*numWorkers)
 
-	g, ctx := errgroup.WithContext(ctx)
+	// errgroup.WithContext cancels the derived ctx when g.Wait() returns, so
+	// keep parentCtx aside for post-Wait work (drainTimedOutMatches scores
+	// retry findings via engine.Score, which short-circuits on a canceled ctx).
+	parentCtx := ctx
+	g, ctx := errgroup.WithContext(parentCtx)
 
 	// Producer: enumerate blobs and send to workers (NO DB writes)
 	g.Go(func() error {
@@ -180,29 +184,12 @@ func runPipeline(ctx context.Context, cmd *cobra.Command, enumerator enum.Enumer
 							if err := tx.AddMatch(match); err != nil {
 								return fmt.Errorf("storing match: %w", err)
 							}
-							rule, ok := ruleMap[match.RuleID]
-							if !ok {
-								return fmt.Errorf("rule not found: %s", match.RuleID)
-							}
-							findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
-							exists, err := tx.FindingExists(findingID)
+							added, err := upsertFinding(ctx, tx, match, ruleMap, engine, accessibility)
 							if err != nil {
-								return fmt.Errorf("checking finding: %w", err)
+								return err
 							}
-							if !exists {
+							if added {
 								findingCount.Add(1)
-								f := &types.Finding{
-									ID:     findingID,
-									RuleID: match.RuleID,
-									Groups: match.Groups,
-								}
-								f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
-								if accessibility == AccessibilityPrivate {
-									ApplyAccessibilityModifier(f.Score)
-								}
-								if err := tx.AddFinding(f); err != nil {
-									return fmt.Errorf("storing finding: %w", err)
-								}
 							}
 						}
 					}
@@ -256,8 +243,9 @@ func runPipeline(ctx context.Context, cmd *cobra.Command, enumerator enum.Enumer
 		}
 	}
 
-	// Retry any blobs that timed out during the parallel pass.
-	if err := drainTimedOutMatches(ctx, m, s, ruleMap, engine, &findingCount, &matchCount, accessibility); err != nil {
+	// Retry any blobs that timed out during the parallel pass. Use parentCtx
+	// because the errgroup-derived ctx is canceled by g.Wait().
+	if err := drainTimedOutMatches(parentCtx, m, s, ruleMap, engine, &findingCount, &matchCount, accessibility); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
@@ -276,4 +264,36 @@ func runPipeline(ctx context.Context, cmd *cobra.Command, enumerator enum.Enumer
 		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
 
 	return outputScanResults(cmd, s, rules, ruleMap)
+}
+
+// upsertFinding adds a finding for match if no finding with the same
+// structural ID already exists. Returns true when a new finding was inserted.
+// Shared between runPipeline's worker flush and drainTimedOutMatches so
+// scoring + accessibility semantics cannot drift between the two paths.
+func upsertFinding(ctx context.Context, tx store.Store, match *types.Match, ruleMap map[string]*types.Rule, engine scoringEngineInterface, accessibility Accessibility) (bool, error) {
+	rule, ok := ruleMap[match.RuleID]
+	if !ok {
+		return false, fmt.Errorf("rule not found: %s", match.RuleID)
+	}
+	findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+	exists, err := tx.FindingExists(findingID)
+	if err != nil {
+		return false, fmt.Errorf("checking finding: %w", err)
+	}
+	if exists {
+		return false, nil
+	}
+	f := &types.Finding{
+		ID:     findingID,
+		RuleID: match.RuleID,
+		Groups: match.Groups,
+	}
+	f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
+	if accessibility == AccessibilityPrivate {
+		ApplyAccessibilityModifier(f.Score)
+	}
+	if err := tx.AddFinding(f); err != nil {
+		return false, fmt.Errorf("storing finding: %w", err)
+	}
+	return true, nil
 }

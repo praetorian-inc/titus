@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/rule"
@@ -17,6 +18,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// resetPipelineGlobals snapshots and resets every scan* global runPipeline
+// reads, then restores via t.Cleanup. Keeps tests isolated from each other.
+func resetPipelineGlobals(t *testing.T) {
+	t.Helper()
+	saved := struct {
+		workers, readers, contextLines, validateWorkers, sqliteRowLimit, extractMaxDepth int
+		maxFileSize                                                                      int64
+		incremental, validate, storeBlobs, scopeEnabled                                  bool
+		rulesPath, rulesInclude, rulesExclude, ruleset, accessibility, ignoreFile        string
+		outputPath, outputFormat, extractMaxSize, extractMaxTotal                        string
+		scoreTimeout, scoreBudget                                                        time.Duration
+	}{
+		scanWorkers, scanReaders, scanContextLines, scanValidateWorkers, scanSQLiteRowLimit, extractMaxDepth,
+		scanMaxFileSize,
+		scanIncremental, scanValidate, scanStoreBlobs, scanScopeEnabled,
+		scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanAccessibility, scanIgnoreFile,
+		scanOutputPath, scanOutputFormat, extractMaxSize, extractMaxTotal,
+		scanScoreTimeout, scanScoreBudget,
+	}
+	t.Cleanup(func() {
+		scanWorkers, scanReaders, scanContextLines, scanValidateWorkers, scanSQLiteRowLimit, extractMaxDepth = saved.workers, saved.readers, saved.contextLines, saved.validateWorkers, saved.sqliteRowLimit, saved.extractMaxDepth
+		scanMaxFileSize = saved.maxFileSize
+		scanIncremental, scanValidate, scanStoreBlobs, scanScopeEnabled = saved.incremental, saved.validate, saved.storeBlobs, saved.scopeEnabled
+		scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanAccessibility, scanIgnoreFile = saved.rulesPath, saved.rulesInclude, saved.rulesExclude, saved.ruleset, saved.accessibility, saved.ignoreFile
+		scanOutputPath, scanOutputFormat, extractMaxSize, extractMaxTotal = saved.outputPath, saved.outputFormat, saved.extractMaxSize, saved.extractMaxTotal
+		scanScoreTimeout, scanScoreBudget = saved.scoreTimeout, saved.scoreBudget
+	})
+
+	scanWorkers = 2
+	scanReaders = 0
+	scanMaxFileSize = 10 * 1024 * 1024
+	scanContextLines = 3
+	scanValidateWorkers = 4
+	scanSQLiteRowLimit = 1000
+	extractMaxDepth = 5
+	scanIncremental = false
+	scanValidate = false
+	scanStoreBlobs = false
+	scanScopeEnabled = false
+	scanRulesPath = ""
+	scanRulesInclude = ""
+	scanRulesExclude = ""
+	scanRuleset = "default"
+	scanAccessibility = "public"
+	scanIgnoreFile = ""
+	scanOutputPath = ""
+	scanOutputFormat = "human"
+	extractMaxSize = "10MB"
+	extractMaxTotal = "100MB"
+	scanScoreTimeout = 10 * time.Second
+	scanScoreBudget = 60 * time.Second
+}
+
 func TestRunPipeline_FilesystemEquivalence(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "leak.txt"),
@@ -24,17 +78,8 @@ func TestRunPipeline_FilesystemEquivalence(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reset relevant globals to known defaults.
-	scanWorkers = 2
-	scanMaxFileSize = 10 * 1024 * 1024
-	scanContextLines = 3
-	scanRulesPath = ""
-	scanRulesInclude = ""
-	scanRulesExclude = ""
-	scanRuleset = "default"
-	scanAccessibility = "public"
+	resetPipelineGlobals(t)
 	scanOutputPath = filepath.Join(t.TempDir(), "out.ds")
-	scanOutputFormat = "human"
 
 	enumerator, err := createEnumerator(dir, false)
 	if err != nil {

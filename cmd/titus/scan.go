@@ -133,10 +133,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 // drainTimedOutMatches replays blobs that timed out during the parallel scan
 // pass using the matcher's single-threaded retry queue, then writes the
-// resulting matches and findings to the store. It is called after g.Wait() in
-// each of the scan entry points (runScan, runRepoScan, runS3Scan).
-// The resolvedAccess parameter ensures that retried findings receive the same
-// accessibility penalty as findings scored on the normal path.
+// resulting matches and findings to the store. Called from runPipeline after
+// the worker errgroup completes; resolvedAccess ensures retried findings get
+// the same accessibility penalty as ones scored on the normal path.
 func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store, ruleMap map[string]*types.Rule, engine scoringEngineInterface, findingCount, matchCount *atomic.Int64, resolvedAccess Accessibility) error {
 	retryMatches, err := m.DrainTimedOut()
 	if err != nil {
@@ -150,30 +149,13 @@ func drainTimedOutMatches(ctx context.Context, m matcher.Matcher, s store.Store,
 			if err := tx.AddMatch(match); err != nil {
 				return fmt.Errorf("storing retry match: %w", err)
 			}
-			rule, ok := ruleMap[match.RuleID]
-			if !ok {
-				return fmt.Errorf("rule not found: %s", match.RuleID)
-			}
-			findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
-			exists, err := tx.FindingExists(findingID)
+			added, err := upsertFinding(ctx, tx, match, ruleMap, engine, resolvedAccess)
 			if err != nil {
-				return fmt.Errorf("checking retry finding: %w", err)
+				return err
 			}
-			if !exists {
+			if added {
 				findingCount.Add(1)
 				matchCount.Add(1)
-				f := &types.Finding{
-					ID:     findingID,
-					RuleID: match.RuleID,
-					Groups: match.Groups,
-				}
-				f.Score = engine.Score(ctx, f, []*types.Match{match}, rule)
-				if resolvedAccess == AccessibilityPrivate {
-					ApplyAccessibilityModifier(f.Score)
-				}
-				if err := tx.AddFinding(f); err != nil {
-					return fmt.Errorf("storing retry finding: %w", err)
-				}
 			}
 		}
 		return nil
