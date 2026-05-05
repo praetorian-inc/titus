@@ -56,6 +56,35 @@ func (l *Loader) LoadRuleFile(path string) (*types.Rule, error) {
 	return l.LoadRule(data)
 }
 
+// LoadRulesFromFileMulti loads ALL rules from a single YAML file. Unlike
+// LoadRuleFile (which restricts files to exactly one rule), this function
+// accepts multi-rule files using the same parsing path as LoadBuiltinRules.
+func (l *Loader) LoadRulesFromFileMulti(path string) ([]*types.Rule, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+
+	var yamlFile yamlRulesFile
+	if err := yaml.Unmarshal(data, &yamlFile); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	if len(yamlFile.Rules) == 0 {
+		return nil, fmt.Errorf("no rules found in YAML file %s", path)
+	}
+
+	rules := make([]*types.Rule, 0, len(yamlFile.Rules))
+	for _, yr := range yamlFile.Rules {
+		r, err := convertYAMLRule(yr)
+		if err != nil {
+			return nil, fmt.Errorf("loading %s: %w", path, err)
+		}
+		rules = append(rules, r)
+	}
+	return rules, nil
+}
+
 // LoadRuleset loads a ruleset from YAML bytes.
 // Returns error if YAML is invalid or multiple rulesets are present.
 func (l *Loader) LoadRuleset(data []byte) (*types.Ruleset, error) {
