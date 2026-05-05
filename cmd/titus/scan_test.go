@@ -10,6 +10,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -208,6 +209,43 @@ func TestResolveAutoOutput(t *testing.T) {
 			got := resolveAutoOutput(tt.target)
 			assert.Equal(t, tt.expected, got)
 		})
+	}
+}
+
+func TestAddRulesFlags_RegistersAllFour(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	addRulesFlags(cmd)
+	for _, name := range []string{"rules", "rules-include", "rules-exclude", "ruleset"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("addRulesFlags did not register --%s", name)
+		}
+	}
+}
+
+func TestAddOutputFlags_RegistersOutputAndFormat(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	addOutputFlags(cmd)
+	for _, name := range []string{"output", "format"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("addOutputFlags did not register --%s", name)
+		}
+	}
+}
+
+func TestAddPipelineFlags_RegistersAllPipelineFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	addPipelineFlags(cmd)
+	expected := []string{
+		"workers", "readers", "max-file-size", "context-lines",
+		"incremental", "validate", "validate-workers", "store-blobs",
+		"accessibility", "ignore", "extract", "extract-max-size",
+		"extract-max-total", "extract-max-depth", "sqlite-row-limit",
+		"score-scope", "score-timeout", "score-budget",
+	}
+	for _, name := range expected {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("addPipelineFlags did not register --%s", name)
+		}
 	}
 }
 
