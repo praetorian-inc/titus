@@ -84,8 +84,8 @@ func TestGitLabScanCmd_FlagDefaults(t *testing.T) {
 	flags := gitlabScanCmd.Flags()
 
 	outputFlag := flags.Lookup("output")
-	if outputFlag != nil && outputFlag.DefValue != "titus.db" {
-		t.Errorf("expected output default='titus.db', got %q", outputFlag.DefValue)
+	if outputFlag != nil && outputFlag.DefValue != "titus.ds" {
+		t.Errorf("expected output default='titus.ds', got %q", outputFlag.DefValue)
 	}
 
 	formatFlag := flags.Lookup("format")
