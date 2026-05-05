@@ -19,10 +19,10 @@ import (
 // pipelineOpts captures the per-call inputs for runPipeline. All other
 // configuration is read from package-level scan* globals (set by cobra flags).
 type pipelineOpts struct {
-	Target       string // for accessibility detection + log messages
-	OutputPath   string // already :auto:-resolved by caller
-	OutputFormat string // "json" | "sarif" | "human"
-	Token        string // resolved API token for accessibility detection; "" if none
+	Target        string        // log messages only
+	OutputPath    string        // already :auto:-resolved by caller
+	OutputFormat  string        // "json" | "sarif" | "human"
+	Accessibility Accessibility // resolved by caller; controls per-finding accessibility penalty
 }
 
 // runPipeline executes the full scan pipeline (rules -> matcher -> store ->
@@ -90,8 +90,7 @@ func runPipeline(ctx context.Context, cmd *cobra.Command, enumerator enum.Enumer
 		fmt.Fprintf(os.Stderr, "[warn] --score-scope set without --validate; dynamic modifiers will use unvalidated credentials (results may be less accurate)\n")
 	}
 
-	// Resolve code accessibility for score adjustment.
-	accessibility := ResolveAccessibility(scanAccessibility, opts.Target, opts.Token)
+	accessibility := opts.Accessibility
 
 	// Scan with parallel workers
 	var matchCount atomic.Int64

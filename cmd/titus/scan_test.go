@@ -25,24 +25,27 @@ func resetPipelineGlobals(t *testing.T) {
 	saved := struct {
 		workers, readers, contextLines, validateWorkers, sqliteRowLimit, extractMaxDepth int
 		maxFileSize                                                                      int64
-		incremental, validate, storeBlobs, scopeEnabled                                  bool
+		incremental, validate, storeBlobs, scopeEnabled, git                             bool
 		rulesPath, rulesInclude, rulesExclude, ruleset, accessibility, ignoreFile        string
 		outputPath, outputFormat, extractMaxSize, extractMaxTotal                        string
+		extractArchives                                                                  extensionsValue
 		scoreTimeout, scoreBudget                                                        time.Duration
 	}{
 		scanWorkers, scanReaders, scanContextLines, scanValidateWorkers, scanSQLiteRowLimit, extractMaxDepth,
 		scanMaxFileSize,
-		scanIncremental, scanValidate, scanStoreBlobs, scanScopeEnabled,
+		scanIncremental, scanValidate, scanStoreBlobs, scanScopeEnabled, scanGit,
 		scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanAccessibility, scanIgnoreFile,
 		scanOutputPath, scanOutputFormat, extractMaxSize, extractMaxTotal,
+		scanExtractArchivesFlag,
 		scanScoreTimeout, scanScoreBudget,
 	}
 	t.Cleanup(func() {
 		scanWorkers, scanReaders, scanContextLines, scanValidateWorkers, scanSQLiteRowLimit, extractMaxDepth = saved.workers, saved.readers, saved.contextLines, saved.validateWorkers, saved.sqliteRowLimit, saved.extractMaxDepth
 		scanMaxFileSize = saved.maxFileSize
-		scanIncremental, scanValidate, scanStoreBlobs, scanScopeEnabled = saved.incremental, saved.validate, saved.storeBlobs, saved.scopeEnabled
+		scanIncremental, scanValidate, scanStoreBlobs, scanScopeEnabled, scanGit = saved.incremental, saved.validate, saved.storeBlobs, saved.scopeEnabled, saved.git
 		scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanAccessibility, scanIgnoreFile = saved.rulesPath, saved.rulesInclude, saved.rulesExclude, saved.ruleset, saved.accessibility, saved.ignoreFile
 		scanOutputPath, scanOutputFormat, extractMaxSize, extractMaxTotal = saved.outputPath, saved.outputFormat, saved.extractMaxSize, saved.extractMaxTotal
+		scanExtractArchivesFlag = saved.extractArchives
 		scanScoreTimeout, scanScoreBudget = saved.scoreTimeout, saved.scoreBudget
 	})
 
@@ -57,6 +60,8 @@ func resetPipelineGlobals(t *testing.T) {
 	scanValidate = false
 	scanStoreBlobs = false
 	scanScopeEnabled = false
+	scanGit = false
+	scanExtractArchivesFlag = ""
 	scanRulesPath = ""
 	scanRulesInclude = ""
 	scanRulesExclude = ""

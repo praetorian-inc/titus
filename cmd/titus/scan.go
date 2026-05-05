@@ -127,10 +127,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 	return runPipeline(ctx, cmd, enumerator, pipelineOpts{
-		Target:       target,
-		OutputPath:   scanOutputPath,
-		OutputFormat: scanOutputFormat,
-		Token:        "", // filesystem targets have no remote token
+		Target:        target,
+		OutputPath:    scanOutputPath,
+		OutputFormat:  scanOutputFormat,
+		Accessibility: ResolveAccessibility(scanAccessibility, target, os.Getenv("GITHUB_TOKEN")),
 	})
 }
 
@@ -526,10 +526,10 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 		ctx = context.Background()
 	}
 	return runPipeline(ctx, cmd, cloneEnum, pipelineOpts{
-		Target:       rt.FullPath,
-		OutputPath:   scanOutputPath,
-		OutputFormat: scanOutputFormat,
-		Token:        token,
+		Target:        rt.FullPath,
+		OutputPath:    scanOutputPath,
+		OutputFormat:  scanOutputFormat,
+		Accessibility: ResolveAccessibility(scanAccessibility, rt.FullPath, token),
 	})
 }
 
@@ -552,10 +552,10 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 		ctx = context.Background()
 	}
 	return runPipeline(ctx, cmd, s3Enum, pipelineOpts{
-		Target:       "s3://" + bucket + "/" + prefix,
-		OutputPath:   scanOutputPath,
-		OutputFormat: scanOutputFormat,
-		Token:        "", // S3 has no git remote
+		Target:        "s3://" + bucket + "/" + prefix,
+		OutputPath:    scanOutputPath,
+		OutputFormat:  scanOutputFormat,
+		Accessibility: ResolveAccessibility(scanAccessibility, "", ""),
 	})
 }
 
