@@ -154,6 +154,6 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		Target:       target,
 		OutputPath:   scanOutputPath,
 		OutputFormat: scanOutputFormat,
-		TokenEnvVar:  "GITLAB_TOKEN",
+		Token:        token,
 	})
 }

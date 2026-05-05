@@ -186,7 +186,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		Target:       target,
 		OutputPath:   scanOutputPath,
 		OutputFormat: scanOutputFormat,
-		TokenEnvVar:  "GITHUB_TOKEN",
+		Token:        token,
 	})
 }
 
