@@ -5,6 +5,6 @@ package scoring
 func BuiltinGoScorers() []*Scorer {
 	return []*Scorer{
 		AWSGoScorer(),
-		// GitHubGoScorer(), // Phase 2
+		GitHubGoScorer(),
 	}
 }

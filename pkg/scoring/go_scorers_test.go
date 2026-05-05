@@ -23,3 +23,15 @@ func TestBuiltinGoScorers_IncludesAWS(t *testing.T) {
 	}
 	assert.True(t, found, "BuiltinGoScorers must include aws-iam-scope scorer")
 }
+
+func TestBuiltinGoScorers_IncludesGitHub(t *testing.T) {
+	scorers := BuiltinGoScorers()
+	var found bool
+	for _, s := range scorers {
+		if s.Name == "github-fine-grained-scope" {
+			found = true
+			assert.Contains(t, s.RuleIDs, "np.github.7")
+		}
+	}
+	assert.True(t, found)
+}
