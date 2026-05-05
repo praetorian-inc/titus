@@ -34,3 +34,9 @@ func TestExtractAWSCredentials_NilMatch_ReturnsFalse(t *testing.T) {
 	_, _, ok := extractAWSCredentials(nil)
 	assert.False(t, ok)
 }
+
+func TestSTSKeyActiveCondition_IsDynamic(t *testing.T) {
+	cond := &stsKeyActiveCondition{}
+	mod := Modifier{Condition: cond}
+	assert.True(t, mod.IsDynamic(), "stsKeyActiveCondition should be dynamic (requires network)")
+}
