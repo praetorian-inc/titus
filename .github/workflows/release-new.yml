@@ -447,47 +447,48 @@ jobs:
         ls -la
 
     - name: Generate release notes
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        cat > release_notes.md << 'NOTES_EOF'
-        ## Titus Secret Scanner
+        # Find the previous tag so GitHub can diff commits between them
+        git fetch --tags --quiet
+        PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ env.VERSION }}$" | head -1)
 
-        All binaries include high-performance Hyperscan/Vectorscan regex matching.
-        No runtime dependencies required - Hyperscan is statically linked.
+        # Generate "What's Changed" changelog via GitHub API
+        if [ -n "$PREV_TAG" ]; then
+          gh api repos/${{ github.repository }}/releases/generate-notes \
+            -f tag_name="${{ env.VERSION }}" \
+            -f previous_tag_name="$PREV_TAG" \
+            --jq '.body' > changelog.md 2>/dev/null || true
+        fi
 
-        ### Downloads
-
-        | Platform | Architecture | File |
-        |----------|-------------|------|
-        | Linux | x64 | `titus-linux-amd64` |
-        | Linux | arm64 | `titus-linux-arm64` |
-        | macOS | Apple Silicon | `titus-darwin-arm64` |
-        | macOS | Intel | `titus-darwin-amd64` |
-        | Windows | x64 | `titus-windows-amd64.exe` |
-
-        ### Extensions
-
-        | Extension | File | Notes |
-        |-----------|------|-------|
-        | Burp Suite | `titus-burp.jar` | Load in Extensions → Add |
-        | Chrome/Firefox | `titus-browser-extension.zip` | Load as unpacked extension |
-
-        ### Installation
-
-        Download the appropriate binary for your platform from the assets below.
-
-        **Linux/macOS:**
-        ```bash
-        chmod +x titus-*
-        sudo mv titus-* /usr/local/bin/titus
-        ```
-
-        **Windows:** Run the .exe directly or add to PATH.
-
-        ### Checksums
-
-        See `checksums.txt` for SHA256 checksums of all files.
-        NOTES_EOF
-        sed 's/^        //' release_notes.md > release_notes_clean.md && mv release_notes_clean.md release_notes.md
+        # Build release notes: changelog first, then install reference
+        {
+          if [ -s changelog.md ]; then
+            cat changelog.md
+            printf '\n---\n\n'
+          fi
+          printf '## Downloads\n\n'
+          printf '| Platform | Architecture | File |\n'
+          printf '|----------|-------------|------|\n'
+          printf '| Linux | x64 | `titus-linux-amd64` |\n'
+          printf '| Linux | arm64 | `titus-linux-arm64` |\n'
+          printf '| macOS | Apple Silicon | `titus-darwin-arm64` |\n'
+          printf '| macOS | Intel | `titus-darwin-amd64` |\n'
+          printf '| Windows | x64 | `titus-windows-amd64.exe` |\n'
+          printf '\n## Extensions\n\n'
+          printf '| Extension | File | Notes |\n'
+          printf '|-----------|------|-------|\n'
+          printf '| Burp Suite | `titus-burp.jar` | Load in Extensions → Add |\n'
+          printf '| Chrome/Firefox | `titus-browser-extension.zip` | Load as unpacked extension |\n'
+          printf '\n## Installation\n\n'
+          printf 'Download the appropriate binary for your platform from the assets below.\n\n'
+          printf '**Linux/macOS:**\n```bash\nchmod +x titus-*\nsudo mv titus-* /usr/local/bin/titus\n```\n\n'
+          printf '**Windows:** Run the .exe directly or add to PATH.\n\n'
+          printf '## Checksums\n\n'
+          printf 'See `checksums.txt` for SHA256 checksums of all files.\n\n'
+          printf '> All binaries include statically linked Hyperscan/Vectorscan — no runtime dependencies required.\n'
+        } > release_notes.md
 
     - name: Create Release
       uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
