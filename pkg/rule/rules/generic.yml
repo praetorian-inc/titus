@@ -685,3 +685,61 @@ rules:
   - 'usernameLabel:"Username:",passwordLabel:"Password:"'
   - 'user:"$USER",pass:"$PASS"'
   - 'user:"",password:"tooshort"'
+
+
+- name: Hardcoded Credential in JSON Key-Value Pair
+  id: np.generic.19
+  base_score: 70
+
+  pattern: |
+    (?x)(?i)
+    "key"\s*:\s*
+    "(?P<field>password|passwd|pass|secret|client_secret|app_secret|api_secret|user_secret|api_?key|apikey|auth_?token|access_?token|username|user|email)"
+    [^}]{0,200}
+    "value"\s*:\s*
+    "
+    (?P<credential>
+      [^"{\$%<]{1}
+      [^"]{3,99}
+    )
+    "
+
+  categories: [fuzzy, generic, secret]
+
+  examples:
+  - '{"key": "password", "value": "IceCool9000", "type": "text"}'
+  - '{"key": "username", "value": "p@perfume.com", "type": "text"}'
+  - '{"key": "client_secret", "value": "8WQDHQ9X4mdtzK1Kp5gz833T4dHx0cbH", "type": "text"}'
+  - '{"key": "api_key", "value": "sk-live-abc123def456ghi789jkl012", "type": "text"}'
+  - '{"key": "secret", "value": "MySecretKey123!", "type": "text"}'
+  - '"key":"passwd","value":"hunter2abc","type":"text"'
+  - '{"key": "access_token", "value": "ya29.a0AfH6SMAexampleTokenHere", "type": "text"}'
+  - '{"key": "auth_token", "value": "BearerAbc123def456XYZ", "type": "text"}'
+  - '{"key": "email", "value": "admin@example.com", "type": "text"}'
+  - '{"key": "user", "value": "serviceaccount", "type": "text"}'
+  - |
+      {
+          "key": "client_secret",
+          "value": "8OsZciU4N4lkqyBHKFiEJQJuhjTnqzFZeoWsIofIEUTvxQUFu9FDRv2NelHi",
+          "type": "text"
+      }
+
+  negative_examples:
+  - '{"key": "password", "value": "{{password}}", "type": "text"}'
+  - '{"key": "client_secret", "value": "{{client_secret}}", "type": "text"}'
+  - '{"key": "client_secret", "value": "{{clientSecret}}", "type": "text"}'
+  - '{"key": "password", "value": "${PASSWORD}", "type": "text"}'
+  - '{"key": "password", "value": "%PASSWORD%", "type": "text"}'
+  - '{"key": "password", "value": "", "type": "text"}'
+  - '{"key": "password", "value": "abc", "type": "text"}'
+  - '{"key": "grant_type", "value": "password", "type": "text"}'
+  - '{"key": "username", "value": "{{username}}", "type": "text"}'
+  - '{"key": "email", "value": "<your_email>", "type": "text"}'
+
+  description: |
+    A hardcoded credential or identity was found in a JSON key-value structure.
+    Many tools and frameworks store parameters as JSON objects with "key" and
+    "value" fields. When credential fields like password, username,
+    client_secret, or API keys contain plaintext values rather than
+    environment or template variables, the credential is exposed to anyone
+    with access to the file.
