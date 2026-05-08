@@ -86,6 +86,7 @@ rulesets:
   - np.generic.16     # Generic Secret
   - np.generic.17     # Generic Password in JavaScript Object (noisy; opt-in via --include-noisy)
   - np.generic.18     # Generic Username and Password in JavaScript Object (noisy; opt-in via --include-noisy)
+  - np.generic.19     # Hardcoded Credential in JSON Key-Value Pair
   - np.gitalk.1       # Gitalk OAuth Credentials
   - np.github.1       # GitHub Personal Access Token
   - np.github.2       # GitHub OAuth Access Token
