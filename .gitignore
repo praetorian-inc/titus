@@ -2,7 +2,7 @@
 bin/
 dist/
 *.exe
-titus
+/titus
 
 # Scan output datastores
 titus.ds/
