@@ -10,11 +10,9 @@ concurrency:
 
 jobs:
   drift-check:
-    uses: praetorian-inc/public-workflows/.github/workflows/claude-md-drift.yml@87c0808aa16862a7ffef0cd94c516a02eb48242b  # v2.3.0
-    timeout-minutes: 15
+    uses: praetorian-inc/public-workflows/.github/workflows/claude-md-drift.yml@25c08fbd15a931e275f207ecee1758c931f89ea5  # v2.3.1
     permissions:
       contents: read
       pull-requests: write
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
