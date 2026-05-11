@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -106,16 +105,23 @@ func TestDockerImageEnumeratorSkipsOversizedLayerFiles(t *testing.T) {
 
 // imageFromBytesOpenFunc returns an openFunc that loads a v1.Image from a
 // docker-save tarball held entirely in memory. Used so tests don't depend on
-// docker, a registry, or temp files.
-func imageFromBytesOpenFunc(t *testing.T, archive []byte, expectedImage string) func(ctx context.Context, image string) (v1.Image, error) {
+// docker, a registry, or temp files. ParallelLayers=true overrides the
+// real openImage's tarball=serial policy so the parallel path stays
+// exercised in tests; the in-memory backing doesn't suffer the disk-seek
+// thrash that the policy guards against.
+func imageFromBytesOpenFunc(t *testing.T, archive []byte, expectedImage string) func(ctx context.Context, image string) (*imageSource, error) {
 	t.Helper()
-	return func(ctx context.Context, image string) (v1.Image, error) {
+	return func(ctx context.Context, image string) (*imageSource, error) {
 		require.Equal(t, expectedImage, image)
 		tag, err := name.NewTag("titus-test:latest")
 		require.NoError(t, err)
-		return tarball.Image(func() (io.ReadCloser, error) {
+		img, err := tarball.Image(func() (io.ReadCloser, error) {
 			return io.NopCloser(bytes.NewReader(archive)), nil
 		}, &tag)
+		if err != nil {
+			return nil, err
+		}
+		return &imageSource{Image: img, ParallelLayers: true}, nil
 	}
 }
 
@@ -126,7 +132,7 @@ func TestDockerImageEnumeratorMultipleLayersConcurrent(t *testing.T) {
 		{"layer3/file3.env": []byte("SECRET_THREE=AKIATESTKEY3333333333\n")},
 		{"layer4/file4.env": []byte("SECRET_FOUR=AKIATESTKEY4444444444\n")},
 	}
-	archive := buildMultiLayerDockerImageArchive(t, layers)
+	archive := buildMultiLayerDockerImageArchive(t, layers, "")
 
 	enumerator := NewDockerImageEnumerator("example/multi:latest", Config{
 		MaxFileSize: 10 * 1024 * 1024,
@@ -151,7 +157,20 @@ func TestDockerImageEnumeratorMultipleLayersConcurrent(t *testing.T) {
 	}
 }
 
-func buildMultiLayerDockerImageArchive(t *testing.T, layers []map[string][]byte) []byte {
+// buildDockerImageArchive builds a single-layer docker-save tarball whose
+// config.json bakes in CONFIG_TOKEN as an env var, so callers can assert that
+// env-secrets in the image config are surfaced as metadata.
+func buildDockerImageArchive(t *testing.T, layerFiles map[string][]byte) []byte {
+	return buildMultiLayerDockerImageArchive(t,
+		[]map[string][]byte{layerFiles},
+		`"CONFIG_TOKEN=AKIATESTKEY1234567890"`,
+	)
+}
+
+// buildMultiLayerDockerImageArchive builds a docker-save tarball with one
+// tar entry per provided layer and a config.json carrying the given Env
+// entries (a JSON-encoded array body, e.g. `"FOO=bar","BAZ=qux"`).
+func buildMultiLayerDockerImageArchive(t *testing.T, layers []map[string][]byte, configEnvJSON string) []byte {
 	t.Helper()
 
 	layerNames := make([]string, len(layers))
@@ -169,8 +188,8 @@ func buildMultiLayerDockerImageArchive(t *testing.T, layers []map[string][]byte)
 	layerNamesJSON := `"` + strings.Join(layerNames, `","`) + `"`
 
 	files["config.json"] = fmt.Appendf(nil,
-		`{"architecture":"amd64","os":"linux","rootfs":{"type":"layers","diff_ids":[%s]}}`,
-		diffIDsJSON,
+		`{"architecture":"amd64","os":"linux","config":{"Env":[%s]},"rootfs":{"type":"layers","diff_ids":[%s]}}`,
+		configEnvJSON, diffIDsJSON,
 	)
 	files["manifest.json"] = fmt.Appendf(nil,
 		`[{"Config":"config.json","RepoTags":["titus-test:latest"],"Layers":[%s]}]`,
@@ -178,25 +197,6 @@ func buildMultiLayerDockerImageArchive(t *testing.T, layers []map[string][]byte)
 	)
 
 	return buildTar(t, files)
-}
-
-func buildDockerImageArchive(t *testing.T, layerFiles map[string][]byte) []byte {
-	t.Helper()
-
-	layer := buildTar(t, layerFiles)
-	sum := sha256.Sum256(layer)
-	diffID := "sha256:" + hex.EncodeToString(sum[:])
-
-	config := fmt.Sprintf(
-		`{"architecture":"amd64","os":"linux","config":{"Env":["CONFIG_TOKEN=AKIATESTKEY1234567890"]},"rootfs":{"type":"layers","diff_ids":[%q]}}`,
-		diffID,
-	)
-
-	return buildTar(t, map[string][]byte{
-		"manifest.json":   []byte(`[{"Config":"config.json","RepoTags":["titus-test:latest"],"Layers":["layer/layer.tar"]}]`),
-		"config.json":     []byte(config),
-		"layer/layer.tar": layer,
-	})
 }
 
 func buildTar(t *testing.T, files map[string][]byte) []byte {

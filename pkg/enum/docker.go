@@ -24,12 +24,30 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
+// Registry retry policy. Tuned for transient 5xx / connection resets;
+// permanent errors (4xx auth/not-found) are not retried by ggcr's transport.
+const (
+	registryRetrySteps      = 3
+	registryRetryBaseDelay  = time.Second
+	registryRetryMaxDelay   = 30 * time.Second
+	registryRetryFactor     = 2.0
+	registryRetryJitter     = 0.1
+)
+
+// imageSource is the result of resolving an image reference. parallelLayers
+// indicates whether layers can be read concurrently — false for docker-save
+// tarballs where each layer.Uncompressed() linearly re-scans the whole tar.
+type imageSource struct {
+	Image           v1.Image
+	ParallelLayers  bool
+}
+
 // DockerImageEnumerator enumerates scan blobs from a Docker / OCI image.
 type DockerImageEnumerator struct {
 	Image string
 
 	config   Config
-	openFunc func(ctx context.Context, image string) (v1.Image, error)
+	openFunc func(ctx context.Context, image string) (*imageSource, error)
 }
 
 // NewDockerImageEnumerator creates an enumerator for a Docker / OCI image
@@ -68,10 +86,11 @@ func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(con
 		openFn = openImage
 	}
 
-	img, err := openFn(ctx, e.Image)
+	src, err := openFn(ctx, e.Image)
 	if err != nil {
 		return err
 	}
+	img := src.Image
 
 	manifest, err := img.RawManifest()
 	if err != nil {
@@ -92,18 +111,25 @@ func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(con
 	if err != nil {
 		return fmt.Errorf("listing image layers: %w", err)
 	}
+	if len(layers) == 0 {
+		return nil
+	}
 
 	numReaders := e.config.NumReaders
 	if numReaders <= 0 {
 		numReaders = runtime.NumCPU()
 	}
+	if !src.ParallelLayers {
+		// ggcr's tarball.Image re-scans the whole archive on every
+		// layer.Uncompressed(); parallel readers thrash the same file.
+		numReaders = 1
+	}
 	if numReaders > len(layers) {
 		numReaders = len(layers)
 	}
-	if numReaders < 1 {
-		numReaders = 1
-	}
 
+	// errgroup cancels its derived ctx on Wait() return; keep the parent
+	// around so we can distinguish caller cancellation from clean finish.
 	origCtx := ctx
 	g, ctx := errgroup.WithContext(ctx)
 	layersCh := make(chan v1.Layer, numReaders*2)
@@ -166,13 +192,21 @@ func (e *DockerImageEnumerator) scanLayer(ctx context.Context, layer v1.Layer, c
 // docker-save tarball (file) or OCI image layout (directory); anything else
 // is parsed as a registry reference and pulled via the OCI distribution API.
 // No docker daemon or `docker` binary is required.
-func openImage(ctx context.Context, image string) (v1.Image, error) {
+func openImage(ctx context.Context, image string) (*imageSource, error) {
 	target := strings.TrimSpace(image)
 	if info, err := os.Stat(target); err == nil {
 		if info.IsDir() {
-			return openOCILayout(target)
+			img, err := openOCILayout(target)
+			if err != nil {
+				return nil, err
+			}
+			return &imageSource{Image: img, ParallelLayers: true}, nil
 		}
-		return openTarball(target)
+		img, err := openTarball(target)
+		if err != nil {
+			return nil, err
+		}
+		return &imageSource{Image: img, ParallelLayers: false}, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("inspecting image source %q: %w", target, err)
 	}
@@ -186,17 +220,17 @@ func openImage(ctx context.Context, image string) (v1.Image, error) {
 		remote.WithContext(ctx),
 		remote.WithUserAgent(userAgent()),
 		remote.WithRetryBackoff(remote.Backoff{
-			Duration: time.Second,
-			Factor:   2.0,
-			Jitter:   0.1,
-			Steps:    3,
-			Cap:      30 * time.Second,
+			Duration: registryRetryBaseDelay,
+			Factor:   registryRetryFactor,
+			Jitter:   registryRetryJitter,
+			Steps:    registryRetrySteps,
+			Cap:      registryRetryMaxDelay,
 		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("pulling image %q: %w", target, err)
 	}
-	return img, nil
+	return &imageSource{Image: img, ParallelLayers: true}, nil
 }
 
 // userAgent identifies titus to registries. Anonymous default-UA pulls are
