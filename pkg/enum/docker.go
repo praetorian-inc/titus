@@ -27,19 +27,19 @@ import (
 // Registry retry policy. Tuned for transient 5xx / connection resets;
 // permanent errors (4xx auth/not-found) are not retried by ggcr's transport.
 const (
-	registryRetrySteps      = 3
-	registryRetryBaseDelay  = time.Second
-	registryRetryMaxDelay   = 30 * time.Second
-	registryRetryFactor     = 2.0
-	registryRetryJitter     = 0.1
+	registryRetrySteps     = 3
+	registryRetryBaseDelay = time.Second
+	registryRetryMaxDelay  = 30 * time.Second
+	registryRetryFactor    = 2.0
+	registryRetryJitter    = 0.1
 )
 
 // imageSource is the result of resolving an image reference. parallelLayers
 // indicates whether layers can be read concurrently — false for docker-save
 // tarballs where each layer.Uncompressed() linearly re-scans the whole tar.
 type imageSource struct {
-	Image           v1.Image
-	ParallelLayers  bool
+	Image          v1.Image
+	ParallelLayers bool
 }
 
 // DockerImageEnumerator enumerates scan blobs from a Docker / OCI image.
@@ -70,28 +70,46 @@ func NewDockerImageEnumerator(image string, config Config) *DockerImageEnumerato
 // file in every layer. Files deleted by later layers are intentionally
 // included because secrets can remain recoverable from image history.
 func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	image := strings.TrimSpace(e.Image)
-	if image == "" {
-		return fmt.Errorf("docker image is required")
-	}
-	if strings.HasPrefix(image, "docker://") {
-		image = strings.TrimPrefix(image, "docker://")
-		if strings.TrimSpace(image) == "" {
-			return fmt.Errorf("docker image is required (empty after docker:// prefix)")
-		}
-		e.Image = image
+	if err := e.normalizeImage(); err != nil {
+		return err
 	}
 	openFn := e.openFunc
 	if openFn == nil {
 		openFn = openImage
 	}
-
 	src, err := openFn(ctx, e.Image)
 	if err != nil {
 		return err
 	}
-	img := src.Image
+	if err := e.emitImageMetadata(ctx, src.Image, callback); err != nil {
+		return err
+	}
+	layers, err := src.Image.Layers()
+	if err != nil {
+		return fmt.Errorf("listing image layers: %w", err)
+	}
+	return e.scanLayers(ctx, layers, src.ParallelLayers, callback)
+}
 
+// normalizeImage trims whitespace and strips a docker:// prefix from
+// e.Image. NewDockerImageEnumerator already does this, but Enumerate may
+// run on a struct built directly (e.g. in tests), so we revalidate here.
+func (e *DockerImageEnumerator) normalizeImage() error {
+	image := strings.TrimSpace(e.Image)
+	if image == "" {
+		return fmt.Errorf("docker image is required")
+	}
+	if strings.HasPrefix(image, "docker://") {
+		image = strings.TrimSpace(strings.TrimPrefix(image, "docker://"))
+		if image == "" {
+			return fmt.Errorf("docker image is required (empty after docker:// prefix)")
+		}
+	}
+	e.Image = image
+	return nil
+}
+
+func (e *DockerImageEnumerator) emitImageMetadata(ctx context.Context, img v1.Image, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	manifest, err := img.RawManifest()
 	if err != nil {
 		return fmt.Errorf("reading image manifest: %w", err)
@@ -103,14 +121,10 @@ func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(con
 	if err != nil {
 		return fmt.Errorf("reading image config: %w", err)
 	}
-	if err := e.emitMetadata(ctx, config, "config.json", callback); err != nil {
-		return err
-	}
+	return e.emitMetadata(ctx, config, "config.json", callback)
+}
 
-	layers, err := img.Layers()
-	if err != nil {
-		return fmt.Errorf("listing image layers: %w", err)
-	}
+func (e *DockerImageEnumerator) scanLayers(ctx context.Context, layers []v1.Layer, parallelOK bool, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	if len(layers) == 0 {
 		return nil
 	}
@@ -119,7 +133,7 @@ func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(con
 	if numReaders <= 0 {
 		numReaders = runtime.NumCPU()
 	}
-	if !src.ParallelLayers {
+	if !parallelOK {
 		// ggcr's tarball.Image re-scans the whole archive on every
 		// layer.Uncompressed(); parallel readers thrash the same file.
 		numReaders = 1
