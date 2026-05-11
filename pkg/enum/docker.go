@@ -3,6 +3,7 @@ package enum
 import (
 	"archive/tar"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -51,8 +52,16 @@ func NewDockerImageEnumerator(image string, config Config) *DockerImageEnumerato
 // file in every layer. Files deleted by later layers are intentionally
 // included because secrets can remain recoverable from image history.
 func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	if strings.TrimSpace(e.Image) == "" {
+	image := strings.TrimSpace(e.Image)
+	if image == "" {
 		return fmt.Errorf("docker image is required")
+	}
+	if strings.HasPrefix(image, "docker://") {
+		image = strings.TrimPrefix(image, "docker://")
+		if strings.TrimSpace(image) == "" {
+			return fmt.Errorf("docker image is required (empty after docker:// prefix)")
+		}
+		e.Image = image
 	}
 	openFn := e.openFunc
 	if openFn == nil {
@@ -164,6 +173,8 @@ func openImage(ctx context.Context, image string) (v1.Image, error) {
 			return openOCILayout(target)
 		}
 		return openTarball(target)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("inspecting image source %q: %w", target, err)
 	}
 
 	ref, err := name.ParseReference(target)
@@ -345,7 +356,7 @@ func readTarFileContent(r io.Reader, size, maxSize int64) ([]byte, bool, error) 
 }
 
 func isRegularTarFile(hdr *tar.Header) bool {
-	return hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA
+	return hdr.Typeflag == tar.TypeReg
 }
 
 func isDockerWhiteout(memberPath string) bool {
