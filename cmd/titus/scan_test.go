@@ -30,6 +30,15 @@ func TestScanCommand_DefaultOutputIsDatastore(t *testing.T) {
 		"default --output should be titus.ds datastore directory")
 }
 
+func TestScanCommand_DockerFlag(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"scan"})
+	require.NoError(t, err)
+
+	flag := cmd.Flags().Lookup("docker")
+	require.NotNil(t, flag, "--docker flag should exist")
+	assert.Equal(t, "false", flag.DefValue)
+}
+
 func TestScanCommand_OutputFlagMentionsAuto(t *testing.T) {
 	cmd, _, err := rootCmd.Find([]string{"scan"})
 	require.NoError(t, err)
@@ -66,6 +75,15 @@ func TestCreateEnumerator_NoGitReturnsFilesystem(t *testing.T) {
 
 	_, ok := e.(*enum.FilesystemEnumerator)
 	assert.True(t, ok, "createEnumerator(useGit=false) should return *enum.FilesystemEnumerator, got %T", e)
+}
+
+func TestCreateDockerEnumerator_ReturnsDockerImageEnumerator(t *testing.T) {
+	e, err := createDockerEnumerator("example/app:latest")
+	require.NoError(t, err)
+
+	dockerEnum, ok := e.(*enum.DockerImageEnumerator)
+	require.True(t, ok, "createDockerEnumerator should return *enum.DockerImageEnumerator, got %T", e)
+	assert.Equal(t, "example/app:latest", dockerEnum.Image)
 }
 
 func TestCreateEnumerator_InvalidTarget(t *testing.T) {
@@ -201,6 +219,11 @@ func TestResolveAutoOutput(t *testing.T) {
 			target:   "myproject",
 			expected: "myproject.ds",
 		},
+		{
+			name:     "docker image url",
+			target:   "docker://registry.example.com/team/app:1.2.3",
+			expected: "registry.example.com_team_app_1.2.3.ds",
+		},
 	}
 
 	for _, tt := range tests {
@@ -209,6 +232,12 @@ func TestResolveAutoOutput(t *testing.T) {
 			assert.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestDockerAutoOutputName(t *testing.T) {
+	assert.Equal(t, "alpine_latest.ds", dockerAutoOutputName("alpine:latest"))
+	assert.Equal(t, "registry.example.com_team_app_1.2.3.ds", dockerAutoOutputName("docker://registry.example.com/team/app:1.2.3"))
+	assert.Equal(t, "registry.example.com_team_app.ds", dockerAutoOutputName("registry.example.com/team/app@sha256:abc123"))
 }
 
 func init() {

@@ -50,6 +50,7 @@ var (
 	scanOutputPath          string
 	scanOutputFormat        string
 	scanGit                 bool
+	scanDocker              bool
 	scanMaxFileSize         int64
 	scanContextLines        int
 	scanIncremental         bool
@@ -77,7 +78,7 @@ var (
 var scanCmd = &cobra.Command{
 	Use:   "scan <target>",
 	Short: "Scan a target for secrets",
-	Long:  "Scan a file, directory, git repository, or remote GitHub/GitLab repository for secrets using detection rules.\nSupports github.com/org/repo and gitlab.com/namespace/project URLs for direct remote scanning.",
+	Long:  "Scan a file, directory, git repository, Docker image, or remote GitHub/GitLab repository for secrets using detection rules.\nSupports github.com/org/repo and gitlab.com/namespace/project URLs for direct remote scanning.\nUse --docker for image references or prefix the target with docker://.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runScan,
 }
@@ -90,6 +91,7 @@ func init() {
 	scanCmd.Flags().StringVar(&scanOutputPath, "output", "titus.ds", "Output datastore path (:memory: for in-memory, :auto: to derive from target name)")
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
+	scanCmd.Flags().BoolVar(&scanDocker, "docker", false, "Treat target as Docker image (uses docker image save)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
@@ -125,24 +127,36 @@ type blobJob struct {
 
 func runScan(cmd *cobra.Command, args []string) error {
 	target := args[0]
+	dockerImage := target
+	isDockerTarget := scanDocker
+	if parsedImage, ok := enum.ParseDockerImageReference(target); ok {
+		dockerImage = parsedImage
+		isDockerTarget = true
+	}
 
 	if scanOutputPath == ":auto:" {
-		scanOutputPath = resolveAutoOutput(target)
+		if isDockerTarget {
+			scanOutputPath = dockerAutoOutputName(dockerImage)
+		} else {
+			scanOutputPath = resolveAutoOutput(target)
+		}
 	}
 
-	// Check if target is a GitHub or GitLab URL
-	if repoTarget, ok := parseRepoURL(target); ok {
-		return runRepoScan(cmd, repoTarget)
-	}
+	if !isDockerTarget {
+		// Check if target is a GitHub or GitLab URL
+		if repoTarget, ok := parseRepoURL(target); ok {
+			return runRepoScan(cmd, repoTarget)
+		}
 
-	// Check if target is an S3 URL
-	if bucket, prefix, ok := enum.ParseS3URL(target); ok {
-		return runS3Scan(cmd, bucket, prefix)
-	}
+		// Check if target is an S3 URL
+		if bucket, prefix, ok := enum.ParseS3URL(target); ok {
+			return runS3Scan(cmd, bucket, prefix)
+		}
 
-	// Validate target exists (filesystem path)
-	if _, err := os.Stat(target); err != nil {
-		return fmt.Errorf("target does not exist: %s", target)
+		// Validate target exists (filesystem path)
+		if _, err := os.Stat(target); err != nil {
+			return fmt.Errorf("target does not exist: %s", target)
+		}
 	}
 
 	// Load rules
@@ -211,7 +225,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 	accessibility := ResolveAccessibility(scanAccessibility, target, ghToken)
 
 	// Create enumerator
-	enumerator, err := createEnumerator(target, scanGit)
+	var enumerator enum.Enumerator
+	if isDockerTarget {
+		enumerator, err = createDockerEnumerator(dockerImage)
+	} else {
+		enumerator, err = createEnumerator(target, scanGit)
+	}
 	if err != nil {
 		return fmt.Errorf("creating enumerator: %w", err)
 	}
@@ -669,14 +688,14 @@ func parseSize(sizeStr string) (int64, error) {
 	return val * multiplier, nil
 }
 
-func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
+func enumConfigForTarget(target string) (enum.Config, error) {
 	// Parse extraction limits
 	limits := enum.DefaultExtractionLimits()
 
 	if extractMaxSize != "" {
 		size, err := parseSize(extractMaxSize)
 		if err != nil {
-			return nil, fmt.Errorf("parsing extract-max-size: %w", err)
+			return enum.Config{}, fmt.Errorf("parsing extract-max-size: %w", err)
 		}
 		limits.MaxSize = size
 	}
@@ -684,7 +703,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	if extractMaxTotal != "" {
 		size, err := parseSize(extractMaxTotal)
 		if err != nil {
-			return nil, fmt.Errorf("parsing extract-max-total: %w", err)
+			return enum.Config{}, fmt.Errorf("parsing extract-max-total: %w", err)
 		}
 		limits.MaxTotal = size
 	}
@@ -692,7 +711,7 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	limits.MaxDepth = extractMaxDepth
 	limits.SQLiteRowLimit = scanSQLiteRowLimit
 
-	config := enum.Config{
+	return enum.Config{
 		Root:            target,
 		MaxFileSize:     scanMaxFileSize,
 		FollowSymlinks:  false,
@@ -700,6 +719,13 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 		ExtractLimits:   limits,
 		IgnoreFile:      scanIgnoreFile,
 		NumReaders:      scanReaders,
+	}, nil
+}
+
+func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
+	config, err := enumConfigForTarget(target)
+	if err != nil {
+		return nil, err
 	}
 
 	if useGit {
@@ -710,6 +736,14 @@ func createEnumerator(target string, useGit bool) (enum.Enumerator, error) {
 	}
 
 	return enum.NewFilesystemEnumerator(config), nil
+}
+
+func createDockerEnumerator(image string) (enum.Enumerator, error) {
+	config, err := enumConfigForTarget(image)
+	if err != nil {
+		return nil, err
+	}
+	return enum.NewDockerImageEnumerator(image, config), nil
 }
 
 // repoTarget holds parsed repository URL information.
@@ -1500,6 +1534,10 @@ func resolveAutoName(group, user, project string) string {
 // For repo URLs (github.com/ or gitlab.com/), it extracts the repo name.
 // For filesystem paths, it uses the base name of the path.
 func resolveAutoOutput(target string) string {
+	if image, ok := enum.ParseDockerImageReference(target); ok {
+		return dockerAutoOutputName(image)
+	}
+
 	// Strip scheme prefix (e.g. "https://")
 	cleaned := target
 	if idx := strings.Index(cleaned, "://"); idx >= 0 {
@@ -1533,6 +1571,20 @@ func resolveAutoOutput(target string) string {
 		path = wd
 	}
 	return filepath.Base(path) + ".ds"
+}
+
+func dockerAutoOutputName(image string) string {
+	image = strings.TrimSpace(image)
+	image = strings.TrimPrefix(image, "docker://")
+	if image == "" {
+		return "docker-image.ds"
+	}
+	if idx := strings.LastIndex(image, "@"); idx >= 0 {
+		image = image[:idx]
+	}
+	image = strings.TrimRight(image, "/")
+	replacer := strings.NewReplacer("/", "_", ":", "_", "@", "_")
+	return replacer.Replace(image) + ".ds"
 }
 
 // scoringEngineInterface is the narrow surface runScan needs, kept as an

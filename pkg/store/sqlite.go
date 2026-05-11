@@ -236,6 +236,8 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 		provType = "extended"
 		payloadJSON, _ := json.Marshal(p.Payload)
 		path = string(payloadJSON)
+	case types.ArchiveProvenance:
+		provType, path, repoPath = "archive", p.ArchivePath, p.MemberPath
 	default:
 		return fmt.Errorf("unknown provenance type: %T", prov)
 	}
@@ -288,12 +290,12 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 			prov := types.GitProvenance{RepoPath: repoPath.String, BlobPath: path.String}
 			if commitHash.Valid && commitHash.String != "" {
 				meta := &types.CommitMetadata{
-					CommitID:      commitHash.String,
-					AuthorName:    authorName.String,
-					AuthorEmail:   authorEmail.String,
-					CommitterName: committerName.String,
+					CommitID:       commitHash.String,
+					AuthorName:     authorName.String,
+					AuthorEmail:    authorEmail.String,
+					CommitterName:  committerName.String,
 					CommitterEmail: committerEmail.String,
-					Message:       commitMessage.String,
+					Message:        commitMessage.String,
 				}
 				if authorTS.Valid && authorTS.String != "" {
 					meta.AuthorTimestamp, _ = time.Parse(time.RFC3339, authorTS.String)
@@ -310,6 +312,11 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 				_ = json.Unmarshal([]byte(path.String), &payload)
 			}
 			result = append(result, types.ExtendedProvenance{Payload: payload})
+		case "archive":
+			result = append(result, types.ArchiveProvenance{
+				ArchivePath: path.String,
+				MemberPath:  repoPath.String,
+			})
 		}
 	}
 	if result == nil {
@@ -346,6 +353,11 @@ func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Prove
 				_ = json.Unmarshal([]byte(path.String), &payload)
 			}
 			result = append(result, types.ExtendedProvenance{Payload: payload})
+		case "archive":
+			result = append(result, types.ArchiveProvenance{
+				ArchivePath: path.String,
+				MemberPath:  repoPath.String,
+			})
 		}
 	}
 	if result == nil {

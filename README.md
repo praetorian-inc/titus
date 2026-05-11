@@ -59,6 +59,9 @@ titus scan gitlab.com/namespace/project
 # Scan git history for secrets in past commits
 titus scan --git path/to/repo
 
+# Scan a local Docker image
+titus scan --docker alpine:latest
+
 # Validate detected secrets against source APIs
 titus scan path/to/code --validate
 ```
@@ -103,6 +106,18 @@ titus github owner/repo --git
 ```
 
 Tokens are optional for public repositories. Set `GITHUB_TOKEN` or `GITLAB_TOKEN` (or use `--token`) for private repository access and higher API rate limits.
+
+### Docker Image Scanning
+
+Scan local Docker images by image reference. Titus uses `docker image save`, scans image metadata, and scans every regular file in each filesystem layer, including lower-layer files that may have been deleted by later layers.
+
+```bash
+# Explicit Docker image mode
+titus scan --docker my-app:latest
+
+# URL-style target
+titus scan docker://registry.example.com/team/my-app:1.2.3
+```
 
 ### Viewing Scan Results
 
