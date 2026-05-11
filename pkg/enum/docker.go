@@ -60,15 +60,19 @@ func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(con
 		return err
 	}
 
-	if manifest, err := img.RawManifest(); err == nil {
-		if err := e.emitMetadata(ctx, manifest, "manifest.json", callback); err != nil {
-			return err
-		}
+	manifest, err := img.RawManifest()
+	if err != nil {
+		return fmt.Errorf("reading image manifest: %w", err)
 	}
-	if config, err := img.RawConfigFile(); err == nil {
-		if err := e.emitMetadata(ctx, config, "config.json", callback); err != nil {
-			return err
-		}
+	if err := e.emitMetadata(ctx, manifest, "manifest.json", callback); err != nil {
+		return err
+	}
+	config, err := img.RawConfigFile()
+	if err != nil {
+		return fmt.Errorf("reading image config: %w", err)
+	}
+	if err := e.emitMetadata(ctx, config, "config.json", callback); err != nil {
+		return err
 	}
 
 	layers, err := img.Layers()
@@ -141,13 +145,9 @@ func openTarball(path string) (v1.Image, error) {
 }
 
 func openOCILayout(dir string) (v1.Image, error) {
-	p, err := layout.FromPath(dir)
+	ii, err := layout.ImageIndexFromPath(dir)
 	if err != nil {
 		return nil, fmt.Errorf("opening OCI layout %s: %w", dir, err)
-	}
-	ii, err := p.ImageIndex()
-	if err != nil {
-		return nil, fmt.Errorf("reading OCI image index %s: %w", dir, err)
 	}
 	m, err := ii.IndexManifest()
 	if err != nil {
@@ -202,7 +202,7 @@ func (e *DockerImageEnumerator) processLayer(ctx context.Context, layerName stri
 	}
 }
 
-func (e *DockerImageEnumerator) emitMetadata(ctx context.Context, content []byte, name string, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+func (e *DockerImageEnumerator) emitMetadata(ctx context.Context, content []byte, filename string, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -219,7 +219,7 @@ func (e *DockerImageEnumerator) emitMetadata(ctx context.Context, content []byte
 			"source": "docker",
 			"image":  e.Image,
 			"type":   "metadata",
-			"path":   dockerArchivePath(e.Image, name),
+			"path":   dockerArchivePath(e.Image, filename),
 		},
 	}
 	return callback(content, blobID, prov)
