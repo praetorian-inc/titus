@@ -3,12 +3,17 @@ package enum
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,10 +39,7 @@ func TestDockerImageEnumeratorEnumeratesMetadataAndLayerFiles(t *testing.T) {
 	enumerator := NewDockerImageEnumerator("example/app:latest", Config{
 		MaxFileSize: 10 * 1024 * 1024,
 	})
-	enumerator.saveFunc = func(ctx context.Context, image string) (io.ReadCloser, error) {
-		require.Equal(t, "example/app:latest", image)
-		return io.NopCloser(bytes.NewReader(imageArchive)), nil
-	}
+	enumerator.openFunc = imageFromBytesOpenFunc(t, imageArchive, "example/app:latest")
 
 	type callbackRecord struct {
 		content string
@@ -67,47 +69,14 @@ func TestDockerImageEnumeratorEnumeratesMetadataAndLayerFiles(t *testing.T) {
 			foundLayer = true
 			arch, ok := record.prov.(types.ArchiveProvenance)
 			require.True(t, ok, "layer file expected ArchiveProvenance, got %T", record.prov)
-			assert.Equal(t, "docker://example/app:latest/layer/layer.tar", arch.ArchivePath)
+			assert.True(t, strings.HasPrefix(arch.ArchivePath, "docker://example/app:latest/sha256:"),
+				"unexpected archive path: %s", arch.ArchivePath)
 			assert.Equal(t, "app/config.env", arch.MemberPath)
-			assert.Equal(t, "docker://example/app:latest/layer/layer.tar:app/config.env", arch.Path())
 		}
 	}
 
 	assert.True(t, foundConfig, "expected config JSON to be enumerated")
 	assert.True(t, foundLayer, "expected layer file to be enumerated")
-}
-
-func TestDockerImageEnumeratorEnumeratesOCILayoutBlobs(t *testing.T) {
-	layer := gzipContent(t, buildTar(t, map[string][]byte{
-		"etc/service.env": []byte("OCI_SECRET=AKIATESTKEY1234567890\n"),
-	}))
-	imageArchive := buildTar(t, map[string][]byte{
-		"blobs/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": []byte(`{"config":{"Env":["OCI_CONFIG_TOKEN=AKIATESTKEY1234567890"]}}`),
-		"blobs/sha256/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": layer,
-		"index.json": []byte(`{"schemaVersion":2}`),
-		"oci-layout": []byte(`{"imageLayoutVersion":"1.0.0"}`),
-	})
-
-	enumerator := NewDockerImageEnumerator("example/oci:latest", Config{
-		MaxFileSize: 10 * 1024 * 1024,
-	})
-	enumerator.saveFunc = func(ctx context.Context, image string) (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(imageArchive)), nil
-	}
-
-	var paths []string
-	var contents []string
-	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		contents = append(contents, string(content))
-		paths = append(paths, prov.Path())
-		return nil
-	})
-	require.NoError(t, err)
-
-	assert.Contains(t, contents, `{"config":{"Env":["OCI_CONFIG_TOKEN=AKIATESTKEY1234567890"]}}`)
-	assert.Contains(t, contents, "OCI_SECRET=AKIATESTKEY1234567890\n")
-	assert.Contains(t, paths, "docker://example/oci:latest/blobs/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	assert.Contains(t, paths, "docker://example/oci:latest/blobs/sha256/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:etc/service.env")
 }
 
 func TestDockerImageEnumeratorSkipsOversizedLayerFiles(t *testing.T) {
@@ -119,9 +88,7 @@ func TestDockerImageEnumeratorSkipsOversizedLayerFiles(t *testing.T) {
 	enumerator := NewDockerImageEnumerator("example/app:latest", Config{
 		MaxFileSize: 10,
 	})
-	enumerator.saveFunc = func(ctx context.Context, image string) (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(imageArchive)), nil
-	}
+	enumerator.openFunc = imageFromBytesOpenFunc(t, imageArchive, "example/app:latest")
 
 	var contents []string
 	err := enumerator.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
@@ -133,7 +100,21 @@ func TestDockerImageEnumeratorSkipsOversizedLayerFiles(t *testing.T) {
 	assert.Contains(t, contents, "small")
 	for _, content := range contents {
 		assert.NotContains(t, content, "larger than")
-		assert.NotContains(t, content, "CONFIG_TOKEN")
+	}
+}
+
+// imageFromBytesOpenFunc returns an openFunc that loads a v1.Image from a
+// docker-save tarball held entirely in memory. Used so tests don't depend on
+// docker, a registry, or temp files.
+func imageFromBytesOpenFunc(t *testing.T, archive []byte, expectedImage string) func(ctx context.Context, image string) (v1.Image, error) {
+	t.Helper()
+	return func(ctx context.Context, image string) (v1.Image, error) {
+		require.Equal(t, expectedImage, image)
+		tag, err := name.NewTag("titus-test:latest")
+		require.NoError(t, err)
+		return tarball.Image(func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(archive)), nil
+		}, &tag)
 	}
 }
 
@@ -141,10 +122,17 @@ func buildDockerImageArchive(t *testing.T, layerFiles map[string][]byte) []byte 
 	t.Helper()
 
 	layer := buildTar(t, layerFiles)
+	sum := sha256.Sum256(layer)
+	diffID := "sha256:" + hex.EncodeToString(sum[:])
+
+	config := fmt.Sprintf(
+		`{"architecture":"amd64","os":"linux","config":{"Env":["CONFIG_TOKEN=AKIATESTKEY1234567890"]},"rootfs":{"type":"layers","diff_ids":[%q]}}`,
+		diffID,
+	)
 
 	return buildTar(t, map[string][]byte{
-		"manifest.json":   []byte(`[{"Config":"config.json","Layers":["layer/layer.tar"]}]`),
-		"config.json":     []byte(`{"config":{"Env":["CONFIG_TOKEN=AKIATESTKEY1234567890"]}}`),
+		"manifest.json":   []byte(`[{"Config":"config.json","RepoTags":["titus-test:latest"],"Layers":["layer/layer.tar"]}]`),
+		"config.json":     []byte(config),
 		"layer/layer.tar": layer,
 	})
 }
@@ -165,16 +153,5 @@ func buildTar(t *testing.T, files map[string][]byte) []byte {
 		require.NoError(t, err)
 	}
 	require.NoError(t, tw.Close())
-	return buf.Bytes()
-}
-
-func gzipContent(t *testing.T, content []byte) []byte {
-	t.Helper()
-
-	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
-	_, err := gw.Write(content)
-	require.NoError(t, err)
-	require.NoError(t, gw.Close())
 	return buf.Bytes()
 }

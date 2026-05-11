@@ -2,28 +2,35 @@ package enum
 
 import (
 	"archive/tar"
-	"bufio"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
+	"os"
 	"path"
 	"strings"
+
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// DockerImageEnumerator enumerates scan blobs from a Docker image archive.
+// DockerImageEnumerator enumerates scan blobs from a Docker / OCI image.
 type DockerImageEnumerator struct {
 	Image string
 
 	config   Config
-	saveFunc func(ctx context.Context, image string) (io.ReadCloser, error)
+	openFunc func(ctx context.Context, image string) (v1.Image, error)
 }
 
-// NewDockerImageEnumerator creates an enumerator for a local Docker image.
+// NewDockerImageEnumerator creates an enumerator for a Docker / OCI image
+// reference. The reference may be a registry ref (alpine:latest,
+// ghcr.io/foo/bar:v1), a path to a docker-save tarball, or a path to an OCI
+// image layout directory.
 func NewDockerImageEnumerator(image string, config Config) *DockerImageEnumerator {
 	if parsed, ok := ParseDockerImageReference(image); ok {
 		image = parsed
@@ -31,164 +38,129 @@ func NewDockerImageEnumerator(image string, config Config) *DockerImageEnumerato
 	return &DockerImageEnumerator{
 		Image:    image,
 		config:   config,
-		saveFunc: dockerImageSave,
+		openFunc: openImage,
 	}
 }
 
-// Enumerate streams `docker image save` output and scans image metadata plus
-// every regular file found in each filesystem layer. Lower-layer files are
-// intentionally included even when later layers delete them, because secrets
-// can remain recoverable from image history.
+// Enumerate fetches the image (registry pull / local tarball / OCI layout),
+// emits the manifest and config blobs as metadata, and scans every regular
+// file in every layer. Files deleted by later layers are intentionally
+// included because secrets can remain recoverable from image history.
 func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	if strings.TrimSpace(e.Image) == "" {
 		return fmt.Errorf("docker image is required")
 	}
-	if e.saveFunc == nil {
-		e.saveFunc = dockerImageSave
+	openFn := e.openFunc
+	if openFn == nil {
+		openFn = openImage
 	}
 
-	rc, err := e.saveFunc(ctx, e.Image)
+	img, err := openFn(ctx, e.Image)
 	if err != nil {
 		return err
 	}
 
-	enumErr := e.enumerateImageArchive(ctx, rc, callback)
-	closeErr := rc.Close()
-	if enumErr != nil {
-		return enumErr
-	}
-	return closeErr
-}
-
-func dockerImageSave(ctx context.Context, image string) (io.ReadCloser, error) {
-	cmd := exec.CommandContext(ctx, "docker", "image", "save", image)
-	stderr := &bytes.Buffer{}
-	cmd.Stderr = stderr
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("preparing docker image save: %w", err)
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("starting docker image save: %w", err)
-	}
-
-	return &dockerSaveReadCloser{
-		image:  image,
-		stdout: stdout,
-		cmd:    cmd,
-		stderr: stderr,
-	}, nil
-}
-
-type dockerSaveReadCloser struct {
-	image  string
-	stdout io.ReadCloser
-	cmd    *exec.Cmd
-	stderr *bytes.Buffer
-}
-
-func (c *dockerSaveReadCloser) Read(p []byte) (int, error) {
-	return c.stdout.Read(p)
-}
-
-func (c *dockerSaveReadCloser) Close() error {
-	_ = c.stdout.Close()
-	if err := c.cmd.Wait(); err != nil {
-		msg := strings.TrimSpace(c.stderr.String())
-		if msg != "" {
-			return fmt.Errorf("docker image save %q: %w: %s", c.image, err, msg)
+	if manifest, err := img.RawManifest(); err == nil {
+		if err := e.emitMetadata(ctx, manifest, "manifest.json", callback); err != nil {
+			return err
 		}
-		return fmt.Errorf("docker image save %q: %w", c.image, err)
+	}
+	if config, err := img.RawConfigFile(); err == nil {
+		if err := e.emitMetadata(ctx, config, "config.json", callback); err != nil {
+			return err
+		}
+	}
+
+	layers, err := img.Layers()
+	if err != nil {
+		return fmt.Errorf("listing image layers: %w", err)
+	}
+	for _, layer := range layers {
+		if err := e.scanLayer(ctx, layer, callback); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (e *DockerImageEnumerator) enumerateImageArchive(ctx context.Context, r io.Reader, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	tr := tar.NewReader(r)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("reading docker image archive: %w", err)
-		}
-		if !isRegularTarFile(hdr) {
-			continue
-		}
-
-		name := cleanImagePath(hdr.Name)
-		switch {
-		case isDockerLayerTar(name):
-			if err := e.processLayer(ctx, name, tr, callback); err != nil {
-				return err
-			}
-		case isDockerLayerTarGZ(name):
-			gz, err := gzip.NewReader(tr)
-			if err != nil {
-				return fmt.Errorf("opening compressed docker layer %s: %w", name, err)
-			}
-			if err := e.processLayer(ctx, name, gz, callback); err != nil {
-				_ = gz.Close()
-				return err
-			}
-			if err := gz.Close(); err != nil {
-				return fmt.Errorf("closing compressed docker layer %s: %w", name, err)
-			}
-		case isDockerBlob(name):
-			if err := e.processBlob(ctx, name, tr, hdr.Size, callback); err != nil {
-				return err
-			}
-		case strings.HasSuffix(strings.ToLower(name), ".json") || name == "repositories":
-			content, ok, err := readTarFileContent(tr, hdr.Size, e.config.MaxFileSize)
-			if err != nil {
-				return fmt.Errorf("reading docker metadata %s: %w", name, err)
-			}
-			if ok {
-				if err := e.emitMetadata(ctx, content, name, callback); err != nil {
-					return err
-				}
-			}
-		}
+func (e *DockerImageEnumerator) scanLayer(ctx context.Context, layer v1.Layer, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	diffID, err := layer.DiffID()
+	if err != nil {
+		return fmt.Errorf("reading layer diff id: %w", err)
 	}
+	layerName := diffID.String()
+
+	rc, err := layer.Uncompressed()
+	if err != nil {
+		return fmt.Errorf("opening layer %s: %w", layerName, err)
+	}
+	scanErr := e.processLayer(ctx, layerName, rc, callback)
+	closeErr := rc.Close()
+	if scanErr != nil {
+		return scanErr
+	}
+	if closeErr != nil {
+		return fmt.Errorf("closing layer %s: %w", layerName, closeErr)
+	}
+	return nil
 }
 
-func (e *DockerImageEnumerator) processBlob(ctx context.Context, name string, r io.Reader, size int64, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	br := bufio.NewReader(r)
-	if isGzipReader(br) {
-		gz, err := gzip.NewReader(br)
-		if err != nil {
-			return fmt.Errorf("opening docker blob layer %s: %w", name, err)
+// openImage resolves the image source: a path on disk is loaded as a
+// docker-save tarball (file) or OCI image layout (directory); anything else
+// is parsed as a registry reference and pulled via the OCI distribution API.
+// No docker daemon or `docker` binary is required.
+func openImage(ctx context.Context, image string) (v1.Image, error) {
+	target := strings.TrimSpace(image)
+	if info, err := os.Stat(target); err == nil {
+		if info.IsDir() {
+			return openOCILayout(target)
 		}
-		if err := e.processLayer(ctx, name, gz, callback); err != nil {
-			_ = gz.Close()
-			return err
-		}
-		if err := gz.Close(); err != nil {
-			return fmt.Errorf("closing docker blob layer %s: %w", name, err)
-		}
-		return nil
+		return openTarball(target)
 	}
 
-	if isJSONReader(br) {
-		content, ok, err := readTarFileContent(br, size, e.config.MaxFileSize)
-		if err != nil {
-			return fmt.Errorf("reading docker blob metadata %s: %w", name, err)
-		}
-		if !ok {
-			return nil
-		}
-		return e.emitMetadata(ctx, content, name, callback)
+	ref, err := name.ParseReference(target)
+	if err != nil {
+		return nil, fmt.Errorf("parsing image reference %q: %w", target, err)
 	}
+	img, err := remote.Image(ref,
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+		remote.WithContext(ctx),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("pulling image %q: %w", target, err)
+	}
+	return img, nil
+}
 
-	return e.processLayer(ctx, name, br, callback)
+func openTarball(path string) (v1.Image, error) {
+	img, err := tarball.ImageFromPath(path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("opening docker tarball %s: %w", path, err)
+	}
+	return img, nil
+}
+
+func openOCILayout(dir string) (v1.Image, error) {
+	p, err := layout.FromPath(dir)
+	if err != nil {
+		return nil, fmt.Errorf("opening OCI layout %s: %w", dir, err)
+	}
+	ii, err := p.ImageIndex()
+	if err != nil {
+		return nil, fmt.Errorf("reading OCI image index %s: %w", dir, err)
+	}
+	m, err := ii.IndexManifest()
+	if err != nil {
+		return nil, fmt.Errorf("reading OCI manifest %s: %w", dir, err)
+	}
+	if len(m.Manifests) == 0 {
+		return nil, fmt.Errorf("OCI layout %s has no manifests", dir)
+	}
+	img, err := ii.Image(m.Manifests[0].Digest)
+	if err != nil {
+		return nil, fmt.Errorf("loading image from OCI layout %s: %w", dir, err)
+	}
+	return img, nil
 }
 
 func (e *DockerImageEnumerator) processLayer(ctx context.Context, layerName string, r io.Reader, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
@@ -312,35 +284,6 @@ func readTarFileContent(r io.Reader, size, maxSize int64) ([]byte, bool, error) 
 
 func isRegularTarFile(hdr *tar.Header) bool {
 	return hdr.Typeflag == tar.TypeReg || hdr.Typeflag == tar.TypeRegA
-}
-
-func isDockerLayerTar(name string) bool {
-	lower := strings.ToLower(name)
-	return lower == "layer.tar" || strings.HasSuffix(lower, "/layer.tar")
-}
-
-func isDockerLayerTarGZ(name string) bool {
-	lower := strings.ToLower(name)
-	return lower == "layer.tar.gz" || strings.HasSuffix(lower, "/layer.tar.gz") ||
-		lower == "layer.tgz" || strings.HasSuffix(lower, "/layer.tgz")
-}
-
-func isDockerBlob(name string) bool {
-	return strings.HasPrefix(name, "blobs/sha256/") && len(strings.TrimPrefix(name, "blobs/sha256/")) == 64
-}
-
-func isGzipReader(r *bufio.Reader) bool {
-	header, err := r.Peek(2)
-	return err == nil && header[0] == 0x1f && header[1] == 0x8b
-}
-
-func isJSONReader(r *bufio.Reader) bool {
-	header, err := r.Peek(512)
-	if err != nil && len(header) == 0 {
-		return false
-	}
-	trimmed := bytes.TrimSpace(header)
-	return len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[')
 }
 
 func isDockerWhiteout(memberPath string) bool {
