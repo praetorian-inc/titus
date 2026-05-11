@@ -450,9 +450,17 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Generate "What's Changed" via GitHub API (auto-detects previous release)
+        # Find the previous tag via the Tags API (no git clone required)
+        PREV_TAG=$(gh api "repos/${{ github.repository }}/tags?per_page=100" \
+          --jq '[.[].name] | map(select(. != "${{ env.VERSION }}")) | first' \
+          2>/dev/null || true)
+
+        # Generate "What's Changed" between the two tags
+        EXTRA_ARGS=""
+        [ -n "$PREV_TAG" ] && EXTRA_ARGS="-f previous_tag_name=$PREV_TAG"
         if ! gh api repos/${{ github.repository }}/releases/generate-notes \
           -f tag_name="${{ env.VERSION }}" \
+          $EXTRA_ARGS \
           --jq '.body' > changelog.md; then
           echo "Warning: GitHub API could not generate release notes; 'What's Changed' section will be omitted." >&2
         fi
