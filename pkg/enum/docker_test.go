@@ -54,21 +54,22 @@ func TestDockerImageEnumeratorEnumeratesMetadataAndLayerFiles(t *testing.T) {
 	var foundConfig bool
 	var foundLayer bool
 	for _, record := range records {
-		ext, ok := record.prov.(types.ExtendedProvenance)
-		require.True(t, ok, "expected ExtendedProvenance, got %T", record.prov)
-		assert.Equal(t, "docker", ext.Payload["source"])
-		assert.Equal(t, "example/app:latest", ext.Payload["image"])
-
-		if strings.Contains(record.content, "CONFIG_TOKEN") {
+		switch {
+		case strings.Contains(record.content, "CONFIG_TOKEN"):
 			foundConfig = true
+			ext, ok := record.prov.(types.ExtendedProvenance)
+			require.True(t, ok, "metadata expected ExtendedProvenance, got %T", record.prov)
+			assert.Equal(t, "docker", ext.Payload["source"])
+			assert.Equal(t, "example/app:latest", ext.Payload["image"])
 			assert.Equal(t, "metadata", ext.Payload["type"])
 			assert.Equal(t, "docker://example/app:latest/config.json", ext.Payload["path"])
-		}
-		if strings.Contains(record.content, "DOCKER_SECRET") {
+		case strings.Contains(record.content, "DOCKER_SECRET"):
 			foundLayer = true
-			assert.Equal(t, "layer", ext.Payload["type"])
-			assert.Equal(t, "layer/layer.tar", ext.Payload["layer"])
-			assert.Equal(t, "docker://example/app:latest/layer/layer.tar:app/config.env", ext.Payload["path"])
+			arch, ok := record.prov.(types.ArchiveProvenance)
+			require.True(t, ok, "layer file expected ArchiveProvenance, got %T", record.prov)
+			assert.Equal(t, "docker://example/app:latest/layer/layer.tar", arch.ArchivePath)
+			assert.Equal(t, "app/config.env", arch.MemberPath)
+			assert.Equal(t, "docker://example/app:latest/layer/layer.tar:app/config.env", arch.Path())
 		}
 	}
 

@@ -152,7 +152,7 @@ func (e *DockerImageEnumerator) enumerateImageArchive(ctx context.Context, r io.
 				return fmt.Errorf("reading docker metadata %s: %w", name, err)
 			}
 			if ok {
-				if err := e.emitContent(ctx, content, dockerArchivePath(e.Image, name), name, "metadata", "", callback); err != nil {
+				if err := e.emitMetadata(ctx, content, name, callback); err != nil {
 					return err
 				}
 			}
@@ -182,42 +182,17 @@ func (e *DockerImageEnumerator) processBlob(ctx context.Context, name string, r 
 		if err != nil {
 			return fmt.Errorf("reading docker blob metadata %s: %w", name, err)
 		}
-		if ok {
-			return e.emitContent(ctx, content, dockerArchivePath(e.Image, name), name, "metadata", "", callback)
+		if !ok {
+			return nil
 		}
-		return nil
+		return e.emitMetadata(ctx, content, name, callback)
 	}
 
-	processed, err := e.processMaybeUncompressedLayer(ctx, name, br, callback)
-	if err != nil {
-		return err
-	}
-	if processed {
-		return nil
-	}
-
-	return nil
+	return e.processLayer(ctx, name, br, callback)
 }
 
 func (e *DockerImageEnumerator) processLayer(ctx context.Context, layerName string, r io.Reader, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	tr := tar.NewReader(r)
-	return e.processLayerTarReader(ctx, layerName, tr, nil, callback)
-}
-
-func (e *DockerImageEnumerator) processMaybeUncompressedLayer(ctx context.Context, layerName string, r io.Reader, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) (bool, error) {
-	tr := tar.NewReader(r)
-	hdr, err := tr.Next()
-	if err == io.EOF {
-		return false, nil
-	}
-	if err != nil {
-		return false, nil
-	}
-	return true, e.processLayerTarReader(ctx, layerName, tr, hdr, callback)
-}
-
-func (e *DockerImageEnumerator) processLayerTarReader(ctx context.Context, layerName string, tr *tar.Reader, first *tar.Header, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	hdr := first
 	for {
 		select {
 		case <-ctx.Done():
@@ -225,24 +200,19 @@ func (e *DockerImageEnumerator) processLayerTarReader(ctx context.Context, layer
 		default:
 		}
 
-		if hdr == nil {
-			next, err := tr.Next()
-			if err == io.EOF {
-				return nil
-			}
-			if err != nil {
-				return fmt.Errorf("reading docker layer %s: %w", layerName, err)
-			}
-			hdr = next
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("reading docker layer %s: %w", layerName, err)
 		}
 		if !isRegularTarFile(hdr) {
-			hdr = nil
 			continue
 		}
 
 		memberPath := cleanImagePath(hdr.Name)
 		if memberPath == "." || isDockerWhiteout(memberPath) {
-			hdr = nil
 			continue
 		}
 
@@ -251,46 +221,23 @@ func (e *DockerImageEnumerator) processLayerTarReader(ctx context.Context, layer
 			return fmt.Errorf("reading docker layer file %s: %w", memberPath, err)
 		}
 		if !ok {
-			hdr = nil
 			continue
 		}
 
-		imagePath := dockerLayerPath(e.Image, layerName, memberPath)
-		if err := e.emitContent(ctx, content, imagePath, memberPath, "layer", layerName, callback); err != nil {
+		if err := e.emitLayerFile(ctx, content, layerName, memberPath, callback); err != nil {
 			return err
 		}
-		hdr = nil
 	}
 }
 
-func (e *DockerImageEnumerator) emitContent(ctx context.Context, content []byte, displayPath, memberPath, entryType, layerName string, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+func (e *DockerImageEnumerator) emitMetadata(ctx context.Context, content []byte, name string, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 	}
 
-	binary := isBinary(content)
-	if binary && e.config.ExtractArchives != "" {
-		ext := getExtension(memberPath)
-		if shouldExtract(e.config, ext) {
-			extracted, err := ExtractText(memberPath, content, e.config.ExtractLimits)
-			if err == nil && len(extracted) > 0 {
-				for _, ec := range extracted {
-					blobID := types.ComputeBlobID(ec.Content)
-					prov := types.ArchiveProvenance{
-						ArchivePath: displayPath,
-						MemberPath:  ec.Name,
-					}
-					if err := callback(ec.Content, blobID, prov); err != nil {
-						return err
-					}
-				}
-			}
-			return nil
-		}
-	}
-	if binary {
+	if isBinary(content) {
 		return nil
 	}
 
@@ -299,10 +246,52 @@ func (e *DockerImageEnumerator) emitContent(ctx context.Context, content []byte,
 		Payload: map[string]interface{}{
 			"source": "docker",
 			"image":  e.Image,
-			"type":   entryType,
-			"layer":  layerName,
-			"path":   displayPath,
+			"type":   "metadata",
+			"path":   dockerArchivePath(e.Image, name),
 		},
+	}
+	return callback(content, blobID, prov)
+}
+
+func (e *DockerImageEnumerator) emitLayerFile(ctx context.Context, content []byte, layerName, memberPath string, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	layerArchivePath := dockerArchivePath(e.Image, layerName)
+
+	if isBinary(content) {
+		if e.config.ExtractArchives == "" {
+			return nil
+		}
+		ext := getExtension(memberPath)
+		if !shouldExtract(e.config, ext) {
+			return nil
+		}
+		extracted, err := ExtractText(memberPath, content, e.config.ExtractLimits)
+		if err != nil || len(extracted) == 0 {
+			return nil
+		}
+		nestedArchivePath := layerArchivePath + ":" + memberPath
+		for _, ec := range extracted {
+			blobID := types.ComputeBlobID(ec.Content)
+			prov := types.ArchiveProvenance{
+				ArchivePath: nestedArchivePath,
+				MemberPath:  ec.Name,
+			}
+			if err := callback(ec.Content, blobID, prov); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	blobID := types.ComputeBlobID(content)
+	prov := types.ArchiveProvenance{
+		ArchivePath: layerArchivePath,
+		MemberPath:  memberPath,
 	}
 	return callback(content, blobID, prov)
 }
@@ -373,10 +362,6 @@ func cleanImagePath(name string) string {
 
 func dockerArchivePath(image, memberPath string) string {
 	return "docker://" + strings.TrimPrefix(image, "docker://") + "/" + memberPath
-}
-
-func dockerLayerPath(image, layerName, memberPath string) string {
-	return "docker://" + strings.TrimPrefix(image, "docker://") + "/" + layerName + ":" + memberPath
 }
 
 // ParseDockerImageReference parses docker://image[:tag] targets.
