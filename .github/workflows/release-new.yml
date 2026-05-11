@@ -419,6 +419,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        fetch-tags: true
 
     - name: Download all artifacts
       uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
@@ -450,9 +452,8 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Find the previous tag so GitHub can diff commits between them
-        git fetch --tags --quiet
-        PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ env.VERSION }}$" | head -1)
+        # Find the previous tag (tags fetched by checkout with fetch-tags: true)
+        PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ env.VERSION }}$" | head -1 || true)
 
         # Generate "What's Changed" changelog via GitHub API
         if [ -n "$PREV_TAG" ]; then
