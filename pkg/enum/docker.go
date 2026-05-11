@@ -7,7 +7,10 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime"
+	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -15,6 +18,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -79,10 +83,50 @@ func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(con
 	if err != nil {
 		return fmt.Errorf("listing image layers: %w", err)
 	}
-	for _, layer := range layers {
-		if err := e.scanLayer(ctx, layer, callback); err != nil {
-			return err
+
+	numReaders := e.config.NumReaders
+	if numReaders <= 0 {
+		numReaders = runtime.NumCPU()
+	}
+	if numReaders > len(layers) {
+		numReaders = len(layers)
+	}
+	if numReaders < 1 {
+		numReaders = 1
+	}
+
+	origCtx := ctx
+	g, ctx := errgroup.WithContext(ctx)
+	layersCh := make(chan v1.Layer, numReaders*2)
+
+	g.Go(func() error {
+		defer close(layersCh)
+		for _, layer := range layers {
+			select {
+			case layersCh <- layer:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
+		return nil
+	})
+
+	for i := 0; i < numReaders; i++ {
+		g.Go(func() error {
+			for layer := range layersCh {
+				if err := e.scanLayer(ctx, layer, callback); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	if origCtx.Err() != nil {
+		return origCtx.Err()
 	}
 	return nil
 }
@@ -129,11 +173,29 @@ func openImage(ctx context.Context, image string) (v1.Image, error) {
 	img, err := remote.Image(ref,
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 		remote.WithContext(ctx),
+		remote.WithUserAgent(userAgent()),
+		remote.WithRetryBackoff(remote.Backoff{
+			Duration: time.Second,
+			Factor:   2.0,
+			Jitter:   0.1,
+			Steps:    3,
+			Cap:      30 * time.Second,
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("pulling image %q: %w", target, err)
 	}
 	return img, nil
+}
+
+// userAgent identifies titus to registries. Anonymous default-UA pulls are
+// rate-limited more aggressively (notably by Docker Hub).
+func userAgent() string {
+	version := "dev"
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+	return "titus/" + version
 }
 
 func openTarball(path string) (v1.Image, error) {
