@@ -59,6 +59,9 @@ titus scan gitlab.com/namespace/project
 # Scan git history for secrets in past commits
 titus scan --git path/to/repo
 
+# Scan a Docker / OCI image (pulled from a registry — no docker daemon required)
+titus scan --docker alpine:latest
+
 # Validate detected secrets against source APIs
 titus scan path/to/code --validate
 ```
@@ -103,6 +106,28 @@ titus github owner/repo --git
 ```
 
 Tokens are optional for public repositories. Set `GITHUB_TOKEN` or `GITLAB_TOKEN` (or use `--token`) for private repository access and higher API rate limits.
+
+### Docker / OCI Image Scanning
+
+Scan container images directly — no docker daemon, no `docker` binary required. Titus pulls images straight from any OCI registry over HTTPS (using credentials from `~/.docker/config.json`), or reads images from a local `docker save` tarball or OCI image layout directory. It then scans image manifest/config metadata and every regular file in every layer, including lower-layer files deleted by later layers (since secrets can remain recoverable from image history).
+
+```bash
+# Pull from a registry and scan
+titus scan --docker alpine:latest
+titus scan docker://ghcr.io/owner/repo:tag
+
+# Scan an image saved to a tarball:
+#   docker save my-app:latest -o my-app.tar
+#   podman save my-app:latest -o my-app.tar
+titus scan --docker ./my-app.tar
+
+# Scan an OCI image layout directory:
+#   docker buildx build --output type=oci,dest=./img/ .
+#   skopeo copy docker://my-app:latest oci:./img:latest
+titus scan --docker ./img/
+```
+
+Authentication uses your existing Docker / Podman config (`~/.docker/config.json`, `${XDG_RUNTIME_DIR}/containers/auth.json`). Private registries that need a fresh login should first be authenticated with `docker login` (or `podman login`, or `crane auth login`) — titus does not prompt for credentials.
 
 ### Viewing Scan Results
 

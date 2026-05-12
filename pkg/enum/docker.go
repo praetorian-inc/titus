@@ -1,0 +1,441 @@
+package enum
+
+import (
+	"archive/tar"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"runtime"
+	"runtime/debug"
+	"strings"
+	"time"
+
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/praetorian-inc/titus/pkg/types"
+)
+
+// Registry retry policy. Tuned for transient 5xx / connection resets;
+// permanent errors (4xx auth/not-found) are not retried by ggcr's transport.
+const (
+	registryRetrySteps     = 3
+	registryRetryBaseDelay = time.Second
+	registryRetryMaxDelay  = 30 * time.Second
+	registryRetryFactor    = 2.0
+	registryRetryJitter    = 0.1
+)
+
+// imageSource is the result of resolving an image reference. parallelLayers
+// indicates whether layers can be read concurrently — false for docker-save
+// tarballs where each layer.Uncompressed() linearly re-scans the whole tar.
+type imageSource struct {
+	Image          v1.Image
+	ParallelLayers bool
+}
+
+// DockerImageEnumerator enumerates scan blobs from a Docker / OCI image.
+type DockerImageEnumerator struct {
+	Image string
+
+	config   Config
+	openFunc func(ctx context.Context, image string) (*imageSource, error)
+}
+
+// NewDockerImageEnumerator creates an enumerator for a Docker / OCI image
+// reference. The reference may be a registry ref (alpine:latest,
+// ghcr.io/foo/bar:v1), a path to a docker-save tarball, or a path to an OCI
+// image layout directory.
+func NewDockerImageEnumerator(image string, config Config) *DockerImageEnumerator {
+	if parsed, ok := ParseDockerImageReference(image); ok {
+		image = parsed
+	}
+	return &DockerImageEnumerator{
+		Image:    image,
+		config:   config,
+		openFunc: openImage,
+	}
+}
+
+// Enumerate fetches the image (registry pull / local tarball / OCI layout),
+// emits the manifest and config blobs as metadata, and scans every regular
+// file in every layer. Files deleted by later layers are intentionally
+// included because secrets can remain recoverable from image history.
+func (e *DockerImageEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	if err := e.normalizeImage(); err != nil {
+		return err
+	}
+	openFn := e.openFunc
+	if openFn == nil {
+		openFn = openImage
+	}
+	src, err := openFn(ctx, e.Image)
+	if err != nil {
+		return err
+	}
+	if err := e.emitImageMetadata(ctx, src.Image, callback); err != nil {
+		return err
+	}
+	layers, err := src.Image.Layers()
+	if err != nil {
+		return fmt.Errorf("listing image layers: %w", err)
+	}
+	return e.scanLayers(ctx, layers, src.ParallelLayers, callback)
+}
+
+// normalizeImage trims whitespace and strips a docker:// prefix from
+// e.Image. NewDockerImageEnumerator already does this, but Enumerate may
+// run on a struct built directly (e.g. in tests), so we revalidate here.
+func (e *DockerImageEnumerator) normalizeImage() error {
+	image := strings.TrimSpace(e.Image)
+	if image == "" {
+		return fmt.Errorf("docker image is required")
+	}
+	if strings.HasPrefix(image, "docker://") {
+		image = strings.TrimSpace(strings.TrimPrefix(image, "docker://"))
+		if image == "" {
+			return fmt.Errorf("docker image is required (empty after docker:// prefix)")
+		}
+	}
+	e.Image = image
+	return nil
+}
+
+func (e *DockerImageEnumerator) emitImageMetadata(ctx context.Context, img v1.Image, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	manifest, err := img.RawManifest()
+	if err != nil {
+		return fmt.Errorf("reading image manifest: %w", err)
+	}
+	if err := e.emitMetadata(ctx, manifest, "manifest.json", callback); err != nil {
+		return err
+	}
+	config, err := img.RawConfigFile()
+	if err != nil {
+		return fmt.Errorf("reading image config: %w", err)
+	}
+	return e.emitMetadata(ctx, config, "config.json", callback)
+}
+
+func (e *DockerImageEnumerator) scanLayers(ctx context.Context, layers []v1.Layer, parallelOK bool, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	if len(layers) == 0 {
+		return nil
+	}
+
+	numReaders := e.config.NumReaders
+	if numReaders <= 0 {
+		numReaders = runtime.NumCPU()
+	}
+	if !parallelOK {
+		// ggcr's tarball.Image re-scans the whole archive on every
+		// layer.Uncompressed(); parallel readers thrash the same file.
+		numReaders = 1
+	}
+	if numReaders > len(layers) {
+		numReaders = len(layers)
+	}
+
+	// errgroup cancels its derived ctx on Wait() return; keep the parent
+	// around so we can distinguish caller cancellation from clean finish.
+	origCtx := ctx
+	g, ctx := errgroup.WithContext(ctx)
+	layersCh := make(chan v1.Layer, numReaders*2)
+
+	g.Go(func() error {
+		defer close(layersCh)
+		for _, layer := range layers {
+			select {
+			case layersCh <- layer:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return nil
+	})
+
+	for i := 0; i < numReaders; i++ {
+		g.Go(func() error {
+			for layer := range layersCh {
+				if err := e.scanLayer(ctx, layer, callback); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	if origCtx.Err() != nil {
+		return origCtx.Err()
+	}
+	return nil
+}
+
+func (e *DockerImageEnumerator) scanLayer(ctx context.Context, layer v1.Layer, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	diffID, err := layer.DiffID()
+	if err != nil {
+		return fmt.Errorf("reading layer diff id: %w", err)
+	}
+	layerName := diffID.String()
+
+	rc, err := layer.Uncompressed()
+	if err != nil {
+		return fmt.Errorf("opening layer %s: %w", layerName, err)
+	}
+	scanErr := e.processLayer(ctx, layerName, rc, callback)
+	closeErr := rc.Close()
+	if scanErr != nil {
+		return scanErr
+	}
+	if closeErr != nil {
+		return fmt.Errorf("closing layer %s: %w", layerName, closeErr)
+	}
+	return nil
+}
+
+// openImage resolves the image source: a path on disk is loaded as a
+// docker-save tarball (file) or OCI image layout (directory); anything else
+// is parsed as a registry reference and pulled via the OCI distribution API.
+// No docker daemon or `docker` binary is required.
+func openImage(ctx context.Context, image string) (*imageSource, error) {
+	target := strings.TrimSpace(image)
+	if info, err := os.Stat(target); err == nil {
+		if info.IsDir() {
+			img, err := openOCILayout(target)
+			if err != nil {
+				return nil, err
+			}
+			return &imageSource{Image: img, ParallelLayers: true}, nil
+		}
+		img, err := openTarball(target)
+		if err != nil {
+			return nil, err
+		}
+		return &imageSource{Image: img, ParallelLayers: false}, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("inspecting image source %q: %w", target, err)
+	}
+
+	ref, err := name.ParseReference(target)
+	if err != nil {
+		return nil, fmt.Errorf("parsing image reference %q: %w", target, err)
+	}
+	img, err := remote.Image(ref,
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+		remote.WithContext(ctx),
+		remote.WithUserAgent(userAgent()),
+		remote.WithRetryBackoff(remote.Backoff{
+			Duration: registryRetryBaseDelay,
+			Factor:   registryRetryFactor,
+			Jitter:   registryRetryJitter,
+			Steps:    registryRetrySteps,
+			Cap:      registryRetryMaxDelay,
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("pulling image %q: %w", target, err)
+	}
+	return &imageSource{Image: img, ParallelLayers: true}, nil
+}
+
+// userAgent identifies titus to registries. Anonymous default-UA pulls are
+// rate-limited more aggressively (notably by Docker Hub).
+func userAgent() string {
+	version := "dev"
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+	return "titus/" + version
+}
+
+func openTarball(path string) (v1.Image, error) {
+	img, err := tarball.ImageFromPath(path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("opening docker tarball %s: %w", path, err)
+	}
+	return img, nil
+}
+
+func openOCILayout(dir string) (v1.Image, error) {
+	ii, err := layout.ImageIndexFromPath(dir)
+	if err != nil {
+		return nil, fmt.Errorf("opening OCI layout %s: %w", dir, err)
+	}
+	m, err := ii.IndexManifest()
+	if err != nil {
+		return nil, fmt.Errorf("reading OCI manifest %s: %w", dir, err)
+	}
+	if len(m.Manifests) == 0 {
+		return nil, fmt.Errorf("OCI layout %s has no manifests", dir)
+	}
+	img, err := ii.Image(m.Manifests[0].Digest)
+	if err != nil {
+		return nil, fmt.Errorf("loading image from OCI layout %s: %w", dir, err)
+	}
+	return img, nil
+}
+
+func (e *DockerImageEnumerator) processLayer(ctx context.Context, layerName string, r io.Reader, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	tr := tar.NewReader(r)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("reading docker layer %s: %w", layerName, err)
+		}
+		if !isRegularTarFile(hdr) {
+			continue
+		}
+
+		memberPath := cleanImagePath(hdr.Name)
+		if memberPath == "." || isDockerWhiteout(memberPath) {
+			continue
+		}
+
+		content, ok, err := readTarFileContent(tr, hdr.Size, e.config.MaxFileSize)
+		if err != nil {
+			return fmt.Errorf("reading docker layer file %s: %w", memberPath, err)
+		}
+		if !ok {
+			continue
+		}
+
+		if err := e.emitLayerFile(ctx, content, layerName, memberPath, callback); err != nil {
+			return err
+		}
+	}
+}
+
+func (e *DockerImageEnumerator) emitMetadata(ctx context.Context, content []byte, filename string, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	if isBinary(content) {
+		return nil
+	}
+
+	blobID := types.ComputeBlobID(content)
+	prov := types.ExtendedProvenance{
+		Payload: map[string]interface{}{
+			"source": "docker",
+			"image":  e.Image,
+			"type":   "metadata",
+			"path":   dockerArchivePath(e.Image, filename),
+		},
+	}
+	return callback(content, blobID, prov)
+}
+
+func (e *DockerImageEnumerator) emitLayerFile(ctx context.Context, content []byte, layerName, memberPath string, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	layerArchivePath := dockerArchivePath(e.Image, layerName)
+
+	if isBinary(content) {
+		if e.config.ExtractArchives == "" {
+			return nil
+		}
+		ext := getExtension(memberPath)
+		if !shouldExtract(e.config, ext) {
+			return nil
+		}
+		extracted, err := ExtractText(memberPath, content, e.config.ExtractLimits)
+		if err != nil || len(extracted) == 0 {
+			return nil
+		}
+		nestedArchivePath := layerArchivePath + ":" + memberPath
+		for _, ec := range extracted {
+			blobID := types.ComputeBlobID(ec.Content)
+			prov := types.ArchiveProvenance{
+				ArchivePath: nestedArchivePath,
+				MemberPath:  ec.Name,
+			}
+			if err := callback(ec.Content, blobID, prov); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	blobID := types.ComputeBlobID(content)
+	prov := types.ArchiveProvenance{
+		ArchivePath: layerArchivePath,
+		MemberPath:  memberPath,
+	}
+	return callback(content, blobID, prov)
+}
+
+func readTarFileContent(r io.Reader, size, maxSize int64) ([]byte, bool, error) {
+	if maxSize > 0 && size > maxSize {
+		return nil, false, nil
+	}
+	content, err := io.ReadAll(r)
+	if err != nil {
+		return nil, false, err
+	}
+	if maxSize > 0 && int64(len(content)) > maxSize {
+		return nil, false, nil
+	}
+	return content, true, nil
+}
+
+func isRegularTarFile(hdr *tar.Header) bool {
+	return hdr.Typeflag == tar.TypeReg
+}
+
+func isDockerWhiteout(memberPath string) bool {
+	for _, part := range strings.Split(memberPath, "/") {
+		if strings.HasPrefix(part, ".wh.") {
+			return true
+		}
+	}
+	return false
+}
+
+func cleanImagePath(name string) string {
+	cleaned := path.Clean(strings.TrimPrefix(name, "/"))
+	if cleaned == "." {
+		return "."
+	}
+	return strings.TrimPrefix(cleaned, "./")
+}
+
+func dockerArchivePath(image, memberPath string) string {
+	return "docker://" + strings.TrimPrefix(image, "docker://") + "/" + memberPath
+}
+
+// ParseDockerImageReference parses docker://image[:tag] targets.
+func ParseDockerImageReference(raw string) (image string, ok bool) {
+	if !strings.HasPrefix(raw, "docker://") {
+		return "", false
+	}
+	image = strings.TrimSpace(strings.TrimPrefix(raw, "docker://"))
+	if image == "" {
+		return "", false
+	}
+	return image, true
+}

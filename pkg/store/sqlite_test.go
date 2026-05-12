@@ -358,6 +358,34 @@ func TestSQLite_ProvenanceWithCommitMetadata(t *testing.T) {
 	assert.Equal(t, "add config", got.Commit.Message)
 }
 
+func TestSQLite_ArchiveProvenance(t *testing.T) {
+	dir := t.TempDir()
+	store, err := New(Config{Path: filepath.Join(dir, "test.db")})
+	require.NoError(t, err)
+	defer func() { _ = store.Close() }()
+
+	blobID := types.ComputeBlobID([]byte("extracted secret content"))
+	err = store.AddBlob(blobID, 24)
+	require.NoError(t, err)
+
+	prov := types.ArchiveProvenance{
+		ArchivePath: "docker://example/app:latest/layer.tar:config.zip",
+		MemberPath:  "config/secrets.yml",
+	}
+	err = store.AddProvenance(blobID, prov)
+	require.NoError(t, err)
+
+	provs, err := store.GetAllProvenance(blobID)
+	require.NoError(t, err)
+	require.Len(t, provs, 1)
+
+	got, ok := provs[0].(types.ArchiveProvenance)
+	require.True(t, ok)
+	assert.Equal(t, prov.ArchivePath, got.ArchivePath)
+	assert.Equal(t, prov.MemberPath, got.MemberPath)
+	assert.Equal(t, "docker://example/app:latest/layer.tar:config.zip:config/secrets.yml", got.Path())
+}
+
 func TestSQLiteStore_AddFinding_PersistsScore(t *testing.T) {
 	tmpDir := t.TempDir()
 	s, err := NewSQLite(filepath.Join(tmpDir, "test.db"))
