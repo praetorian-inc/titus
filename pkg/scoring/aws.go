@@ -80,25 +80,38 @@ func (c *iamPolicyCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 		return false, nil // credential doesn't work; upstream stsKeyActive handles this
 	}
 
-	// Extract username from ARN: arn:aws:iam::123456789012:user/MyUser
-	username := extractUsernameFromARN(awslib.ToString(identity.Arn))
-	if username == "" {
-		return false, nil // not an IAM user (e.g. assumed role, root) — skip
-	}
+	identityARN := awslib.ToString(identity.Arn)
 
-	// List attached managed policies with pagination
+	// List attached managed policies — try IAM user first, fall back to assumed role.
 	var attached []string
-	paginator := iam.NewListAttachedUserPoliciesPaginator(iamClient, &iam.ListAttachedUserPoliciesInput{
-		UserName: awslib.String(username),
-	})
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return false, nil // IAM permission denied — condition doesn't fire
+	if username := extractUsernameFromARN(identityARN); username != "" {
+		paginator := iam.NewListAttachedUserPoliciesPaginator(iamClient, &iam.ListAttachedUserPoliciesInput{
+			UserName: awslib.String(username),
+		})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(ctx)
+			if err != nil {
+				return false, nil
+			}
+			for _, p := range page.AttachedPolicies {
+				attached = append(attached, awslib.ToString(p.PolicyName))
+			}
 		}
-		for _, p := range page.AttachedPolicies {
-			attached = append(attached, awslib.ToString(p.PolicyName))
+	} else if roleName := extractRoleNameFromARN(identityARN); roleName != "" {
+		paginator := iam.NewListAttachedRolePoliciesPaginator(iamClient, &iam.ListAttachedRolePoliciesInput{
+			RoleName: awslib.String(roleName),
+		})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(ctx)
+			if err != nil {
+				return false, nil
+			}
+			for _, p := range page.AttachedPolicies {
+				attached = append(attached, awslib.ToString(p.PolicyName))
+			}
 		}
+	} else {
+		return false, nil // root or unrecognised ARN format
 	}
 
 	// Check for match policies
@@ -139,6 +152,22 @@ func extractUsernameFromARN(arn string) string {
 		return ""
 	}
 	return arn[idx+len(prefix):]
+}
+
+// extractRoleNameFromARN parses "arn:aws:sts::AccountId:assumed-role/RoleName/SessionName" → "RoleName".
+// Returns empty string for non-assumed-role ARNs.
+func extractRoleNameFromARN(arn string) string {
+	const prefix = ":assumed-role/"
+	idx := strings.LastIndex(arn, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := arn[idx+len(prefix):]
+	slash := strings.Index(rest, "/")
+	if slash < 0 {
+		return rest
+	}
+	return rest[:slash]
 }
 
 // iamCanAssumeRolesCondition fires when the credential can enumerate IAM roles,
@@ -275,7 +304,7 @@ func AWSGoScorer() *Scorer {
 				Kind:     ModifierKindDelta,
 				Value:    -20,
 				Condition: &iamPolicyCondition{
-					matchPolicies:   []string{"ReadOnlyAccess"},
+					matchPolicies:   []string{"ReadOnlyAccess", "ViewOnlyAccess"},
 					onlyIfExclusive: true,
 				},
 			},

@@ -93,6 +93,16 @@ func (m *mockIAM) ListAttachedUserPolicies(_ context.Context, _ *iam.ListAttache
 	return out, nil
 }
 
+func (m *mockIAM) ListAttachedRolePolicies(_ context.Context, _ *iam.ListAttachedRolePoliciesInput, _ ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error) {
+	// Reuse the same policies list as the user mock for simplicity
+	out := &iam.ListAttachedRolePoliciesOutput{}
+	for _, name := range m.policies {
+		n := name
+		out.AttachedPolicies = append(out.AttachedPolicies, iamtypes.AttachedPolicy{PolicyName: &n})
+	}
+	return out, nil
+}
+
 func (m *mockIAM) ListRoles(_ context.Context, _ *iam.ListRolesInput, _ ...func(*iam.Options)) (*iam.ListRolesOutput, error) {
 	if m.listRolesErr != nil {
 		return nil, m.listRolesErr
@@ -206,4 +216,42 @@ func TestExtractAWSCredentials_IncludesSessionToken(t *testing.T) {
 	assert.Equal(t, "ASIARBRVNUL45ECBD7XM", keyID)
 	assert.Equal(t, "someSecretKey", secretKey)
 	assert.Equal(t, "MYTOKEN", sessionToken)
+}
+
+func TestExtractRoleNameFromARN(t *testing.T) {
+	assert.Equal(t, "AWSReservedSSO_AdministratorAccess_721c6f9ee1b6b207",
+		extractRoleNameFromARN("arn:aws:sts::072052744953:assumed-role/AWSReservedSSO_AdministratorAccess_721c6f9ee1b6b207/michael.weber@praetorian.com"))
+	assert.Equal(t, "", extractRoleNameFromARN("arn:aws:iam::123456789012:user/MyUser"))
+	assert.Equal(t, "", extractRoleNameFromARN(""))
+}
+
+func TestIAMPolicyCondition_FiresForAssumedRoleWithAdminPolicy(t *testing.T) {
+	cond := &iamPolicyCondition{
+		matchPolicies: []string{"AdministratorAccess"},
+		clientFactory: fakeFactory(
+			&mockSTS{identity: &sts.GetCallerIdentityOutput{
+				Arn: awslib.String("arn:aws:sts::072052744953:assumed-role/AWSReservedSSO_AdministratorAccess_721c6f9ee1b6b207/user"),
+			}},
+			&mockIAM{policies: []string{"AdministratorAccess"}},
+		),
+	}
+	fired, err := cond.Evaluate(context.Background(), testMatch())
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestIAMPolicyCondition_FiresReadOnlyForViewOnlyRole(t *testing.T) {
+	cond := &iamPolicyCondition{
+		matchPolicies:   []string{"ReadOnlyAccess", "ViewOnlyAccess"},
+		onlyIfExclusive: true,
+		clientFactory: fakeFactory(
+			&mockSTS{identity: &sts.GetCallerIdentityOutput{
+				Arn: awslib.String("arn:aws:sts::072052744953:assumed-role/AWSReservedSSO_ViewOnlyAccess_31b2c92fb36ab54f/user"),
+			}},
+			&mockIAM{policies: []string{"ViewOnlyAccess"}},
+		),
+	}
+	fired, err := cond.Evaluate(context.Background(), testMatch())
+	require.NoError(t, err)
+	assert.True(t, fired)
 }
