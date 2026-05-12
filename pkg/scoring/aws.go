@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"bytes"
 	"context"
 	"regexp"
 	"strings"
@@ -11,19 +12,39 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// extractAWSCredentials extracts the key ID and secret access key from a
-// match's NamedGroups. Returns (keyID, secretKey, true) on success.
-// Both named groups must be non-empty.
-func extractAWSCredentials(m *types.Match) (keyID, secretKey string, ok bool) {
+// extractAWSCredentials extracts the key ID, secret access key, and optional
+// session token from a match. Returns (keyID, secretKey, sessionToken, true)
+// on success. Both named groups must be non-empty.
+func extractAWSCredentials(m *types.Match) (keyID, secretKey, sessionToken string, ok bool) {
 	if m == nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	kid, hasKey := m.NamedGroups["key_id"]
 	sec, hasSecret := m.NamedGroups["secret_key"]
 	if !hasKey || !hasSecret || len(kid) == 0 || len(sec) == 0 {
-		return "", "", false
+		return "", "", "", false
 	}
-	return string(kid), string(sec), true
+	return string(kid), string(sec), extractSessionToken(m.Snippet.After), true
+}
+
+// extractSessionToken scans after-context bytes for an AWS session token.
+// Handles both "aws_session_token=" and "AWS_SESSION_TOKEN=" key names.
+// Returns empty string if not found.
+func extractSessionToken(after []byte) string {
+	for _, prefix := range []string{"aws_session_token=", "AWS_SESSION_TOKEN="} {
+		idx := bytes.Index(after, []byte(prefix))
+		if idx < 0 {
+			continue
+		}
+		val := after[idx+len(prefix):]
+		// Token ends at whitespace or end of input
+		end := bytes.IndexAny(val, " \t\r\n")
+		if end < 0 {
+			return string(val)
+		}
+		return string(val[:end])
+	}
+	return ""
 }
 
 // iamPolicyCondition fires when any of the listed managed policy names are
@@ -39,15 +60,8 @@ type iamPolicyCondition struct {
 func (c *iamPolicyCondition) markDynamic() {}
 
 func (c *iamPolicyCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
-	keyID, secretKey, ok := extractAWSCredentials(m)
+	keyID, secretKey, sessionToken, ok := extractAWSCredentials(m)
 	if !ok {
-		return false, nil
-	}
-
-	// Temporary STS session keys (ASIA*) require a session token not captured
-	// in the match; skip them here — the static asia-temporary-session modifier
-	// already applies -10 to their base score.
-	if !strings.HasPrefix(strings.ToUpper(keyID), "AKIA") {
 		return false, nil
 	}
 
@@ -55,7 +69,7 @@ func (c *iamPolicyCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 	if factory == nil {
 		factory = defaultAWSClientFactory
 	}
-	stsClient, iamClient, err := factory(ctx, keyID, secretKey)
+	stsClient, iamClient, err := factory(ctx, keyID, secretKey, sessionToken)
 	if err != nil {
 		return false, nil
 	}
@@ -136,15 +150,8 @@ type iamCanAssumeRolesCondition struct {
 func (c *iamCanAssumeRolesCondition) markDynamic() {}
 
 func (c *iamCanAssumeRolesCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
-	keyID, secretKey, ok := extractAWSCredentials(m)
+	keyID, secretKey, sessionToken, ok := extractAWSCredentials(m)
 	if !ok {
-		return false, nil
-	}
-
-	// Temporary STS session keys (ASIA*) require a session token not captured
-	// in the match; skip them here — the static asia-temporary-session modifier
-	// already applies -10 to their base score.
-	if !strings.HasPrefix(strings.ToUpper(keyID), "AKIA") {
 		return false, nil
 	}
 
@@ -152,7 +159,7 @@ func (c *iamCanAssumeRolesCondition) Evaluate(ctx context.Context, m *types.Matc
 	if factory == nil {
 		factory = defaultAWSClientFactory
 	}
-	_, iamClient, err := factory(ctx, keyID, secretKey)
+	_, iamClient, err := factory(ctx, keyID, secretKey, sessionToken)
 	if err != nil {
 		return false, nil
 	}
@@ -171,15 +178,8 @@ type stsKeyActiveCondition struct {
 func (c *stsKeyActiveCondition) markDynamic() {}
 
 func (c *stsKeyActiveCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
-	keyID, secretKey, ok := extractAWSCredentials(m)
+	keyID, secretKey, sessionToken, ok := extractAWSCredentials(m)
 	if !ok {
-		return false, nil
-	}
-
-	// Temporary STS session keys (ASIA*) require a session token not captured
-	// in the match; skip them here — the static asia-temporary-session modifier
-	// already applies -10 to their base score.
-	if !strings.HasPrefix(strings.ToUpper(keyID), "AKIA") {
 		return false, nil
 	}
 
@@ -187,7 +187,7 @@ func (c *stsKeyActiveCondition) Evaluate(ctx context.Context, m *types.Match) (b
 	if factory == nil {
 		factory = defaultAWSClientFactory
 	}
-	stsClient, _, err := factory(ctx, keyID, secretKey)
+	stsClient, _, err := factory(ctx, keyID, secretKey, sessionToken)
 	if err != nil {
 		return false, nil
 	}

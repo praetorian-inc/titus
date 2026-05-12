@@ -21,10 +21,11 @@ func TestExtractAWSCredentials_BothGroupsPresent(t *testing.T) {
 			"secret_key": []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 		},
 	}
-	keyID, secretKey, ok := extractAWSCredentials(m)
+	keyID, secretKey, sessionToken, ok := extractAWSCredentials(m)
 	assert.True(t, ok)
 	assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", keyID)
 	assert.Equal(t, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", secretKey)
+	assert.Equal(t, "", sessionToken, "no session token in Snippet.After")
 }
 
 func TestExtractAWSCredentials_MissingSecretKey_ReturnsFalse(t *testing.T) {
@@ -33,12 +34,12 @@ func TestExtractAWSCredentials_MissingSecretKey_ReturnsFalse(t *testing.T) {
 			"key_id": []byte("AKIAIOSFODNN7EXAMPLE"),
 		},
 	}
-	_, _, ok := extractAWSCredentials(m)
+	_, _, _, ok := extractAWSCredentials(m)
 	assert.False(t, ok, "should return false when secret_key is missing")
 }
 
 func TestExtractAWSCredentials_NilMatch_ReturnsFalse(t *testing.T) {
-	_, _, ok := extractAWSCredentials(nil)
+	_, _, _, ok := extractAWSCredentials(nil)
 	assert.False(t, ok)
 }
 
@@ -100,7 +101,7 @@ func (m *mockIAM) ListRoles(_ context.Context, _ *iam.ListRolesInput, _ ...func(
 }
 
 func fakeFactory(stsClient stsAPI, iamClient iamAPI) awsClientFactory {
-	return func(_ context.Context, _, _ string) (stsAPI, iamAPI, error) {
+	return func(_ context.Context, _, _, _ string) (stsAPI, iamAPI, error) {
 		return stsClient, iamClient, nil
 	}
 }
@@ -181,59 +182,28 @@ func TestIAMCanAssumeRolesCondition_FiresWhenListRolesSucceeds(t *testing.T) {
 	assert.True(t, fired)
 }
 
-func TestSTSKeyActiveCondition_SkipsASIAKey(t *testing.T) {
-	// ASIA* keys require session token not in the match; condition must skip them.
-	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"key_id":     []byte("ASIARBRVNUL45ECBD7XM"),
-			"secret_key": []byte("someSecretKey"),
-		},
-	}
-	cond := &stsKeyActiveCondition{
-		// If the factory is called it means the guard didn't fire — fail the test.
-		clientFactory: func(_ context.Context, _, _ string) (stsAPI, iamAPI, error) {
-			t.Fatal("factory should not be called for ASIA* keys")
-			return nil, nil, nil
-		},
-	}
-	fired, err := cond.Evaluate(context.Background(), m)
-	require.NoError(t, err)
-	assert.False(t, fired, "ASIA* key should not fire stsKeyActiveCondition")
+func TestExtractSessionToken_Found(t *testing.T) {
+	after := []byte("aws_session_token=IQoJb3JpZ2luX2Vj\nsome_other_field=value")
+	assert.Equal(t, "IQoJb3JpZ2luX2Vj", extractSessionToken(after))
 }
 
-func TestIAMPolicyCondition_SkipsASIAKey(t *testing.T) {
-	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"key_id":     []byte("ASIARBRVNUL45ECBD7XM"),
-			"secret_key": []byte("someSecretKey"),
-		},
-	}
-	cond := &iamPolicyCondition{
-		matchPolicies: []string{"AdministratorAccess"},
-		clientFactory: func(_ context.Context, _, _ string) (stsAPI, iamAPI, error) {
-			t.Fatal("factory should not be called for ASIA* keys")
-			return nil, nil, nil
-		},
-	}
-	fired, err := cond.Evaluate(context.Background(), m)
-	require.NoError(t, err)
-	assert.False(t, fired, "ASIA* key should not fire iamPolicyCondition")
+func TestExtractSessionToken_NotFound(t *testing.T) {
+	assert.Equal(t, "", extractSessionToken([]byte("no_token_here")))
 }
 
-func TestIAMCanAssumeRolesCondition_SkipsASIAKey(t *testing.T) {
+func TestExtractAWSCredentials_IncludesSessionToken(t *testing.T) {
 	m := &types.Match{
 		NamedGroups: map[string][]byte{
 			"key_id":     []byte("ASIARBRVNUL45ECBD7XM"),
 			"secret_key": []byte("someSecretKey"),
 		},
-	}
-	cond := &iamCanAssumeRolesCondition{
-		clientFactory: func(_ context.Context, _, _ string) (stsAPI, iamAPI, error) {
-			t.Fatal("factory should not be called for ASIA* keys")
-			return nil, nil, nil
+		Snippet: types.Snippet{
+			After: []byte("aws_session_token=MYTOKEN\nmore_stuff"),
 		},
 	}
-	fired, err := cond.Evaluate(context.Background(), m)
-	require.NoError(t, err)
-	assert.False(t, fired, "ASIA* key should not fire iamCanAssumeRolesCondition")
+	keyID, secretKey, sessionToken, ok := extractAWSCredentials(m)
+	require.True(t, ok)
+	assert.Equal(t, "ASIARBRVNUL45ECBD7XM", keyID)
+	assert.Equal(t, "someSecretKey", secretKey)
+	assert.Equal(t, "MYTOKEN", sessionToken)
 }

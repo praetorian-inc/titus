@@ -22,12 +22,12 @@ type iamAPI interface {
 
 // awsClientFactory creates STS and IAM clients from a key+secret.
 // Inject a fake factory in tests; the default uses real AWS SDK.
-type awsClientFactory func(ctx context.Context, keyID, secretKey string) (stsAPI, iamAPI, error)
+type awsClientFactory func(ctx context.Context, keyID, secretKey, sessionToken string) (stsAPI, iamAPI, error)
 
-func defaultAWSClientFactory(ctx context.Context, keyID, secretKey string) (stsAPI, iamAPI, error) {
+func defaultAWSClientFactory(ctx context.Context, keyID, secretKey, sessionToken string) (stsAPI, iamAPI, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(keyID, secretKey, ""),
+			credentials.NewStaticCredentialsProvider(keyID, secretKey, sessionToken),
 		),
 		awsconfig.WithRegion("us-east-1"),
 	)

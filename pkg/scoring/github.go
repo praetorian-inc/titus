@@ -31,9 +31,12 @@ func newGitHubClient(ctx context.Context, token string) *github.Client {
 // githubFineGrainedPermCondition fires when a fine-grained PAT has at least
 // the given access level on >=1 accessible repository.
 // requiredPerm: "write" (push) or "admin"
+// excludeIfAdmin: when true, the condition does not fire if any repo already
+// grants admin access (prevents write-repo from overwriting admin score).
 type githubFineGrainedPermCondition struct {
-	requiredPerm  string
-	clientFactory func(token string) *github.Client
+	requiredPerm   string
+	excludeIfAdmin bool
+	clientFactory  func(token string) *github.Client
 }
 
 func (c *githubFineGrainedPermCondition) markDynamic() {}
@@ -60,20 +63,29 @@ func (c *githubFineGrainedPermCondition) Evaluate(ctx context.Context, m *types.
 		return false, nil
 	}
 
+	found := false
 	for _, repo := range repos {
 		perms := repo.GetPermissions()
+
+		// If any repo grants admin access, write-only check should not fire.
+		if c.excludeIfAdmin {
+			if v, ok := perms["admin"]; ok && v {
+				return false, nil
+			}
+		}
+
 		switch c.requiredPerm {
 		case "admin":
 			if v, ok := perms["admin"]; ok && v {
-				return true, nil
+				found = true
 			}
 		case "write":
 			if v, ok := perms["push"]; ok && v {
-				return true, nil
+				found = true
 			}
 		}
 	}
-	return false, nil
+	return found, nil
 }
 
 // githubOrgMemberCondition fires when the token is authorized for >=1 organization.
@@ -132,7 +144,7 @@ func GitHubGoScorer() *Scorer {
 				Priority:  90,
 				Kind:      ModifierKindSetScore,
 				Value:     85,
-				Condition: &githubFineGrainedPermCondition{requiredPerm: "write"},
+				Condition: &githubFineGrainedPermCondition{requiredPerm: "write", excludeIfAdmin: true},
 			},
 			{
 				Name:      "token-org-member",

@@ -113,3 +113,28 @@ func TestGitHubOrgMemberCondition_FiresWhenOrgsReturned(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, fired)
 }
+
+func TestGitHubFineGrainedPermCondition_WriteDoesNotFireWhenAdminPresent(t *testing.T) {
+	// Repo has admin=true and push=true; write condition with excludeIfAdmin should NOT fire.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintln(w, `[{"full_name":"owner/repo","permissions":{"admin":true,"push":true,"pull":true}}]`)
+	}))
+	defer srv.Close()
+
+	cond := &githubFineGrainedPermCondition{
+		requiredPerm:   "write",
+		excludeIfAdmin: true,
+		clientFactory: func(token string) *github.Client {
+			c := github.NewClient(srv.Client())
+			base, _ := url.Parse(srv.URL + "/")
+			c.BaseURL = base
+			c.UploadURL = base
+			return c
+		},
+	}
+	m := &types.Match{NamedGroups: map[string][]byte{"token": []byte("github_pat_test")}}
+	fired, err := cond.Evaluate(context.Background(), m)
+	require.NoError(t, err)
+	assert.False(t, fired, "write condition should not fire when repo has admin access")
+}
