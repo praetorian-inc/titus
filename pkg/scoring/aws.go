@@ -39,10 +39,11 @@ func extractSessionToken(after []byte) string {
 		val := after[idx+len(prefix):]
 		// Token ends at whitespace or end of input
 		end := bytes.IndexAny(val, " \t\r\n")
-		if end < 0 {
-			return string(val)
+		raw := val
+		if end >= 0 {
+			raw = val[:end]
 		}
-		return string(val[:end])
+		return strings.Trim(string(raw), `"'`)
 	}
 	return ""
 }
@@ -85,6 +86,11 @@ func (c *iamPolicyCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 	// List attached managed policies — try IAM user first, fall back to assumed role.
 	var attached []string
 	if username := extractUsernameFromARN(identityARN); username != "" {
+		// ARN may include an IAM path prefix (e.g. /division/team/Alice).
+		// ListAttachedUserPolicies expects only the username, not the path.
+		if slash := strings.LastIndex(username, "/"); slash >= 0 {
+			username = username[slash+1:]
+		}
 		paginator := iam.NewListAttachedUserPoliciesPaginator(iamClient, &iam.ListAttachedUserPoliciesInput{
 			UserName: awslib.String(username),
 		})

@@ -255,3 +255,15 @@ func TestIAMPolicyCondition_FiresReadOnlyForViewOnlyRole(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, fired)
 }
+
+func TestExtractSessionToken_StripsQuotes(t *testing.T) {
+	assert.Equal(t, "TOKEN123", extractSessionToken([]byte(`AWS_SESSION_TOKEN="TOKEN123"`)))
+	assert.Equal(t, "TOKEN123", extractSessionToken([]byte(`aws_session_token='TOKEN123'`)))
+	assert.Equal(t, "TOKEN123", extractSessionToken([]byte("aws_session_token=TOKEN123\n")))
+}
+
+func TestExtractUsernameFromARN_WithPath(t *testing.T) {
+	// Path-qualified users: only the final segment is the username
+	assert.Equal(t, "division/MyUser", extractUsernameFromARN("arn:aws:iam::123456789012:user/division/MyUser"))
+	// The iamPolicyCondition strips the path before calling ListAttachedUserPolicies
+}

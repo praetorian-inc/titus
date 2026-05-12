@@ -48,6 +48,10 @@ func TestGitHubOrgMemberCondition_IsDynamic(t *testing.T) {
 func TestGitHubFineGrainedPermCondition_FiresForAdminRepo(t *testing.T) {
 	// Simulate GET /user/repos returning one repo with admin=true
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/repos" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintln(w, `[{"full_name":"owner/repo","permissions":{"admin":true,"push":true,"pull":true}}]`)
 	}))
@@ -71,6 +75,10 @@ func TestGitHubFineGrainedPermCondition_FiresForAdminRepo(t *testing.T) {
 
 func TestGitHubFineGrainedPermCondition_DoesNotFireForReadOnlyRepo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/repos" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintln(w, `[{"full_name":"owner/repo","permissions":{"admin":false,"push":false,"pull":true}}]`)
 	}))
@@ -94,6 +102,10 @@ func TestGitHubFineGrainedPermCondition_DoesNotFireForReadOnlyRepo(t *testing.T)
 
 func TestGitHubOrgMemberCondition_FiresWhenOrgsReturned(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/orgs" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintln(w, `[{"login":"praetorian-inc"}]`)
 	}))
@@ -117,6 +129,10 @@ func TestGitHubOrgMemberCondition_FiresWhenOrgsReturned(t *testing.T) {
 func TestGitHubFineGrainedPermCondition_WriteDoesNotFireWhenAdminPresent(t *testing.T) {
 	// Repo has admin=true and push=true; write condition with excludeIfAdmin should NOT fire.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/repos" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintln(w, `[{"full_name":"owner/repo","permissions":{"admin":true,"push":true,"pull":true}}]`)
 	}))

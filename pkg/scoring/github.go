@@ -56,34 +56,42 @@ func (c *githubFineGrainedPermCondition) Evaluate(ctx context.Context, m *types.
 	// Apps.ListRepos is the GitHub App installation API and always returns 401
 	// for PATs; Repositories.ListByAuthenticatedUser is the correct endpoint.
 	opts := &github.RepositoryListByAuthenticatedUserOptions{
-		ListOptions: github.ListOptions{PerPage: 10},
+		ListOptions: github.ListOptions{PerPage: 100},
 	}
-	repos, _, err := client.Repositories.ListByAuthenticatedUser(ctx, opts)
-	if err != nil {
-		return false, nil
-	}
-
+	const maxPages = 5
 	found := false
-	for _, repo := range repos {
-		perms := repo.GetPermissions()
+	for page := 1; page <= maxPages; page++ {
+		repos, resp, err := client.Repositories.ListByAuthenticatedUser(ctx, opts)
+		if err != nil {
+			return false, nil
+		}
 
-		// If any repo grants admin access, write-only check should not fire.
-		if c.excludeIfAdmin {
-			if v, ok := perms["admin"]; ok && v {
-				return false, nil
+		for _, repo := range repos {
+			perms := repo.GetPermissions()
+
+			// If any repo grants admin access, write-only check should not fire.
+			if c.excludeIfAdmin {
+				if v, ok := perms["admin"]; ok && v {
+					return false, nil
+				}
+			}
+
+			switch c.requiredPerm {
+			case "admin":
+				if v, ok := perms["admin"]; ok && v {
+					return true, nil
+				}
+			case "write":
+				if v, ok := perms["push"]; ok && v {
+					found = true
+				}
 			}
 		}
 
-		switch c.requiredPerm {
-		case "admin":
-			if v, ok := perms["admin"]; ok && v {
-				found = true
-			}
-		case "write":
-			if v, ok := perms["push"]; ok && v {
-				found = true
-			}
+		if resp.NextPage == 0 {
+			break
 		}
+		opts.Page = resp.NextPage
 	}
 	return found, nil
 }
