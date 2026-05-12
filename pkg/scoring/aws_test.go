@@ -180,3 +180,60 @@ func TestIAMCanAssumeRolesCondition_FiresWhenListRolesSucceeds(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, fired)
 }
+
+func TestSTSKeyActiveCondition_SkipsASIAKey(t *testing.T) {
+	// ASIA* keys require session token not in the match; condition must skip them.
+	m := &types.Match{
+		NamedGroups: map[string][]byte{
+			"key_id":     []byte("ASIARBRVNUL45ECBD7XM"),
+			"secret_key": []byte("someSecretKey"),
+		},
+	}
+	cond := &stsKeyActiveCondition{
+		// If the factory is called it means the guard didn't fire — fail the test.
+		clientFactory: func(_ context.Context, _, _ string) (stsAPI, iamAPI, error) {
+			t.Fatal("factory should not be called for ASIA* keys")
+			return nil, nil, nil
+		},
+	}
+	fired, err := cond.Evaluate(context.Background(), m)
+	require.NoError(t, err)
+	assert.False(t, fired, "ASIA* key should not fire stsKeyActiveCondition")
+}
+
+func TestIAMPolicyCondition_SkipsASIAKey(t *testing.T) {
+	m := &types.Match{
+		NamedGroups: map[string][]byte{
+			"key_id":     []byte("ASIARBRVNUL45ECBD7XM"),
+			"secret_key": []byte("someSecretKey"),
+		},
+	}
+	cond := &iamPolicyCondition{
+		matchPolicies: []string{"AdministratorAccess"},
+		clientFactory: func(_ context.Context, _, _ string) (stsAPI, iamAPI, error) {
+			t.Fatal("factory should not be called for ASIA* keys")
+			return nil, nil, nil
+		},
+	}
+	fired, err := cond.Evaluate(context.Background(), m)
+	require.NoError(t, err)
+	assert.False(t, fired, "ASIA* key should not fire iamPolicyCondition")
+}
+
+func TestIAMCanAssumeRolesCondition_SkipsASIAKey(t *testing.T) {
+	m := &types.Match{
+		NamedGroups: map[string][]byte{
+			"key_id":     []byte("ASIARBRVNUL45ECBD7XM"),
+			"secret_key": []byte("someSecretKey"),
+		},
+	}
+	cond := &iamCanAssumeRolesCondition{
+		clientFactory: func(_ context.Context, _, _ string) (stsAPI, iamAPI, error) {
+			t.Fatal("factory should not be called for ASIA* keys")
+			return nil, nil, nil
+		},
+	}
+	fired, err := cond.Evaluate(context.Background(), m)
+	require.NoError(t, err)
+	assert.False(t, fired, "ASIA* key should not fire iamCanAssumeRolesCondition")
+}

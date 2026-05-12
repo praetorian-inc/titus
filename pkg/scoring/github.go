@@ -21,11 +21,19 @@ func extractGitHubToken(m *types.Match) (string, bool) {
 	return string(tok), true
 }
 
+// newGitHubClient creates an authenticated GitHub client for the given token.
+func newGitHubClient(ctx context.Context, token string) *github.Client {
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	tc := oauth2.NewClient(ctx, ts)
+	return github.NewClient(tc)
+}
+
 // githubFineGrainedPermCondition fires when a fine-grained PAT has at least
-// the given access level on ≥1 accessible repository.
+// the given access level on >=1 accessible repository.
 // requiredPerm: "write" (push) or "admin"
 type githubFineGrainedPermCondition struct {
-	requiredPerm string
+	requiredPerm  string
+	clientFactory func(token string) *github.Client
 }
 
 func (c *githubFineGrainedPermCondition) markDynamic() {}
@@ -36,18 +44,23 @@ func (c *githubFineGrainedPermCondition) Evaluate(ctx context.Context, m *types.
 		return false, nil
 	}
 
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	tc := oauth2.NewClient(ctx, ts)
-	client := github.NewClient(tc)
+	client := newGitHubClient(ctx, token)
+	if c.clientFactory != nil {
+		client = c.clientFactory(token)
+	}
 
-	// Apps.ListRepos works for fine-grained PATs scoped to specific repos.
-	// Classic PATs return an error here — that's fine, we return false.
-	repos, _, err := client.Apps.ListRepos(ctx, &github.ListOptions{PerPage: 5})
+	// Use the authenticated user repos endpoint (GET /user/repos).
+	// Apps.ListRepos is the GitHub App installation API and always returns 401
+	// for PATs; Repositories.ListByAuthenticatedUser is the correct endpoint.
+	opts := &github.RepositoryListByAuthenticatedUserOptions{
+		ListOptions: github.ListOptions{PerPage: 10},
+	}
+	repos, _, err := client.Repositories.ListByAuthenticatedUser(ctx, opts)
 	if err != nil {
 		return false, nil
 	}
 
-	for _, repo := range repos.Repositories {
+	for _, repo := range repos {
 		perms := repo.GetPermissions()
 		switch c.requiredPerm {
 		case "admin":
@@ -63,8 +76,10 @@ func (c *githubFineGrainedPermCondition) Evaluate(ctx context.Context, m *types.
 	return false, nil
 }
 
-// githubOrgMemberCondition fires when the token is authorized for ≥1 organization.
-type githubOrgMemberCondition struct{}
+// githubOrgMemberCondition fires when the token is authorized for >=1 organization.
+type githubOrgMemberCondition struct {
+	clientFactory func(token string) *github.Client
+}
 
 func (c *githubOrgMemberCondition) markDynamic() {}
 
@@ -74,9 +89,10 @@ func (c *githubOrgMemberCondition) Evaluate(ctx context.Context, m *types.Match)
 		return false, nil
 	}
 
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	tc := oauth2.NewClient(ctx, ts)
-	client := github.NewClient(tc)
+	client := newGitHubClient(ctx, token)
+	if c.clientFactory != nil {
+		client = c.clientFactory(token)
+	}
 
 	orgs, _, err := client.Organizations.List(ctx, "", &github.ListOptions{PerPage: 1})
 	if err != nil {

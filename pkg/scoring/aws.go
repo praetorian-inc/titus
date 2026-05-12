@@ -44,6 +44,13 @@ func (c *iamPolicyCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 		return false, nil
 	}
 
+	// Temporary STS session keys (ASIA*) require a session token not captured
+	// in the match; skip them here — the static asia-temporary-session modifier
+	// already applies -10 to their base score.
+	if !strings.HasPrefix(strings.ToUpper(keyID), "AKIA") {
+		return false, nil
+	}
+
 	factory := c.clientFactory
 	if factory == nil {
 		factory = defaultAWSClientFactory
@@ -133,6 +140,14 @@ func (c *iamCanAssumeRolesCondition) Evaluate(ctx context.Context, m *types.Matc
 	if !ok {
 		return false, nil
 	}
+
+	// Temporary STS session keys (ASIA*) require a session token not captured
+	// in the match; skip them here — the static asia-temporary-session modifier
+	// already applies -10 to their base score.
+	if !strings.HasPrefix(strings.ToUpper(keyID), "AKIA") {
+		return false, nil
+	}
+
 	factory := c.clientFactory
 	if factory == nil {
 		factory = defaultAWSClientFactory
@@ -158,6 +173,13 @@ func (c *stsKeyActiveCondition) markDynamic() {}
 func (c *stsKeyActiveCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
 	keyID, secretKey, ok := extractAWSCredentials(m)
 	if !ok {
+		return false, nil
+	}
+
+	// Temporary STS session keys (ASIA*) require a session token not captured
+	// in the match; skip them here — the static asia-temporary-session modifier
+	// already applies -10 to their base score.
+	if !strings.HasPrefix(strings.ToUpper(keyID), "AKIA") {
 		return false, nil
 	}
 
