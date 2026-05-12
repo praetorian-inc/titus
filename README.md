@@ -16,6 +16,7 @@ Built for security engineers, penetration testers, and DevSecOps teams, Titus co
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Scanning Options](#scanning-options)
+- [Finding Scoring](#finding-scoring)
 - [Go Library](#go-library-for-secrets-detection)
 - [Burp Suite Extension](#burp-suite-extension-for-secret-scanning)
 - [Browser Extension](#chrome-browser-extension-for-secret-scanning)
@@ -28,6 +29,8 @@ Built for security engineers, penetration testers, and DevSecOps teams, Titus co
 - **Fast secrets scanning**: Regex matching accelerated by [Hyperscan](https://github.com/intel/hyperscan)/[Vectorscan](https://github.com/VectorCamp/vectorscan) when available, with a pure-Go fallback for portability on any platform.
 - **Broad credential detection coverage**: 487 rules detect API keys, tokens, and credentials for AWS, GCP, Azure, GitHub, Slack, databases, CI/CD systems, and hundreds more services.
 - **Live secret validation**: Detected secrets are checked against their source APIs to confirm whether they are active, reducing false positives and prioritizing remediation.
+- **Risk-based severity scoring**: Every finding receives a numeric score (0–100) and severity tier (info → critical). Scores are tuned by static rule metadata, code-accessibility context, and live API calls that measure the real blast radius of a credential — so the most dangerous findings always surface first.
+- **Container image scanning**: Scan Docker and OCI images directly from any registry, tarball, or OCI layout directory — no Docker daemon or binary required.
 - **Multiple interfaces for every workflow**: Scan from the CLI, embed as a Go library, passively scan HTTP traffic in Burp Suite, or scan web pages in Chrome during application security testing.
 - **Binary file extraction**: Extract and scan secrets from Office documents, PDFs, archives (zip, tar, 7z), mobile apps (APK, IPA), browser extensions, and more.
 
@@ -213,6 +216,37 @@ titus scan path/to/files --extract=all --sqlite-row-limit 0
 # Custom row limit per table
 titus scan path/to/files --extract=all --sqlite-row-limit 5000
 ```
+
+## Finding Scoring
+
+Every finding Titus produces carries a numeric score from 0–100 and a severity tier:
+
+| Score | Severity |
+|-------|----------|
+| 0–20 | info |
+| 21–40 | low |
+| 41–60 | medium |
+| 61–80 | high |
+| 81–100 | critical |
+
+Scores start from the rule's `base_score` and are adjusted by **modifiers** — conditions that raise or lower the score based on what is known about the credential:
+
+```bash
+# Score findings using static rule metadata only (no network calls)
+titus scan path/to/code
+
+# Score findings AND make live API calls to verify credential blast radius
+# (calls AWS STS/IAM and GitHub API for supported credential types)
+titus scan path/to/code --score-scope
+
+# Override the accessibility context (default: auto-detected from git remote)
+titus scan path/to/code --accessibility public   # no penalty for public repos
+titus scan path/to/code --accessibility private  # -25 penalty (default for local scans)
+```
+
+Titus ships with YAML scorers for AWS credentials, GitHub PATs, and Slack tokens, plus Go-based SDK scorers that perform live IAM policy enumeration (AWS) and repository permission checks (GitHub fine-grained PATs) when `--score-scope` is enabled.
+
+See [docs/scoring.md](docs/scoring.md) for the complete reference: severity tiers, modifier kinds, built-in scorer details, and how to write your own YAML or Go scorers.
 
 ## Go Library for Secrets Detection
 
