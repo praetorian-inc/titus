@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 
@@ -12,6 +13,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockNetworkCondition implements networkCondition to test IsDynamic detection.
+type mockNetworkCondition struct{}
+
+func (m *mockNetworkCondition) Evaluate(_ context.Context, _ *types.Match) (bool, error) {
+	return true, nil
+}
+func (m *mockNetworkCondition) markDynamic() {}
+
+func TestModifier_IsDynamic_RecognizesNetworkCondition(t *testing.T) {
+	mod := Modifier{Condition: &mockNetworkCondition{}}
+	assert.True(t, mod.IsDynamic(), "networkCondition implementors should be dynamic")
+}
+
+func TestModifier_IsDynamic_StaticConditionIsFalse(t *testing.T) {
+	mod := Modifier{Condition: &matchGroupCondition{Name: "x", Regex: regexp.MustCompile(".")}}
+	assert.False(t, mod.IsDynamic())
+}
 
 // Confirms the basic Scorer/Modifier types exist with the expected shape.
 // This test also acts as a compile-time guard for engine_test.go imports.

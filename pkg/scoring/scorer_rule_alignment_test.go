@@ -59,3 +59,36 @@ func TestBuiltinScorers_AllRuleIDsReferenceExtantRules(t *testing.T) {
 		}
 	}
 }
+
+// TestBuiltinGoScorers_AllRuleIDsReferenceExtantRules is a drift guard that
+// verifies every rule ID referenced by a built-in Go scorer actually exists
+// in the embedded rule set.
+//
+// Purpose: catch renames or deletions of rule IDs without a corresponding
+// update to the Go scorer builders (AWSGoScorer, GitHubGoScorer, etc.).
+func TestBuiltinGoScorers_AllRuleIDsReferenceExtantRules(t *testing.T) {
+	ruleLoader := rule.NewLoader()
+	rules, err := ruleLoader.LoadBuiltinRules()
+	require.NoError(t, err, "failed to load builtin rules")
+
+	ruleIDSet := make(map[string]struct{}, len(rules))
+	for _, r := range rules {
+		ruleIDSet[r.ID] = struct{}{}
+	}
+
+	for _, s := range BuiltinGoScorers() {
+		scorer := s
+		for _, ruleID := range scorer.RuleIDs {
+			ruleID := ruleID
+			t.Run(fmt.Sprintf("scorer=%s/rule=%s", scorer.Name, ruleID), func(t *testing.T) {
+				if _, ok := ruleIDSet[ruleID]; !ok {
+					t.Errorf(
+						"Go scorer %q references nonexistent rule ID %q — "+
+							"update the scorer or add the missing rule",
+						scorer.Name, ruleID,
+					)
+				}
+			})
+		}
+	}
+}

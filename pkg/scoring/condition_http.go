@@ -33,6 +33,10 @@ type httpCondition struct {
 	firesWhen firesWhenLeaf
 }
 
+// markDynamic implements the networkCondition marker interface.
+// This gates HTTP conditions behind --score-scope.
+func (c *httpCondition) markDynamic() {}
+
 // Evaluate executes the HTTP call using the condition's own local cache.
 // This is used by test fixtures that call the condition directly.
 // Production code calls evaluateWithCache instead to use the engine's shared

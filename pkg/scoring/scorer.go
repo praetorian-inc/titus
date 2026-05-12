@@ -36,9 +36,17 @@ type Scorer struct {
 	Modifiers []Modifier // in declaration order (YAML-ASC for tie-breaking)
 }
 
-// IsDynamic returns true if this modifier's condition requires an HTTP call.
+// networkCondition is the marker interface for conditions that make
+// network calls (HTTP or Go SDK). The engine skips these when
+// ScopeEnabled is false, identical to the --score-scope gate.
+type networkCondition interface {
+	Condition
+	markDynamic() // unexported sentinel — prevents accidental implementation
+}
+
+// IsDynamic returns true if this modifier's condition requires a network call.
 func (m *Modifier) IsDynamic() bool {
-	_, ok := m.Condition.(*httpCondition)
+	_, ok := m.Condition.(networkCondition)
 	return ok
 }
 
