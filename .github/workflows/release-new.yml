@@ -419,8 +419,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      with:
-        fetch-tags: true
 
     - name: Download all artifacts
       uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
@@ -452,13 +450,31 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Find the previous tag (tags fetched by checkout with fetch-tags: true)
-        PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ env.VERSION }}$" | head -1 || true)
+        # Find the previous tag via API (no git clone required).
+        # For a vX.Y.0 release, use the previous minor's .0 tag as the baseline
+        # so the changelog spans the full minor-version arc (e.g. v1.2.0 vs v1.1.0).
+        # For patch releases (vX.Y.Z where Z>0), use the immediately preceding tag.
+        VERSION="${{ env.VERSION }}"
+        if echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.0$'; then
+          MAJOR=$(echo "$VERSION" | sed 's/v\([0-9]*\)\..*/\1/')
+          MINOR=$(echo "$VERSION" | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/')
+          PREV_MINOR=$((MINOR - 1))
+          CANDIDATE="v${MAJOR}.${PREV_MINOR}.0"
+          # Verify the candidate tag actually exists
+          if gh api "repos/${{ github.repository }}/git/refs/tags/${CANDIDATE}" > /dev/null 2>&1; then
+            PREV_TAG="$CANDIDATE"
+          fi
+        fi
+        # Fall back to the immediately previous tag if no baseline was set above
+        if [ -z "$PREV_TAG" ]; then
+          PREV_TAG=$(gh api "repos/${{ github.repository }}/tags?per_page=100" \
+            --jq '[.[].name] | map(select(. != "'"$VERSION"'")) | first' 2>/dev/null || true)
+        fi
 
-        # Generate "What's Changed" changelog via GitHub API
+        # Generate "What's Changed" via GitHub API
         if [ -n "$PREV_TAG" ]; then
           if ! gh api repos/${{ github.repository }}/releases/generate-notes \
-            -f tag_name="${{ env.VERSION }}" \
+            -f tag_name="$VERSION" \
             -f previous_tag_name="$PREV_TAG" \
             --jq '.body' > changelog.md; then
             echo "Warning: GitHub API could not generate release notes; 'What's Changed' section will be omitted." >&2
