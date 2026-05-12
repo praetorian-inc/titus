@@ -63,15 +63,9 @@ func loadData(storePath string) (*exploreData, error) {
 		return nil, fmt.Errorf("retrieving matches: %w", err)
 	}
 
-	// Group matches by finding ID (same as report.go:buildFindingMatchMap)
-	matchesByFinding := make(map[string][]*types.Match)
-	for _, m := range matches {
-		r, ok := ruleMap[m.RuleID]
-		if ok {
-			findingID := types.ComputeFindingID(r.StructuralID, m.Groups)
-			matchesByFinding[findingID] = append(matchesByFinding[findingID], m)
-		}
-	}
+	// Group matches by finding ID, with a fallback for custom rules
+	// not present in ruleMap. See groupMatchesByFinding for details.
+	matchesByFinding := groupMatchesByFinding(findings, matches, ruleMap)
 
 	// Build view models
 	rows := make([]*findingRow, 0, len(findings))
@@ -88,6 +82,51 @@ func loadData(storePath string) (*exploreData, error) {
 	}, nil
 }
 
+// groupMatchesByFinding groups matches by finding ID using content-based
+// computation. It first tries the structural-ID fast path (rule present in
+// ruleMap), then falls back to matching by RuleID + Groups byte-equality
+// for any finding still without matches. The fallback handles custom rules
+// loaded via --rules at scan time, which are not in LoadBuiltinRules() and
+// therefore absent from ruleMap.
+//
+// This mirrors cmd/titus/report.go:buildFindingMatchMap. The two copies
+// must be kept in sync; cmd/titus is package main and cannot be imported,
+// so the logic is intentionally duplicated.
+func groupMatchesByFinding(findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) map[string][]*types.Match {
+	matchesByFinding := make(map[string][]*types.Match)
+	for _, m := range matches {
+		r, ok := ruleMap[m.RuleID]
+		if ok {
+			findingID := types.ComputeFindingID(r.StructuralID, m.Groups)
+			matchesByFinding[findingID] = append(matchesByFinding[findingID], m)
+		}
+	}
+
+	// Fallback for rules not in builtin rules (custom rules from --rules).
+	for _, f := range findings {
+		if _, exists := matchesByFinding[f.ID]; exists {
+			continue
+		}
+		for _, m := range matches {
+			if m.RuleID != f.RuleID || len(m.Groups) != len(f.Groups) {
+				continue
+			}
+			groupsMatch := true
+			for i := range m.Groups {
+				if string(m.Groups[i]) != string(f.Groups[i]) {
+					groupsMatch = false
+					break
+				}
+			}
+			if groupsMatch {
+				matchesByFinding[f.ID] = append(matchesByFinding[f.ID], m)
+			}
+		}
+	}
+
+	return matchesByFinding
+}
+
 // buildFindingRow creates a findingRow from a Finding and its matches.
 func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule, s store.Store) *findingRow {
 	row := &findingRow{
@@ -102,6 +141,10 @@ func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[strin
 	if r, ok := ruleMap[f.RuleID]; ok {
 		row.RuleName = r.Name
 		row.Categories = r.Categories
+	} else if len(matches) > 0 && matches[0].RuleName != "" {
+		// Custom rule not in ruleMap: fall back to the friendly name
+		// persisted on the match record.
+		row.RuleName = matches[0].RuleName
 	}
 
 	// Aggregate validation status from matches

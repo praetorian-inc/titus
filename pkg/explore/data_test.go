@@ -146,3 +146,92 @@ func TestRenderAnnotationStatus(t *testing.T) {
 	renderAnnotationStatus("reject")
 	renderAnnotationStatus("")
 }
+
+// TestGroupMatchesByFinding_CustomRule verifies that matches for custom
+// rules (not present in ruleMap) are still grouped onto their findings via
+// the RuleID + Groups fallback. Regression test for the bug where the
+// explore TUI rendered "No matches" for custom-rule findings.
+func TestGroupMatchesByFinding_CustomRule(t *testing.T) {
+	// Custom rule: deliberately NOT inserted into ruleMap, mimicking a
+	// rule loaded via --rules at scan time.
+	finding := &types.Finding{
+		ID:     "finding-custom-1",
+		RuleID: "ps.cred.1",
+		Groups: [][]byte{[]byte("supersecret")},
+	}
+
+	matches := []*types.Match{
+		{
+			StructuralID: "match-a",
+			RuleID:       "ps.cred.1",
+			RuleName:     "PowerShell Hardcoded Credential",
+			Groups:       [][]byte{[]byte("supersecret")},
+		},
+		{
+			StructuralID: "match-b",
+			RuleID:       "ps.cred.1",
+			RuleName:     "PowerShell Hardcoded Credential",
+			Groups:       [][]byte{[]byte("supersecret")},
+		},
+		{
+			// Different groups — must not be paired with the finding.
+			StructuralID: "match-c",
+			RuleID:       "ps.cred.1",
+			RuleName:     "PowerShell Hardcoded Credential",
+			Groups:       [][]byte{[]byte("other")},
+		},
+	}
+
+	ruleMap := map[string]*types.Rule{} // empty: custom rule not in builtins
+
+	got := groupMatchesByFinding([]*types.Finding{finding}, matches, ruleMap)
+
+	paired := got[finding.ID]
+	if len(paired) != 2 {
+		t.Fatalf("expected 2 matches paired with custom-rule finding, got %d", len(paired))
+	}
+	if paired[0].StructuralID != "match-a" || paired[1].StructuralID != "match-b" {
+		t.Errorf("unexpected matches paired: %+v", paired)
+	}
+
+	// Sanity: buildFindingRow surfaces the friendly name from m.RuleName
+	// when the rule is missing from ruleMap.
+	row := buildFindingRow(finding, paired, ruleMap, nil)
+	if row.RuleName != "PowerShell Hardcoded Credential" {
+		t.Errorf("expected RuleName fallback to match-record RuleName, got %q", row.RuleName)
+	}
+	if row.MatchCount != 2 {
+		t.Errorf("expected MatchCount=2, got %d", row.MatchCount)
+	}
+}
+
+// TestGroupMatchesByFinding_BuiltinFastPath verifies that builtin rules
+// (present in ruleMap) continue to flow through the structural-ID fast
+// path and are grouped correctly.
+func TestGroupMatchesByFinding_BuiltinFastPath(t *testing.T) {
+	r := &types.Rule{
+		ID:   "np.aws.1",
+		Name: "AWS API Key",
+	}
+	r.StructuralID = r.ComputeStructuralID()
+	ruleMap := map[string]*types.Rule{r.ID: r}
+
+	groups := [][]byte{[]byte("AKIAIOSFODNN7EXAMPLE")}
+	findingID := types.ComputeFindingID(r.StructuralID, groups)
+
+	finding := &types.Finding{
+		ID:     findingID,
+		RuleID: r.ID,
+		Groups: groups,
+	}
+
+	matches := []*types.Match{
+		{StructuralID: "m1", RuleID: r.ID, RuleName: r.Name, Groups: groups},
+		{StructuralID: "m2", RuleID: r.ID, RuleName: r.Name, Groups: groups},
+	}
+
+	got := groupMatchesByFinding([]*types.Finding{finding}, matches, ruleMap)
+	if len(got[finding.ID]) != 2 {
+		t.Fatalf("expected 2 matches via fast path, got %d", len(got[finding.ID]))
+	}
+}

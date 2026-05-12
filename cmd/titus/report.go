@@ -403,6 +403,9 @@ func filterRejected(s store.Store, findings []*types.Finding, matches []*types.M
 
 // buildFindingMatchMap groups matches by finding ID using content-based computation.
 // It uses structural ID matching with a fallback to RuleID + Groups matching.
+//
+// Mirrored by pkg/explore.groupMatchesByFinding; keep the two in sync.
+// (cmd/titus is package main and cannot be imported, so the logic is duplicated.)
 func buildFindingMatchMap(findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) map[string][]*types.Match {
 	matchesByFinding := make(map[string][]*types.Match)
 	for _, m := range matches {
