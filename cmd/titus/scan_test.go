@@ -378,3 +378,64 @@ func ruleIDs(rules []*types.Rule) []string {
 	}
 	return ids
 }
+
+// TestLoadRules_CustomPathMergedWithBuiltins verifies that supplying a custom
+// rules file via --rules appends the custom rule to (not replaces) the builtin
+// ruleset. Both the custom rule ID and at least one known builtin must be
+// present in the returned slice.
+func TestLoadRules_CustomPathMergedWithBuiltins(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "custom-*.yaml")
+	require.NoError(t, err)
+	_, err = f.WriteString(`rules:
+  - name: Custom Merge Test Rule
+    id: custom.test.merge.1
+    pattern: "(?P<token>CUSTOMMRG[A-Z0-9]{8})"
+    description: synthetic rule for merge test
+    base_score: 50
+`)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	rules, err := loadRules(f.Name(), "", "", "default", false)
+	require.NoError(t, err)
+
+	// Custom rule must be present
+	var foundCustom bool
+	var foundBuiltin bool
+	for _, r := range rules {
+		if r.ID == "custom.test.merge.1" {
+			foundCustom = true
+		}
+		// np.aws.2 is a known builtin secret rule present in all rulesets
+		if r.ID == "np.aws.2" {
+			foundBuiltin = true
+		}
+	}
+	if !foundCustom {
+		t.Error("custom rule 'custom.test.merge.1' not present in merged rule set")
+	}
+	if !foundBuiltin {
+		t.Error("builtin rule 'np.aws.2' should still be present after merging custom rules")
+	}
+}
+
+// TestLoadRules_CustomRuleMissingBaseScore_Rejected verifies that a custom rule
+// file missing the required base_score field causes loadRules to return an error
+// at load time rather than silently producing an unscored (score=0) finding.
+func TestLoadRules_CustomRuleMissingBaseScore_Rejected(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "invalid-*.yaml")
+	require.NoError(t, err)
+	_, err = f.WriteString(`rules:
+  - name: Missing Base Score
+    id: custom.no.score.1
+    pattern: "(?P<token>TOKEN[A-Z0-9]{8})"
+    description: rule without base_score
+`)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	_, err = loadRules(f.Name(), "", "", "default", false)
+	if err == nil {
+		t.Error("expected error for custom rule missing base_score, got nil")
+	}
+}

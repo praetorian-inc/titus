@@ -319,3 +319,30 @@ func TestEngine_ConditionError_SkipsModifier_ContinuesScoring(t *testing.T) {
 	assert.Contains(t, warnings[0], "broken")
 	assert.Contains(t, warnings[0], "synthetic error")
 }
+
+// TestEngine_CustomRuleID_UsesBaseScore verifies that a finding whose RuleID
+// matches no registered scorer receives exactly the rule's BaseScore as both
+// Base and Final, with no applied modifiers. This is the expected contract for
+// custom rules loaded via --rules: they receive BaseScore without modification
+// because no YAML scorer covers their ID.
+func TestEngine_CustomRuleID_UsesBaseScore(t *testing.T) {
+	customRule := &types.Rule{
+		ID:        "acme.custom.99",
+		BaseScore: 72,
+	}
+
+	// No scorers registered — simulates a custom rule with no matching YAML scorer
+	engine := NewEngine([]*Scorer{}, EngineConfig{ScopeEnabled: false})
+
+	finding := &types.Finding{
+		ID:     "test-finding",
+		RuleID: customRule.ID,
+	}
+	match := &types.Match{RuleID: customRule.ID}
+
+	score := engine.Score(context.Background(), finding, []*types.Match{match}, customRule)
+
+	assert.Equal(t, 72, score.Base, "Base score must equal rule BaseScore")
+	assert.Equal(t, 72, score.Final, "Final score must equal BaseScore when no scorers match")
+	assert.Empty(t, score.Applied, "No modifiers should be applied for a custom rule with no scorer")
+}
