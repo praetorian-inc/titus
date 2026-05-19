@@ -82,7 +82,8 @@ ifeq ($(VECTORSCAN_AVAILABLE),0)
 		elif command -v dnf &>/dev/null; then \
 			sudo dnf install -y vectorscan-devel; \
 		else \
-			echo "No supported package manager found (expected apt-get or dnf)";\
+			echo "No supported package manager found (expected apt-get or dnf)"; \
+	    	exit 1;\
 		fi && \
 		echo "[vectorscan] Installed successfully via OS package manager" || \
 		(echo "" && \
