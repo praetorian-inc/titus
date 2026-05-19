@@ -77,8 +77,12 @@ ifeq ($(VECTORSCAN_AVAILABLE),0)
 		echo "" && \
 		exit 1); \
 	else \
-		sudo apt-get install -y libhyperscan-dev && \
-		echo "[vectorscan] Installed successfully via apt-get" || \
+		if command -v apt-get &>/dev/null; then \
+			sudo apt-get install -y libhyperscan-dev; \
+		elif command -v dnf &>/dev/null; then \
+			sudo dnf install -y vectorscan-devel; \
+		fi && \
+		echo "[vectorscan] Installed successfully via OS package manager" || \
 		(echo "" && \
 		echo "Vectorscan is required for the default build (10-100x faster scanning)." && \
 		echo "Install it manually:" && \
