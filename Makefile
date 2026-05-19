@@ -70,7 +70,7 @@ ifeq ($(VECTORSCAN_AVAILABLE),0)
 		echo "" && \
 		echo "  macOS (Homebrew):  brew install vectorscan" && \
 		echo "  Ubuntu/Debian:     sudo apt-get install libhyperscan-dev" && \
-		echo "  Fedora/RHEL:       sudo dnf install hyperscan-devel" && \
+		echo "  Fedora/RHEL:       sudo dnf install vectorscan-devel" && \
 		echo "" && \
 		echo "Or build without vectorscan (slower, but no dependencies):" && \
 		echo "  make build-pure" && \
@@ -81,6 +81,8 @@ ifeq ($(VECTORSCAN_AVAILABLE),0)
 			sudo apt-get install -y libhyperscan-dev; \
 		elif command -v dnf &>/dev/null; then \
 			sudo dnf install -y vectorscan-devel; \
+		else \
+			echo "No supported package manager found (expected apt-get or dnf)";\
 		fi && \
 		echo "[vectorscan] Installed successfully via OS package manager" || \
 		(echo "" && \
@@ -89,7 +91,7 @@ ifeq ($(VECTORSCAN_AVAILABLE),0)
 		echo "" && \
 		echo "  macOS (Homebrew):  brew install vectorscan" && \
 		echo "  Ubuntu/Debian:     sudo apt-get install libhyperscan-dev" && \
-		echo "  Fedora/RHEL:       sudo dnf install hyperscan-devel" && \
+		echo "  Fedora/RHEL:       sudo dnf install vectorscan-devel" && \
 		echo "" && \
 		echo "Or build without vectorscan (slower, but no dependencies):" && \
 		echo "  make build-pure" && \
