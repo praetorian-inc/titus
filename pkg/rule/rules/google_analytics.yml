@@ -1,0 +1,139 @@
+rules:
+
+- name: Google Analytics Universal Analytics Tracking ID
+  id: np.ga.1
+  base_score: 5
+
+  pattern: |
+    (?x)
+    (?: ^ | [^A-Za-z0-9_-] )
+    (?P<tracking_id>UA-[0-9]{4,10}-[0-9]{1,4})
+    (?: [^0-9] | $ )
+
+  categories: [identifier, tracking]
+
+  examples:
+  - "trackingId: 'UA-12345678-1'"
+  - "ga('create', 'UA-1234-1', 'auto')"
+  - "GA_TRACKING_ID=UA-123456789-12"
+  - '"UA-12345678-1"'
+
+  negative_examples:
+  - "UAV-12345-1"
+  - "MUA-12345-1"
+  - "UA-abc-1"
+
+  description: |
+    Google Universal Analytics tracking ID used to identify a Google Analytics
+    property. These IDs follow the format UA-XXXXXXXXXX-Y and are embedded in
+    web applications to send analytics data to Google. While these IDs are
+    often considered semi-public (included in page source), their presence can
+    reveal internal project structure, confirm Google Analytics is in use on a
+    target, and help fingerprint applications. IDs found in non-public code or
+    configuration files may indicate analytics is deployed on internal systems.
+
+  references:
+  - https://support.google.com/analytics/answer/9539598
+
+
+- name: Google Analytics 4 Measurement ID
+  id: np.ga.2
+  base_score: 5
+
+  pattern: |
+    (?x)
+    (?: ^ | [^A-Za-z0-9_-] )
+    (?P<measurement_id>G-[A-Z0-9]{8,12})
+    (?: [^A-Z0-9_-] | $ )
+
+  categories: [identifier, tracking]
+
+  examples:
+  - "measurementId: 'G-ABC123DEF4'"
+  - "GA_MEASUREMENT_ID=G-XXXXXXXXXX"
+  - "gtag('config', 'G-1234567890')"
+  - "'G-ABCDEFGHIJ'"
+
+  negative_examples:
+  - "G-short"
+  - "G-abc123"
+  - "G-"
+
+  description: |
+    Google Analytics 4 (GA4) Measurement ID used to identify a GA4 data stream.
+    These IDs follow the format G-XXXXXXXXXX and replace the legacy Universal
+    Analytics UA- tracking IDs. Measurement IDs are embedded in JavaScript
+    snippets and configuration files to send events to Google Analytics 4
+    properties. While typically present in public page source, their presence
+    in source code can reveal analytics configurations and confirm GA4 usage
+    on a target.
+
+  references:
+  - https://support.google.com/analytics/answer/12270356
+
+
+- name: Google Tag Manager Container ID
+  id: np.ga.3
+  base_score: 5
+
+  pattern: |
+    (?x)
+    (?: ^ | [^A-Za-z0-9_-] )
+    (?P<container_id>GTM-[A-Z0-9]{4,8})
+    (?: [^A-Z0-9_-] | $ )
+
+  categories: [identifier, tracking]
+
+  examples:
+  - "GTM-ABCD123"
+  - "gtm_id: 'GTM-N2H4WDQ'"
+  - "GTM_CONTAINER_ID=GTM-WXYZ1234"
+  - "'GTM-ABCDEFGH'"
+
+  negative_examples: []
+
+  description: |
+    Google Tag Manager (GTM) container ID used to load and manage marketing
+    tags without code changes. GTM container IDs follow the format GTM-XXXXXXX
+    and are embedded in web page snippets to load the GTM script. They are
+    typically present in page source, but exposure in code repositories can
+    confirm GTM usage, reveal internal tag configurations, and help fingerprint
+    a target application's analytics and tracking setup.
+
+  references:
+  - https://support.google.com/tagmanager/answer/6103696
+
+
+- name: Google AdSense Publisher ID
+  id: np.ga.4
+  base_score: 5
+
+  pattern: |
+    (?x)
+    (?: ^ | [^A-Za-z0-9_-] )
+    (?P<publisher_id>pub-[0-9]{10,20})
+    (?: [^0-9] | $ )
+
+  categories: [identifier, tracking]
+
+  examples:
+  - "data-ad-client='pub-1234567890123456'"
+  - "pub-0000000000000000"
+  - "ADSENSE_PUBLISHER_ID=pub-9876543210987654"
+  - '"pub-1234567890"'
+
+  negative_examples:
+  - "publication-1234567890"
+  - "pub-123"
+  - "pub-abc1234567890"
+
+  description: |
+    Google AdSense publisher ID used to identify an AdSense account and
+    attribute ad revenue. Publisher IDs follow the format pub-XXXXXXXXXXXXXXXXXX
+    (10-20 digits) and are embedded in ad code snippets on websites. While
+    included in public page HTML, their presence in source repositories confirms
+    AdSense monetization, links code to a specific AdSense account, and can
+    help enumerate websites associated with a publisher.
+
+  references:
+  - https://support.google.com/adsense/answer/7540879
