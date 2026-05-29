@@ -35,10 +35,14 @@ rules:
         -H "Authorization: Bearer sk-svcacct-EXAMPLE-DO-NOT-USE-AAAA0000BBBB1111CCCC2222DDDD3333EEEE4444FFFF5555_FAKE_DEMO_DATA-NOT-A-REAL-KEY-XX_PLACEHOLDER_END"
 
   negative_examples:
-  # Placeholder values should not match
-  - "Authorization: Bearer sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+  # Placeholder values should not match.
+  # NOTE: a body of 48 unbroken alphanumeric chars would still satisfy the
+  # legacy `sk-[a-zA-Z0-9]{48}` branch, so these placeholders include
+  # punctuation (hyphens / underscores) that disqualifies them from the
+  # legacy charset.
+  - "Authorization: Bearer sk-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
   - "Authorization: Bearer sk-proj-YOUR_API_KEY_HERE"
-  - "OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  - "OPENAI_API_KEY=sk-PLACEHOLDER_NOT_A_REAL_KEY_DO_NOT_USE_REPLACE_ME"
   - "OPENAI_API_KEY=sk-proj-REPLACE_WITH_YOUR_KEY"
   - "OPENAI_API_KEY=sk-svcacct-tooshort"
 
