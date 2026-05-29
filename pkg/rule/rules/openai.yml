@@ -8,11 +8,10 @@ rules:
     (?x)
     \b
     (?P<key>
-      sk-[a-zA-Z0-9]{48}                     # Legacy format: sk-{48 alphanumeric chars}
+      sk-[a-zA-Z0-9]{48}                              # Legacy format: sk-{48 alphanumeric chars}
       |
-      sk-proj-[a-zA-Z0-9_]{95,120}           # Project format: sk-proj-{95-120 chars including underscores}
+      sk-(?:proj|svcacct)-[a-zA-Z0-9_\-]{80,200}      # Project and service-account formats: hyphen-prefixed type tag + 80-200 body chars
     )
-    \b
 
   categories: [api, secret]
 
@@ -23,11 +22,17 @@ rules:
         -H 'Content-Type: application/json' \
         -H "Authorization: Bearer sk-mxIt5s1tyfCJyIKHwrqOT4BlbkFJT3VVmv6VdSwB7XXIq1TO"
 
-  # Project-scoped format example
+  # Project-scoped format (hyphens allowed in body)
   - |
       curl https://api.openai.com/v1/chat/completions \
         -H 'Content-Type: application/json' \
-        -H "Authorization: Bearer sk-proj-TESTkey1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_EXAMPLE1234567890abcdefXYZ"
+        -H "Authorization: Bearer sk-proj-EXAMPLE-DO-NOT-USE-AAAA0000BBBB1111CCCC2222DDDD3333EEEE4444FFFF5555-FAKE_DEMO_DATA_SAFE-NOT-A-REAL-KEY-XXX_PLACEHOLDER_END"
+
+  # Service-account-scoped format
+  - |
+      curl https://api.openai.com/v1/models \
+        -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer sk-svcacct-EXAMPLE-DO-NOT-USE-AAAA0000BBBB1111CCCC2222DDDD3333EEEE4444FFFF5555_FAKE_DEMO_DATA-NOT-A-REAL-KEY-XX_PLACEHOLDER_END"
 
   negative_examples:
   # Placeholder values should not match
@@ -35,6 +40,7 @@ rules:
   - "Authorization: Bearer sk-proj-YOUR_API_KEY_HERE"
   - "OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   - "OPENAI_API_KEY=sk-proj-REPLACE_WITH_YOUR_KEY"
+  - "OPENAI_API_KEY=sk-svcacct-tooshort"
 
   references:
   - https://platform.openai.com/docs/api-reference
