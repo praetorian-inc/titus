@@ -22,8 +22,8 @@ var (
 		regexp.MustCompile(`\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b`),
 	}
 	atlassianDomainPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`https?://([a-z][a-z0-9\-]{1,24}\.atlassian\.net)`),
-		regexp.MustCompile(`\b([a-z][a-z0-9\-]{1,24}\.atlassian\.net)\b`),
+		regexp.MustCompile(`(?i)https?://([a-z][a-z0-9\-]{1,24}\.atlassian\.net)`),
+		regexp.MustCompile(`(?i)\b([a-z][a-z0-9\-]{1,24}\.atlassian\.net)\b`),
 	}
 )
 
@@ -99,7 +99,7 @@ func (c *atlassianSiteAdminCondition) Evaluate(ctx context.Context, m *types.Mat
 	if err != nil {
 		return false, nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, nil
@@ -135,7 +135,7 @@ func (c *atlassianSiteAdminCondition) Evaluate(ctx context.Context, m *types.Mat
 	if err != nil {
 		return false, nil
 	}
-	defer func() { io.Copy(io.Discard, permResp.Body); permResp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, permResp.Body); permResp.Body.Close() }()
 
 	if permResp.StatusCode != http.StatusOK {
 		return false, nil
@@ -196,7 +196,7 @@ func (c *atlassianProjectCountCondition) Evaluate(ctx context.Context, m *types.
 	if err != nil {
 		return false, nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, nil
@@ -275,7 +275,7 @@ func (c *atlassianTokenExpiredCondition) Evaluate(ctx context.Context, m *types.
 	if err != nil {
 		return false, nil
 	}
-	defer func() { io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusUnauthorized, nil
 }

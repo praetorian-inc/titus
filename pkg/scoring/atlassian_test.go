@@ -82,13 +82,13 @@ func TestAtlassianSiteAdminCondition_IsAdmin(t *testing.T) {
 		switch r.URL.Path {
 		case "/rest/api/3/myself":
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"accountType": "atlassian",
 				"accountId":   "123",
 			})
 		case "/rest/api/3/mypermissions":
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"permissions": map[string]interface{}{
 					"ADMINISTER": map[string]interface{}{
 						"havePermission": true,
@@ -114,12 +114,12 @@ func TestAtlassianSiteAdminCondition_NotAdmin(t *testing.T) {
 		switch r.URL.Path {
 		case "/rest/api/3/myself":
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"accountType": "atlassian",
 			})
 		case "/rest/api/3/mypermissions":
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"permissions": map[string]interface{}{
 					"ADMINISTER": map[string]interface{}{
 						"havePermission": false,
@@ -148,7 +148,7 @@ func TestAtlassianProjectCountCondition_AboveThreshold(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(projects)
+		_ = json.NewEncoder(w).Encode(projects)
 	}))
 	defer server.Close()
 
@@ -168,7 +168,7 @@ func TestAtlassianProjectCountCondition_BelowThreshold(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(projects)
+		_ = json.NewEncoder(w).Encode(projects)
 	}))
 	defer server.Close()
 
@@ -252,7 +252,7 @@ func TestAtlassianTokenExpiredCondition_Expired(t *testing.T) {
 func TestAtlassianTokenExpiredCondition_NotExpired(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"accountId":"123"}`))
+		_, _ = w.Write([]byte(`{"accountId":"123"}`))
 	}))
 	defer server.Close()
 
