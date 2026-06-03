@@ -1,0 +1,17 @@
+# Google API key validation via Gemini/Generative AI API
+# Validates base64-encoded Google API keys (np.google.7) which lack a
+# validator in google.yaml. Uses the lightweight models list endpoint.
+# Returns 200 for valid keys with Generative AI API enabled,
+# 400 for malformed keys, 403 for valid keys without API access.
+validators:
+  - name: google-api-key-gemini
+    rule_ids:
+      - np.google.7
+    http:
+      method: GET
+      url: "https://generativelanguage.googleapis.com/v1/models?key={{key}}"
+      auth:
+        type: none
+        secret_group: "key"
+      success_codes: [200]
+      failure_codes: [400, 403]
