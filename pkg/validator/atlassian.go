@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -36,7 +37,7 @@ type AtlassianValidator struct {
 
 // NewAtlassianValidator creates a new Atlassian credential validator.
 func NewAtlassianValidator() *AtlassianValidator {
-	return &AtlassianValidator{client: http.DefaultClient}
+	return &AtlassianValidator{client: &http.Client{Timeout: 30 * time.Second}}
 }
 
 // NewAtlassianValidatorWithClient creates a validator with a custom HTTP client (for testing).

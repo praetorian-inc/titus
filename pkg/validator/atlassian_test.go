@@ -34,18 +34,18 @@ func TestAtlassianValidator_ExtractCredentials_TokenFromNamedGroups(t *testing.T
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl_PY=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl_PY=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000'"),
 			After:    []byte("# https://mycompany.atlassian.net/rest/api/3/myself\n"),
 		},
 	}
 
 	domain, email, token, err := v.extractCredentials(match)
 	assert.NoError(t, err)
-	assert.Equal(t, "ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl_PY=110E6FC6", token)
+	assert.Equal(t, "ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000", token)
 	assert.Equal(t, "info@example.com", email)
 	assert.Equal(t, "mycompany.atlassian.net", domain)
 }
@@ -56,18 +56,18 @@ func TestAtlassianValidator_ExtractCredentials_EmailFromJIRA_USER(t *testing.T) 
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0xYT7HPCi5lokFfZWNkl0R1xi9BpiieoCRoG3=D46B4967"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEjiraUserToken_ForTests=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("JIRA_USER=\"example@example.com\"\n"),
-			Matching: []byte("JIRA_API_TOKEN=\"ATATT3xFfGF0xYT7HPCi5lokFfZWNkl0R1xi9BpiieoCRoG3=D46B4967\""),
+			Matching: []byte("JIRA_API_TOKEN=\"ATATT3xFfGF0testEXAMPLEjiraUserToken_ForTests=00000000\""),
 			After:    []byte("JIRA_HOST=https://myorg.atlassian.net\n"),
 		},
 	}
 
 	domain, email, token, err := v.extractCredentials(match)
 	assert.NoError(t, err)
-	assert.Equal(t, "ATATT3xFfGF0xYT7HPCi5lokFfZWNkl0R1xi9BpiieoCRoG3=D46B4967", token)
+	assert.Equal(t, "ATATT3xFfGF0testEXAMPLEjiraUserToken_ForTests=00000000", token)
 	assert.Equal(t, "example@example.com", email)
 	assert.Equal(t, "myorg.atlassian.net", domain)
 }
@@ -79,18 +79,18 @@ func TestAtlassianValidator_ExtractCredentials_EmailFromEnvFunction(t *testing.T
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0Hv2D5CyGjDnjGL5j9medBUqp=569C722C"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEenvFuncToken_Test=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("'user' => env('JIRA_USER', 'admin@example.com'),\n"),
-			Matching: []byte("'token' => env('JIRA_API_TOKEN', 'ATATT3xFfGF0Hv2D5CyGjDnjGL5j9medBUqp=569C722C'),"),
+			Matching: []byte("'token' => env('JIRA_API_TOKEN', 'ATATT3xFfGF0testEXAMPLEenvFuncToken_Test=00000000'),"),
 			After:    []byte("'host' => env('JIRA_HOST', 'https://example.atlassian.net'),\n"),
 		},
 	}
 
 	domain, email, token, err := v.extractCredentials(match)
 	assert.NoError(t, err)
-	assert.Equal(t, "ATATT3xFfGF0Hv2D5CyGjDnjGL5j9medBUqp=569C722C", token)
+	assert.Equal(t, "ATATT3xFfGF0testEXAMPLEenvFuncToken_Test=00000000", token)
 	assert.Equal(t, "admin@example.com", email)
 	assert.Equal(t, "example.atlassian.net", domain)
 }
@@ -101,11 +101,11 @@ func TestAtlassianValidator_ExtractCredentials_DomainFromHTTPSURL(t *testing.T) 
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEhttpsDomain_Testing=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("url = 'https://myteam.atlassian.net'\nuser = 'ops@myteam.com'\n"),
-			Matching: []byte("token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl=110E6FC6'"),
+			Matching: []byte("token = 'ATATT3xFfGF0testEXAMPLEhttpsDomain_Testing=00000000'"),
 			After:    []byte(""),
 		},
 	}
@@ -114,7 +114,7 @@ func TestAtlassianValidator_ExtractCredentials_DomainFromHTTPSURL(t *testing.T) 
 	assert.NoError(t, err)
 	assert.Equal(t, "myteam.atlassian.net", domain)
 	assert.Equal(t, "ops@myteam.com", email)
-	assert.Equal(t, "ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl=110E6FC6", token)
+	assert.Equal(t, "ATATT3xFfGF0testEXAMPLEhttpsDomain_Testing=00000000", token)
 }
 
 func TestAtlassianValidator_ExtractCredentials_MissingToken(t *testing.T) {
@@ -152,11 +152,11 @@ func TestAtlassianValidator_ExtractCredentials_MissingEmail(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("# no email here\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEshort=00000000'"),
 			After:    []byte("JIRA_HOST=https://mycompany.atlassian.net\n"),
 		},
 	}
@@ -172,11 +172,11 @@ func TestAtlassianValidator_ExtractCredentials_MissingDomain(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEshort=00000000'"),
 			After:    []byte("# no atlassian domain here\n"),
 		},
 	}
@@ -205,11 +205,11 @@ func TestAtlassianValidator_Validate_Valid(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl_PY=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx_Ki4yl_PY=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000'"),
 			After:    []byte("# https://mycompany.atlassian.net/rest/api/3/myself\n"),
 		},
 	}
@@ -235,11 +235,11 @@ func TestAtlassianValidator_Validate_Invalid_Unauthorized(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0invalidtoken=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testINVALIDexample=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0invalidtoken=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testINVALIDexample=00000000'"),
 			After:    []byte("JIRA_HOST=https://mycompany.atlassian.net\n"),
 		},
 	}
@@ -265,11 +265,11 @@ func TestAtlassianValidator_Validate_Invalid_Forbidden(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEshort=00000000'"),
 			After:    []byte("JIRA_HOST=https://mycompany.atlassian.net\n"),
 		},
 	}
@@ -295,11 +295,11 @@ func TestAtlassianValidator_Validate_Undetermined_ServerError(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEshort=00000000'"),
 			After:    []byte("JIRA_HOST=https://mycompany.atlassian.net\n"),
 		},
 	}
@@ -318,11 +318,11 @@ func TestAtlassianValidator_Validate_PartialCredentials(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEshort=00000000'"),
 			After:    []byte("# no atlassian domain in context\n"),
 		},
 	}
@@ -339,7 +339,7 @@ func TestAtlassianValidator_Validate_BasicAuthFormat(t *testing.T) {
 		username, password, ok := r.BasicAuth()
 		assert.True(t, ok, "Basic auth should be present")
 		assert.Equal(t, "info@example.com", username)
-		assert.Equal(t, "ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx=110E6FC6", password)
+		assert.Equal(t, "ATATT3xFfGF0testEXAMPLEbasicAuthCheck=00000000", password)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -351,11 +351,11 @@ func TestAtlassianValidator_Validate_BasicAuthFormat(t *testing.T) {
 	match := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx=110E6FC6"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEbasicAuthCheck=00000000"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = 'info@example.com'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0pogUFVOH0_AjBEA8LJcnOJx=110E6FC6'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEbasicAuthCheck=00000000'"),
 			After:    []byte("# https://mycompany.atlassian.net/rest/api/3/myself\n"),
 		},
 	}
