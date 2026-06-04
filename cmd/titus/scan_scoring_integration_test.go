@@ -227,6 +227,42 @@ func TestRunScan_UnscoredRule_StillEmitsFindingWithBaseOnly(t *testing.T) {
 	assert.Contains(t, string(raw), `"Applied":[]`, "Applied must marshal as [] not null")
 }
 
+// TestRunScan_StripeLiveKey_BaseScore verifies that an np.stripe.1 finding
+// with a sk_live_ prefix gets base_score 90 with no modifiers applied (no
+// --score-scope, so dynamic modifiers are skipped).
+func TestRunScan_StripeLiveKey_BaseScore(t *testing.T) {
+	engine, err := buildScoringEngine()
+	require.NoError(t, err)
+
+	rule := &types.Rule{ID: "np.stripe.1", BaseScore: 90}
+	match := &types.Match{
+		NamedGroups: map[string][]byte{"key": []byte("sk_live_dhhfUUyfrAace5dBAZ10JrAD")},
+	}
+	score := engine.Score(context.Background(), &types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
+	assert.Equal(t, 90, score.Final)
+	assert.Len(t, score.Applied, 0)
+}
+
+// TestRunScan_StripeRestrictedKey_DeltaMinus25 verifies that an np.stripe.1
+// finding with an rk_live_ prefix receives the restricted-key-prefix static
+// modifier (delta -25).
+func TestRunScan_StripeRestrictedKey_DeltaMinus25(t *testing.T) {
+	engine, err := buildScoringEngine()
+	require.NoError(t, err)
+
+	rule := &types.Rule{ID: "np.stripe.1", BaseScore: 90}
+	match := &types.Match{
+		NamedGroups: map[string][]byte{"key": []byte("rk_live_dhhfuuyfrAace5dbaz10jrad")},
+	}
+	score := engine.Score(context.Background(), &types.Finding{RuleID: rule.ID}, []*types.Match{match}, rule)
+	assert.Equal(t, 65, score.Final) // 90 - 25
+	require.Len(t, score.Applied, 1)
+	assert.Equal(t, "restricted-key-prefix", score.Applied[0].Name)
+	assert.Equal(t, "stripe-key-scope", score.Applied[0].Scorer)
+	assert.Equal(t, "delta", score.Applied[0].Kind)
+	assert.Equal(t, -25, score.Applied[0].Value)
+}
+
 // TestRunScan_MultiMatchDedup_ScoredOncePerFinding verifies the architectural
 // invariant that Engine.Score is called exactly once per unique finding even
 // when a rule matches multiple times in the same file.

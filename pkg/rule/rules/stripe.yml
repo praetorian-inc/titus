@@ -2,7 +2,7 @@ rules:
 
 - name: Stripe Publishable API Key
   id: np.stripe.3
-  base_score: 5
+  base_score: 10
 
   # Publishable keys (pk_live_*, pk_test_*) are intentionally designed to be embedded
   # in client-side code (browsers, mobile apps). They identify a merchant account for
@@ -69,7 +69,7 @@ rules:
 
 - name: Stripe API Test Key
   id: np.stripe.2
-  base_score: 50
+  base_score: 5
 
   pattern: '(?i)\b(?P<key>(?:sk|rk)_test_[a-z0-9]{24})\b'
 
