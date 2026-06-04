@@ -12,15 +12,10 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// Pre-compiled patterns for extracting PubNub keys from snippet context.
-var (
-	pubnubPubKeyPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`\b(pub-c-[a-z0-9]{8}(?:-[a-z0-9]{4}){3}-[a-z0-9]{12})\b`),
-	}
-	pubnubSubKeyPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`\b(sub-c-[a-z0-9]{8}(?:-[a-z0-9]{4}){3}-[a-z0-9]{12})\b`),
-	}
-)
+// Pre-compiled patterns for extracting PubNub subscription key from snippet context.
+var pubnubSubKeyPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\b(sub-c-[a-z0-9]{8}(?:-[a-z0-9]{4}){3}-[a-z0-9]{12})\b`),
+}
 
 // PubNubValidator validates PubNub publish and subscription keys.
 // Publish key validation requires the subscription key from snippet context.
