@@ -15,11 +15,11 @@ func atlassianMatch(email, domain string) *types.Match {
 	return &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=ZZZZZZZZ"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("email = '" + email + "'\n"),
-			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000'"),
+			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=ZZZZZZZZ'"),
 			After:    []byte("# https://" + domain + "/rest/api/3/myself\n"),
 		},
 	}
@@ -29,7 +29,7 @@ func TestExtractAtlassianCredentials_Success(t *testing.T) {
 	m := atlassianMatch("info@example.com", "mycompany.atlassian.net")
 	token, email, domain, ok := extractAtlassianCredentials(m)
 	assert.True(t, ok)
-	assert.Equal(t, "ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=00000000", token)
+	assert.Equal(t, "ATATT3xFfGF0testEXAMPLEtokenFORunit_testing=ZZZZZZZZ", token)
 	assert.Equal(t, "info@example.com", email)
 	assert.Equal(t, "mycompany.atlassian.net", domain)
 }
@@ -51,7 +51,7 @@ func TestExtractAtlassianCredentials_MissingEmail(t *testing.T) {
 	m := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=ZZZZZZZZ"),
 		},
 		Snippet: types.Snippet{
 			Before: []byte("no email here\n"),
@@ -66,7 +66,7 @@ func TestExtractAtlassianCredentials_MissingDomain(t *testing.T) {
 	m := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=ZZZZZZZZ"),
 		},
 		Snippet: types.Snippet{
 			Before: []byte("email = 'info@example.com'\n"),
@@ -188,7 +188,7 @@ func TestAtlassianBitbucketAccessCondition_HasBitbucket(t *testing.T) {
 	m := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=ZZZZZZZZ"),
 		},
 		Snippet: types.Snippet{
 			Before: []byte("# Bitbucket integration\nemail = 'info@example.com'\n"),
@@ -213,7 +213,7 @@ func TestAtlassianGuestAccountCondition_IsGuest(t *testing.T) {
 	m := &types.Match{
 		RuleID: "np.atlassian.1",
 		NamedGroups: map[string][]byte{
-			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=00000000"),
+			"token": []byte("ATATT3xFfGF0testEXAMPLEshort=ZZZZZZZZ"),
 		},
 		Snippet: types.Snippet{
 			Before: []byte("# Guest user access\n"),

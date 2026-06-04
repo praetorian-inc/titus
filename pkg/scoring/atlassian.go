@@ -99,7 +99,7 @@ func (c *atlassianSiteAdminCondition) Evaluate(ctx context.Context, m *types.Mat
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, nil
@@ -135,7 +135,7 @@ func (c *atlassianSiteAdminCondition) Evaluate(ctx context.Context, m *types.Mat
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, permResp.Body); permResp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, permResp.Body); _ = permResp.Body.Close() }()
 
 	if permResp.StatusCode != http.StatusOK {
 		return false, nil
@@ -196,7 +196,7 @@ func (c *atlassianProjectCountCondition) Evaluate(ctx context.Context, m *types.
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, nil
@@ -275,7 +275,7 @@ func (c *atlassianTokenExpiredCondition) Evaluate(ctx context.Context, m *types.
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusUnauthorized, nil
 }
