@@ -30,6 +30,9 @@ func NewPubNubValidator() *PubNubValidator {
 
 // NewPubNubValidatorWithClient creates a validator with a custom HTTP client (for testing).
 func NewPubNubValidatorWithClient(client *http.Client) *PubNubValidator {
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
 	return &PubNubValidator{client: client}
 }
 
