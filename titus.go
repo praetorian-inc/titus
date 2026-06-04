@@ -586,3 +586,5 @@ func LoadBuiltinRules() ([]*Rule, error) {
 	loader := rule.NewLoader()
 	return loader.LoadBuiltinRules()
 }
+
+// verify-claude-fix: trivial no-op comment to exercise the claude reviewer pipeline (PR not for merge)
