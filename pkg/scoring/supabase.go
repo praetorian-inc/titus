@@ -56,7 +56,7 @@ func (c *supabaseTokenExpiredCondition) Evaluate(ctx context.Context, m *types.M
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusUnauthorized, nil
 }
@@ -91,7 +91,7 @@ func (c *supabaseActiveTokenCondition) Evaluate(ctx context.Context, m *types.Ma
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusOK, nil
 }
@@ -127,7 +127,7 @@ func (c *supabaseMultiProjectCondition) Evaluate(ctx context.Context, m *types.M
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, nil
