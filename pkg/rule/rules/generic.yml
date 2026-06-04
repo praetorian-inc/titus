@@ -180,6 +180,7 @@ rules:
     password["']?                                (?# preceding context )
     [\ \t]* (?: = | : | := | => ) [\ \t]*        (?# binder )
     "
+    (?! [A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+ " )       (?# reject ALL_CAPS_SNAKE_CASE constants )
     ([^$<%@.,\s+'"(){}&/\#\-][^\s+'"(){}/]{4,})  (?# password )
     "
 
@@ -248,6 +249,12 @@ rules:
       IAMUserChangePassword = "arn:aws:iam::aws:policy/IAMUserChangePassword"
   - |
       this.addPassword = "#add-password";
+  - |
+      Password = "REISSUE_ACCOUNT_PASSWORD"
+  - |
+      password = "RESET_PASSWORD_TOKEN"
+  - |
+      password: "ACCOUNT_PASSWORD_FIELD"
 
 
 
@@ -260,6 +267,7 @@ rules:
     password["']?                                (?# preceding context )
     [\ \t]* (?: = | : | := | => ) [\ \t]*        (?# binder )
     '
+    (?! [A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+ ' )       (?# reject ALL_CAPS_SNAKE_CASE constants )
     ([^$<%@.,\s+'"(){}&/\#\-][^\s+'"(){}/]{4,})  (?# password )
     '
 
@@ -285,6 +293,8 @@ rules:
       usernameLabel:"Username or email:",passwordLabel:"Password:",rememberMeLabel:"Remember me:"
   - |
       this.addPassword = '#add-password';
+  - |
+      password = 'REISSUE_ACCOUNT_PASSWORD'
 
 
 

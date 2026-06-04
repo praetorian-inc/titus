@@ -26,6 +26,7 @@ rules:
         - ":password"
         - ":pass"
         - ">:<"
+        - "mailto:"
     min_entropy: 4.0
     confidence: medium
     examples:
