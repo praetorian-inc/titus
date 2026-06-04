@@ -80,7 +80,7 @@ func (c *pubnubKeyExpiredCondition) Evaluate(ctx context.Context, m *types.Match
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden, nil
 }
@@ -123,7 +123,7 @@ func (c *pubnubActiveKeyCondition) Evaluate(ctx context.Context, m *types.Match)
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusOK, nil
 }
@@ -166,7 +166,7 @@ func (c *pubnubNoAccessManagerCondition) Evaluate(ctx context.Context, m *types.
 	if err != nil {
 		return false, nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	// 200 without auth = Access Manager disabled = higher risk
 	return resp.StatusCode == http.StatusOK, nil

@@ -102,7 +102,7 @@ func (v *PubNubValidator) makeRequest(ctx context.Context, url string) (*types.V
 		return types.NewValidationResult(types.StatusUndetermined, 0,
 			fmt.Sprintf("request failed: %v", err)), nil
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
