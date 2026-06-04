@@ -180,7 +180,7 @@ rules:
     password["']?                                (?# preceding context )
     [\ \t]* (?: = | : | := | => ) [\ \t]*        (?# binder )
     "
-    (?! [A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+ " )       (?# reject ALL_CAPS_SNAKE_CASE constants )
+    (?! (?-i)[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+ " )  (?# reject ALL_CAPS_SNAKE_CASE constants )
     ([^$<%@.,\s+'"(){}&/\#\-][^\s+'"(){}/]{4,})  (?# password )
     "
 
@@ -267,7 +267,7 @@ rules:
     password["']?                                (?# preceding context )
     [\ \t]* (?: = | : | := | => ) [\ \t]*        (?# binder )
     '
-    (?! [A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+ ' )       (?# reject ALL_CAPS_SNAKE_CASE constants )
+    (?! (?-i)[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+ ' )  (?# reject ALL_CAPS_SNAKE_CASE constants )
     ([^$<%@.,\s+'"(){}&/\#\-][^\s+'"(){}/]{4,})  (?# password )
     '
 

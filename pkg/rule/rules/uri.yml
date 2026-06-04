@@ -30,7 +30,7 @@ rules:
     min_entropy: 4.0
     confidence: medium
     examples:
-      - https://username:secret@example.com/path
+      - https://admin:s3cret@db.example.com/path
     validation:
       type: Http
       content:

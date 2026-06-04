@@ -79,12 +79,13 @@ func TestGenericPassword5_AllCapsSnakeCaseSuppression(t *testing.T) {
 			shouldMatch: true,
 		},
 		{
-			// The lookahead uses (?i), so [A-Z0-9]* also matches lowercase letters.
-			// "My_Secret_Value" matches [A-Z][A-Z0-9]*(_[A-Z0-9]+)+" under case-insensitive
-			// matching, so the negative lookahead fires and suppresses this value.
-			name:        "mixed case snake suppressed by case-insensitive lookahead",
+			// With (?-i) inside the lookahead, the ALL_CAPS_SNAKE_CASE check is
+			// case-sensitive. "My_Secret_Value" contains lowercase letters, so it
+			// does NOT match [A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+, and the lookahead does
+			// not suppress it. Mixed-case snake_case passwords pass through.
+			name:        "mixed case snake NOT suppressed with case-sensitive lookahead",
 			input:       `password = "My_Secret_Value"`,
-			shouldMatch: false,
+			shouldMatch: true,
 		},
 	}
 
@@ -148,11 +149,13 @@ func TestGenericPassword6_AllCapsSnakeCaseSuppression(t *testing.T) {
 			shouldMatch: true,
 		},
 		{
-			// Same as np.generic.5: the lookahead uses (?i), so mixed-case snake values
-			// like "Reset_Token_Value" also match the suppression pattern.
-			name:        "mixed case snake suppressed by case-insensitive lookahead",
+			// With (?-i) inside the lookahead, the ALL_CAPS_SNAKE_CASE check is
+			// case-sensitive. "Reset_Token_Value" contains lowercase letters, so it
+			// does NOT match [A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+, and the lookahead does
+			// not suppress it. Mixed-case snake_case passwords pass through.
+			name:        "mixed case snake NOT suppressed with case-sensitive lookahead",
 			input:       `password = 'Reset_Token_Value'`,
-			shouldMatch: false,
+			shouldMatch: true,
 		},
 	}
 
@@ -216,6 +219,11 @@ func TestURIRule_MailtoSuppression(t *testing.T) {
 			input:       `https://username:password@example.com`,
 			shouldMatch: false,
 		},
+		{
+			name:        "mailto suppressed by ignore_if_contains",
+			input:       `https://mailto:someone@example.com`,
+			shouldMatch: false,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -247,8 +255,9 @@ func TestModifiedRules_YAMLExamplesMatch(t *testing.T) {
 		require.NotNil(t, r, "%s should exist", id)
 		require.NotEmpty(t, r.Examples, "%s should have examples", id)
 
-		m, err := matcher.NewPortableRegexp([]*types.Rule{r}, 0, nil)
+		m, err := matcher.New(matcher.Config{Rules: []*types.Rule{r}})
 		require.NoError(t, err, "%s should compile", id)
+		defer m.Close()
 
 		for _, ex := range r.Examples {
 			ex := ex
