@@ -97,7 +97,7 @@ scorers:
           method: GET
           url: ` + mockURL + `/v1/account
           auth:
-            type: basic
+            type: bearer
             secret_group: "key"
         fires_when:
           json_path_equals:
@@ -110,7 +110,7 @@ scorers:
           method: GET
           url: ` + mockURL + `/v1/account
           auth:
-            type: basic
+            type: bearer
             secret_group: "key"
         fires_when:
           json_path_equals:
@@ -125,6 +125,10 @@ scorers:
 // sets the final score to 95 for an sk_live_ key.
 func TestStripeScorer_ChargesEnabledLive_SetScore95(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "Bearer sk_live_dhhfUUyfrAace5dBAZ10JrAD" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"charges_enabled": true, "country": "US"}`))
@@ -167,6 +171,10 @@ func TestStripeScorer_ChargesEnabledLive_SetScore95(t *testing.T) {
 // the final score to 30 for an sk_live_ key.
 func TestStripeScorer_ChargesDisabled_SetScore30(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "Bearer sk_live_dhhfUUyfrAace5dBAZ10JrAD" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"charges_enabled": false, "country": "US"}`))
@@ -213,6 +221,10 @@ func TestStripeScorer_ChargesDisabled_SetScore30(t *testing.T) {
 // The restricted key penalty applies on top of the set_score. Final = 70.
 func TestStripeScorer_RestrictedKey_ChargesEnabled_Score70(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "Bearer rk_live_dhhfuuyfrAace5dbaz10jrad" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"charges_enabled": true}`))
@@ -264,6 +276,10 @@ func TestStripeScorer_RestrictedKey_ChargesEnabled_Score70(t *testing.T) {
 // Final = 5.
 func TestStripeScorer_RestrictedKey_ChargesDisabled_Score5(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "Bearer rk_live_dhhfuuyfrAace5dbaz10jrad" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"charges_enabled": false}`))

@@ -4,17 +4,18 @@
 #   np.stripe.1 — live key (sk_live_, rk_live_): base_score 90
 #
 # The "key" named capture group from the detection rule is used for both
-# static prefix checks and basic auth injection in HTTP modifiers.
+# static prefix checks and bearer auth injection in HTTP modifiers.
 #
 # API documentation:
 #   GET /v1/account (charges_enabled, country, business_profile):
 #     https://docs.stripe.com/api/accounts/retrieve
-#   GET /v1/balance (available, pending):
-#     https://docs.stripe.com/api/balance/balance_retrieve
 #
-# Stripe uses Basic Auth: the API key is the password, username is empty.
-# The existing YAML validator (pkg/validator/validators/stripe.yaml) handles
-# binary pass/fail via /v1/balance. This scorer adds risk differentiation.
+# Stripe accepts both Basic Auth and Bearer token authentication.
+# Bearer is used here to avoid username/password mapping ambiguity.
+#
+# Note: restricted keys (rk_live_) require explicit Account read permission
+# to access /v1/account. Keys without that permission receive 403; the
+# dynamic modifier is skipped and the static delta -25 still applies.
 scorers:
   - name: stripe-key-scope
     rule_ids:
@@ -37,7 +38,7 @@ scorers:
           method: GET
           url: https://api.stripe.com/v1/account
           auth:
-            type: basic
+            type: bearer
             secret_group: "key"
         fires_when:
           json_path_equals:
@@ -52,7 +53,7 @@ scorers:
           method: GET
           url: https://api.stripe.com/v1/account
           auth:
-            type: basic
+            type: bearer
             secret_group: "key"
         fires_when:
           json_path_equals:
