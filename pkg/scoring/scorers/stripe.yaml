@@ -1,0 +1,62 @@
+# Stripe API key scorer — static + dynamic modifiers (M3 scope).
+#
+# Rule IDs covered:
+#   np.stripe.1 — live key (sk_live_, rk_live_): base_score 90
+#
+# The "key" named capture group from the detection rule is used for both
+# static prefix checks and bearer auth injection in HTTP modifiers.
+#
+# API documentation:
+#   GET /v1/account (charges_enabled, country, business_profile):
+#     https://docs.stripe.com/api/accounts/retrieve
+#
+# Stripe accepts both Basic Auth and Bearer token authentication.
+# Bearer is used here to avoid username/password mapping ambiguity.
+#
+# Note: restricted keys (rk_live_) require explicit Account read permission
+# to access /v1/account. Keys without that permission receive 403; the
+# dynamic modifier is skipped and the static delta -25 still applies.
+scorers:
+  - name: stripe-key-scope
+    rule_ids:
+      - np.stripe.1
+    modifiers:
+      # --- Static: restricted key prefix detection ---
+      - name: restricted-key-prefix
+        priority: 70
+        match_group:
+          name: key
+          matches: '^rk_live_'
+        delta: -25
+
+      # --- Dynamic (M3, only when --score-scope) ---
+
+      # charges_enabled: true — account can process real payments
+      - name: charges-enabled-live
+        priority: 90
+        http:
+          method: GET
+          url: https://api.stripe.com/v1/account
+          auth:
+            type: bearer
+            secret_group: "key"
+        fires_when:
+          json_path_equals:
+            path: ".charges_enabled"
+            value: true
+        set_score: 95
+
+      # charges_enabled: false — account not yet live
+      - name: charges-disabled
+        priority: 80
+        http:
+          method: GET
+          url: https://api.stripe.com/v1/account
+          auth:
+            type: bearer
+            secret_group: "key"
+        fires_when:
+          json_path_equals:
+            path: ".charges_enabled"
+            value: false
+        set_score: 30
