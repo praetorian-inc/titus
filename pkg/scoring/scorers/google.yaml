@@ -1,0 +1,50 @@
+# Google API key scorer — dynamic HTTP modifiers for Gemini AI access (LAB-4000).
+#
+# Rule IDs covered:
+#   np.google.5 — Google API Key (AIza prefix): base_score 55
+#   np.google.7 — Google API Key (Base64 encoded): base_score 55
+#   np.google.8 — Google Maps API Key (AIza with maps context): base_score 50
+#
+# All three patterns capture a named group "key", making them suitable for
+# query parameter auth injection in HTTP modifiers.
+#
+# API documentation:
+#   Generative AI / Gemini models endpoint:
+#     https://ai.google.dev/api/models#method:-models.list
+#   Response schema (models array with name, displayName, supportedGenerationMethods):
+#     https://ai.google.dev/api/models#Model
+scorers:
+  - name: google-gemini-scope
+    rule_ids:
+      - np.google.5
+      - np.google.7
+      - np.google.8
+
+    modifiers:
+      # --- Dynamic: check if key has Gemini/Generative AI API access ---
+      - name: gemini-api-access
+        priority: 90
+        http:
+          method: GET
+          url: "https://generativelanguage.googleapis.com/v1/models?key={{key}}"
+          auth:
+            type: none
+            secret_group: key
+        fires_when:
+          status_code: 200
+        delta: 15   # AI model access — elevated risk
+
+      # --- Dynamic: check if key grants access to advanced models ---
+      # gemini-2.0-flash or gemini-1.5-pro in the models list indicates
+      # access to production-grade models with higher capability.
+      - name: gemini-advanced-models
+        priority: 80
+        http:
+          method: GET
+          url: "https://generativelanguage.googleapis.com/v1/models?key={{key}}"
+          auth:
+            type: none
+            secret_group: key
+        fires_when:
+          response_body_contains: "gemini-1.5-pro"
+        delta: 10   # access to advanced models — broader capability
