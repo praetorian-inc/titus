@@ -6,6 +6,7 @@ func BuiltinGoScorers() []*Scorer {
 	return []*Scorer{
 		AWSGoScorer(),
 		GitHubGoScorer(),
+		SupabaseGoScorer(),
 		AtlassianGoScorer(),
 	}
 }
