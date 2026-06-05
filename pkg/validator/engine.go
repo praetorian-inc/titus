@@ -32,6 +32,7 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewMattermostValidator())
 	validators = append(validators, NewTrueNASValidator())
 	validators = append(validators, NewGitHubAppTokenValidator())
+	validators = append(validators, NewPubNubValidator())
 	validators = append(validators, NewAtlassianValidator())
 
 	// Embedded YAML validators
