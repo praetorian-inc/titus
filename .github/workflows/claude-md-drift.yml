@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   drift-check:
-    uses: praetorian-inc/public-workflows/.github/workflows/claude-md-drift.yml@25c08fbd15a931e275f207ecee1758c931f89ea5  # v2.3.1
+    uses: praetorian-inc/public-workflows/.github/workflows/claude-md-drift.yml@5bee862b5576ede0c17b22aac4a23de5a43f31fc  # v2.6.5
     permissions:
       contents: read
       pull-requests: write
