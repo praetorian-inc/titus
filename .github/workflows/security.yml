@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   security:
-    uses: praetorian-inc/public-workflows/.github/workflows/go-sec.yml@c1a6ca690193bc4bbc5ee55d903f8ea17a37cd35  # v2.6.2
+    uses: praetorian-inc/public-workflows/.github/workflows/go-sec.yml@9391f462483f0ca025fbbb57bfb0f9f9561e1b6a  # v2.6.6
     permissions:
       contents: read
       pull-requests: read     # go-sec.yml preflight reads PR files + repo tree
