@@ -40,11 +40,49 @@ func getCore() (*scanner.Core, error) {
 	return sharedCore, coreInitErr
 }
 
+// options holds per-cassette configuration for Client.
+type options struct {
+	// keepResponseBody controls whether the response body is persisted in the
+	// cassette. Defaults to false (bodies are elided) to minimise cassette
+	// attack surface. Only validators that inspect the response body need to opt
+	// in via WithResponseBody.
+	//
+	// Default-elide rationale: most validators decide on HTTP status code alone,
+	// so storing response bodies adds noise and a potential secret-leak surface
+	// with no benefit. A body-matcher that forgets WithResponseBody will fail
+	// loudly on replay (body is empty) rather than silently (secret in body).
+	keepResponseBody bool
+}
+
+// Option is a functional option for Client.
+type Option func(*options)
+
+// WithResponseBody opts the cassette into persisting response bodies.
+// Use this only for validators whose Match logic inspects the response body
+// (i.e. those with SuccessBodyContains or FailureBodyContains set in their
+// YAML definition). The body is still scanned and redacted before being
+// written to the cassette.
+//
+// Without this option, response bodies are blanked in record mode and
+// Content-Length is dropped, so nothing leaks into testdata/.
+func WithResponseBody() Option {
+	return func(o *options) {
+		o.keepResponseBody = true
+	}
+}
+
 // Client returns an *http.Client bound to the named cassette.
 // cassettePath is relative to the test file, e.g. "testdata/huggingface/valid".
 // The recorder is stopped via t.Cleanup.
-func Client(t *testing.T, cassettePath string) *http.Client {
+//
+// By default, response bodies are elided from cassettes (see WithResponseBody).
+func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 	t.Helper()
+
+	o := &options{}
+	for _, opt := range opts {
+		opt(o)
+	}
 
 	isRecording := os.Getenv("RECORD") == "1"
 	mode := recorder.ModeReplayOnly
@@ -56,7 +94,7 @@ func Client(t *testing.T, cassettePath string) *http.Client {
 		cassettePath,
 		recorder.WithMode(mode),
 		recorder.WithSkipRequestLatency(true),
-		recorder.WithHook(redactHook(isRecording), recorder.AfterCaptureHook),
+		recorder.WithHook(redactHook(isRecording, o.keepResponseBody), recorder.AfterCaptureHook),
 		recorder.WithMatcher(secretInsensitiveMatcher),
 	)
 	if err != nil {
@@ -89,11 +127,16 @@ func Client(t *testing.T, cassettePath string) *http.Client {
 // misconfiguration where the secret was never sent and the cassette would be
 // trivially "clean" but also useless.
 //
+// keepResponseBody controls whether the response body is persisted (Fix 2):
+// if false the body is blanked and Content-Length dropped before the cassette
+// is written. Most validators check status code alone; body-matchers opt in
+// via WithResponseBody so that a forgotten opt-in fails loudly on replay.
+//
 // If SECRET_PLAINTEXT is set the hook also performs a backup literal scrub of
 // the raw value and its URL-encoded form AFTER the dogfood assertion has already
 // passed. It does not satisfy or bypass the assertion; it is an extra safety net
 // for service-specific token formats the scanner's ruleset may not cover.
-func redactHook(isRecording bool) recorder.HookFunc {
+func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 	return func(i *cassette.Interaction) error {
 		if !isRecording {
 			// Replay mode: no-op.
@@ -121,12 +164,13 @@ func redactHook(isRecording bool) recorder.HookFunc {
 				requestFields = append(requestFields, field{"request.header." + h, v})
 			}
 		}
-		// NOTE: response headers are intentionally not scanned for new secrets.
+		// NOTE: response headers are intentionally not scanned for new secrets yet.
 		// A credential that appears only in a response header (e.g. X-Subject-Token,
 		// Set-Cookie) would not be detected by the dogfood assertion and would not
-		// be redacted below. This is a known gap tracked for a future follow-up.
-		responseFields := []field{
-			{"response.body", i.Response.Body},
+		// be redacted below. This will be addressed in a follow-up (Fix 4).
+		responseFields := []field{}
+		if keepResponseBody {
+			responseFields = append(responseFields, field{"response.body", i.Response.Body})
 		}
 
 		// scanAndCollect scans a field and returns all matched secret strings.
@@ -189,11 +233,19 @@ func redactHook(isRecording bool) recorder.HookFunc {
 			allSecrets = append(allSecrets, pt)
 		}
 
-		// Perform all redactions across every text field.
+		// Elide response body if not needed (secure-by-default).
+		if !keepResponseBody {
+			i.Response.Body = ""
+			i.Response.Headers.Del("Content-Length")
+		}
+
+		// Perform all redactions across every text field that is kept.
 		for _, secret := range allSecrets {
 			i.Request.URL = redactIn(i.Request.URL, secret)
 			i.Request.Body = redactIn(i.Request.Body, secret)
-			i.Response.Body = redactIn(i.Response.Body, secret)
+			if keepResponseBody {
+				i.Response.Body = redactIn(i.Response.Body, secret)
+			}
 			for h, vals := range i.Request.Headers {
 				for idx, v := range vals {
 					i.Request.Headers[h][idx] = redactIn(v, secret)
