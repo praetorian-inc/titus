@@ -366,3 +366,38 @@ func TestWithMatcher_Override(t *testing.T) {
 
 	require.NotNil(t, o.matcher, "WithMatcher must set options.matcher")
 }
+
+// ---- Fix 4: Response header secret detection ----
+
+// TestRedactHook_RecordMode_ResponseHeaderSecret verifies that a secret that
+// appears ONLY in a response header value (e.g. Set-Cookie, X-Subject-Token)
+// is detected and redacted. Previously this was a gap: response header values
+// were not scanned for new secrets.
+func TestRedactHook_RecordMode_ResponseHeaderSecret(t *testing.T) {
+	hook := redactHook(true, false)
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method:  "GET",
+			URL:     "https://example.com/api/validate",
+			Headers: make(http.Header),
+		},
+		Response: cassette.Response{
+			Code:    200,
+			Body:    "",
+			Headers: make(http.Header),
+		},
+	}
+	// Secret only in a request header (satisfies dogfood assertion).
+	i.Request.Headers.Set("Authorization", "Bearer "+testSecret)
+	// Additional secret minted into a response header only.
+	i.Response.Headers.Set("X-Subject-Token", testSecret)
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.NotContains(t, i.Response.Headers.Get("X-Subject-Token"), testSecret,
+		"response header must not contain the plaintext secret after redaction")
+	assert.Contains(t, i.Response.Headers.Get("X-Subject-Token"), Placeholder,
+		"response header must contain Placeholder after redaction")
+}

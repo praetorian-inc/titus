@@ -137,21 +137,17 @@ func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 // is no live secret to redact, and mutating cassette interactions during replay
 // would corrupt the round-trip.
 //
-// In record mode the hook uses the Titus scanner (dogfood) to detect secrets
-// in every text field of the interaction and replaces each detected token with
-// Placeholder. URL-encoded variants of each token are also replaced so that
-// query-string secrets do not survive encoding.
-//
-// Dogfood assertion: if the scanner finds zero matches across all request auth
-// material (URL + request headers + request body), the hook returns an error
-// so the recorder refuses to write the cassette. This guards against silent
-// misconfiguration where the secret was never sent and the cassette would be
-// trivially "clean" but also useless.
-//
-// keepResponseBody controls whether the response body is persisted (Fix 2):
-// if false the body is blanked and Content-Length dropped before the cassette
-// is written. Most validators check status code alone; body-matchers opt in
-// via WithResponseBody so that a forgotten opt-in fails loudly on replay.
+// In record mode the hook:
+//  1. Scans request auth material (URL + request headers + request body) for
+//     secrets using the Titus scanner. Dogfood assertion: zero matches is fatal,
+//     guarding against silent misconfiguration.
+//  2. Scans response header VALUES for new secrets (a credential minted only into
+//     a response header, e.g. Set-Cookie or X-Subject-Token, would otherwise
+//     survive into the cassette). Response headers are always scanned.
+//  3. If keepResponseBody is true, scans the response body for additional secrets;
+//     if false, blanks the body and drops Content-Length (secure-by-default).
+//  4. Redacts all detected secrets (and their URL-encoded variants) across all
+//     text fields that are persisted.
 //
 // If SECRET_PLAINTEXT is set the hook also performs a backup literal scrub of
 // the raw value and its URL-encoded form AFTER the dogfood assertion has already
@@ -184,14 +180,6 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 			for _, v := range vals {
 				requestFields = append(requestFields, field{"request.header." + h, v})
 			}
-		}
-		// NOTE: response headers are intentionally not scanned for new secrets yet.
-		// A credential that appears only in a response header (e.g. X-Subject-Token,
-		// Set-Cookie) would not be detected by the dogfood assertion and would not
-		// be redacted below. This will be addressed in a follow-up (Fix 4).
-		responseFields := []field{}
-		if keepResponseBody {
-			responseFields = append(responseFields, field{"response.body", i.Response.Body})
 		}
 
 		// scanAndCollect scans a field and returns all matched secret strings.
@@ -237,12 +225,26 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 				"(RECORD=1 SECRET_PLAINTEXT=<key> make record-fixtures SVC=<service>)")
 		}
 
-		// Collect secrets from response fields as well (they may differ from
-		// those in the request, e.g. a refresh token returned in the body).
+		// Collect secrets from response headers. A credential minted only into a
+		// response header (e.g. Set-Cookie, X-Subject-Token) would not be caught by
+		// the dogfood assertion (which is REQUEST-only by design) and would survive
+		// into the cassette if not explicitly scanned here.
+		// Note: response headers are always scanned regardless of keepResponseBody;
+		// even when the body is elided, response headers are persisted in the cassette.
 		allSecrets := make([]string, len(requestSecrets))
 		copy(allSecrets, requestSecrets)
-		for _, f := range responseFields {
-			secrets, scanErr := scanAndCollect(f)
+		for h, vals := range i.Response.Headers {
+			for _, v := range vals {
+				secrets, scanErr := scanAndCollect(field{"response.header." + h, v})
+				if scanErr != nil {
+					return scanErr
+				}
+				allSecrets = append(allSecrets, secrets...)
+			}
+		}
+		// Collect secrets from the response body only when it is kept.
+		if keepResponseBody {
+			secrets, scanErr := scanAndCollect(field{"response.body", i.Response.Body})
 			if scanErr != nil {
 				return scanErr
 			}
