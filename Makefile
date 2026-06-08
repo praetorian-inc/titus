@@ -227,7 +227,8 @@ static-test: build-static
 test-validators:            ## Replay validator tests (no network)
 	GOWORK=off CGO_ENABLED=0 go test ./pkg/validator/... -count=1
 
-record-fixtures:            ## Re-record cassettes (needs creds + RECORD=1). Usage: make record-fixtures SVC=huggingface
+record-fixtures:            ## Re-record cassettes (needs creds + RECORD=1). Usage: SECRET_PLAINTEXT=<key> make record-fixtures SVC=huggingface
+	# Tests must follow the naming convention Test_<Service>_<case> (e.g. Test_Huggingface_valid).
 	RECORD=1 GOWORK=off CGO_ENABLED=0 go test ./pkg/validator/ -run "Test_$(SVC)_" -count=1 -v
 
 scan-fixtures:              ## Fail if any live secret in testdata/

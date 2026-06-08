@@ -14,15 +14,25 @@ if [ ! -d "$TESTDATA" ]; then
   exit 0
 fi
 
-# Use --ruleset all so every rule fires regardless of score.
+# Run titus scan and capture output. Fail loudly if the tool itself cannot run
+# (build error, missing binary, bad flags, etc.) rather than silently returning
+# zero findings and giving false confidence.
+#
+# Use --ruleset all so every rule fires regardless of score threshold.
 # --output :memory: avoids writing a titus.ds file.
 # --quiet suppresses the ASCII banner.
-COUNT="$(GOWORK=off go run "$ROOT/cmd/titus" scan \
+SCAN_OUT="$(GOWORK=off go run "$ROOT/cmd/titus" scan \
   --format json \
   --output :memory: \
   --ruleset all \
   --quiet \
-  "$TESTDATA" 2>/dev/null | grep -c '"RuleID"' || true)"
+  "$TESTDATA" 2>&1)" || {
+  echo "FATAL: titus scan failed to run (build error or bad invocation):" >&2
+  echo "$SCAN_OUT" >&2
+  exit 1
+}
+
+COUNT="$(echo "$SCAN_OUT" | grep -c '"RuleID"' || true)"
 
 if [ "$COUNT" -ne 0 ]; then
   echo "FATAL: $COUNT secret(s) found in testdata/ -- redact before commit"

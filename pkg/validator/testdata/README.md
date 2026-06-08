@@ -38,6 +38,10 @@ redacts secrets via the `AfterCaptureHook` before writing to disk. Additionally:
 
 - Set `SECRET_PLAINTEXT` env var during recording so the hook can scrub the raw value
 - Run `make scan-fixtures` before every commit touching `testdata/` — it fails on any finding
+- When testing the scanner gate manually, use a valid-format canary key. For AWS, the
+  `np.aws.1` rule expects exactly 20 characters starting with `AKIA`. Example format:
+  `AKIA` + 16 uppercase letters/digits. Keys with fewer or more than 20 total characters
+  will not trigger the rule.
 - Revoke the recording key immediately after capture; set `key_revoked: true`
 
 ## Directory Structure
