@@ -24,7 +24,6 @@ rules:
       - "<%"
       - "<?"
       - "{%"
-      - "password"
       - "placeholder"
       - "changeme"
       - "example"
