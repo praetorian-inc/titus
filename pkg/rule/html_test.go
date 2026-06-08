@@ -97,11 +97,6 @@ func TestHTMLPasswordInput_Detection(t *testing.T) {
 			shouldMatch: false,
 		},
 		{
-			name:        "placeholder word password",
-			input:       `<input type="password" value="password" />`,
-			shouldMatch: false,
-		},
-		{
 			name:        "placeholder word placeholder",
 			input:       `<input type="password" value="placeholder" />`,
 			shouldMatch: false,

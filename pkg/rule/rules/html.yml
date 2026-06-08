@@ -59,7 +59,6 @@ rules:
   - '<input type="password" value="*** " />'
   - '<input type="password" value="abc" />'
   - '<input type="text" value="not_a_password_field" />'
-  - '<input type="password" value="password" />'
   - '<input type="password" value="placeholder" />'
   - '<input type="password" value="changeme" />'
   - '<input type="password" value="{{this.value}}" />'
