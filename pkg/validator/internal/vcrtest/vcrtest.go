@@ -90,8 +90,9 @@ func Client(t *testing.T, cassettePath string) *http.Client {
 // trivially "clean" but also useless.
 //
 // If SECRET_PLAINTEXT is set the hook also performs a backup literal scrub of
-// the raw value and its URL-encoded form, providing a safety net in case the
-// scanner's ruleset does not cover a service-specific token format.
+// the raw value and its URL-encoded form AFTER the dogfood assertion has already
+// passed. It does not satisfy or bypass the assertion; it is an extra safety net
+// for service-specific token formats the scanner's ruleset may not cover.
 func redactHook(isRecording bool) recorder.HookFunc {
 	return func(i *cassette.Interaction) error {
 		if !isRecording {
@@ -120,6 +121,10 @@ func redactHook(isRecording bool) recorder.HookFunc {
 				requestFields = append(requestFields, field{"request.header." + h, v})
 			}
 		}
+		// NOTE: response headers are intentionally not scanned for new secrets.
+		// A credential that appears only in a response header (e.g. X-Subject-Token,
+		// Set-Cookie) would not be detected by the dogfood assertion and would not
+		// be redacted below. This is a known gap tracked for a future follow-up.
 		responseFields := []field{
 			{"response.body", i.Response.Body},
 		}

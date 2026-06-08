@@ -2,7 +2,6 @@ package vcrtest
 
 import (
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,8 +11,8 @@ import (
 
 // testSecret is a fake AWS key that the builtin scanner detects via np.aws.1.
 // It is intentionally not a real credential: it follows the AKIA + 16-char
-// pattern but uses a nonsense value. The key_revoked check in scan-fixtures.sh
-// guards against real credentials reaching the repo.
+// pattern but uses a nonsense value. If redaction ever regressed, scan-fixtures.sh
+// would detect this pattern in testdata/ (np.aws.1 matches it) and fail CI.
 const testSecret = "AKIADEADBEEFDEADBEEF"
 
 // makeInteraction builds a cassette.Interaction with the secret embedded in
@@ -242,7 +241,6 @@ func TestGetCore_Singleton(t *testing.T) {
 func TestRedactHook_RecordMode_NoSecretPlaintext(t *testing.T) {
 	// Explicitly unset SECRET_PLAINTEXT to confirm it is optional.
 	t.Setenv("SECRET_PLAINTEXT", "")
-	os.Unsetenv("SECRET_PLAINTEXT") //nolint:errcheck
 
 	hook := redactHook(true)
 
