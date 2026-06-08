@@ -1,0 +1,53 @@
+rules:
+
+- name: HTML Password Input Pre-populated Credential
+  id: np.html.1
+  base_score: 60
+
+  pattern: |
+    (?xi)
+    <input
+      (?=[^>]*?type\s*=\s*['"]password['"])
+      [^>]*?
+      \bvalue\s*=\s*['"]
+      (?![\*\x{2022}]{3,}['"])
+      (?!(?:password|placeholder|changeme|example|test|demo|sample|your_password|\{\{|\$\{)\b)
+      (?P<secret>[^'"]{4,200}?)
+      ['"]
+      [^>]*?
+      \/?>
+
+  description: >
+    A credential value was detected in the HTML value attribute of an <input type="password"> element.
+    Web applications that pre-populate password fields expose credentials in HTTP response bodies and
+    HTML source. Although the browser visually masks the field, the credential is plaintext in the page
+    source and retrievable via browser developer tools, web proxy, or source-view. This pattern commonly
+    indicates service account passwords stored in admin configuration panels.
+
+  categories:
+  - secret
+  - fuzzy
+
+  examples:
+  - '<input type="password" value="Jasper@Admin2024!" name="jasper_password" />'
+  - "<input name=\"smtp_pass\" type='password' value=\"relay_secret_123\">"
+  - '<input type="password" value="AKIA6GTN2FZMZI2WBMDJ" class="form-control">'
+  - '<input class="form-control" value="jasper_secret_XYZ!" type="password" name="jasper_password" />'
+  - '<INPUT TYPE="PASSWORD" VALUE="Admin@1234" NAME="adminPass">'
+
+  negative_examples:
+  - '<input type="password" value="" name="password" />'
+  - '<input type="password" name="password" />'
+  - '<input type="password" value="********" />'
+  - '<input type="password" value="••••••••" />'
+  - '<input type="password" value="abc" />'
+  - '<input type="text" value="not_a_password_field" />'
+  - '<input type="password" value="password" />'
+  - '<input type="password" value="placeholder" />'
+  - '<input type="password" value="changeme" />'
+  - '<input type="password" value="{{this.value}}" />'
+
+  references:
+  - https://cwe.mitre.org/data/definitions/312.html
+  - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Webpage_Content_for_Information_Leakage
+  - https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/password
