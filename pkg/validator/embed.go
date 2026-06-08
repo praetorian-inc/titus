@@ -7,18 +7,25 @@ import (
 	"path/filepath"
 )
 
-// NOTE: The following legacy-format files are embedded and loadable but produce
-// validators with empty RuleIDs that never match at runtime. They use an older
-// schema (e.g. rule_id/valid_status keys instead of rule_ids/success_codes) and
-// are flagged for future migration:
+// NOTE: The following files are embedded but produce no active validators at
+// runtime. They are skipped by the schema contract test (yaml_contract_test.go).
+// Two distinct classes:
 //
-//   - blynk.yaml
-//   - clay.yaml
-//   - clojars.yaml
-//   - codeclimate.yaml
-//   - curl.yaml
+// Empty-RuleID legacy (load but validators have empty rule_ids, never match):
 //
-// The schema contract test (yaml_contract_test.go) skips these intentionally.
+//   - blynk.yaml       — rule_id/valid_status schema (old format)
+//   - clay.yaml        — request/response/classification schema (old format)
+//   - clojars.yaml     — no rule_ids field (old format)
+//   - codeclimate.yaml — root-level entry, no validators: wrapper (old format)
+//   - curl.yaml        — placeholder/template with empty URLs
+//
+// Zero-validator / non-HTTP (register nothing at runtime):
+//
+//   - adobe.yaml       — all validators commented out; needs client_id+secret pair not yet supported
+//   - bitbucket.yaml   — all validators commented out; needs username+app_password not yet supported
+//   - cratesio.yaml    — old kingfisher http.request schema, not current validators: format
+//   - credentials.yaml — entropy/length validator schema, not HTTP-based
+//   - firebase.yaml    — all validators commented out; FCM legacy API deprecated June 2024
 //
 //go:embed validators/*.yaml
 var validatorsFS embed.FS
