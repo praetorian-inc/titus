@@ -11,6 +11,9 @@ on:
       - 'go.sum'
       - '.golangci*'
       - 'Makefile'
+      - 'pkg/validator/testdata/**'
+      - 'pkg/validator/validators/**'
+      - 'scripts/scan-fixtures.sh'
   workflow_dispatch:
 
 concurrency:

@@ -9,8 +9,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/praetorian-inc/titus/pkg/scanner"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/recorder"
 )
@@ -20,9 +22,27 @@ import (
 // even when the secret appears in the URL or body.
 const Placeholder = "REDACTED_SECRET"
 
-// Client returns an *http.Client bound to the named cassette and a cleanup that
-// stops the recorder. cassettePath is relative to the test file, e.g.
-// "testdata/huggingface/valid".
+// coreOnce guards the single process-level scanner.Core instance.
+// Rule compilation (Hyperscan pattern compilation) is expensive; we pay the
+// cost once per process and reuse the result for every cassette interaction.
+var (
+	coreOnce    sync.Once
+	sharedCore  *scanner.Core
+	coreInitErr error
+)
+
+// getCore returns the lazily-initialised builtin scanner, or an error if
+// rule compilation failed. Thread-safe via sync.Once.
+func getCore() (*scanner.Core, error) {
+	coreOnce.Do(func() {
+		sharedCore, coreInitErr = scanner.NewCore("builtin", scanner.NoopLogger{})
+	})
+	return sharedCore, coreInitErr
+}
+
+// Client returns an *http.Client bound to the named cassette.
+// cassettePath is relative to the test file, e.g. "testdata/huggingface/valid".
+// The recorder is stopped via t.Cleanup.
 func Client(t *testing.T, cassettePath string) *http.Client {
 	t.Helper()
 
@@ -54,48 +74,133 @@ func Client(t *testing.T, cassettePath string) *http.Client {
 
 // redactHook returns an AfterCaptureHook that is mode-aware.
 //
-// In replay mode the hook only scrubs known secret-bearing headers; there is
-// no live secret to redact from URLs or bodies because no real HTTP call was
-// made to the service.
+// In replay mode the hook is a no-op: no live network call was made so there
+// is no live secret to redact, and mutating cassette interactions during replay
+// would corrupt the round-trip.
 //
-// In record mode the hook additionally scrubs URLs, request bodies, and
-// response bodies using the value of SECRET_PLAINTEXT. If that env var is
-// empty when recording, the hook returns an error so the recorder fails fast
-// rather than writing a cassette that may contain a plaintext credential.
-// Always set SECRET_PLAINTEXT when running with RECORD=1:
+// In record mode the hook uses the Titus scanner (dogfood) to detect secrets
+// in every text field of the interaction and replaces each detected token with
+// Placeholder. URL-encoded variants of each token are also replaced so that
+// query-string secrets do not survive encoding.
 //
-//	SECRET_PLAINTEXT=<key> RECORD=1 make record-fixtures SVC=<service>
+// Dogfood assertion: if the scanner finds zero matches across all request auth
+// material (URL + request headers + request body), the hook returns an error
+// so the recorder refuses to write the cassette. This guards against silent
+// misconfiguration where the secret was never sent and the cassette would be
+// trivially "clean" but also useless.
+//
+// If SECRET_PLAINTEXT is set the hook also performs a backup literal scrub of
+// the raw value and its URL-encoded form, providing a safety net in case the
+// scanner's ruleset does not cover a service-specific token format.
 func redactHook(isRecording bool) recorder.HookFunc {
 	return func(i *cassette.Interaction) error {
-		// Header scrubbing is unconditional: safe in both modes and catches
-		// headers that go-vcr captures even during replay (e.g. forwarded
-		// request headers set by the test).
-		for _, h := range []string{
-			"Authorization", "Private-Token", "X-Vault-Token",
-			"Api-Key", "X-Api-Key", "Cookie", "Proxy-Authorization",
-		} {
-			if _, ok := i.Request.Headers[h]; ok {
-				i.Request.Headers.Set(h, "REDACTED")
-			}
-		}
-		// Response headers that may echo identity.
-		i.Response.Headers.Del("Set-Cookie")
-
 		if !isRecording {
-			// Replay mode: no live network call happened, nothing else to scrub.
+			// Replay mode: no-op.
 			return nil
 		}
 
-		// Record mode: the raw secret may appear in the URL, request body, or
-		// response body. Require SECRET_PLAINTEXT so we can scrub it.
-		pt := os.Getenv("SECRET_PLAINTEXT")
-		if pt == "" {
-			return fmt.Errorf("vcrtest: SECRET_PLAINTEXT must be set when recording " +
+		core, err := getCore()
+		if err != nil {
+			return fmt.Errorf("vcrtest: scanner init failed: %w", err)
+		}
+
+		// Collect all text fields to scan. We track which fields belong to
+		// the "request auth material" for the dogfood assertion separately.
+		type field struct {
+			name    string
+			content string
+		}
+		requestFields := []field{
+			{"request.url", i.Request.URL},
+			{"request.body", i.Request.Body},
+		}
+		// Include all request header values in request auth material.
+		for h, vals := range i.Request.Headers {
+			for _, v := range vals {
+				requestFields = append(requestFields, field{"request.header." + h, v})
+			}
+		}
+		responseFields := []field{
+			{"response.body", i.Response.Body},
+		}
+
+		// scanAndCollect scans a field and returns all matched secret strings.
+		scanAndCollect := func(f field) ([]string, error) {
+			result, scanErr := core.Scan(f.content, f.name)
+			if scanErr != nil {
+				return nil, fmt.Errorf("vcrtest: scan %s: %w", f.name, scanErr)
+			}
+			var secrets []string
+			for _, m := range result.Matches {
+				if len(m.Snippet.Matching) > 0 {
+					secrets = append(secrets, string(m.Snippet.Matching))
+				}
+			}
+			return secrets, nil
+		}
+
+		// redactIn replaces a secret and its URL-encoded variants in s.
+		redactIn := func(s, secret string) string {
+			s = strings.ReplaceAll(s, secret, Placeholder)
+			if enc := url.QueryEscape(secret); enc != secret {
+				s = strings.ReplaceAll(s, enc, Placeholder)
+			}
+			if enc := url.PathEscape(secret); enc != secret {
+				s = strings.ReplaceAll(s, enc, Placeholder)
+			}
+			return s
+		}
+
+		// Scan request auth material and enforce dogfood assertion.
+		var requestSecrets []string
+		for _, f := range requestFields {
+			secrets, scanErr := scanAndCollect(f)
+			if scanErr != nil {
+				return scanErr
+			}
+			requestSecrets = append(requestSecrets, secrets...)
+		}
+		if len(requestSecrets) == 0 {
+			return fmt.Errorf("vcrtest: scanner found no secrets in request auth material; " +
+				"ensure the test uses a real (revoked) token and verify the scanner ruleset " +
+				"covers the service's token format " +
 				"(RECORD=1 SECRET_PLAINTEXT=<key> make record-fixtures SVC=<service>)")
 		}
-		i.Request.URL = strings.ReplaceAll(i.Request.URL, pt, Placeholder)
-		i.Request.Body = strings.ReplaceAll(i.Request.Body, pt, Placeholder)
-		i.Response.Body = strings.ReplaceAll(i.Response.Body, pt, Placeholder)
+
+		// Collect secrets from response fields as well (they may differ from
+		// those in the request, e.g. a refresh token returned in the body).
+		allSecrets := make([]string, len(requestSecrets))
+		copy(allSecrets, requestSecrets)
+		for _, f := range responseFields {
+			secrets, scanErr := scanAndCollect(f)
+			if scanErr != nil {
+				return scanErr
+			}
+			allSecrets = append(allSecrets, secrets...)
+		}
+
+		// Backup scrub from SECRET_PLAINTEXT if provided.
+		if pt := os.Getenv("SECRET_PLAINTEXT"); pt != "" {
+			allSecrets = append(allSecrets, pt)
+		}
+
+		// Perform all redactions across every text field.
+		for _, secret := range allSecrets {
+			i.Request.URL = redactIn(i.Request.URL, secret)
+			i.Request.Body = redactIn(i.Request.Body, secret)
+			i.Response.Body = redactIn(i.Response.Body, secret)
+			for h, vals := range i.Request.Headers {
+				for idx, v := range vals {
+					i.Request.Headers[h][idx] = redactIn(v, secret)
+				}
+			}
+			for h, vals := range i.Response.Headers {
+				for idx, v := range vals {
+					i.Response.Headers[h][idx] = redactIn(v, secret)
+				}
+			}
+		}
+
 		return nil
 	}
 }
