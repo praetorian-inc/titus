@@ -1,0 +1,19 @@
+# Cassette provenance for HuggingFace token validator (LAB-4074)
+#
+# TODO: Fill in all fields at record time.
+# Run:
+#   SECRET_PLAINTEXT=<hf_token> RECORD=1 make record-fixtures SVC=huggingface
+# Then revoke the token at https://huggingface.co/settings/tokens
+
+service: huggingface
+ticket: LAB-4074
+captured: TBD   # TODO: set to ISO date when cassettes are recorded (YYYY-MM-DD)
+account_type: TBD   # TODO: set to one of: free | trial | self-host | cloud-free-tier
+key_revoked: false  # TODO: set to true BEFORE committing (revoke token at hf.co/settings/tokens)
+valid_response: {status: 200, discriminator: "body contains name field"}
+invalid_response: {status: 401}
+notes: |
+  Token created at https://huggingface.co/settings/tokens (User Access Token).
+  np.huggingface.1 pattern: hf_[a-zA-Z]{34} (unnamed positional capture group).
+  Validator uses secret_group: "1" (positional index, maps to Groups[0]).
+  Record, revoke, then fill in captured/account_type/key_revoked above.
