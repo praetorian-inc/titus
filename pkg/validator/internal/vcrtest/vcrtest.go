@@ -116,6 +116,7 @@ func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 		recorder.WithMode(mode),
 		recorder.WithSkipRequestLatency(true),
 		recorder.WithHook(redactHook(isRecording, o.keepResponseBody), recorder.AfterCaptureHook),
+		recorder.WithHook(minimizeInteraction, recorder.BeforeSaveHook),
 		recorder.WithMatcher(matcherFn),
 	)
 	if err != nil {
@@ -283,6 +284,25 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 
 		return nil
 	}
+}
+
+// minimizeInteraction is a BeforeSaveHook that strips all request and response
+// headers and zeroes the response duration from each interaction before the
+// cassette is written to disk.
+//
+// The validator replayer reads ONLY the response status code (and optionally the
+// body when WithResponseBody is used); it never inspects any header. The request
+// matcher secretInsensitiveMatcher compares only method, host, path, and query —
+// never headers. Storing headers therefore adds noise and a pointless attack
+// surface without providing any replay benefit.
+//
+// This hook fires in RECORD mode only (BeforeSaveHook does not execute during
+// replay), so the running cassette replay is unaffected by this transformation.
+func minimizeInteraction(i *cassette.Interaction) error {
+	i.Request.Headers = nil
+	i.Response.Headers = nil
+	i.Response.Duration = 0
+	return nil
 }
 
 // secretInsensitiveMatcher matches a live request against a recorded one by

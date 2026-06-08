@@ -8,9 +8,6 @@ interactions:
         proto_minor: 1
         content_length: 0
         host: huggingface.co
-        headers:
-            Authorization:
-                - Bearer REDACTED_SECRET
         url: https://huggingface.co/api/whoami-v2
         method: GET
       response:
@@ -19,45 +16,6 @@ interactions:
         proto_minor: 0
         content_length: 41
         body: ""
-        headers:
-            Access-Control-Allow-Origin:
-                - https://huggingface.co
-            Access-Control-Expose-Headers:
-                - X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash
-            Access-Control-Max-Age:
-                - "86400"
-            Content-Type:
-                - application/json; charset=utf-8
-            Cross-Origin-Opener-Policy:
-                - same-origin
-            Date:
-                - Mon, 08 Jun 2026 21:13:35 GMT
-            Etag:
-                - W/"29-dEMcHWfJi78ZR1aqzb1ELAhp3Us"
-            Ratelimit:
-                - '"api";r=9998;t=25'
-            Ratelimit-Policy:
-                - '"fixed window";"api";q=10000;w=300'
-            Referrer-Policy:
-                - strict-origin-when-cross-origin
-            Vary:
-                - Origin
-            Via:
-                - 1.1 9eb01cd0a809671bf15f4ff3fb8d1be4.cloudfront.net (CloudFront)
-            Www-Authenticate:
-                - Bearer realm="Authentication required", charset="UTF-8"
-            X-Amz-Cf-Id:
-                - 4fNCp5Lv9k0vAkP7WF6UvSJJGzl526X-hxs8D2HIemRHDle58tUaNA==
-            X-Amz-Cf-Pop:
-                - PIT50-P2
-            X-Cache:
-                - Error from cloudfront
-            X-Error-Message:
-                - Invalid username or password.
-            X-Powered-By:
-                - huggingface-moon
-            X-Request-Id:
-                - Root=1-6a27307f-6c9ddd147d164f34655ed3ed
         status: 401 Unauthorized
         code: 401
-        duration: 99.701375ms
+        duration: 0s

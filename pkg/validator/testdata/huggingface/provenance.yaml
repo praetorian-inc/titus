@@ -20,3 +20,7 @@ notes: |
   np.huggingface.1 pattern: hf_[a-zA-Z]{34} (unnamed positional capture group);
   validator uses secret_group: "1" (maps to Groups[0]).
   Secret redacted to REDACTED_SECRET in both cassettes via scanner-driven redaction.
+  Cassettes are minimized (request/response headers stripped, duration zeroed) via the
+  vcrtest BeforeSaveHook added in LAB-4074; only method, URL, status code, and body
+  are retained. The replay matcher (secretInsensitiveMatcher) reads only method+host+path+query;
+  the validator reads only the response status code. Headers add no replay value.
