@@ -12,8 +12,8 @@ validators:
         - name: Accept
           value: application/json
       auth:
-        type: api-token
-        header: api-token
+        type: header
+        header_name: api-token
         secret_group: token  # Named capture group from regex pattern
       success_codes: [200]
       failure_codes: [401, 403]
