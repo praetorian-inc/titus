@@ -176,14 +176,24 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 			{"request.url", i.Request.URL},
 			{"request.body", i.Request.Body},
 		}
-		// Include all request header values in request auth material.
+		// Include all request headers in request auth material as "Name: Value" so
+		// context-dependent rules (e.g. kingfisher.exa.1 which requires an x-api-key
+		// keyword near the UUID) fire correctly. Scanning the bare header value alone
+		// would miss those rules because the keyword context would be absent.
 		for h, vals := range i.Request.Headers {
 			for _, v := range vals {
-				requestFields = append(requestFields, field{"request.header." + h, v})
+				requestFields = append(requestFields, field{"request.header." + h, h + ": " + v})
 			}
 		}
 
 		// scanAndCollect scans a field and returns all matched secret strings.
+		//
+		// It collects BOTH the full match (Snippet.Matching, which may include keyword
+		// context like "x-api-key: <uuid>") AND each non-empty positional capture group
+		// (Groups[i]). This is required for context-dependent rules (e.g. kingfisher.exa.1)
+		// where detection fires on the contextual form but the actual secret is in a
+		// capture group (the bare UUID). Including the capture group ensures redactIn
+		// scrubs the bare secret from field values even though detection required context.
 		scanAndCollect := func(f field) ([]string, error) {
 			result, scanErr := core.Scan(f.content, f.name)
 			if scanErr != nil {
@@ -193,6 +203,14 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 			for _, m := range result.Matches {
 				if len(m.Snippet.Matching) > 0 {
 					secrets = append(secrets, string(m.Snippet.Matching))
+				}
+				// Also collect each non-empty capture group so the bare secret
+				// (e.g. the UUID from "x-api-key: <uuid>") is included in the
+				// redaction set even when detection required surrounding context.
+				for _, g := range m.Groups {
+					if len(g) > 0 {
+						secrets = append(secrets, string(g))
+					}
 				}
 			}
 			return secrets, nil
@@ -236,7 +254,7 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 		copy(allSecrets, requestSecrets)
 		for h, vals := range i.Response.Headers {
 			for _, v := range vals {
-				secrets, scanErr := scanAndCollect(field{"response.header." + h, v})
+				secrets, scanErr := scanAndCollect(field{"response.header." + h, h + ": " + v})
 				if scanErr != nil {
 					return scanErr
 				}

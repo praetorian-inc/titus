@@ -444,3 +444,72 @@ func TestMinimizeInteraction_StripsHeadersPreservesEssentials(t *testing.T) {
 	assert.Equal(t, int64(len(i.Request.Body)), i.Request.ContentLength, "request ContentLength must equal len(body)")
 	assert.Equal(t, int64(len(i.Response.Body)), i.Response.ContentLength, "response ContentLength must equal len(body)")
 }
+
+// ---- Fix 5: Context-aware header scanning + capture-group redaction ----
+
+// exaExampleKey is the public example key from kingfisher.exa.1's examples list.
+// It is NOT a real credential; the rule's own documentation uses this value.
+// The pattern requires context (exa/x-api-key keyword) — scanning the bare UUID
+// alone would yield no match, which is the bug this test exercises.
+const exaExampleKey = "3f5a9c1e-2b4d-4a6f-8c10-1d2e3f4a5b6c"
+
+// TestRedactHook_RecordMode_ContextDependentHeaderSecret verifies that a secret
+// carried in an x-api-key request header (Exa-style, requires context to match)
+// is detected via the reconstructed "Name: Value" form and that the bare UUID
+// capture group is redacted from the header value.
+//
+// Before the fix, scanning the bare value ("3f5a9c1e-...") yielded no match
+// because kingfisher.exa.1 requires an "x-api-key" keyword near the UUID.
+// The fix reconstructs "x-api-key: 3f5a9c1e-..." before scanning, which fires
+// the rule, and then redacts using the capture group (bare UUID) not the full
+// match, so the bare UUID is scrubbed from the header value.
+func TestRedactHook_RecordMode_ContextDependentHeaderSecret(t *testing.T) {
+	hook := redactHook(true, false)
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method:  "POST",
+			URL:     "https://api.exa.ai/answer",
+			Body:    `{"query":"ping","text":false}`,
+			Headers: make(http.Header),
+		},
+		Response: cassette.Response{
+			Code:    200,
+			Body:    "",
+			Headers: make(http.Header),
+		},
+	}
+	// Secret is in x-api-key header — context-dependent: bare UUID alone is no match.
+	i.Request.Headers.Set("x-api-key", exaExampleKey)
+
+	err := hook(i)
+
+	// (a) Hook must NOT error: dogfood assertion satisfied because scanning
+	//     "x-api-key: 3f5a9c1e-..." fires the rule.
+	require.NoError(t, err, "context-dependent header secret must satisfy dogfood assertion")
+
+	// (b) The bare UUID must be scrubbed from the header value because the
+	//     capture group (not just Snippet.Matching) is included in the redaction set.
+	assert.NotContains(t, i.Request.Headers.Get("x-api-key"), exaExampleKey,
+		"x-api-key header value must not contain the bare UUID after capture-group redaction")
+}
+
+// TestRedactHook_RecordMode_SelfContainedTokenStillWorks is a regression test
+// confirming that the existing bare-value scanning path for self-contained tokens
+// (e.g. AKIA-style AWS keys, hf_-style HuggingFace tokens) continues to work
+// after the context-aware scanning change. The AWS fake key AKIADEADBEEFDEADBEEF
+// matches np.aws.1 without any surrounding context keyword.
+func TestRedactHook_RecordMode_SelfContainedTokenStillWorks(t *testing.T) {
+	hook := redactHook(true, false)
+
+	// testSecret (AKIADEADBEEFDEADBEEF) matches np.aws.1 on the bare value.
+	i := makeInteraction("", "", "", testSecret)
+
+	err := hook(i)
+
+	require.NoError(t, err, "self-contained token in header must still satisfy dogfood assertion")
+	assert.NotContains(t, i.Request.Headers.Get("Authorization"), testSecret,
+		"self-contained token must be redacted from Authorization header")
+	assert.Contains(t, i.Request.Headers.Get("Authorization"), Placeholder,
+		"Placeholder must appear after redaction of self-contained token")
+}
