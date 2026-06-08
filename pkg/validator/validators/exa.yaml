@@ -1,0 +1,20 @@
+validators:
+  - name: exa-api-key
+    rule_ids:
+      - kingfisher.exa.1
+    http:
+      method: POST
+      url: "https://api.exa.ai/answer"
+      auth:
+        type: header
+        header_name: x-api-key
+        # kingfisher.exa.1 uses one unnamed positional capture group containing
+        # the bare UUID; the cassette helper sets Groups[0] = Placeholder so
+        # replay works. Use "1" to reference positional group index 1.
+        secret_group: "1"
+      headers:
+        - {name: Content-Type, value: application/json}
+        - {name: Accept, value: application/json}
+      body: '{"query":"ping","text":false}'
+      success_codes: [200]
+      failure_codes: [401, 403]

@@ -1,0 +1,24 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 29
+        host: api.exa.ai
+        body: '{"query":"ping","text":false}'
+        url: https://api.exa.ai/answer
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 0
+        uncompressed: true
+        body: ""
+        headers: {}
+        status: 200 OK
+        code: 200
+        duration: 0s
