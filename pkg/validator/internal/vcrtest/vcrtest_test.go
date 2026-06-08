@@ -292,3 +292,77 @@ func TestRedactHook_RecordMode_ResponseBodyKept(t *testing.T) {
 	assert.Contains(t, i.Response.Body, Placeholder,
 		"Placeholder must appear in response body after redaction")
 }
+
+// ---- Fix 3: Matcher tests ----
+
+// TestSecretInsensitiveMatcher_SameMethodHostPathQuery verifies that the
+// matcher returns true when method, host, path, and raw query all match.
+func TestSecretInsensitiveMatcher_SameMethodHostPathQuery(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://api.example.com/v1/users?token="+Placeholder, nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://api.example.com/v1/users?token=" + Placeholder,
+	}
+
+	assert.True(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return true when method, host, path, and query all agree")
+}
+
+// TestSecretInsensitiveMatcher_DifferentQuery verifies that the matcher returns
+// false when the query string differs. This prevents two requests to the same
+// path but different query parameters from being treated as equivalent.
+func TestSecretInsensitiveMatcher_DifferentQuery(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://api.example.com/v1/users?token=TokenA", nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://api.example.com/v1/users?token=TokenB",
+	}
+
+	assert.False(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return false when query strings differ")
+}
+
+// TestSecretInsensitiveMatcher_DifferentHost verifies that the matcher returns
+// false when the host differs, even if path and query are the same.
+func TestSecretInsensitiveMatcher_DifferentHost(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://api.example.com/v1/users", nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://other.example.com/v1/users",
+	}
+
+	assert.False(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return false when hosts differ")
+}
+
+// TestSecretInsensitiveMatcher_DifferentMethod verifies that the matcher returns
+// false when the HTTP method differs.
+func TestSecretInsensitiveMatcher_DifferentMethod(t *testing.T) {
+	req, err := http.NewRequest("POST", "https://api.example.com/v1/users?token="+Placeholder, nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://api.example.com/v1/users?token=" + Placeholder,
+	}
+
+	assert.False(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return false when methods differ")
+}
+
+// TestWithMatcher_Override verifies that WithMatcher replaces the default
+// secretInsensitiveMatcher for the cassette. We test by ensuring a custom
+// matcher is wired into the options struct via the functional option.
+func TestWithMatcher_Override(t *testing.T) {
+	o := &options{}
+	customMatcher := func(r *http.Request, i cassette.Request) bool { return true }
+	WithMatcher(customMatcher)(o)
+
+	require.NotNil(t, o.matcher, "WithMatcher must set options.matcher")
+}

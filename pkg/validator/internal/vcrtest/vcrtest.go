@@ -52,6 +52,10 @@ type options struct {
 	// with no benefit. A body-matcher that forgets WithResponseBody will fail
 	// loudly on replay (body is empty) rather than silently (secret in body).
 	keepResponseBody bool
+
+	// matcher overrides the default secretInsensitiveMatcher for the cassette.
+	// Useful for the rare validator that routes by query string rather than path.
+	matcher cassette.MatcherFunc
 }
 
 // Option is a functional option for Client.
@@ -71,17 +75,34 @@ func WithResponseBody() Option {
 	}
 }
 
+// WithMatcher replaces the default secretInsensitiveMatcher for this cassette.
+// Use when the validator routes to different backend endpoints based on query
+// parameters (e.g. a single path but different resource IDs in the query).
+// The provided matcher receives the live request and the recorded cassette
+// request and should return true when they are logically equivalent.
+func WithMatcher(fn cassette.MatcherFunc) Option {
+	return func(o *options) {
+		o.matcher = fn
+	}
+}
+
 // Client returns an *http.Client bound to the named cassette.
 // cassettePath is relative to the test file, e.g. "testdata/huggingface/valid".
 // The recorder is stopped via t.Cleanup.
 //
 // By default, response bodies are elided from cassettes (see WithResponseBody).
+// By default, request matching uses secretInsensitiveMatcher (see WithMatcher).
 func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 	t.Helper()
 
 	o := &options{}
 	for _, opt := range opts {
 		opt(o)
+	}
+
+	matcherFn := cassette.MatcherFunc(secretInsensitiveMatcher)
+	if o.matcher != nil {
+		matcherFn = o.matcher
 	}
 
 	isRecording := os.Getenv("RECORD") == "1"
@@ -95,7 +116,7 @@ func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 		recorder.WithMode(mode),
 		recorder.WithSkipRequestLatency(true),
 		recorder.WithHook(redactHook(isRecording, o.keepResponseBody), recorder.AfterCaptureHook),
-		recorder.WithMatcher(secretInsensitiveMatcher),
+		recorder.WithMatcher(matcherFn),
 	)
 	if err != nil {
 		t.Fatalf("vcrtest: new recorder: %v", err)
@@ -263,25 +284,28 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 }
 
 // secretInsensitiveMatcher matches a live request against a recorded one by
-// comparing HTTP method and URL path only.
+// comparing HTTP method, host, URL path, and raw query string.
 //
-// This is intentionally loose: validators that pass the secret as a query
-// parameter or in the body will use Placeholder as the token value during
-// replay, so the live URL and cassette URL differ in the query string.
-// Matching on method+path ensures those requests still replay correctly.
+// Matching on query is safe with secret redaction: in record mode the hook
+// replaces every detected secret token with Placeholder in the cassette URL,
+// and the test passes Placeholder as the token value during replay, so live and
+// cassette query strings agree. A stray UN-redacted secret in the query causes
+// a replay MISS, surfacing the problem instead of silently hiding it.
 //
-// NOTE: validators that use query parameters for *routing* (i.e. different
-// paths are chosen based on the secret value) cannot be matched by this
-// default matcher and need a per-cassette custom matcher.
+// Previous behaviour matched path only, which (a) could mask a leaked secret
+// in the query string and (b) broke validators that hit the same path multiple
+// times with different queries.
+//
+// Use WithMatcher to override this behaviour for the rare case where routing is
+// determined by query parameters that should not be compared literally.
 func secretInsensitiveMatcher(r *http.Request, i cassette.Request) bool {
-	return r.Method == i.Method && r.URL.Path == reqURLPath(i.URL)
-}
-
-// reqURLPath parses rawURL and returns just the path component.
-func reqURLPath(rawURL string) string {
-	u, err := url.Parse(rawURL)
+	iu, err := url.Parse(i.URL)
 	if err != nil {
-		return rawURL
+		// Fallback: compare raw URL strings on parse failure.
+		return r.Method == i.Method && r.URL.String() == i.URL
 	}
-	return u.Path
+	return r.Method == i.Method &&
+		r.URL.Host == iu.Host &&
+		r.URL.Path == iu.Path &&
+		r.URL.RawQuery == iu.RawQuery
 }
