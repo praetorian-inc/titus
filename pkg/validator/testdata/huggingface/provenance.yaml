@@ -1,0 +1,26 @@
+# Cassette provenance for HuggingFace token validator (LAB-4074)
+#
+# TODO: Fill in all fields at record time.
+# Run:
+#   SECRET_PLAINTEXT=<hf_token> RECORD=1 make record-fixtures SVC=huggingface
+# Then revoke the token at https://huggingface.co/settings/tokens
+
+service: huggingface
+ticket: LAB-4074
+captured: 2026-06-08
+account_type: free   # free personal User Access Token (read scope)
+key_revoked: true    # token revoked at hf.co/settings/tokens after recording
+valid_response: {status: 200, discriminator: "HTTP status only (response body elided)"}
+invalid_response: {status: 401}
+notes: |
+  Recorded against https://huggingface.co/api/whoami-v2 with a throwaway read-scope
+  User Access Token; token revoked immediately after recording.
+  Validation is status-code based (200=valid, 401=invalid); response body is elided
+  by the vcrtest harness (no WithResponseBody), so no account PII is stored.
+  np.huggingface.1 pattern: hf_[a-zA-Z]{34} (unnamed positional capture group);
+  validator uses secret_group: "1" (maps to Groups[0]).
+  Secret redacted to REDACTED_SECRET in both cassettes via scanner-driven redaction.
+  Cassettes are minimized (request/response headers stripped, duration zeroed) via the
+  vcrtest BeforeSaveHook added in LAB-4074; only method, URL, status code, and body
+  are retained. The replay matcher (secretInsensitiveMatcher) reads only method+host+path+query;
+  the validator reads only the response status code. Headers add no replay value.

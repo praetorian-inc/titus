@@ -1,0 +1,16 @@
+validators:
+  - name: huggingface-token
+    rule_ids:
+      - np.huggingface.1
+    http:
+      method: GET
+      url: "https://huggingface.co/api/whoami-v2"
+      auth:
+        type: bearer
+        # np.huggingface.1 uses an unnamed capture group (no ?P<name> syntax),
+        # so in production the secret is in positional group 1. Use "1" here.
+        # The cassette helper populates secret/token/key all with Placeholder so
+        # replay tests work regardless of which group name the YAML specifies.
+        secret_group: "1"
+      success_codes: [200]
+      failure_codes: [401]

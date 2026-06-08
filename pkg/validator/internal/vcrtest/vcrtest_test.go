@@ -401,3 +401,46 @@ func TestRedactHook_RecordMode_ResponseHeaderSecret(t *testing.T) {
 	assert.Contains(t, i.Response.Headers.Get("X-Subject-Token"), Placeholder,
 		"response header must contain Placeholder after redaction")
 }
+
+// ---- minimizeInteraction tests ----
+
+// TestMinimizeInteraction_StripsHeadersPreservesEssentials verifies that
+// minimizeInteraction clears all request and response headers, zeroes the
+// response duration, and leaves the request method, URL, response code, and
+// response body untouched.
+func TestMinimizeInteraction_StripsHeadersPreservesEssentials(t *testing.T) {
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method:  "GET",
+			URL:     "https://huggingface.co/api/whoami-v2",
+			Headers: http.Header{"Authorization": []string{"Bearer " + Placeholder}},
+		},
+		Response: cassette.Response{
+			Code:     200,
+			Body:     "some-body",
+			Headers:  http.Header{"X-Amz-Cf-Id": []string{"abc123"}, "Date": []string{"Mon, 01 Jan 2026 00:00:00 GMT"}},
+			Duration: 123456789, // non-zero duration
+		},
+	}
+
+	err := minimizeInteraction(i)
+
+	require.NoError(t, err, "minimizeInteraction must not return an error")
+
+	// Headers stripped.
+	assert.Empty(t, i.Request.Headers, "request headers must be cleared")
+	assert.Empty(t, i.Response.Headers, "response headers must be cleared")
+
+	// Duration zeroed.
+	assert.Zero(t, i.Response.Duration, "response duration must be zeroed")
+
+	// Essentials preserved.
+	assert.Equal(t, "GET", i.Request.Method, "request method must be preserved")
+	assert.Equal(t, "https://huggingface.co/api/whoami-v2", i.Request.URL, "request URL must be preserved")
+	assert.Equal(t, 200, i.Response.Code, "response code must be preserved")
+	assert.Equal(t, "some-body", i.Response.Body, "response body must be preserved")
+
+	// ContentLength normalized to match actual body length.
+	assert.Equal(t, int64(len(i.Request.Body)), i.Request.ContentLength, "request ContentLength must equal len(body)")
+	assert.Equal(t, int64(len(i.Response.Body)), i.Response.ContentLength, "response ContentLength must equal len(body)")
+}
