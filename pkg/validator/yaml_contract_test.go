@@ -26,8 +26,8 @@ func TestAllEmbeddedYAMLValidators_SchemaValid(t *testing.T) {
 	// Empty string ("") is valid per http.go:134 (same as "none" — no auth,
 	// secret is embedded in URL or passed via custom headers).
 	knownAuth := map[string]bool{
-		"":       true, // no auth / custom headers
-		"none":   true, // explicit no-auth (e.g. flickr: token in URL query)
+		"":        true, // no auth / custom headers
+		"none":    true, // explicit no-auth (e.g. flickr: token in URL query)
 		"bearer":  true,
 		"basic":   true,
 		"header":  true,
