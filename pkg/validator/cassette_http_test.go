@@ -72,17 +72,35 @@ func runCassetteCase(t *testing.T, yamlFile, ruleID, cassette string, want types
 	// Build the VCR-backed HTTP client.
 	client := vcrtest.Client(t, cassette)
 
+	// Determine the secret value fed into the Match.
+	//
+	// In replay mode the cassette stores vcrtest.Placeholder as the redacted
+	// token, and the VCR matcher ignores the Authorization header, so using
+	// Placeholder here is correct — the real value is irrelevant.
+	//
+	// In record mode the validator must send the REAL secret so the live API
+	// authenticates and returns a meaningful response (200 / 401). The vcrtest
+	// redaction hook scrubs the real token to Placeholder before the cassette is
+	// written, so no actual credential ends up in the recorded file.
+	secretVal := []byte(vcrtest.Placeholder)
+	if isRecording {
+		pt := os.Getenv("SECRET_PLAINTEXT")
+		if pt == "" {
+			t.Fatal("RECORD=1 requires SECRET_PLAINTEXT=<real-token> so the live request authenticates")
+		}
+		secretVal = []byte(pt)
+	}
+
 	// Construct the match. Populate the three conventional named group names plus
 	// a positional group so the validator works regardless of how secret_group is
 	// configured ("secret", "token", "key", or "1").
-	ph := []byte(vcrtest.Placeholder)
 	match := &types.Match{
 		RuleID: ruleID,
-		Groups: [][]byte{ph},
+		Groups: [][]byte{secretVal},
 		NamedGroups: map[string][]byte{
-			"secret": ph,
-			"token":  ph,
-			"key":    ph,
+			"secret": secretVal,
+			"token":  secretVal,
+			"key":    secretVal,
 		},
 	}
 
