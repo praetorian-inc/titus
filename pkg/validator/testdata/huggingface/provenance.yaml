@@ -7,13 +7,16 @@
 
 service: huggingface
 ticket: LAB-4074
-captured: TBD   # TODO: set to ISO date when cassettes are recorded (YYYY-MM-DD)
-account_type: TBD   # TODO: set to one of: free | trial | self-host | cloud-free-tier
-key_revoked: false  # TODO: set to true BEFORE committing (revoke token at hf.co/settings/tokens)
-valid_response: {status: 200, discriminator: "body contains name field"}
+captured: 2026-06-08
+account_type: free   # free personal User Access Token (read scope)
+key_revoked: true    # token revoked at hf.co/settings/tokens after recording
+valid_response: {status: 200, discriminator: "HTTP status only (response body elided)"}
 invalid_response: {status: 401}
 notes: |
-  Token created at https://huggingface.co/settings/tokens (User Access Token).
-  np.huggingface.1 pattern: hf_[a-zA-Z]{34} (unnamed positional capture group).
-  Validator uses secret_group: "1" (positional index, maps to Groups[0]).
-  Record, revoke, then fill in captured/account_type/key_revoked above.
+  Recorded against https://huggingface.co/api/whoami-v2 with a throwaway read-scope
+  User Access Token; token revoked immediately after recording.
+  Validation is status-code based (200=valid, 401=invalid); response body is elided
+  by the vcrtest harness (no WithResponseBody), so no account PII is stored.
+  np.huggingface.1 pattern: hf_[a-zA-Z]{34} (unnamed positional capture group);
+  validator uses secret_group: "1" (maps to Groups[0]).
+  Secret redacted to REDACTED_SECRET in both cassettes via scanner-driven redaction.

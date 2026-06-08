@@ -1,0 +1,59 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: huggingface.co
+        headers:
+            Authorization:
+                - Bearer REDACTED_SECRET
+        url: https://huggingface.co/api/whoami-v2
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 430
+        body: ""
+        headers:
+            Access-Control-Allow-Origin:
+                - https://huggingface.co
+            Access-Control-Expose-Headers:
+                - X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash
+            Access-Control-Max-Age:
+                - "86400"
+            Content-Type:
+                - application/json; charset=utf-8
+            Cross-Origin-Opener-Policy:
+                - same-origin
+            Date:
+                - Mon, 08 Jun 2026 21:13:28 GMT
+            Etag:
+                - W/"1ae-4f0IuBuWBssRuyKrYEXsQ5cQiT0"
+            Ratelimit:
+                - '"api";r=999;t=121'
+            Ratelimit-Policy:
+                - '"fixed window";"api";q=1000;w=300'
+            Referrer-Policy:
+                - strict-origin-when-cross-origin
+            Vary:
+                - Origin
+            Via:
+                - 1.1 3becf03832e8820eb8350f79dbb0509c.cloudfront.net (CloudFront)
+            X-Amz-Cf-Id:
+                - 6jwS2H-D9ea2chwNjnr9iTg6eb0JyCly8gEtwmCzvslZy7FDlwQswg==
+            X-Amz-Cf-Pop:
+                - PIT50-P2
+            X-Cache:
+                - Miss from cloudfront
+            X-Powered-By:
+                - huggingface-moon
+            X-Request-Id:
+                - Root=1-6a273078-5d8bf79b051459e7175eef46
+        status: 200 OK
+        code: 200
+        duration: 206.995334ms
