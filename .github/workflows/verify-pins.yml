@@ -11,6 +11,6 @@ permissions:
   contents: read
 jobs:
   verify:
-    uses: praetorian-inc/public-workflows/.github/workflows/verify-pins.yml@23254e12b026871dd9bbf2bad4ef6fee29910fb1  # v2.6.0
+    uses: praetorian-inc/public-workflows/.github/workflows/verify-pins.yml@0c602372f3d0d038912dd08e159ecc83954a4995  # v2.9.3
     permissions:
       contents: read

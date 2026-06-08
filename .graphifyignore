@@ -1,0 +1,39 @@
+# graphify: keyless code-only baseline.
+# Docs/papers/images require an LLM backend for semantic extraction; excluding
+# them keeps the graph buildable with no API key and matches what the keyless
+# per-commit hook (`graphify update`, AST-only) maintains. To include docs later,
+# remove the relevant lines and rebuild with a backend (e.g. GEMINI_API_KEY).
+
+# Transient / generated noise (.json is treated as code by graphify)
+.claude/
+*-lock.json
+package-lock.json
+*.lock
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.webp
+*.ico
+*.bmp
+*.tiff
+
+# Docs / papers (graphify DOC_EXTENSIONS + PAPER_EXTENSIONS)
+*.md
+*.mdx
+*.qmd
+*.txt
+*.rst
+*.html
+*.yaml
+*.yml
+*.pdf
+# extra office/text formats (not graphify-native, excluded for cleanliness)
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.csv

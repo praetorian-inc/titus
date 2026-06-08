@@ -1,0 +1,38 @@
+name: graphify-graph
+# Builds this repo's code knowledge graph via the shared public-workflows reusable
+# and publishes graph.json as an artifact, so engineers and agents query the latest
+# graph without each rebuilding it locally. graphify has no server — the graph is a
+# file (graphify-out/graph.json) that `graphify query` reads.
+#
+# Pull the latest graph:
+#   gh run download -R praetorian-inc/titus -n titus-graph -D graphify-out
+#
+# Code-only & keyless: respects the committed .graphifyignore (no LLM API key needed).
+# Bump the reusable pin in lockstep with the GRAPHIFY_VERSION pin in the
+# praetorian-claude monorepo Makefile.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.graphifyignore'
+      - '.github/workflows/graphify-graph.yml'
+  pull_request:
+    paths:
+      - '.graphifyignore'
+      - '.github/workflows/graphify-graph.yml'
+  schedule:
+    - cron: '0 7 * * 1'   # Mondays 07:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  graph:
+    uses: praetorian-inc/public-workflows/.github/workflows/graphify-graph.yml@0c602372f3d0d038912dd08e159ecc83954a4995  # v2.9.3
+    permissions:
+      contents: read

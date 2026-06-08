@@ -32,6 +32,7 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.37.0
+	gopkg.in/dnaeon/go-vcr.v4 v4.0.6
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.45.0
 )
@@ -119,6 +120,7 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	go4.org v0.0.0-20200411211856-f5505b9728dd // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
