@@ -6,5 +6,7 @@ func BuiltinGoScorers() []*Scorer {
 	return []*Scorer{
 		AWSGoScorer(),
 		GitHubGoScorer(),
+		MongoDBGoScorer(),
+		MongoDBAtlasGoScorer(),
 	}
 }
