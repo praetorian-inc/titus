@@ -10,8 +10,8 @@ validators:
       method: GET
       url: https://api.airbrake.io/api/v4/projects
       auth:
-        type: query_param
-        param_name: key
+        type: query
+        query_param: key
         secret_group: "token"  # Matches (?P<token>...) in rule regex
       success_codes: [200]
       failure_codes: [401, 403]

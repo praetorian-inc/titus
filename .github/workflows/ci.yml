@@ -11,6 +11,9 @@ on:
       - 'go.sum'
       - '.golangci*'
       - 'Makefile'
+      - 'pkg/validator/testdata/**'
+      - 'pkg/validator/validators/**'
+      - 'scripts/scan-fixtures.sh'
   workflow_dispatch:
 
 concurrency:
@@ -42,3 +45,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libhyperscan-dev
       - name: Run tests with race detector
         run: make test-race
+
+  validator-tests:
+    name: Validator Tests (replay-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run validator replay tests (no network)
+        # RECORD is intentionally NOT set — CI always replays cassettes.
+        run: make test-validators
+      - name: Scan test fixtures for live secrets
+        run: make scan-fixtures
