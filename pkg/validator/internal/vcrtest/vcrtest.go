@@ -302,6 +302,8 @@ func minimizeInteraction(i *cassette.Interaction) error {
 	i.Request.Headers = nil
 	i.Response.Headers = nil
 	i.Response.Duration = 0
+	i.Request.ContentLength = int64(len(i.Request.Body))
+	i.Response.ContentLength = int64(len(i.Response.Body))
 	return nil
 }
 

@@ -14,8 +14,9 @@ interactions:
         proto: HTTP/2.0
         proto_major: 2
         proto_minor: 0
-        content_length: 41
+        content_length: 0
         body: ""
+        headers: {}
         status: 401 Unauthorized
         code: 401
         duration: 0s

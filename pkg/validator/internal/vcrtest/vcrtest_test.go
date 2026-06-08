@@ -439,4 +439,8 @@ func TestMinimizeInteraction_StripsHeadersPreservesEssentials(t *testing.T) {
 	assert.Equal(t, "https://huggingface.co/api/whoami-v2", i.Request.URL, "request URL must be preserved")
 	assert.Equal(t, 200, i.Response.Code, "response code must be preserved")
 	assert.Equal(t, "some-body", i.Response.Body, "response body must be preserved")
+
+	// ContentLength normalized to match actual body length.
+	assert.Equal(t, int64(len(i.Request.Body)), i.Request.ContentLength, "request ContentLength must equal len(body)")
+	assert.Equal(t, int64(len(i.Response.Body)), i.Response.ContentLength, "response ContentLength must equal len(body)")
 }
