@@ -9,5 +9,7 @@ func BuiltinGoScorers() []*Scorer {
 		PubNubGoScorer(),
 		SupabaseGoScorer(),
 		AtlassianGoScorer(),
+		MongoDBGoScorer(),
+		MongoDBAtlasGoScorer(),
 	}
 }
