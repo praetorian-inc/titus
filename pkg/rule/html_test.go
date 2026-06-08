@@ -20,8 +20,9 @@ func TestHTMLPasswordInput_Detection(t *testing.T) {
 	r := findRule(rules, "np.html.1")
 	require.NotNil(t, r, "np.html.1 should exist")
 
-	m, err := matcher.NewPortableRegexp([]*types.Rule{r}, 0, nil)
+	m, err := matcher.New(matcher.Config{Rules: []*types.Rule{r}})
 	require.NoError(t, err, "np.html.1 should compile")
+	defer m.Close()
 
 	testCases := []struct {
 		name        string

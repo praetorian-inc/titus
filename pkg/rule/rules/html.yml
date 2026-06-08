@@ -4,34 +4,34 @@ rules:
   id: np.html.1
   base_score: 60
 
-  # Hyperscan-incompatible: uses lookahead assertions for order-independent
-  # attribute matching within <input> tags. Registered in knownIncompatiblePatterns.
   pattern: |
     (?xi)
-    <input
-      (?=[^>]*?type\s*=\s*['"]?password['"]?)
-      [^>]*?
-      \svalue\s*=\s*['"]
-      (?![\*\x{2022}]{3,}\s*['"])
-      (?!(?:password|placeholder|changeme|example|test|demo|sample|your_password)\b)
-      (?!\{\{)
-      (?!\$\{)
-      (?!<[%?])
-      (?!\{%)
-      (?P<secret>[^'"]{4,200}?)
-      ['"]
-      [^>]*?
-      \/?>
+    <input\s
+      (?:
+        [^>]*?\btype\s*=\s*['"]?password['"]?[^>]*?\svalue\s*=\s*['"](?P<secret>[^'"]{4,200}?)['"]
+        |
+        [^>]*?\svalue\s*=\s*['"](?P<secret>[^'"]{4,200}?)['"][^>]*?\btype\s*=\s*['"]?password['"]?
+      )
+      [^>]*?\/?>
 
   pattern_requirements:
     ignore_if_contains:
       - "****"
+      - "***"
       - "••••"
       - "{{"
       - "${"
       - "<%"
       - "<?"
       - "{%"
+      - "password"
+      - "placeholder"
+      - "changeme"
+      - "example"
+      - "test"
+      - "demo"
+      - "sample"
+      - "your_password"
 
   description: >
     A credential value was detected in the HTML value attribute of an <input type="password"> element.

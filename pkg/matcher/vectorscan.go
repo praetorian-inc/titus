@@ -74,9 +74,7 @@ type VectorscanMatcher struct {
 // Note: np.azure.5, np.redis.1, np.redis.2 were previously incompatible due to
 // lookbehind/lookahead assertions. They have been rewritten to be Hyperscan-
 // compatible by moving the filtering logic to ignore_if_contains.
-var knownIncompatiblePatterns = map[string]bool{
-	"np.html.1": true, // Uses lookahead assertions for order-independent attribute matching
-}
+var knownIncompatiblePatterns = map[string]bool{}
 
 // namedGroupRegex matches named capture group openings in both Python (?P<name>)
 // and .NET (?<name>) syntax. Used to convert them to non-capturing groups for
