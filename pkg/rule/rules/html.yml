@@ -4,18 +4,34 @@ rules:
   id: np.html.1
   base_score: 60
 
+  # Hyperscan-incompatible: uses lookahead assertions for order-independent
+  # attribute matching within <input> tags. Registered in knownIncompatiblePatterns.
   pattern: |
     (?xi)
     <input
-      (?=[^>]*?type\s*=\s*['"]password['"])
+      (?=[^>]*?type\s*=\s*['"]?password['"]?)
       [^>]*?
-      \bvalue\s*=\s*['"]
-      (?![\*\x{2022}]{3,}['"])
-      (?!(?:password|placeholder|changeme|example|test|demo|sample|your_password|\{\{|\$\{)\b)
+      \svalue\s*=\s*['"]
+      (?![\*\x{2022}]{3,}\s*['"])
+      (?!(?:password|placeholder|changeme|example|test|demo|sample|your_password)\b)
+      (?!\{\{)
+      (?!\$\{)
+      (?!<[%?])
+      (?!\{%)
       (?P<secret>[^'"]{4,200}?)
       ['"]
       [^>]*?
       \/?>
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "****"
+      - "••••"
+      - "{{"
+      - "${"
+      - "<%"
+      - "<?"
+      - "{%"
 
   description: >
     A credential value was detected in the HTML value attribute of an <input type="password"> element.
@@ -34,18 +50,26 @@ rules:
   - '<input type="password" value="AKIA6GTN2FZMZI2WBMDJ" class="form-control">'
   - '<input class="form-control" value="jasper_secret_XYZ!" type="password" name="jasper_password" />'
   - '<INPUT TYPE="PASSWORD" VALUE="Admin@1234" NAME="adminPass">'
+  - '<input type=password value="UnquotedType!2024" name="pass" />'
 
   negative_examples:
   - '<input type="password" value="" name="password" />'
   - '<input type="password" name="password" />'
   - '<input type="password" value="********" />'
-  - '<input type="password" value="••••••••" />'
+  - '<input type="password" value="•••••••• " />'
+  - '<input type="password" value="*** " />'
   - '<input type="password" value="abc" />'
   - '<input type="text" value="not_a_password_field" />'
   - '<input type="password" value="password" />'
   - '<input type="password" value="placeholder" />'
   - '<input type="password" value="changeme" />'
   - '<input type="password" value="{{this.value}}" />'
+  - '<input type="password" value="{{ this.value }}" />'
+  - '<input type="password" value="${config.password}" />'
+  - '<input type="password" value="<%= dbPassword %>" />'
+  - '<input type="password" value="<?= $password ?>" />'
+  - '<input type="password" value="{% block password %}{% endblock %}" />'
+  - '<input type="password" data-value="not_the_value_attr" />'
 
   references:
   - https://cwe.mitre.org/data/definitions/312.html

@@ -75,7 +75,7 @@ type VectorscanMatcher struct {
 // lookbehind/lookahead assertions. They have been rewritten to be Hyperscan-
 // compatible by moving the filtering logic to ignore_if_contains.
 var knownIncompatiblePatterns = map[string]bool{
-	// Currently empty - all rules are Hyperscan-compatible
+	"np.html.1": true, // Uses lookahead assertions for order-independent attribute matching
 }
 
 // namedGroupRegex matches named capture group openings in both Python (?P<name>)
