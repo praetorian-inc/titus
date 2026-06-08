@@ -12,13 +12,14 @@ import (
 // schema (e.g. rule_id/valid_status keys instead of rule_ids/success_codes) and
 // are flagged for future migration:
 //
-//	- blynk.yaml
-//	- clay.yaml
-//	- clojars.yaml
-//	- codeclimate.yaml
-//	- curl.yaml
+//   - blynk.yaml
+//   - clay.yaml
+//   - clojars.yaml
+//   - codeclimate.yaml
+//   - curl.yaml
 //
 // The schema contract test (yaml_contract_test.go) skips these intentionally.
+//
 //go:embed validators/*.yaml
 var validatorsFS embed.FS
 
