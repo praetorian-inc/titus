@@ -207,6 +207,9 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 				// Also collect each non-empty capture group so the bare secret
 				// (e.g. the UUID from "x-api-key: <uuid>") is included in the
 				// redaction set even when detection required surrounding context.
+				// All current rule capture groups are >= 8 chars (e.g. the Exa UUID is 36),
+				// so no min-length guard is needed here; revisit if a rule introduces a
+				// very short (1-2 char) capture group that could cause spurious ReplaceAll.
 				for _, g := range m.Groups {
 					if len(g) > 0 {
 						secrets = append(secrets, string(g))

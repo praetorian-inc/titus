@@ -492,6 +492,8 @@ func TestRedactHook_RecordMode_ContextDependentHeaderSecret(t *testing.T) {
 	//     capture group (not just Snippet.Matching) is included in the redaction set.
 	assert.NotContains(t, i.Request.Headers.Get("x-api-key"), exaExampleKey,
 		"x-api-key header value must not contain the bare UUID after capture-group redaction")
+	assert.Contains(t, i.Request.Headers.Get("x-api-key"), Placeholder,
+		"x-api-key header must contain Placeholder after capture-group redaction")
 }
 
 // TestRedactHook_RecordMode_SelfContainedTokenStillWorks is a regression test
