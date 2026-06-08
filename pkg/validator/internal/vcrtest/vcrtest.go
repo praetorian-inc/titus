@@ -40,11 +40,70 @@ func getCore() (*scanner.Core, error) {
 	return sharedCore, coreInitErr
 }
 
+// options holds per-cassette configuration for Client.
+type options struct {
+	// keepResponseBody controls whether the response body is persisted in the
+	// cassette. Defaults to false (bodies are elided) to minimise cassette
+	// attack surface. Only validators that inspect the response body need to opt
+	// in via WithResponseBody.
+	//
+	// Default-elide rationale: most validators decide on HTTP status code alone,
+	// so storing response bodies adds noise and a potential secret-leak surface
+	// with no benefit. A body-matcher that forgets WithResponseBody will fail
+	// loudly on replay (body is empty) rather than silently (secret in body).
+	keepResponseBody bool
+
+	// matcher overrides the default secretInsensitiveMatcher for the cassette.
+	// Useful for the rare validator that routes by query string rather than path.
+	matcher cassette.MatcherFunc
+}
+
+// Option is a functional option for Client.
+type Option func(*options)
+
+// WithResponseBody opts the cassette into persisting response bodies.
+// Use this only for validators whose Match logic inspects the response body
+// (i.e. those with SuccessBodyContains or FailureBodyContains set in their
+// YAML definition). The body is still scanned and redacted before being
+// written to the cassette.
+//
+// Without this option, response bodies are blanked in record mode and
+// Content-Length is dropped, so nothing leaks into testdata/.
+func WithResponseBody() Option {
+	return func(o *options) {
+		o.keepResponseBody = true
+	}
+}
+
+// WithMatcher replaces the default secretInsensitiveMatcher for this cassette.
+// Use when the validator routes to different backend endpoints based on query
+// parameters (e.g. a single path but different resource IDs in the query).
+// The provided matcher receives the live request and the recorded cassette
+// request and should return true when they are logically equivalent.
+func WithMatcher(fn cassette.MatcherFunc) Option {
+	return func(o *options) {
+		o.matcher = fn
+	}
+}
+
 // Client returns an *http.Client bound to the named cassette.
 // cassettePath is relative to the test file, e.g. "testdata/huggingface/valid".
 // The recorder is stopped via t.Cleanup.
-func Client(t *testing.T, cassettePath string) *http.Client {
+//
+// By default, response bodies are elided from cassettes (see WithResponseBody).
+// By default, request matching uses secretInsensitiveMatcher (see WithMatcher).
+func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 	t.Helper()
+
+	o := &options{}
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	matcherFn := cassette.MatcherFunc(secretInsensitiveMatcher)
+	if o.matcher != nil {
+		matcherFn = o.matcher
+	}
 
 	isRecording := os.Getenv("RECORD") == "1"
 	mode := recorder.ModeReplayOnly
@@ -56,8 +115,8 @@ func Client(t *testing.T, cassettePath string) *http.Client {
 		cassettePath,
 		recorder.WithMode(mode),
 		recorder.WithSkipRequestLatency(true),
-		recorder.WithHook(redactHook(isRecording), recorder.AfterCaptureHook),
-		recorder.WithMatcher(secretInsensitiveMatcher),
+		recorder.WithHook(redactHook(isRecording, o.keepResponseBody), recorder.AfterCaptureHook),
+		recorder.WithMatcher(matcherFn),
 	)
 	if err != nil {
 		t.Fatalf("vcrtest: new recorder: %v", err)
@@ -78,22 +137,23 @@ func Client(t *testing.T, cassettePath string) *http.Client {
 // is no live secret to redact, and mutating cassette interactions during replay
 // would corrupt the round-trip.
 //
-// In record mode the hook uses the Titus scanner (dogfood) to detect secrets
-// in every text field of the interaction and replaces each detected token with
-// Placeholder. URL-encoded variants of each token are also replaced so that
-// query-string secrets do not survive encoding.
-//
-// Dogfood assertion: if the scanner finds zero matches across all request auth
-// material (URL + request headers + request body), the hook returns an error
-// so the recorder refuses to write the cassette. This guards against silent
-// misconfiguration where the secret was never sent and the cassette would be
-// trivially "clean" but also useless.
+// In record mode the hook:
+//  1. Scans request auth material (URL + request headers + request body) for
+//     secrets using the Titus scanner. Dogfood assertion: zero matches is fatal,
+//     guarding against silent misconfiguration.
+//  2. Scans response header VALUES for new secrets (a credential minted only into
+//     a response header, e.g. Set-Cookie or X-Subject-Token, would otherwise
+//     survive into the cassette). Response headers are always scanned.
+//  3. If keepResponseBody is true, scans the response body for additional secrets;
+//     if false, blanks the body and drops Content-Length (secure-by-default).
+//  4. Redacts all detected secrets (and their URL-encoded variants) across all
+//     text fields that are persisted.
 //
 // If SECRET_PLAINTEXT is set the hook also performs a backup literal scrub of
 // the raw value and its URL-encoded form AFTER the dogfood assertion has already
 // passed. It does not satisfy or bypass the assertion; it is an extra safety net
 // for service-specific token formats the scanner's ruleset may not cover.
-func redactHook(isRecording bool) recorder.HookFunc {
+func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 	return func(i *cassette.Interaction) error {
 		if !isRecording {
 			// Replay mode: no-op.
@@ -120,13 +180,6 @@ func redactHook(isRecording bool) recorder.HookFunc {
 			for _, v := range vals {
 				requestFields = append(requestFields, field{"request.header." + h, v})
 			}
-		}
-		// NOTE: response headers are intentionally not scanned for new secrets.
-		// A credential that appears only in a response header (e.g. X-Subject-Token,
-		// Set-Cookie) would not be detected by the dogfood assertion and would not
-		// be redacted below. This is a known gap tracked for a future follow-up.
-		responseFields := []field{
-			{"response.body", i.Response.Body},
 		}
 
 		// scanAndCollect scans a field and returns all matched secret strings.
@@ -172,12 +225,26 @@ func redactHook(isRecording bool) recorder.HookFunc {
 				"(RECORD=1 SECRET_PLAINTEXT=<key> make record-fixtures SVC=<service>)")
 		}
 
-		// Collect secrets from response fields as well (they may differ from
-		// those in the request, e.g. a refresh token returned in the body).
+		// Collect secrets from response headers. A credential minted only into a
+		// response header (e.g. Set-Cookie, X-Subject-Token) would not be caught by
+		// the dogfood assertion (which is REQUEST-only by design) and would survive
+		// into the cassette if not explicitly scanned here.
+		// Note: response headers are always scanned regardless of keepResponseBody;
+		// even when the body is elided, response headers are persisted in the cassette.
 		allSecrets := make([]string, len(requestSecrets))
 		copy(allSecrets, requestSecrets)
-		for _, f := range responseFields {
-			secrets, scanErr := scanAndCollect(f)
+		for h, vals := range i.Response.Headers {
+			for _, v := range vals {
+				secrets, scanErr := scanAndCollect(field{"response.header." + h, v})
+				if scanErr != nil {
+					return scanErr
+				}
+				allSecrets = append(allSecrets, secrets...)
+			}
+		}
+		// Collect secrets from the response body only when it is kept.
+		if keepResponseBody {
+			secrets, scanErr := scanAndCollect(field{"response.body", i.Response.Body})
 			if scanErr != nil {
 				return scanErr
 			}
@@ -189,11 +256,19 @@ func redactHook(isRecording bool) recorder.HookFunc {
 			allSecrets = append(allSecrets, pt)
 		}
 
-		// Perform all redactions across every text field.
+		// Elide response body if not needed (secure-by-default).
+		if !keepResponseBody {
+			i.Response.Body = ""
+			i.Response.Headers.Del("Content-Length")
+		}
+
+		// Perform all redactions across every text field that is kept.
 		for _, secret := range allSecrets {
 			i.Request.URL = redactIn(i.Request.URL, secret)
 			i.Request.Body = redactIn(i.Request.Body, secret)
-			i.Response.Body = redactIn(i.Response.Body, secret)
+			if keepResponseBody {
+				i.Response.Body = redactIn(i.Response.Body, secret)
+			}
 			for h, vals := range i.Request.Headers {
 				for idx, v := range vals {
 					i.Request.Headers[h][idx] = redactIn(v, secret)
@@ -211,25 +286,28 @@ func redactHook(isRecording bool) recorder.HookFunc {
 }
 
 // secretInsensitiveMatcher matches a live request against a recorded one by
-// comparing HTTP method and URL path only.
+// comparing HTTP method, host, URL path, and raw query string.
 //
-// This is intentionally loose: validators that pass the secret as a query
-// parameter or in the body will use Placeholder as the token value during
-// replay, so the live URL and cassette URL differ in the query string.
-// Matching on method+path ensures those requests still replay correctly.
+// Matching on query is safe with secret redaction: in record mode the hook
+// replaces every detected secret token with Placeholder in the cassette URL,
+// and the test passes Placeholder as the token value during replay, so live and
+// cassette query strings agree. A stray UN-redacted secret in the query causes
+// a replay MISS, surfacing the problem instead of silently hiding it.
 //
-// NOTE: validators that use query parameters for *routing* (i.e. different
-// paths are chosen based on the secret value) cannot be matched by this
-// default matcher and need a per-cassette custom matcher.
+// Previous behaviour matched path only, which (a) could mask a leaked secret
+// in the query string and (b) broke validators that hit the same path multiple
+// times with different queries.
+//
+// Use WithMatcher to override this behaviour for the rare case where routing is
+// determined by query parameters that should not be compared literally.
 func secretInsensitiveMatcher(r *http.Request, i cassette.Request) bool {
-	return r.Method == i.Method && r.URL.Path == reqURLPath(i.URL)
-}
-
-// reqURLPath parses rawURL and returns just the path component.
-func reqURLPath(rawURL string) string {
-	u, err := url.Parse(rawURL)
+	iu, err := url.Parse(i.URL)
 	if err != nil {
-		return rawURL
+		// Fallback: compare raw URL strings on parse failure.
+		return r.Method == i.Method && r.URL.String() == i.URL
 	}
-	return u.Path
+	return r.Method == i.Method &&
+		r.URL.Host == iu.Host &&
+		r.URL.Path == iu.Path &&
+		r.URL.RawQuery == iu.RawQuery
 }

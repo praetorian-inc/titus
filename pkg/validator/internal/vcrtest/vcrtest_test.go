@@ -50,7 +50,7 @@ func makeInteraction(secretInURL, secretInReqBody, secretInRespBody, secretInHea
 // it must not modify any fields and must return nil even when fields contain
 // detector-visible secrets.
 func TestRedactHook_ReplayMode(t *testing.T) {
-	hook := redactHook(false)
+	hook := redactHook(false, false)
 
 	i := makeInteraction(testSecret, testSecret, testSecret, testSecret)
 	origURL := i.Request.URL
@@ -71,7 +71,7 @@ func TestRedactHook_ReplayMode(t *testing.T) {
 // custom auth header (Authorization: Bearer <token>) is detected and replaced
 // with Placeholder in the cassette.
 func TestRedactHook_RecordMode_HeaderSecret(t *testing.T) {
-	hook := redactHook(true)
+	hook := redactHook(true, false)
 
 	i := makeInteraction("", "", "", testSecret)
 	// URL and bodies are benign so the secret is only in the header.
@@ -89,7 +89,7 @@ func TestRedactHook_RecordMode_HeaderSecret(t *testing.T) {
 // TestRedactHook_RecordMode_URLQuerySecret verifies that a secret carried as a
 // URL query parameter is redacted, including its percent-encoded form.
 func TestRedactHook_RecordMode_URLQuerySecret(t *testing.T) {
-	hook := redactHook(true)
+	hook := redactHook(true, false)
 
 	// Embed the secret in the URL query string (plain form).
 	i := &cassette.Interaction{
@@ -116,7 +116,7 @@ func TestRedactHook_RecordMode_URLQuerySecret(t *testing.T) {
 // TestRedactHook_RecordMode_RequestBodySecret verifies that a secret embedded
 // in the request body is replaced with Placeholder.
 func TestRedactHook_RecordMode_RequestBodySecret(t *testing.T) {
-	hook := redactHook(true)
+	hook := redactHook(true, false)
 
 	i := makeInteraction("", testSecret, "", "")
 
@@ -130,9 +130,10 @@ func TestRedactHook_RecordMode_RequestBodySecret(t *testing.T) {
 }
 
 // TestRedactHook_RecordMode_ResponseBodySecret verifies that a secret that
-// appears only in the response body is also redacted.
+// appears in the response body is redacted when WithResponseBody is used.
+// Without that option the body is elided entirely (see TestRedactHook_RecordMode_ResponseBodyElided).
 func TestRedactHook_RecordMode_ResponseBodySecret(t *testing.T) {
-	hook := redactHook(true)
+	hook := redactHook(true, true /* keepResponseBody */)
 
 	// Put the secret in the request header (so dogfood assertion passes) and
 	// also in the response body (so we can verify response-body redaction).
@@ -152,7 +153,7 @@ func TestRedactHook_RecordMode_ResponseBodySecret(t *testing.T) {
 // error. This ensures misconfigured recording (e.g. tests that never send a
 // real credential) fail loudly rather than producing a trivially-clean cassette.
 func TestRedactHook_RecordMode_DogfoodAssertion(t *testing.T) {
-	hook := redactHook(true)
+	hook := redactHook(true, false)
 
 	// No secret in URL, headers, or request body — scanner will find nothing.
 	i := &cassette.Interaction{
@@ -183,7 +184,7 @@ func TestRedactHook_RecordMode_DogfoodAssertion(t *testing.T) {
 func TestRedactHook_RecordMode_SecretPlaintextBackup(t *testing.T) {
 	t.Setenv("SECRET_PLAINTEXT", testSecret)
 
-	hook := redactHook(true)
+	hook := redactHook(true, false)
 
 	i := makeInteraction("", "", "", testSecret)
 
@@ -198,7 +199,7 @@ func TestRedactHook_RecordMode_SecretPlaintextBackup(t *testing.T) {
 // secret in a URL query parameter is also replaced. The scanner detects the
 // raw form; the hook then replaces both the raw and URL-encoded variants.
 func TestRedactHook_RecordMode_EncodedURLSecret(t *testing.T) {
-	hook := redactHook(true)
+	hook := redactHook(true, false)
 
 	// Percent-encode the secret as it would appear in a real URL.
 	// The hook must redact both the raw scanner match and the encoded form.
@@ -242,7 +243,7 @@ func TestRedactHook_RecordMode_NoSecretPlaintext(t *testing.T) {
 	// Explicitly unset SECRET_PLAINTEXT to confirm it is optional.
 	t.Setenv("SECRET_PLAINTEXT", "")
 
-	hook := redactHook(true)
+	hook := redactHook(true, false)
 
 	i := makeInteraction("", "", "", testSecret)
 
@@ -250,4 +251,153 @@ func TestRedactHook_RecordMode_NoSecretPlaintext(t *testing.T) {
 
 	require.NoError(t, err, "recording must succeed with scanner detection even without SECRET_PLAINTEXT")
 	assert.NotContains(t, i.Request.Headers.Get("Authorization"), testSecret)
+}
+
+// TestRedactHook_RecordMode_ResponseBodyElided verifies that by default
+// (keepResponseBody=false) the response body is blanked and Content-Length
+// is removed even when a secret was present. This is the secure-by-default
+// behaviour: nothing from the response body leaks into testdata/.
+func TestRedactHook_RecordMode_ResponseBodyElided(t *testing.T) {
+	hook := redactHook(true, false /* keepResponseBody=false */)
+
+	// Secret in auth header (satisfies dogfood) and in response body.
+	i := makeInteraction("", "", testSecret, testSecret)
+	i.Response.Headers.Set("Content-Length", "50")
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.Empty(t, i.Response.Body,
+		"response body must be blanked when keepResponseBody is false")
+	assert.Empty(t, i.Response.Headers.Get("Content-Length"),
+		"Content-Length must be dropped when response body is elided")
+}
+
+// TestRedactHook_RecordMode_ResponseBodyKept verifies that when
+// keepResponseBody=true (WithResponseBody option) the body is retained and
+// any secret within it is redacted.
+func TestRedactHook_RecordMode_ResponseBodyKept(t *testing.T) {
+	hook := redactHook(true, true /* keepResponseBody=true */)
+
+	// Secret in auth header (satisfies dogfood) and in response body.
+	i := makeInteraction("", "", testSecret, testSecret)
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, i.Response.Body,
+		"response body must be retained when keepResponseBody is true")
+	assert.NotContains(t, i.Response.Body, testSecret,
+		"secret must be redacted from response body")
+	assert.Contains(t, i.Response.Body, Placeholder,
+		"Placeholder must appear in response body after redaction")
+}
+
+// ---- Fix 3: Matcher tests ----
+
+// TestSecretInsensitiveMatcher_SameMethodHostPathQuery verifies that the
+// matcher returns true when method, host, path, and raw query all match.
+func TestSecretInsensitiveMatcher_SameMethodHostPathQuery(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://api.example.com/v1/users?token="+Placeholder, nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://api.example.com/v1/users?token=" + Placeholder,
+	}
+
+	assert.True(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return true when method, host, path, and query all agree")
+}
+
+// TestSecretInsensitiveMatcher_DifferentQuery verifies that the matcher returns
+// false when the query string differs. This prevents two requests to the same
+// path but different query parameters from being treated as equivalent.
+func TestSecretInsensitiveMatcher_DifferentQuery(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://api.example.com/v1/users?token=TokenA", nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://api.example.com/v1/users?token=TokenB",
+	}
+
+	assert.False(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return false when query strings differ")
+}
+
+// TestSecretInsensitiveMatcher_DifferentHost verifies that the matcher returns
+// false when the host differs, even if path and query are the same.
+func TestSecretInsensitiveMatcher_DifferentHost(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://api.example.com/v1/users", nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://other.example.com/v1/users",
+	}
+
+	assert.False(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return false when hosts differ")
+}
+
+// TestSecretInsensitiveMatcher_DifferentMethod verifies that the matcher returns
+// false when the HTTP method differs.
+func TestSecretInsensitiveMatcher_DifferentMethod(t *testing.T) {
+	req, err := http.NewRequest("POST", "https://api.example.com/v1/users?token="+Placeholder, nil)
+	require.NoError(t, err)
+
+	cassReq := cassette.Request{
+		Method: "GET",
+		URL:    "https://api.example.com/v1/users?token=" + Placeholder,
+	}
+
+	assert.False(t, secretInsensitiveMatcher(req, cassReq),
+		"matcher must return false when methods differ")
+}
+
+// TestWithMatcher_Override verifies that WithMatcher replaces the default
+// secretInsensitiveMatcher for the cassette. We test by ensuring a custom
+// matcher is wired into the options struct via the functional option.
+func TestWithMatcher_Override(t *testing.T) {
+	o := &options{}
+	customMatcher := func(r *http.Request, i cassette.Request) bool { return true }
+	WithMatcher(customMatcher)(o)
+
+	require.NotNil(t, o.matcher, "WithMatcher must set options.matcher")
+}
+
+// ---- Fix 4: Response header secret detection ----
+
+// TestRedactHook_RecordMode_ResponseHeaderSecret verifies that a secret that
+// appears ONLY in a response header value (e.g. Set-Cookie, X-Subject-Token)
+// is detected and redacted. Previously this was a gap: response header values
+// were not scanned for new secrets.
+func TestRedactHook_RecordMode_ResponseHeaderSecret(t *testing.T) {
+	hook := redactHook(true, false)
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method:  "GET",
+			URL:     "https://example.com/api/validate",
+			Headers: make(http.Header),
+		},
+		Response: cassette.Response{
+			Code:    200,
+			Body:    "",
+			Headers: make(http.Header),
+		},
+	}
+	// Secret only in a request header (satisfies dogfood assertion).
+	i.Request.Headers.Set("Authorization", "Bearer "+testSecret)
+	// Additional secret minted into a response header only.
+	i.Response.Headers.Set("X-Subject-Token", testSecret)
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.NotContains(t, i.Response.Headers.Get("X-Subject-Token"), testSecret,
+		"response header must not contain the plaintext secret after redaction")
+	assert.Contains(t, i.Response.Headers.Get("X-Subject-Token"), Placeholder,
+		"response header must contain Placeholder after redaction")
 }
