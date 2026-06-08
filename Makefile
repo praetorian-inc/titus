@@ -1,7 +1,7 @@
 # Titus Makefile
 # Build automation for secrets scanner
 
-.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint
+.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint test-validators record-fixtures scan-fixtures
 
 VERSION ?= dev
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
@@ -222,3 +222,14 @@ clean-all: clean clean-burp clean-extension
 # Run static binary test in container (requires build-static and docker)
 static-test: build-static
 	./scripts/static-binary-test.sh
+
+# Validator test targets
+test-validators:            ## Replay validator tests (no network)
+	GOWORK=off CGO_ENABLED=0 go test ./pkg/validator/... -count=1
+
+record-fixtures:            ## Re-record cassettes (needs creds + RECORD=1). Usage: make record-fixtures SVC=huggingface
+	RECORD=1 GOWORK=off CGO_ENABLED=0 go test ./pkg/validator/ -run "Test_$(SVC)_" -count=1 -v
+
+scan-fixtures:              ## Fail if any live secret in testdata/
+	bash scripts/scan-fixtures.sh
+
