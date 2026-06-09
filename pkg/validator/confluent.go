@@ -24,20 +24,44 @@ var confluentClientIDPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(?:client[_-]?id|api[_-]?key)\s*[=:]\s*["'\s]?([A-Z0-9]{16})\b`),
 }
 
-// ConfluentValidator validates Confluent Cloud API-key credentials using Basic
-// authentication against the Confluent Cloud IAM API.
+// confluentClusterEndpointPattern matches a Confluent Dedicated cluster REST
+// endpoint (Bootstrap server URL). Example:
+//
+//	https://pkc-419q3.us-east4.gcp.confluent.cloud:443
+var confluentClusterEndpointPattern = regexp.MustCompile(
+	`https?://pkc-[a-z0-9]+\.[a-z0-9.-]+\.confluent\.cloud(?::\d+)?`,
+)
+
+// confluentLKCPattern matches a Confluent logical Kafka cluster ID.
+// Example: lkc-nvodzyv
+var confluentLKCPattern = regexp.MustCompile(`lkc-[a-z0-9]+`)
+
+// ConfluentValidator validates Confluent Cloud API-key credentials.
 //
 // Confluent API keys consist of two parts:
 //   - client_id: a 16-character uppercase alphanumeric key ID
 //   - secret:    a 64-character base64 string (confluent.2) or a cflt-prefixed
 //     token (confluent.3)
 //
-// Validation uses GET https://api.confluent.cloud/iam/v2/api-keys with
-// Authorization: Basic base64(client_id:secret). A 200 response means valid;
-// 401/403 means invalid; anything else is undetermined.
+// Two validation paths are supported:
+//
+//  1. Cloud/Global key path (default): GET https://api.confluent.cloud/iam/v2/api-keys
+//     Used when no cluster endpoint or lkc-id is found in the snippet context.
+//
+//  2. Cluster key path: GET {clusterEndpoint}/kafka/v3/clusters/{lkc_id}/topics
+//     Used when BOTH a cluster endpoint (pkc-...confluent.cloud) AND a logical
+//     cluster ID (lkc-...) are found in the snippet context.
+//
+// Status mapping for both paths:
+//
+//	200 -> Valid   (authenticated)
+//	403 -> Valid   (authenticated; key lacks authorization for this resource -- but the key is live)
+//	401 -> Invalid (authentication failed -- key is not active)
+//	any other -> Undetermined
 type ConfluentValidator struct {
-	client  *http.Client
-	baseURL string // overridable for tests; defaults to https://api.confluent.cloud
+	client         *http.Client
+	baseURL        string // overridable for tests; defaults to https://api.confluent.cloud
+	clusterBaseURL string // overridable for tests; replaces the extracted cluster endpoint
 }
 
 // NewConfluentValidator creates a Confluent API-key validator using the default HTTP client.
@@ -73,7 +97,7 @@ func (v *ConfluentValidator) CanValidate(ruleID string) bool {
 	return false
 }
 
-// Validate authenticates with the Confluent Cloud IAM API and maps the HTTP
+// Validate authenticates with the Confluent Cloud API and maps the HTTP
 // response to a ValidationStatus.
 //
 // Missing or incomplete credentials return StatusUndetermined without making an
@@ -89,10 +113,29 @@ func (v *ConfluentValidator) Validate(ctx context.Context, match *types.Match) (
 		), nil
 	}
 
+	// Attempt to extract cluster endpoint and lkc-id from snippet context.
+	// If BOTH are present we use the cluster validation path; otherwise we fall
+	// back to the cloud/global key path (no error -- it may simply be a global key).
+	clusterEndpoint, lkcID := v.extractClusterContext(match)
+
+	var url string
+	if clusterEndpoint != "" && lkcID != "" {
+		// Cluster key path: validate against the specific Kafka cluster.
+		// In tests, clusterBaseURL overrides the extracted endpoint so requests
+		// route to the httptest server instead of the real cluster host.
+		effectiveEndpoint := clusterEndpoint
+		if v.clusterBaseURL != "" {
+			effectiveEndpoint = v.clusterBaseURL
+		}
+		url = effectiveEndpoint + "/kafka/v3/clusters/" + lkcID + "/topics"
+	} else {
+		// Cloud/Global key path.
+		url = v.baseURL + "/iam/v2/api-keys"
+	}
+
 	// Build Basic auth header: base64(client_id:secret)
 	creds := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + secret))
 
-	url := v.baseURL + "/iam/v2/api-keys"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return types.NewValidationResult(
@@ -120,7 +163,15 @@ func (v *ConfluentValidator) Validate(ctx context.Context, match *types.Match) (
 			1.0,
 			fmt.Sprintf("valid Confluent API key for client %s", clientID),
 		), nil
-	case http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusForbidden:
+		// 403 means the credential authenticated successfully but the key lacks
+		// permission for this specific resource or cluster. The key is live.
+		return types.NewValidationResult(
+			types.StatusValid,
+			1.0,
+			fmt.Sprintf("valid Confluent API key for client %s (authenticated; insufficient cluster permissions)", clientID),
+		), nil
+	case http.StatusUnauthorized:
 		return types.NewValidationResult(
 			types.StatusInvalid,
 			1.0,
@@ -135,11 +186,39 @@ func (v *ConfluentValidator) Validate(ctx context.Context, match *types.Match) (
 	}
 }
 
+// extractClusterContext scans the snippet context for a Confluent cluster
+// endpoint (pkc-...confluent.cloud) and a logical cluster ID (lkc-...).
+// Both values must be present for the cluster validation path to be used;
+// if either is missing the caller falls back to the cloud/global key path.
+func (v *ConfluentValidator) extractClusterContext(match *types.Match) (clusterEndpoint, lkcID string) {
+	parts := [][]byte{
+		match.Snippet.Before,
+		match.Snippet.Matching,
+		match.Snippet.After,
+	}
+	for _, part := range parts {
+		if clusterEndpoint == "" {
+			if m := confluentClusterEndpointPattern.Find(part); m != nil {
+				clusterEndpoint = string(m)
+			}
+		}
+		if lkcID == "" {
+			if m := confluentLKCPattern.Find(part); m != nil {
+				lkcID = string(m)
+			}
+		}
+		if clusterEndpoint != "" && lkcID != "" {
+			break
+		}
+	}
+	return clusterEndpoint, lkcID
+}
+
 // extractCredentials extracts the Confluent client_id and secret from a match.
 //
 // Secret resolution (in priority order):
-//  1. NamedGroups["secret"] — set by confluent.2 (64-char base64 string)
-//  2. Groups[0]            — set by confluent.3 (full cflt… token)
+//  1. NamedGroups["secret"] -- set by confluent.2 (64-char base64 string)
+//  2. Groups[0]             -- set by confluent.3 (full cflt... token)
 //
 // Client ID resolution: scan Snippet.Before / .Matching / .After with
 // confluentClientIDPatterns (keyword-proximity or explicit label).
@@ -153,7 +232,7 @@ func (v *ConfluentValidator) extractCredentials(match *types.Match) (clientID, s
 			secret = string(s)
 		}
 	}
-	// Fallback: confluent.3 stores the full cflt… token in Groups[0].
+	// Fallback: confluent.3 stores the full cflt... token in Groups[0].
 	if secret == "" && len(match.Groups) > 0 && len(match.Groups[0]) > 0 {
 		secret = string(match.Groups[0])
 	}

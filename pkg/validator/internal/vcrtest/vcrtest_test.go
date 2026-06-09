@@ -515,3 +515,64 @@ func TestRedactHook_RecordMode_SelfContainedTokenStillWorks(t *testing.T) {
 	assert.Contains(t, i.Request.Headers.Get("Authorization"), Placeholder,
 		"Placeholder must appear after redaction of self-contained token")
 }
+
+// ---- WithExtraRedactions option ----
+
+// TestWithExtraRedactions_ReplacesOldWithNew verifies that extra (old, new) pairs
+// provided via WithExtraRedactions are applied during record mode, replacing each
+// old value with the corresponding new placeholder across all cassette fields.
+func TestWithExtraRedactions_ReplacesOldWithNew(t *testing.T) {
+	// Build a hook with one extra redaction pair: replace "realhost.confluent.cloud"
+	// with "pkc-REDACTED0.example.confluent.cloud".
+	const realHost = "pkc-abc123.us-east4.gcp.confluent.cloud"
+	const fakeHost = "pkc-REDACTED0.example.confluent.cloud"
+
+	hook := redactHookWithExtras(true, false, [][2]string{{realHost, fakeHost}})
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method:  "GET",
+			URL:     "https://" + realHost + "/kafka/v3/clusters/lkc-nvodzyv/topics",
+			Headers: make(http.Header),
+		},
+		Response: cassette.Response{
+			Code:    200,
+			Body:    "",
+			Headers: make(http.Header),
+		},
+	}
+	// Satisfy the dogfood assertion by putting a detectable secret in the header.
+	i.Request.Headers.Set("Authorization", "Basic AKIADEADBEEFDEADBEEF")
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.NotContains(t, i.Request.URL, realHost,
+		"real host must be replaced in the URL")
+	assert.Contains(t, i.Request.URL, fakeHost,
+		"fake placeholder host must appear in the URL")
+}
+
+// TestWithExtraRedactions_ReplayModeIsNoop verifies that extra redactions are
+// not applied during replay mode (no live secrets to scrub).
+func TestWithExtraRedactions_ReplayModeIsNoop(t *testing.T) {
+	const realHost = "pkc-abc123.us-east4.gcp.confluent.cloud"
+	const fakeHost = "pkc-REDACTED0.example.confluent.cloud"
+
+	hook := redactHookWithExtras(false, false, [][2]string{{realHost, fakeHost}})
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method: "GET",
+			URL:    "https://" + realHost + "/kafka/v3/clusters/lkc-nvodzyv/topics",
+		},
+		Response: cassette.Response{},
+	}
+	origURL := i.Request.URL
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.Equal(t, origURL, i.Request.URL,
+		"replay mode must not modify the URL even with extra redaction pairs")
+}

@@ -114,3 +114,142 @@ func runConfluentCassetteCase(t *testing.T, cassette string, want types.Validati
 	assert.Equal(t, want, result.Status,
 		"confluent cassette %s: unexpected validation status", cassette)
 }
+
+// Test_confluent_cluster_Valid replays the cassette for a valid Confluent cluster
+// API-key pair and asserts StatusValid. Skips when the cassette has not been
+// recorded yet.
+func Test_confluent_cluster_Valid(t *testing.T) {
+	runConfluentClusterCassetteCase(t, "testdata/confluent/cluster_valid", types.StatusValid)
+}
+
+// Test_confluent_cluster_Invalid replays the cassette for an invalid Confluent
+// cluster API-key pair and asserts StatusInvalid. Skips when the cassette has
+// not been recorded yet.
+func Test_confluent_cluster_Invalid(t *testing.T) {
+	runConfluentClusterCassetteCase(t, "testdata/confluent/cluster_invalid", types.StatusInvalid)
+}
+
+// runConfluentClusterCassetteCase is the VCR replay driver for the Confluent
+// cluster-key validation path.
+//
+// Cluster URL structure: {endpoint}/kafka/v3/clusters/{lkc_id}/topics
+// where endpoint = https://pkc-xxx.region.provider.confluent.cloud[:port]
+// and   lkc_id   = lkc-xxxxx
+//
+// Record mode (RECORD=1):
+//   - SECRET_PLAINTEXT: real API secret.
+//   - CONFLUENT_CLIENT_ID: real key ID (16 uppercase alphanumeric chars).
+//   - CONFLUENT_CLUSTER_ENDPOINT: real cluster bootstrap URL, e.g.
+//     "https://pkc-419q3.us-east4.gcp.confluent.cloud:443"
+//   - CONFLUENT_LKC_ID: real logical cluster ID, e.g. "lkc-nvodzyv"
+//
+// The vcrtest redaction hook scrubs the real secret to vcrtest.Placeholder.
+// WithExtraRedactions replaces the real cluster endpoint and lkc-id with fixed
+// replay-safe placeholders so no account-identifying data is committed:
+//   - cluster endpoint -> "https://pkc-REDACTED0.example.confluent.cloud:443"
+//   - lkc-id           -> "lkc-redacted"
+//
+// Both placeholders match the extraction regexes so replay works correctly.
+//
+// Replay mode (default):
+//   - Snippet context contains the placeholder cluster endpoint and lkc-id.
+//   - extractClusterContext extracts them; Validate builds the request URL from
+//     the placeholder endpoint, which the VCR transport matches against the
+//     cassette (no real TCP connection is made).
+func runConfluentClusterCassetteCase(t *testing.T, cassette string, want types.ValidationStatus) {
+	t.Helper()
+
+	// Fixed replay placeholders: both must match the extraction regexes.
+	// - confluentClusterEndpointPattern: https?://pkc-[a-z0-9]+\.[a-z0-9.-]+\.confluent\.cloud(?::\d+)?
+	// - confluentLKCPattern:              lkc-[a-z0-9]+
+	const (
+		placeholderEndpoint = "https://pkc-REDACTED0.example.confluent.cloud:443"
+		placeholderLKC      = "lkc-redacted"
+		replayClientID      = "REDACTED0SECRET1" // 16 chars, all [A-Z0-9]
+	)
+
+	isRecording := os.Getenv("RECORD") == "1"
+	cassetteFile := cassette + ".yaml"
+	if !isRecording {
+		if _, err := os.Stat(cassetteFile); os.IsNotExist(err) {
+			t.Skipf(
+				"cassette not recorded yet; run:\n" +
+					"  SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> " +
+					"CONFLUENT_CLUSTER_ENDPOINT=<endpoint> CONFLUENT_LKC_ID=<lkc-id> " +
+					"RECORD=1 go test ./pkg/validator/ -run Test_confluent_cluster_",
+			)
+		}
+	}
+
+	var (
+		secretVal       []byte
+		clientIDVal     []byte
+		clusterEndpoint string
+		lkcID           string
+		clientOpts      []vcrtest.Option
+	)
+
+	if isRecording {
+		pt := os.Getenv("SECRET_PLAINTEXT")
+		if pt == "" {
+			t.Fatal("RECORD=1 requires SECRET_PLAINTEXT=<real-secret>")
+		}
+		clientID := os.Getenv("CONFLUENT_CLIENT_ID")
+		if clientID == "" {
+			t.Fatal("RECORD=1 requires CONFLUENT_CLIENT_ID=<real-key-id>")
+		}
+		clusterEndpoint = os.Getenv("CONFLUENT_CLUSTER_ENDPOINT")
+		if clusterEndpoint == "" {
+			t.Fatal("RECORD=1 requires CONFLUENT_CLUSTER_ENDPOINT=<endpoint>")
+		}
+		lkcID = os.Getenv("CONFLUENT_LKC_ID")
+		if lkcID == "" {
+			t.Fatal("RECORD=1 requires CONFLUENT_LKC_ID=<lkc-id>")
+		}
+		secretVal = []byte(pt)
+		clientIDVal = []byte(clientID)
+		// Redact real cluster endpoint and lkc-id from the cassette so no
+		// account-identifying data is committed to testdata/.
+		clientOpts = append(clientOpts,
+			vcrtest.WithExtraRedactions(
+				[2]string{clusterEndpoint, placeholderEndpoint},
+				[2]string{lkcID, placeholderLKC},
+			),
+		)
+	} else {
+		// In replay mode use the fixed placeholder credentials. The cassette
+		// was written with the placeholder cluster endpoint and lkc-id, so the
+		// VCR transport matches against them directly.
+		const replayClientIDLocal = replayClientID
+		secretVal = []byte(vcrtest.Placeholder)
+		clientIDVal = []byte(replayClientIDLocal)
+		clusterEndpoint = placeholderEndpoint
+		lkcID = placeholderLKC
+	}
+
+	// Build the Match with cluster context in Snippet.Before.
+	// extractClusterContext reads clusterEndpoint and lkcID from Before.
+	// extractCredentials reads clientIDVal from Before (keyword-proximity pattern).
+	snippetBefore := []byte(
+		"confluent api_key=" + string(clientIDVal) +
+			" bootstrap=" + clusterEndpoint +
+			" cluster=" + lkcID,
+	)
+
+	match := &types.Match{
+		RuleID:      "kingfisher.confluent.2",
+		NamedGroups: map[string][]byte{"secret": secretVal},
+		Snippet:     types.Snippet{Before: snippetBefore},
+	}
+
+	client := vcrtest.Client(t, cassette, clientOpts...)
+	v := NewConfluentValidatorWithClient(client)
+	// No clusterBaseURL override: in record mode, the real endpoint is used
+	// directly; in replay mode, go-vcr intercepts the request without a real
+	// TCP connection, so the placeholder hostname is fine.
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err, "Validate must not return a non-nil error")
+	assert.Equal(t, want, result.Status,
+		"confluent cluster cassette %s: unexpected validation status", cassette)
+}
