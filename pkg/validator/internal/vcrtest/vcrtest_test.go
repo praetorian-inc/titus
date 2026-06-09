@@ -413,6 +413,7 @@ func TestMinimizeInteraction_StripsHeadersPreservesEssentials(t *testing.T) {
 		Request: cassette.Request{
 			Method:  "GET",
 			URL:     "https://huggingface.co/api/whoami-v2",
+			Host:    "huggingface.co",
 			Headers: http.Header{"Authorization": []string{"Bearer " + Placeholder}},
 		},
 		Response: cassette.Response{
@@ -443,6 +444,10 @@ func TestMinimizeInteraction_StripsHeadersPreservesEssentials(t *testing.T) {
 	// ContentLength normalized to match actual body length.
 	assert.Equal(t, int64(len(i.Request.Body)), i.Request.ContentLength, "request ContentLength must equal len(body)")
 	assert.Equal(t, int64(len(i.Response.Body)), i.Response.ContentLength, "response ContentLength must equal len(body)")
+
+	// Host field blanked: go-vcr stores request.host separately from request.url;
+	// blanking prevents account-identifying cluster hostnames leaking into cassettes.
+	assert.Empty(t, i.Request.Host, "request Host must be blanked by minimizeInteraction")
 }
 
 // ---- Fix 5: Context-aware header scanning + capture-group redaction ----

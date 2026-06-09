@@ -385,6 +385,11 @@ func minimizeInteraction(i *cassette.Interaction) error {
 	i.Response.Duration = 0
 	i.Request.ContentLength = int64(len(i.Request.Body))
 	i.Response.ContentLength = int64(len(i.Response.Body))
+	// Blank the host field: go-vcr persists request.host separately from
+	// request.url. The field is redundant for matching (secretInsensitiveMatcher
+	// derives the host from url.Parse(i.URL).Host, not from i.Request.Host) and
+	// can carry account-identifying cluster hostnames that must not be committed.
+	i.Request.Host = ""
 	return nil
 }
 
