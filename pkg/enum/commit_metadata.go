@@ -12,13 +12,17 @@ import (
 )
 
 // collectCommitMetadataForRepo runs git log to build a map of file path → commit metadata.
-// When firstAdded is true, uses --diff-filter=A to find the commit that first added each path.
+// When firstAdded is true, uses --diff-filter=ARC to find the commit that first
+// introduced each path — this includes Adds, Renames, and Copies. Rename detection
+// is on by default in git's log machinery, so a `git mv old new` is recorded as an
+// `R` entry rather than a delete + add; filtering on `A` alone would miss the
+// post-rename path and leave its blobs without commit metadata.
 // When false, finds the most recent commit that touched each path.
 func collectCommitMetadataForRepo(ctx context.Context, repoPath string, firstAdded bool) (map[string]*types.CommitMetadata, error) {
 	args := []string{"log", "--all",
 		"--format=%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s", "--name-only"}
 	if firstAdded {
-		args = append(args, "--diff-filter=A")
+		args = append(args, "--diff-filter=ARC")
 	}
 
 	cmd := exec.CommandContext(ctx, "git", args...)
