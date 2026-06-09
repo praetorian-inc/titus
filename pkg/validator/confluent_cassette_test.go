@@ -84,8 +84,15 @@ func runConfluentCassetteCase(t *testing.T, cassette string, want types.Validati
 		secretVal = []byte(pt)
 		clientIDVal = []byte(clientID)
 	} else {
+		// In replay mode the secret placeholder is fine as-is; the cassette
+		// matcher ignores the Authorization header. The client_id placeholder
+		// must be 16 chars of [A-Z0-9] so that confluentClientIDPatterns can
+		// extract it from Snippet.Before — vcrtest.Placeholder ("REDACTED_SECRET")
+		// is 15 chars with underscores and lowercase letters, which the regex
+		// \b-bounded pattern cannot match.
+		const replayClientID = "REDACTED0SECRET1" // 16 chars, all [A-Z0-9]
 		secretVal = []byte(vcrtest.Placeholder)
-		clientIDVal = []byte(vcrtest.Placeholder)
+		clientIDVal = []byte(replayClientID)
 	}
 
 	// Build the Match. Snippet.Before carries the client_id so that

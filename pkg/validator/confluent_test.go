@@ -134,6 +134,21 @@ func TestConfluentValidator_ExtractCredentials(t *testing.T) {
 			wantClient: validClientID,
 			wantSecret: validSecret64,
 		},
+		{
+			// Regression: api_key=<64-char-base64-secret> must NOT mis-grab the
+			// first 16 chars of the secret as the client_id. The 16-char match is
+			// not a word boundary (more [A-Z0-9] chars follow), so \b prevents it.
+			// Extraction must return an error (no real 16-char client_id present).
+			name: "64-char secret after api_key= is not mis-extracted as client_id",
+			match: &types.Match{
+				RuleID:      "kingfisher.confluent.2",
+				NamedGroups: map[string][]byte{"secret": []byte(validSecret64)},
+				Snippet: types.Snippet{
+					Before: []byte("api_key=" + validSecret64),
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {

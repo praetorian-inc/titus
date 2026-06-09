@@ -17,9 +17,11 @@ import (
 // (e.g. "ABCD1234EFGH5678"). We look for it near keyword indicators.
 var confluentClientIDPatterns = []*regexp.Regexp{
 	// Keyword-proximity: confluent/ccloud/cpdev/kafka followed by the key ID.
-	regexp.MustCompile(`(?i)(?:confluent|ccloud|cpdev|kafka)[^A-Z0-9]{0,32}([A-Z0-9]{16})`),
+	// \b ensures we do not grab the leading 16 chars of a longer base64 string.
+	regexp.MustCompile(`(?i)(?:confluent|ccloud|cpdev|kafka)[^A-Z0-9]{0,32}([A-Z0-9]{16})\b`),
 	// Explicit label: client_id= or api_key= followed by the key ID.
-	regexp.MustCompile(`(?i)(?:client[_-]?id|api[_-]?key)\s*[=:]\s*["'\s]?([A-Z0-9]{16})`),
+	// \b prevents mis-grabbing the first 16 chars of a 64-char secret value.
+	regexp.MustCompile(`(?i)(?:client[_-]?id|api[_-]?key)\s*[=:]\s*["'\s]?([A-Z0-9]{16})\b`),
 }
 
 // ConfluentValidator validates Confluent Cloud API-key credentials using Basic
