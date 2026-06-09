@@ -311,6 +311,31 @@ func redactHookWithExtras(isRecording bool, keepResponseBody bool, extras [][2]s
 			allSecrets = append(allSecrets, pt)
 		}
 
+		// Elide response body if not needed (secure-by-default).
+		if !keepResponseBody {
+			i.Response.Body = ""
+			i.Response.Headers.Del("Content-Length")
+		}
+
+		// Perform all redactions across every text field that is kept.
+		for _, secret := range allSecrets {
+			i.Request.URL = redactIn(i.Request.URL, secret)
+			i.Request.Body = redactIn(i.Request.Body, secret)
+			if keepResponseBody {
+				i.Response.Body = redactIn(i.Response.Body, secret)
+			}
+			for h, vals := range i.Request.Headers {
+				for idx, v := range vals {
+					i.Request.Headers[h][idx] = redactIn(v, secret)
+				}
+			}
+			for h, vals := range i.Response.Headers {
+				for idx, v := range vals {
+					i.Response.Headers[h][idx] = redactIn(v, secret)
+				}
+			}
+		}
+
 		// Apply extra (old, new) replacements: account-identifying values such as
 		// cluster endpoint hostnames or cluster IDs that are not secrets but must
 		// not be committed to testdata/ in plain form. These replacements happen
@@ -334,31 +359,6 @@ func redactHookWithExtras(isRecording bool, keepResponseBody bool, extras [][2]s
 			for h, vals := range i.Response.Headers {
 				for idx, v := range vals {
 					i.Response.Headers[h][idx] = strings.ReplaceAll(v, old, newVal)
-				}
-			}
-		}
-
-		// Elide response body if not needed (secure-by-default).
-		if !keepResponseBody {
-			i.Response.Body = ""
-			i.Response.Headers.Del("Content-Length")
-		}
-
-		// Perform all redactions across every text field that is kept.
-		for _, secret := range allSecrets {
-			i.Request.URL = redactIn(i.Request.URL, secret)
-			i.Request.Body = redactIn(i.Request.Body, secret)
-			if keepResponseBody {
-				i.Response.Body = redactIn(i.Response.Body, secret)
-			}
-			for h, vals := range i.Request.Headers {
-				for idx, v := range vals {
-					i.Request.Headers[h][idx] = redactIn(v, secret)
-				}
-			}
-			for h, vals := range i.Response.Headers {
-				for idx, v := range vals {
-					i.Response.Headers[h][idx] = redactIn(v, secret)
 				}
 			}
 		}

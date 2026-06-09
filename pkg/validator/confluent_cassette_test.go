@@ -26,6 +26,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Package-level replay placeholder constants shared between the cassette driver
+// functions and the guard test (TestClusterReplayPlaceholders_MatchExtractionRegexes).
+// Keeping them here ensures the guard test exercises the exact values the drivers use.
+const (
+	// cassetteReplayClientID is the replay placeholder for the Confluent API key ID.
+	// Must be exactly 16 chars of [A-Z0-9] so that confluentClientIDPatterns (which
+	// requires [A-Z0-9]{16}) can extract it from Snippet.Before during replay.
+	// vcrtest.Placeholder ("REDACTED_SECRET") fails this constraint (15 chars, lowercase, underscores).
+	cassetteReplayClientID = "REDACTED0SECRET1"
+
+	// cassettePlaceholderEndpoint is the replay placeholder for the Confluent cluster
+	// bootstrap endpoint.  Must match confluentClusterEndpointPattern
+	// (pkc-[a-z0-9]+\.[a-z0-9.-]+\.confluent\.cloud…) — lowercase only after pkc-.
+	cassettePlaceholderEndpoint = "https://pkc-redacted0.example.confluent.cloud:443"
+
+	// cassettePlaceholderLKC is the replay placeholder for the Confluent logical
+	// cluster ID (lkc-…).  Must match confluentLKCPattern (lkc-[a-z0-9]+).
+	cassettePlaceholderLKC = "lkc-redacted"
+)
+
 // Test_confluent_Valid replays the cassette for a valid Confluent API-key pair
 // and asserts StatusValid. Skips when the cassette has not been recorded yet.
 func Test_confluent_Valid(t *testing.T) {
@@ -90,9 +110,8 @@ func runConfluentCassetteCase(t *testing.T, cassette string, want types.Validati
 		// extract it from Snippet.Before — vcrtest.Placeholder ("REDACTED_SECRET")
 		// is 15 chars with underscores and lowercase letters, which the regex
 		// \b-bounded pattern cannot match.
-		const replayClientID = "REDACTED0SECRET1" // 16 chars, all [A-Z0-9]
 		secretVal = []byte(vcrtest.Placeholder)
-		clientIDVal = []byte(replayClientID)
+		clientIDVal = []byte(cassetteReplayClientID)
 	}
 
 	// Build the Match. Snippet.Before carries the client_id so that
@@ -159,16 +178,6 @@ func Test_confluent_cluster_Invalid(t *testing.T) {
 func runConfluentClusterCassetteCase(t *testing.T, cassette string, want types.ValidationStatus) {
 	t.Helper()
 
-	// Fixed replay placeholders: both must match the extraction regexes.
-	// - confluentClusterEndpointPattern: https?://pkc-[a-z0-9]+\.[a-z0-9.-]+\.confluent\.cloud(?::\d+)?
-	//   NOTE: pkc- segment is [a-z0-9] only; "pkc-redacted0" matches, "pkc-REDACTED0" does NOT.
-	// - confluentLKCPattern:              lkc-[a-z0-9]+
-	const (
-		placeholderEndpoint = "https://pkc-redacted0.example.confluent.cloud:443"
-		placeholderLKC      = "lkc-redacted"
-		replayClientID      = "REDACTED0SECRET1" // 16 chars, all [A-Z0-9]
-	)
-
 	isRecording := os.Getenv("RECORD") == "1"
 	cassetteFile := cassette + ".yaml"
 	if !isRecording {
@@ -213,19 +222,18 @@ func runConfluentClusterCassetteCase(t *testing.T, cassette string, want types.V
 		// account-identifying data is committed to testdata/.
 		clientOpts = append(clientOpts,
 			vcrtest.WithExtraRedactions(
-				[2]string{clusterEndpoint, placeholderEndpoint},
-				[2]string{lkcID, placeholderLKC},
+				[2]string{clusterEndpoint, cassettePlaceholderEndpoint},
+				[2]string{lkcID, cassettePlaceholderLKC},
 			),
 		)
 	} else {
 		// In replay mode use the fixed placeholder credentials. The cassette
 		// was written with the placeholder cluster endpoint and lkc-id, so the
 		// VCR transport matches against them directly.
-		const replayClientIDLocal = replayClientID
 		secretVal = []byte(vcrtest.Placeholder)
-		clientIDVal = []byte(replayClientIDLocal)
-		clusterEndpoint = placeholderEndpoint
-		lkcID = placeholderLKC
+		clientIDVal = []byte(cassetteReplayClientID)
+		clusterEndpoint = cassettePlaceholderEndpoint
+		lkcID = cassettePlaceholderLKC
 	}
 
 	// Build the Match with cluster context in Snippet.Before.
@@ -269,26 +277,20 @@ func runConfluentClusterCassetteCase(t *testing.T, cassette string, want types.V
 // This is the cluster-key analog of the replayClientID-vs-confluentClientIDPatterns
 // check introduced for the cloud cassette tests (C-1 reviewer finding).
 func TestClusterReplayPlaceholders_MatchExtractionRegexes(t *testing.T) {
-	// These constants MUST be kept in sync with runConfluentClusterCassetteCase.
-	const (
-		placeholderEndpoint = "https://pkc-redacted0.example.confluent.cloud:443"
-		placeholderLKC      = "lkc-redacted"
-	)
-
-	// confluentClusterEndpointPattern must match placeholderEndpoint so that
+	// confluentClusterEndpointPattern must match cassettePlaceholderEndpoint so that
 	// extractClusterContext can extract it from the snippet during replay.
 	assert.True(t,
-		confluentClusterEndpointPattern.MatchString(placeholderEndpoint),
-		"placeholderEndpoint %q must match confluentClusterEndpointPattern; "+
+		confluentClusterEndpointPattern.MatchString(cassettePlaceholderEndpoint),
+		"cassettePlaceholderEndpoint %q must match confluentClusterEndpointPattern; "+
 			"if it does not, replay falls back to the cloud path and the cassette never matches",
-		placeholderEndpoint,
+		cassettePlaceholderEndpoint,
 	)
 
-	// confluentLKCPattern must match placeholderLKC for the same reason.
+	// confluentLKCPattern must match cassettePlaceholderLKC for the same reason.
 	assert.True(t,
-		confluentLKCPattern.MatchString(placeholderLKC),
-		"placeholderLKC %q must match confluentLKCPattern; "+
+		confluentLKCPattern.MatchString(cassettePlaceholderLKC),
+		"cassettePlaceholderLKC %q must match confluentLKCPattern; "+
 			"if it does not, extractClusterContext returns empty lkcID and replay falls back to cloud path",
-		placeholderLKC,
+		cassettePlaceholderLKC,
 	)
 }
