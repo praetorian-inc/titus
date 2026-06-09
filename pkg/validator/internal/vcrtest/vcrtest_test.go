@@ -413,6 +413,7 @@ func TestMinimizeInteraction_StripsHeadersPreservesEssentials(t *testing.T) {
 		Request: cassette.Request{
 			Method:  "GET",
 			URL:     "https://huggingface.co/api/whoami-v2",
+			Host:    "huggingface.co",
 			Headers: http.Header{"Authorization": []string{"Bearer " + Placeholder}},
 		},
 		Response: cassette.Response{
@@ -443,6 +444,10 @@ func TestMinimizeInteraction_StripsHeadersPreservesEssentials(t *testing.T) {
 	// ContentLength normalized to match actual body length.
 	assert.Equal(t, int64(len(i.Request.Body)), i.Request.ContentLength, "request ContentLength must equal len(body)")
 	assert.Equal(t, int64(len(i.Response.Body)), i.Response.ContentLength, "response ContentLength must equal len(body)")
+
+	// Host field blanked: go-vcr stores request.host separately from request.url;
+	// blanking prevents account-identifying cluster hostnames leaking into cassettes.
+	assert.Empty(t, i.Request.Host, "request Host must be blanked by minimizeInteraction")
 }
 
 // ---- Fix 5: Context-aware header scanning + capture-group redaction ----
@@ -514,4 +519,120 @@ func TestRedactHook_RecordMode_SelfContainedTokenStillWorks(t *testing.T) {
 		"self-contained token must be redacted from Authorization header")
 	assert.Contains(t, i.Request.Headers.Get("Authorization"), Placeholder,
 		"Placeholder must appear after redaction of self-contained token")
+}
+
+// ---- WithExtraRedactions option ----
+
+// TestWithExtraRedactions_ReplacesOldWithNew verifies that extra (old, new) pairs
+// provided via WithExtraRedactions are applied during record mode, replacing each
+// old value with the corresponding new placeholder across all cassette fields.
+func TestWithExtraRedactions_ReplacesOldWithNew(t *testing.T) {
+	// Build a hook with one extra redaction pair: replace "realhost.confluent.cloud"
+	// with "pkc-redacted0.example.confluent.cloud".
+	const realHost = "pkc-abc123.us-east4.gcp.confluent.cloud"
+	const fakeHost = "pkc-redacted0.example.confluent.cloud"
+
+	hook := redactHookWithExtras(true, false, [][2]string{{realHost, fakeHost}})
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method:  "GET",
+			URL:     "https://" + realHost + "/kafka/v3/clusters/lkc-nvodzyv/topics",
+			Headers: make(http.Header),
+		},
+		Response: cassette.Response{
+			Code:    200,
+			Body:    "",
+			Headers: make(http.Header),
+		},
+	}
+	// Satisfy the dogfood assertion by putting a detectable secret in the header.
+	i.Request.Headers.Set("Authorization", "Basic AKIADEADBEEFDEADBEEF")
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.NotContains(t, i.Request.URL, realHost,
+		"real host must be replaced in the URL")
+	assert.Contains(t, i.Request.URL, fakeHost,
+		"fake placeholder host must appear in the URL")
+}
+
+// TestWithExtraRedactions_ReplayModeIsNoop verifies that extra redactions are
+// not applied during replay mode (no live secrets to scrub).
+func TestWithExtraRedactions_ReplayModeIsNoop(t *testing.T) {
+	const realHost = "pkc-abc123.us-east4.gcp.confluent.cloud"
+	const fakeHost = "pkc-redacted0.example.confluent.cloud"
+
+	hook := redactHookWithExtras(false, false, [][2]string{{realHost, fakeHost}})
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method: "GET",
+			URL:    "https://" + realHost + "/kafka/v3/clusters/lkc-nvodzyv/topics",
+		},
+		Response: cassette.Response{},
+	}
+	origURL := i.Request.URL
+
+	err := hook(i)
+
+	require.NoError(t, err)
+	assert.Equal(t, origURL, i.Request.URL,
+		"replay mode must not modify the URL even with extra redaction pairs")
+}
+
+// TestWithExtraRedactions_PlaceholderSurvivesSecretRedaction verifies that when
+// an extras newVal contains a substring that is also a detected secret, the
+// placeholder survives intact.
+//
+// Ordering requirement: scanner-based redaction (allSecrets) must run BEFORE
+// extras substitution. If extras runs first, the substituted newVal is in the
+// URL when allSecrets processes it, and any secret substring inside newVal gets
+// re-scrubbed to Placeholder — corrupting the placeholder string.
+//
+// This is a RED-GREEN regression test:
+//   - OLD order (extras then allSecrets): URL becomes
+//     "https://pkc-REDACTED_SECRET.example.confluent.cloud/..." (corrupted)
+//   - NEW order (allSecrets then extras): URL becomes
+//     "https://pkc-AKIADEADBEEFDEADBEEF.example.confluent.cloud/..." (intact)
+func TestWithExtraRedactions_PlaceholderSurvivesSecretRedaction(t *testing.T) {
+	// realHost is the account-identifying hostname that will be swapped out.
+	const realHost = "pkc-abc123.us-east4.gcp.confluent.cloud"
+	// newHost is the fixed replay placeholder. It deliberately contains the
+	// detectable fake secret (AKIADEADBEEFDEADBEEF, matches np.aws.1) embedded in
+	// the subdomain. With the old (wrong) ordering, allSecrets would scrub it to
+	// Placeholder after extras put it in the URL; with the correct ordering, extras
+	// runs after allSecrets so it is never touched by the scanner pass.
+	const newHost = "pkc-AKIADEADBEEFDEADBEEF.example.confluent.cloud"
+
+	hook := redactHookWithExtras(true, false, [][2]string{{realHost, newHost}})
+
+	i := &cassette.Interaction{
+		Request: cassette.Request{
+			Method:  "GET",
+			URL:     "https://" + realHost + "/kafka/v3/clusters/lkc-nvodzyv/topics",
+			Headers: make(http.Header),
+		},
+		Response: cassette.Response{
+			Code:    200,
+			Body:    "",
+			Headers: make(http.Header),
+		},
+	}
+	// Put the same fake secret in the Authorization header to satisfy the dogfood
+	// assertion AND to seed allSecrets with the value that (with the old ordering)
+	// would corrupt the placeholder after extras substitutes it into the URL.
+	i.Request.Headers.Set("Authorization", "Basic AKIADEADBEEFDEADBEEF")
+
+	err := hook(i)
+
+	require.NoError(t, err, "hook must not fail the dogfood assertion")
+	// The full newHost must appear in the URL intact — no substring of it may have
+	// been replaced by Placeholder. With the old (extras-first) ordering this
+	// assertion fails because AKIADEADBEEFDEADBEEF inside newHost becomes
+	// REDACTED_SECRET after the allSecrets pass.
+	assert.Contains(t, i.Request.URL, newHost,
+		"placeholder newHost must appear intact in the URL; "+
+			"if it is corrupted, extras is running before allSecrets (wrong order)")
 }

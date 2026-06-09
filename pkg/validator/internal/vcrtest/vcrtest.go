@@ -56,6 +56,14 @@ type options struct {
 	// matcher overrides the default secretInsensitiveMatcher for the cassette.
 	// Useful for the rare validator that routes by query string rather than path.
 	matcher cassette.MatcherFunc
+
+	// extraRedactions holds (old, new) string pairs applied during record mode
+	// after all scanner-based redactions. Each old value is replaced with its
+	// corresponding new value across every cassette field. Use this for
+	// account-identifying (but non-secret) values like cluster endpoint hostnames
+	// or cluster IDs that appear in the request URL and must not be committed to
+	// testdata/ as-is.
+	extraRedactions [][2]string
 }
 
 // Option is a functional option for Client.
@@ -83,6 +91,25 @@ func WithResponseBody() Option {
 func WithMatcher(fn cassette.MatcherFunc) Option {
 	return func(o *options) {
 		o.matcher = fn
+	}
+}
+
+// WithExtraRedactions registers additional (old, new) string replacement pairs
+// applied during record mode after scanner-based redaction. Each pair replaces
+// every occurrence of old with new across the request URL, request body,
+// response body (when kept), and all header values before the cassette is
+// written to disk.
+//
+// Use this for account-identifying values that are NOT secrets but should not
+// be committed to testdata/ in plain form — for example, a Kafka cluster
+// endpoint hostname (pkc-xxx.confluent.cloud) or a cluster ID (lkc-yyy).
+// Unlike the scanner-based redaction, these replacements are literal and
+// deterministic: the caller controls both the value to scrub and the fixed
+// placeholder to write instead, ensuring the cassette matcher can match the
+// recorded cassette against replay requests that use the same placeholders.
+func WithExtraRedactions(pairs ...[2]string) Option {
+	return func(o *options) {
+		o.extraRedactions = append(o.extraRedactions, pairs...)
 	}
 }
 
@@ -115,7 +142,7 @@ func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 		cassettePath,
 		recorder.WithMode(mode),
 		recorder.WithSkipRequestLatency(true),
-		recorder.WithHook(redactHook(isRecording, o.keepResponseBody), recorder.AfterCaptureHook),
+		recorder.WithHook(redactHookWithExtras(isRecording, o.keepResponseBody, o.extraRedactions), recorder.AfterCaptureHook),
 		recorder.WithHook(minimizeInteraction, recorder.BeforeSaveHook),
 		recorder.WithMatcher(matcherFn),
 	)
@@ -133,6 +160,12 @@ func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 }
 
 // redactHook returns an AfterCaptureHook that is mode-aware.
+// It delegates to redactHookWithExtras with an empty extra-redaction set.
+func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
+	return redactHookWithExtras(isRecording, keepResponseBody, nil)
+}
+
+// redactHookWithExtras returns an AfterCaptureHook that is mode-aware.
 //
 // In replay mode the hook is a no-op: no live network call was made so there
 // is no live secret to redact, and mutating cassette interactions during replay
@@ -154,7 +187,7 @@ func Client(t *testing.T, cassettePath string, opts ...Option) *http.Client {
 // the raw value and its URL-encoded form AFTER the dogfood assertion has already
 // passed. It does not satisfy or bypass the assertion; it is an extra safety net
 // for service-specific token formats the scanner's ruleset may not cover.
-func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
+func redactHookWithExtras(isRecording bool, keepResponseBody bool, extras [][2]string) recorder.HookFunc {
 	return func(i *cassette.Interaction) error {
 		if !isRecording {
 			// Replay mode: no-op.
@@ -303,6 +336,33 @@ func redactHook(isRecording bool, keepResponseBody bool) recorder.HookFunc {
 			}
 		}
 
+		// Apply extra (old, new) replacements: account-identifying values such as
+		// cluster endpoint hostnames or cluster IDs that are not secrets but must
+		// not be committed to testdata/ in plain form. These replacements happen
+		// AFTER scanner-based redaction and are applied directly to all kept fields,
+		// using the caller-supplied replacement string (not Placeholder).
+		for _, pair := range extras {
+			old, newVal := pair[0], pair[1]
+			if old == "" {
+				continue
+			}
+			i.Request.URL = strings.ReplaceAll(i.Request.URL, old, newVal)
+			i.Request.Body = strings.ReplaceAll(i.Request.Body, old, newVal)
+			if keepResponseBody {
+				i.Response.Body = strings.ReplaceAll(i.Response.Body, old, newVal)
+			}
+			for h, vals := range i.Request.Headers {
+				for idx, v := range vals {
+					i.Request.Headers[h][idx] = strings.ReplaceAll(v, old, newVal)
+				}
+			}
+			for h, vals := range i.Response.Headers {
+				for idx, v := range vals {
+					i.Response.Headers[h][idx] = strings.ReplaceAll(v, old, newVal)
+				}
+			}
+		}
+
 		return nil
 	}
 }
@@ -325,6 +385,11 @@ func minimizeInteraction(i *cassette.Interaction) error {
 	i.Response.Duration = 0
 	i.Request.ContentLength = int64(len(i.Request.Body))
 	i.Response.ContentLength = int64(len(i.Response.Body))
+	// Blank the host field: go-vcr persists request.host separately from
+	// request.url. The field is redundant for matching (secretInsensitiveMatcher
+	// derives the host from url.Parse(i.URL).Host, not from i.Request.Host) and
+	// can carry account-identifying cluster hostnames that must not be committed.
+	i.Request.Host = ""
 	return nil
 }
 

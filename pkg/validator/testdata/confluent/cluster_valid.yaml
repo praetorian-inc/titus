@@ -1,0 +1,25 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: ""
+        url: https://pkc-redacted0.example.confluent.cloud:443/kafka/v3/clusters/lkc-redacted/topics
+        method: GET
+      response:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        transfer_encoding:
+            - chunked
+        content_length: 0
+        uncompressed: true
+        body: ""
+        headers: {}
+        status: 200 OK
+        code: 200
+        duration: 0s

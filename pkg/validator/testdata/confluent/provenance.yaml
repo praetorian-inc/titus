@@ -1,0 +1,56 @@
+# Cassette provenance for Confluent Cloud API-key validator (LAB-4050)
+#
+# Recorded both validation paths. To re-record:
+#   Cloud/Global key:
+#     SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> RECORD=1 \
+#         go test ./pkg/validator/ -run Test_confluent_Valid
+#   Cluster key:
+#     SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> \
+#       CONFLUENT_CLUSTER_ENDPOINT=<https://pkc-...confluent.cloud:443> \
+#       CONFLUENT_LKC_ID=<lkc-...> RECORD=1 \
+#         go test ./pkg/validator/ -run Test_confluent_cluster_Valid
+# Revoke keys at https://confluent.cloud after recording.
+
+service: confluent
+ticket: LAB-4050
+captured: 2026-06-09
+account_type: free-trial   # Confluent Cloud free trial
+key_revoked: true          # both the cluster key and the global key were revoked after recording
+
+# TWO validation paths (Confluent key types are indistinguishable from the secret;
+# the validator selects the path from co-located snippet context).
+cloud_path:
+  used_by: Cloud / Global API keys
+  endpoint: https://api.confluent.cloud/iam/v2/api-keys
+  cassettes: {valid: 200, invalid: 401}
+  recorded_with: a throwaway Global API key (revoked)
+cluster_path:
+  used_by: Cluster (Kafka) API keys
+  endpoint: "{pkc-endpoint}/kafka/v3/clusters/{lkc-id}/topics"
+  cassettes: {cluster_valid: 200, cluster_invalid: 401}
+  recorded_with: a throwaway Cluster API key + its REST endpoint + lkc id (all revoked/redacted)
+
+status_mapping:
+  "200": Valid    # authenticated
+  "403": Valid    # authenticated; key is LIVE even if not authorized for the resource
+  "401": Invalid  # authentication failed (key not active)
+  other: Undetermined
+
+notes: |
+  The validator (pkg/validator/confluent.go) is a Go validator covering
+  kingfisher.confluent.1/2/3. It extracts:
+    - secret from NamedGroups["secret"] (confluent.2) or Groups[0] (confluent.3 cflt token)
+    - client_id (key id, [A-Z0-9]{16}) from snippet context (keyword-proximity / client_id= / api_key=)
+    - cluster endpoint (pkc-...confluent.cloud) + lkc id (lkc-...) from snippet, when present
+  Path selection: if a pkc endpoint AND an lkc id are present in the snippet -> cluster path;
+  otherwise -> cloud control-plane path. Missing secret or client_id -> Undetermined (graceful).
+
+  Secret/credential hygiene (verified leak-free, raw + base64):
+    - Authorization header (Basic base64(client_id:secret)) is stripped by minimizeInteraction.
+    - request.host is blanked by minimizeInteraction (the matcher uses the URL host, not host:),
+      so account-identifying cluster hostnames are never committed.
+    - For the cluster path, the real cluster endpoint + lkc id are redacted to fixed placeholders
+      (pkc-redacted0.example.confluent.cloud / lkc-redacted) via vcrtest.WithExtraRedactions; the
+      placeholders match the production extraction regexes (guarded by a unit test) so replay works.
+    - Response body elided (status/body discriminates without storing PII).
+    - The high-entropy Basic blob satisfies the record-time dogfood assertion.
