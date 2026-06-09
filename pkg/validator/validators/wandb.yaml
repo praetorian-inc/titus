@@ -14,5 +14,11 @@ validators:
         - {name: Content-Type, value: application/json}
       body: '{"query":"query { viewer { id } }"}'
       success_codes: [200]
-      success_body_contains: '"id"'
+      # wandb returns HTTP 200 for BOTH valid and invalid keys; the body is the
+      # discriminator. Require a non-null authenticated viewer OBJECT ('"viewer":{')
+      # rather than the bare substring '"id"', which could theoretically appear in
+      # an error/trace field of a 200 response. Biases against FALSE POSITIVES.
+      #   Valid:   {"data":{"viewer":{"id":...}}}  -> contains '"viewer":{'
+      #   Invalid: {"data":{"viewer":null}}        -> does NOT -> StatusInvalid
+      success_body_contains: '"viewer":{'
       failure_codes: [401, 403]
