@@ -1,43 +1,56 @@
 # Cassette provenance for Confluent Cloud API-key validator (LAB-4050)
 #
-# TODO: Fill in all fields at record time.
-# Run:
-#   SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> RECORD=1 \
-#       go test ./pkg/validator/ -run Test_confluent_
-# Then revoke the API key at https://confluent.cloud/settings/api-keys
+# Recorded both validation paths. To re-record:
+#   Cloud/Global key:
+#     SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> RECORD=1 \
+#         go test ./pkg/validator/ -run Test_confluent_Valid
+#   Cluster key:
+#     SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> \
+#       CONFLUENT_CLUSTER_ENDPOINT=<https://pkc-...confluent.cloud:443> \
+#       CONFLUENT_LKC_ID=<lkc-...> RECORD=1 \
+#         go test ./pkg/validator/ -run Test_confluent_cluster_Valid
+# Revoke keys at https://confluent.cloud after recording.
 
 service: confluent
 ticket: LAB-4050
-captured: TBD          # ISO date when cassette was recorded (YYYY-MM-DD)
-account_type: free-trial  # Confluent Cloud free trial account
-key_revoked: TBD       # MUST be set to true before committing
-valid_response: {status: 200, discriminator: "HTTP status only (response body elided)"}
-invalid_response: {status: 401}  # or 403 - confirm at record time
+captured: 2026-06-09
+account_type: free-trial   # Confluent Cloud free trial
+key_revoked: true          # both the cluster key and the global key were revoked after recording
+
+# TWO validation paths (Confluent key types are indistinguishable from the secret;
+# the validator selects the path from co-located snippet context).
+cloud_path:
+  used_by: Cloud / Global API keys
+  endpoint: https://api.confluent.cloud/iam/v2/api-keys
+  cassettes: {valid: 200, invalid: 401}
+  recorded_with: a throwaway Global API key (revoked)
+cluster_path:
+  used_by: Cluster (Kafka) API keys
+  endpoint: "{pkc-endpoint}/kafka/v3/clusters/{lkc-id}/topics"
+  cassettes: {cluster_valid: 200, cluster_invalid: 401}
+  recorded_with: a throwaway Cluster API key + its REST endpoint + lkc id (all revoked/redacted)
+
+status_mapping:
+  "200": Valid    # authenticated
+  "403": Valid    # authenticated; key is LIVE even if not authorized for the resource
+  "401": Invalid  # authentication failed (key not active)
+  other: Undetermined
+
 notes: |
-  Validation method: Basic auth base64(client_id:secret) against the
-  fixed endpoint https://api.confluent.cloud/iam/v2/api-keys (list endpoint;
-  returns 200 for any valid key pair regardless of key-specific permissions).
+  The validator (pkg/validator/confluent.go) is a Go validator covering
+  kingfisher.confluent.1/2/3. It extracts:
+    - secret from NamedGroups["secret"] (confluent.2) or Groups[0] (confluent.3 cflt token)
+    - client_id (key id, [A-Z0-9]{16}) from snippet context (keyword-proximity / client_id= / api_key=)
+    - cluster endpoint (pkc-...confluent.cloud) + lkc id (lkc-...) from snippet, when present
+  Path selection: if a pkc endpoint AND an lkc id are present in the snippet -> cluster path;
+  otherwise -> cloud control-plane path. Missing secret or client_id -> Undetermined (graceful).
 
-  The validator extracts:
-    - secret from NamedGroups["secret"] (kingfisher.confluent.2) or
-      Groups[0] (kingfisher.confluent.3 cflt-prefixed token)
-    - client_id from snippet context via keyword-proximity regex
-      (confluent/ccloud/cpdev/kafka near [A-Z0-9]{16}) or explicit label
-      (client_id=/api_key= followed by [A-Z0-9]{16})
-
-  kingfisher.confluent.1 (client_id only, no secret) always returns
-  Undetermined — there is nothing to validate without the secret.
-
-  cassette matching: the URL is FIXED (no client_id in path), so the
-  secretInsensitiveMatcher (method + host + path + query) trivially matches
-  on replay. The Authorization header containing base64(client_id:secret)
-  is stripped by the minimization hook (BeforeSaveHook) before the cassette
-  is written to disk; no credential reaches testdata/.
-
-  Response body is elided (no WithResponseBody) — status code alone
-  discriminates valid/invalid; no account PII is stored.
-
-  Secret is redacted to REDACTED_SECRET in both cassettes via the
-  scanner-driven redaction hook (vcrtest AfterCaptureHook). The
-  Basic auth blob is high-entropy and should be detected by the generic
-  scanner rule, satisfying the dogfood assertion.
+  Secret/credential hygiene (verified leak-free, raw + base64):
+    - Authorization header (Basic base64(client_id:secret)) is stripped by minimizeInteraction.
+    - request.host is blanked by minimizeInteraction (the matcher uses the URL host, not host:),
+      so account-identifying cluster hostnames are never committed.
+    - For the cluster path, the real cluster endpoint + lkc id are redacted to fixed placeholders
+      (pkc-redacted0.example.confluent.cloud / lkc-redacted) via vcrtest.WithExtraRedactions; the
+      placeholders match the production extraction regexes (guarded by a unit test) so replay works.
+    - Response body elided (status/body discriminates without storing PII).
+    - The high-entropy Basic blob satisfies the record-time dogfood assertion.
