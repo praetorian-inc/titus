@@ -1,0 +1,24 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 35
+        host: api.wandb.ai
+        body: '{"query":"query { viewer { id } }"}'
+        url: https://api.wandb.ai/graphql
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 24
+        uncompressed: true
+        body: '{"data":{"viewer":null}}'
+        headers: {}
+        status: 200 OK
+        code: 200
+        duration: 0s

@@ -7,9 +7,9 @@
 
 service: wandb
 ticket: LAB-4065
-captured: TBD
+captured: 2026-06-08
 account_type: free
-key_revoked: TBD
+key_revoked: true
 valid_response: {status: 200, discriminator: "HTTP 200 + body contains '\"id\"' (viewer non-null)"}
 invalid_response: {status: 200, discriminator: "HTTP 200 + body is '{\"data\":{\"viewer\":null}}' (viewer null)"}
 validation: >
