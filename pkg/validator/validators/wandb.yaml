@@ -1,0 +1,24 @@
+validators:
+  - name: wandb-api-key
+    rule_ids:
+      - kingfisher.wandb.1
+      - titus.wandb.1
+    http:
+      method: POST
+      url: "https://api.wandb.ai/graphql"
+      auth:
+        type: basic
+        username: api
+        secret_group: "1"
+      headers:
+        - {name: Content-Type, value: application/json}
+      body: '{"query":"query { viewer { id } }"}'
+      success_codes: [200]
+      # wandb returns HTTP 200 for BOTH valid and invalid keys; the body is the
+      # discriminator. Require a non-null authenticated viewer OBJECT ('"viewer":{')
+      # rather than the bare substring '"id"', which could theoretically appear in
+      # an error/trace field of a 200 response. Biases against FALSE POSITIVES.
+      #   Valid:   {"data":{"viewer":{"id":...}}}  -> contains '"viewer":{'
+      #   Invalid: {"data":{"viewer":null}}        -> does NOT -> StatusInvalid
+      success_body_contains: '"viewer":{'
+      failure_codes: [401, 403]

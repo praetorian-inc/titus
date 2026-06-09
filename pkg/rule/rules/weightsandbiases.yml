@@ -36,3 +36,37 @@ rules:
             - type: WordMatch
               words:
                 - '"username"'
+
+  - name: Weights and Biases API Key (v1)
+    id: titus.wandb.1
+    base_score: 55
+    pattern: |
+      (?xi)
+      \b
+      (
+        wandb_v1_[A-Za-z0-9_]{40,200}
+      )
+      \b
+    pattern_requirements:
+      min_digits: 1
+    confidence: high
+    min_entropy: 4.0
+    examples:
+      - "export WANDB_API_KEY=wandb_v1_ABC123def456GHI789jkl012MNO345pqr678STU901vwx234YZa567bcd890ef0"
+      - "wandb login wandb_v1_XYZ987wvu654TSR321qpo098NML765kji432HGF109edc876BAZ543yxw210vut"
+    validation:
+      type: Http
+      content:
+        request:
+          method: POST
+          url: "https://api.wandb.ai/graphql"
+          headers:
+            Authorization: "Basic {{ 'api:' | append: TOKEN | b64enc }}"
+            Content-Type: "application/json"
+          body: |
+            {"query":"query { viewer { id } }"}
+          response_matcher:
+            - report_response: true
+            - type: JsonValid
+            - type: WordMatch
+              words: ['"id"']
