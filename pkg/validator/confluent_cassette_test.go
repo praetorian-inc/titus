@@ -146,7 +146,7 @@ func Test_confluent_cluster_Invalid(t *testing.T) {
 // The vcrtest redaction hook scrubs the real secret to vcrtest.Placeholder.
 // WithExtraRedactions replaces the real cluster endpoint and lkc-id with fixed
 // replay-safe placeholders so no account-identifying data is committed:
-//   - cluster endpoint -> "https://pkc-REDACTED0.example.confluent.cloud:443"
+//   - cluster endpoint -> "https://pkc-redacted0.example.confluent.cloud:443"
 //   - lkc-id           -> "lkc-redacted"
 //
 // Both placeholders match the extraction regexes so replay works correctly.
@@ -161,9 +161,10 @@ func runConfluentClusterCassetteCase(t *testing.T, cassette string, want types.V
 
 	// Fixed replay placeholders: both must match the extraction regexes.
 	// - confluentClusterEndpointPattern: https?://pkc-[a-z0-9]+\.[a-z0-9.-]+\.confluent\.cloud(?::\d+)?
+	//   NOTE: pkc- segment is [a-z0-9] only; "pkc-redacted0" matches, "pkc-REDACTED0" does NOT.
 	// - confluentLKCPattern:              lkc-[a-z0-9]+
 	const (
-		placeholderEndpoint = "https://pkc-REDACTED0.example.confluent.cloud:443"
+		placeholderEndpoint = "https://pkc-redacted0.example.confluent.cloud:443"
 		placeholderLKC      = "lkc-redacted"
 		replayClientID      = "REDACTED0SECRET1" // 16 chars, all [A-Z0-9]
 	)
@@ -252,4 +253,42 @@ func runConfluentClusterCassetteCase(t *testing.T, cassette string, want types.V
 	require.NoError(t, err, "Validate must not return a non-nil error")
 	assert.Equal(t, want, result.Status,
 		"confluent cluster cassette %s: unexpected validation status", cassette)
+}
+
+// TestClusterReplayPlaceholders_MatchExtractionRegexes is a compile-time
+// contract guard: it asserts that the fixed replay placeholders used by the
+// cluster cassette tests are actually extractable by the production regex
+// patterns in confluent.go.
+//
+// Without this guard a placeholder typo (e.g. uppercase in a [a-z0-9] class)
+// silently breaks replay: extractClusterContext returns empty strings, Validate
+// falls back to the cloud IAM path, and the cassette matcher misses — but no
+// test failure surfaces until after a cassette has been recorded and the replay
+// is attempted.
+//
+// This is the cluster-key analog of the replayClientID-vs-confluentClientIDPatterns
+// check introduced for the cloud cassette tests (C-1 reviewer finding).
+func TestClusterReplayPlaceholders_MatchExtractionRegexes(t *testing.T) {
+	// These constants MUST be kept in sync with runConfluentClusterCassetteCase.
+	const (
+		placeholderEndpoint = "https://pkc-redacted0.example.confluent.cloud:443"
+		placeholderLKC      = "lkc-redacted"
+	)
+
+	// confluentClusterEndpointPattern must match placeholderEndpoint so that
+	// extractClusterContext can extract it from the snippet during replay.
+	assert.True(t,
+		confluentClusterEndpointPattern.MatchString(placeholderEndpoint),
+		"placeholderEndpoint %q must match confluentClusterEndpointPattern; "+
+			"if it does not, replay falls back to the cloud path and the cassette never matches",
+		placeholderEndpoint,
+	)
+
+	// confluentLKCPattern must match placeholderLKC for the same reason.
+	assert.True(t,
+		confluentLKCPattern.MatchString(placeholderLKC),
+		"placeholderLKC %q must match confluentLKCPattern; "+
+			"if it does not, extractClusterContext returns empty lkcID and replay falls back to cloud path",
+		placeholderLKC,
+	)
 }

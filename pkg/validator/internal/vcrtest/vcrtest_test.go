@@ -523,9 +523,9 @@ func TestRedactHook_RecordMode_SelfContainedTokenStillWorks(t *testing.T) {
 // old value with the corresponding new placeholder across all cassette fields.
 func TestWithExtraRedactions_ReplacesOldWithNew(t *testing.T) {
 	// Build a hook with one extra redaction pair: replace "realhost.confluent.cloud"
-	// with "pkc-REDACTED0.example.confluent.cloud".
+	// with "pkc-redacted0.example.confluent.cloud".
 	const realHost = "pkc-abc123.us-east4.gcp.confluent.cloud"
-	const fakeHost = "pkc-REDACTED0.example.confluent.cloud"
+	const fakeHost = "pkc-redacted0.example.confluent.cloud"
 
 	hook := redactHookWithExtras(true, false, [][2]string{{realHost, fakeHost}})
 
@@ -557,7 +557,7 @@ func TestWithExtraRedactions_ReplacesOldWithNew(t *testing.T) {
 // not applied during replay mode (no live secrets to scrub).
 func TestWithExtraRedactions_ReplayModeIsNoop(t *testing.T) {
 	const realHost = "pkc-abc123.us-east4.gcp.confluent.cloud"
-	const fakeHost = "pkc-REDACTED0.example.confluent.cloud"
+	const fakeHost = "pkc-redacted0.example.confluent.cloud"
 
 	hook := redactHookWithExtras(false, false, [][2]string{{realHost, fakeHost}})
 
