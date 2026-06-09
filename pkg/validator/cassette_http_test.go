@@ -36,6 +36,11 @@ import (
 // Skip behaviour: if not in RECORD mode and the cassette file (<cassette>.yaml)
 // does not exist, the test is skipped with a message showing the exact
 // one-command record invocation.
+//
+// Body-matching validators: if the YAML definition specifies success_body_contains
+// or failure_body_contains, vcrtest.WithResponseBody is automatically passed to
+// vcrtest.Client so the response body is retained in the cassette. Status-only
+// validators keep the default behaviour (response body elided).
 func runCassetteCase(t *testing.T, yamlFile, ruleID, cassette string, want types.ValidationStatus) {
 	t.Helper()
 
@@ -70,7 +75,13 @@ func runCassetteCase(t *testing.T, yamlFile, ruleID, cassette string, want types
 	require.NotNil(t, def, "no validator for rule %s found in %s", ruleID, yamlFile)
 
 	// Build the VCR-backed HTTP client.
-	client := vcrtest.Client(t, cassette)
+	// Body-matching validators (SuccessBodyContains or FailureBodyContains) need the
+	// response body retained in the cassette; status-only validators keep eliding it.
+	var clientOpts []vcrtest.Option
+	if def.HTTP.SuccessBodyContains != "" || def.HTTP.FailureBodyContains != "" {
+		clientOpts = append(clientOpts, vcrtest.WithResponseBody())
+	}
+	client := vcrtest.Client(t, cassette, clientOpts...)
 
 	// Determine the secret value fed into the Match.
 	//

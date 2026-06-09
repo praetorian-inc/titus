@@ -1,0 +1,18 @@
+validators:
+  - name: wandb-api-key
+    rule_ids:
+      - kingfisher.wandb.1
+      - titus.wandb.1
+    http:
+      method: POST
+      url: "https://api.wandb.ai/graphql"
+      auth:
+        type: basic
+        username: api
+        secret_group: "1"
+      headers:
+        - {name: Content-Type, value: application/json}
+      body: '{"query":"query { viewer { id } }"}'
+      success_codes: [200]
+      success_body_contains: '"id"'
+      failure_codes: [401, 403]

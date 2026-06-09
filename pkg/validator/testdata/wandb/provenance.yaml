@@ -1,0 +1,31 @@
+# Cassette provenance for wandb API key validator (LAB-4065)
+#
+# TODO: Fill in captured/key_revoked fields at record time.
+# Run:
+#   SECRET_PLAINTEXT=<wandb_v1_token> RECORD=1 make record-fixtures SVC=wandb
+# Then revoke the key at https://wandb.ai/settings
+
+service: wandb
+ticket: LAB-4065
+captured: TBD
+account_type: free
+key_revoked: TBD
+valid_response: {status: 200, discriminator: "HTTP 200 + body contains '\"id\"' (viewer non-null)"}
+invalid_response: {status: 200, discriminator: "HTTP 200 + body is '{\"data\":{\"viewer\":null}}' (viewer null)"}
+validation: >
+  POST /graphql, basic auth api:TOKEN; wandb returns HTTP 200 for both valid and
+  invalid keys. Discriminator is the response body: valid yields
+  {"data":{"viewer":{"id":"..."}}} (viewer non-null, body contains '"id"');
+  invalid yields {"data":{"viewer":null}} (viewer null, body does not contain '"id"').
+  success_body_contains: '"id"' maps 200+body-has-id to StatusValid,
+  200+no-id to StatusInvalid via evaluateResponse. Response body is RETAINED
+  (WithResponseBody auto-enabled by runCassetteCase for body-matching validators).
+  Query deliberately uses viewer { id } only (no email/username) to minimise PII
+  stored in cassette; id is an opaque numeric identifier, not personal data.
+notes: |
+  kingfisher.wandb.1 (legacy 40-hex format) shares this validator via rule_ids but
+  has no recorded cassette — no legacy key was available. Test_wandb_CanValidateBothRuleIDs
+  documents that the rule_id is wired in the YAML without requiring a live recording.
+  New-format keys (titus.wandb.1, wandb_v1_* prefix) are the primary target.
+  Secret redacted to REDACTED_SECRET in cassettes via scanner-driven redaction.
+  Cassettes minimized (headers stripped, duration zeroed) via vcrtest BeforeSaveHook.
