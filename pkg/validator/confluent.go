@@ -28,7 +28,7 @@ var confluentClientIDPatterns = []*regexp.Regexp{
 // Confluent API keys consist of two parts:
 //   - client_id: a 16-character uppercase alphanumeric key ID
 //   - secret:    a 64-character base64 string (confluent.2) or a cflt-prefixed
-//               token (confluent.3)
+//     token (confluent.3)
 //
 // Validation uses GET https://api.confluent.cloud/iam/v2/api-keys with
 // Authorization: Basic base64(client_id:secret). A 200 response means valid;

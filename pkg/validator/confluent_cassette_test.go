@@ -60,8 +60,8 @@ func runConfluentCassetteCase(t *testing.T, cassette string, want types.Validati
 	if !isRecording {
 		if _, err := os.Stat(cassetteFile); os.IsNotExist(err) {
 			t.Skipf(
-				"cassette not recorded yet; run:\n"+
-					"  SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> RECORD=1 "+
+				"cassette not recorded yet; run:\n" +
+					"  SECRET_PLAINTEXT=<secret> CONFLUENT_CLIENT_ID=<key-id> RECORD=1 " +
 					"go test ./pkg/validator/ -run Test_confluent_",
 			)
 		}
