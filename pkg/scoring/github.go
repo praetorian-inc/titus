@@ -122,7 +122,8 @@ func (c *githubOrgMemberCondition) Evaluate(ctx context.Context, m *types.Match)
 }
 
 // GitHubGoScorer returns a *Scorer targeting fine-grained GitHub PATs (np.github.7).
-// Classic PATs (np.github.1/2) remain handled by the YAML scorer.
+// Classic PATs (np.github.1) and OAuth tokens (np.github.2) are handled by
+// GitHubClassicPATGoScorer (github_classic.go).
 func GitHubGoScorer() *Scorer {
 	return &Scorer{
 		Name:    "github-fine-grained-scope",

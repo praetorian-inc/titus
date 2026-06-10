@@ -73,12 +73,15 @@ Titus ships three YAML scorer files in `pkg/scoring/scorers/`. These run for eve
 
 ### `github.yaml` — GitHub Token Scoring
 
-**Targets:** `np.github.1`, `np.github.2` (classic PATs), `np.github.7` (fine-grained PATs)
+**Targets:** `np.github.7` (fine-grained PATs)
 
 | Modifier | Priority | Kind | Condition | Effect |
 |----------|----------|------|-----------|--------|
-| Static: fine-grained PAT prefix | — | static | Token is a fine-grained PAT | `delta -10` — fine-grained PATs are structurally scoped at creation |
-| Dynamic: OAuth scope extraction | — | dynamic (`--score-scope`) | HTTP `GET /user` succeeds | Inspects `X-OAuth-Scopes` header; enterprise membership adds `delta +15`; broad scopes (`repo`, `admin`) raise score; limited scopes (`public_repo` only) lower score |
+| Static: fine-grained PAT prefix | 100 | static | Token is a fine-grained PAT | `delta -10` — fine-grained PATs are structurally scoped at creation |
+
+Classic PATs (`np.github.1`) and OAuth tokens (`np.github.2`) are scored by the
+`GitHubClassicPATGoScorer` Go scorer (see below), which parses the
+`X-OAuth-Scopes` header with exact-token matching.
 
 ### `slack.yaml` — Slack Token Scoring
 
@@ -133,6 +136,35 @@ For `^ASIA` keys, the scorer automatically extracts any accompanying session tok
 | Repository admin access | `GET /user/repos` (paginated, up to 500 repos) | `set_score 92` if admin access on any repo |
 | Repository write access | Same | `set_score 85` if write access on any repo (only if admin was not also found) |
 | Organization membership | `GET /user/orgs` | `delta +8` if token has org membership |
+
+### `GitHubClassicPATGoScorer` — GitHub Classic PATs & OAuth Tokens
+
+**Targets:** `np.github.1` (classic PAT), `np.github.2` (OAuth token)
+
+Classic PATs and OAuth tokens carry a comma-separated scope list in the
+`X-OAuth-Scopes` response header. Scopes are parsed with exact-token matching
+(not substring), so `public_repo` is never conflated with `repo`, nor
+`read:user` with `user`. All modifiers are dynamic (`--score-scope` required).
+
+| Modifier | Priority | Kind | Condition | Effect |
+|----------|----------|------|-----------|--------|
+| `token-revoked` | 80 | `set_score 5` | `GET /user` returns 401 | Expired or revoked token (dead credential) |
+| `read-user-only` | 78 | `set_score 10` | Scopes ⊆ `{read:user}` (non-empty) | Profile read only, no repo access |
+| `public-repo-only` | 76 | `set_score 25` | Scopes ⊆ `{public_repo}` (non-empty) | Read/write public repos only, no private data |
+| `delete-repo-scope` | 60 | `set_score 85` | `delete_repo` ∈ scopes | Destructive repository access |
+| `admin-org-scope` | 55 | `set_score 90` | `admin:org` ∈ scopes | Full organization control |
+| `site-admin` | 50 | `set_score 95` | `GET /user` `.site_admin == true` | GitHub instance admin (self-hosted Enterprise Server) |
+| `org-owner-3plus` | 20 | `delta +12` | ≥3 active org memberships with role `admin` (`GET /user/memberships/orgs`) | Broad blast radius across owned orgs |
+| `enterprise-plan` | 18 | `delta +15` | `GET /user` `.plan.name == enterprise` | Enterprise account — elevated organizational risk |
+
+`set_score` priorities are ordered so the most severe co-firing modifier applies
+last (the engine's last-fired `set_score` wins). The scope-only DOWN modifiers
+are mutually exclusive with the scope UP modifiers by construction; `site-admin`
+is orthogonal to scopes, and its lower priority lets it correctly override
+`admin:org`/`delete_repo` when all are present. `org-owner-3plus` is a `delta`
+and fires last, stacking on top of whichever `set_score` won — e.g. a
+`site-admin` token (95) that owns 3+ orgs reaches the 100 ceiling after the
+final clamp.
 
 ---
 
