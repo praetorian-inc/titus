@@ -9,7 +9,26 @@ import (
 
 	"github.com/google/go-github/v57/github"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"golang.org/x/sync/singleflight"
 )
+
+// userFetchReady classifies a GET /user outcome for the scope/site/enterprise
+// conditions: a 200 means evaluate the predicate; a 401 is a silent non-fire
+// (the token-revoked modifier scores that case, so emitting an error here would
+// just produce noise); any other failure (transport, timeout, 5xx) is surfaced
+// so the engine logs and tracks it instead of silently treating it as "absent".
+func userFetchReady(res githubUserResult, err error) (ready bool, retErr error) {
+	switch {
+	case res.status == 200:
+		return true, nil
+	case res.status == 401:
+		return false, nil
+	case err != nil:
+		return false, err
+	default:
+		return false, nil
+	}
+}
 
 // Classic PATs (np.github.1, Authorization: token) and OAuth tokens
 // (np.github.2) carry a comma-separated scope list in the X-OAuth-Scopes
@@ -66,22 +85,27 @@ func fetchGitHubUser(ctx context.Context, client *github.Client) (githubUserResu
 	return res, nil
 }
 
+// maxGitHubUserCacheEntries bounds the cache so a long-lived (library service)
+// engine reuse cannot grow it without limit. A single scan's working set of
+// distinct tokens sits well under this, so the wholesale drop rarely triggers.
+const maxGitHubUserCacheEntries = 4096
+
 // githubUserCache deduplicates GET /user across the multiple scope-based
 // conditions that score a single token. Modifiers for one finding evaluate
-// sequentially, but findings are scored concurrently, so access is mutex
-// guarded. Keys are SHA-256 hashes of the token, never the plaintext secret.
+// sequentially, but findings are scored concurrently; a singleflight.Group
+// coalesces concurrent fetches for the same token into one network call, and
+// the mutex guards the result map. Only terminal outcomes (a 200 or a 401
+// revocation) are cached — transient failures are left uncached so a later
+// finding retries. Keys are SHA-256 hashes of the token, never the plaintext
+// secret.
 type githubUserCache struct {
 	mu      sync.Mutex
-	entries map[string]githubUserCacheEntry
-}
-
-type githubUserCacheEntry struct {
-	res githubUserResult
-	err error
+	entries map[string]githubUserResult
+	group   singleflight.Group
 }
 
 func newGitHubUserCache() *githubUserCache {
-	return &githubUserCache{entries: make(map[string]githubUserCacheEntry)}
+	return &githubUserCache{entries: make(map[string]githubUserResult)}
 }
 
 // fetch returns the cached GET /user result for token, fetching once on miss.
@@ -94,18 +118,42 @@ func (c *githubUserCache) fetch(ctx context.Context, client *github.Client, toke
 	key := hashToken(token)
 
 	c.mu.Lock()
-	entry, ok := c.entries[key]
+	cached, ok := c.entries[key]
 	c.mu.Unlock()
 	if ok {
-		return entry.res, entry.err
+		return cached, nil
 	}
 
-	res, err := fetchGitHubUser(ctx, client)
+	v, err, _ := c.group.Do(key, func() (interface{}, error) {
+		// Another caller may have populated the cache while this one queued
+		// behind the singleflight lock.
+		c.mu.Lock()
+		entry, ok := c.entries[key]
+		c.mu.Unlock()
+		if ok {
+			return entry, nil
+		}
 
-	c.mu.Lock()
-	c.entries[key] = githubUserCacheEntry{res: res, err: err}
-	c.mu.Unlock()
+		res, ferr := fetchGitHubUser(ctx, client)
+		// Cache only terminal results: a successful 200 or a definitive 401
+		// revocation. A transient failure (5xx/network/timeout) is not cached,
+		// so later findings retry rather than inheriting a pinned error.
+		if ferr == nil || res.status == 401 {
+			c.store(key, res)
+		}
+		return res, ferr
+	})
+	res, _ := v.(githubUserResult)
 	return res, err
+}
+
+func (c *githubUserCache) store(key string, res githubUserResult) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.entries) >= maxGitHubUserCacheEntries {
+		c.entries = make(map[string]githubUserResult, maxGitHubUserCacheEntries)
+	}
+	c.entries[key] = res
 }
 
 func hashToken(token string) string {
@@ -129,8 +177,8 @@ func (c *githubScopePresentCondition) Evaluate(ctx context.Context, m *types.Mat
 		return false, nil
 	}
 	res, err := c.userCache.fetch(ctx, githubClientFor(ctx, c.clientFactory, token), token)
-	if err != nil || res.status != 200 {
-		return false, nil
+	if ready, ferr := userFetchReady(res, err); !ready {
+		return false, ferr
 	}
 	return res.scopes[c.scope], nil
 }
@@ -152,8 +200,8 @@ func (c *githubScopeOnlyCondition) Evaluate(ctx context.Context, m *types.Match)
 		return false, nil
 	}
 	res, err := c.userCache.fetch(ctx, githubClientFor(ctx, c.clientFactory, token), token)
-	if err != nil || res.status != 200 {
-		return false, nil
+	if ready, ferr := userFetchReady(res, err); !ready {
+		return false, ferr
 	}
 	if len(res.scopes) == 0 {
 		return false, nil
@@ -185,7 +233,10 @@ func (c *githubSiteAdminCondition) Evaluate(ctx context.Context, m *types.Match)
 		return false, nil
 	}
 	res, err := c.userCache.fetch(ctx, githubClientFor(ctx, c.clientFactory, token), token)
-	if err != nil || res.status != 200 || res.user == nil {
+	if ready, ferr := userFetchReady(res, err); !ready {
+		return false, ferr
+	}
+	if res.user == nil {
 		return false, nil
 	}
 	return res.user.GetSiteAdmin(), nil
@@ -235,7 +286,10 @@ func (c *githubEnterprisePlanCondition) Evaluate(ctx context.Context, m *types.M
 		return false, nil
 	}
 	res, err := c.userCache.fetch(ctx, githubClientFor(ctx, c.clientFactory, token), token)
-	if err != nil || res.status != 200 || res.user == nil {
+	if ready, ferr := userFetchReady(res, err); !ready {
+		return false, ferr
+	}
+	if res.user == nil {
 		return false, nil
 	}
 	return res.user.GetPlan().GetName() == "enterprise", nil
@@ -268,7 +322,13 @@ func (c *githubOrgOwnerCondition) Evaluate(ctx context.Context, m *types.Match) 
 	for page := 1; page <= maxPages; page++ {
 		memberships, resp, err := client.Organizations.ListOrgMemberships(ctx, opts)
 		if err != nil {
-			return false, nil
+			// A revoked/forbidden token (401/403) is a silent non-fire; surface
+			// genuine transport/5xx failures so the engine logs and tracks them
+			// rather than scoring them identically to "fewer than minCount orgs".
+			if resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 403) {
+				return false, nil
+			}
+			return false, err
 		}
 		for _, ms := range memberships {
 			if ms.GetState() == "active" && ms.GetRole() == "admin" {

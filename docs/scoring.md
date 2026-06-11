@@ -95,7 +95,7 @@ Classic PATs (`np.github.1`) and OAuth tokens (`np.github.2`) are scored by the
 
 ## Built-in Go Scorers
 
-Two Go scorers use the AWS and GitHub SDKs (not raw HTTP) for more sophisticated verification. Both run only when `--score-scope` is enabled. Source files: `pkg/scoring/aws.go`, `pkg/scoring/github.go`, registered in `pkg/scoring/go_scorers.go`.
+Go scorers use service SDKs (not raw HTTP) for more sophisticated verification and run only when `--score-scope` is enabled. The full set is registered in `pkg/scoring/go_scorers.go`; the AWS and GitHub scorers documented below live in `pkg/scoring/aws.go`, `pkg/scoring/github.go`, and `pkg/scoring/github_classic.go`.
 
 Go scorers take precedence over YAML scorers: if both a Go scorer and a YAML scorer target the same rule ID, the Go scorer wins.
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -293,6 +294,119 @@ func TestTokenRevoked_TransportErrorReturnsError(t *testing.T) {
 	fired, err := cond.Evaluate(context.Background(), ghMatch())
 	assert.Error(t, err, "transport failure must return an error")
 	assert.False(t, fired)
+}
+
+// ---- error surfacing (reviewer consensus: don't swallow transport/5xx) ----
+
+func serverStatus(t *testing.T, path string, status int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = fmt.Fprintln(w, `{"message":"err"}`)
+	}))
+}
+
+func TestScopePresent_SurfacesServerError(t *testing.T) {
+	srv := serverStatus(t, "/user", 500)
+	defer srv.Close()
+	cond := &githubScopePresentCondition{scope: "admin:org", clientFactory: testClientFactory(srv.URL)}
+	fired, err := cond.Evaluate(context.Background(), ghMatch())
+	assert.Error(t, err, "5xx must surface as an error, not silent non-fire")
+	assert.False(t, fired)
+}
+
+func TestScopePresent_SilentNonFireOn401(t *testing.T) {
+	srv := serverStatus(t, "/user", 401)
+	defer srv.Close()
+	cond := &githubScopePresentCondition{scope: "admin:org", clientFactory: testClientFactory(srv.URL)}
+	fired, err := cond.Evaluate(context.Background(), ghMatch())
+	require.NoError(t, err, "401 is handled by token-revoked; scope conditions must not emit noise")
+	assert.False(t, fired)
+}
+
+func TestOrgOwner_SurfacesServerError(t *testing.T) {
+	srv := serverStatus(t, "/user/memberships/orgs", 500)
+	defer srv.Close()
+	cond := &githubOrgOwnerCondition{minCount: 3, clientFactory: testClientFactory(srv.URL)}
+	fired, err := cond.Evaluate(context.Background(), ghMatch())
+	assert.Error(t, err, "5xx must surface as an error")
+	assert.False(t, fired)
+}
+
+func TestOrgOwner_SilentNonFireOn401(t *testing.T) {
+	srv := serverStatus(t, "/user/memberships/orgs", 401)
+	defer srv.Close()
+	cond := &githubOrgOwnerCondition{minCount: 3, clientFactory: testClientFactory(srv.URL)}
+	fired, err := cond.Evaluate(context.Background(), ghMatch())
+	require.NoError(t, err, "401 (revoked) must be a silent non-fire")
+	assert.False(t, fired)
+}
+
+// ---- cache: do not pin transient failures; coalesce concurrent same-token ----
+
+func githubTestClient(serverURL string) *github.Client {
+	return testClientFactory(serverURL)("tok")
+}
+
+func TestUserCache_DoesNotCacheTransientFailure(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&hits, 1)
+		if n == 1 {
+			w.WriteHeader(500) // first call fails transiently
+			return
+		}
+		w.Header().Set("X-OAuth-Scopes", "repo")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintln(w, `{"login":"u"}`)
+	}))
+	defer srv.Close()
+
+	cache := newGitHubUserCache()
+	client := githubTestClient(srv.URL)
+
+	_, err1 := cache.fetch(context.Background(), client, "ghp_x")
+	require.Error(t, err1, "first fetch should fail")
+
+	res2, err2 := cache.fetch(context.Background(), client, "ghp_x")
+	require.NoError(t, err2, "transient failure must not be cached — retry should succeed")
+	assert.Equal(t, 200, res2.status)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&hits), "second fetch must hit the network again")
+}
+
+func TestUserCache_CoalescesConcurrentSameToken(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		time.Sleep(40 * time.Millisecond) // widen the in-flight window
+		w.Header().Set("X-OAuth-Scopes", "repo")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintln(w, `{"login":"u"}`)
+	}))
+	defer srv.Close()
+
+	cache := newGitHubUserCache()
+	client := githubTestClient(srv.URL)
+
+	const n = 25
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = cache.fetch(context.Background(), client, "ghp_same")
+		}()
+	}
+	close(start)
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&hits),
+		"concurrent fetches for the same token must coalesce into one network call")
 }
 
 // ---- enterprise plan (parity with retired YAML scorer) ----
