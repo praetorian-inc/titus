@@ -41,7 +41,7 @@ func TestAllBuiltinScorers_IncludesGoAndYAML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllBuiltinScorers: %v", err)
 	}
-	var goIdx, yamlIdx int = -1, -1
+	goIdx, yamlIdx := -1, -1
 	for i, s := range scorers {
 		switch s.Name {
 		case "github-classic-pat-scope": // Go scorer
