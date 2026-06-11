@@ -15,8 +15,8 @@ import (
 func gitlabMatch(host string) *types.Match {
 	return &types.Match{
 		RuleID: "np.gitlab.2",
-		NamedGroups: map[string][]byte{
-			"1": []byte("glpat-testTOKENforUNIT_test"),
+		Groups: [][]byte{
+			[]byte("glpat-testTOKENforUNIT_test"),
 		},
 		Snippet: types.Snippet{
 			Before:   []byte("GITLAB_HOST=" + host + "\n"),
@@ -60,8 +60,8 @@ func gitlabServer(t *testing.T, scopes []string, revoked bool, expiresAt string,
 
 func TestExtractGitLabToken_Present(t *testing.T) {
 	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"1": []byte("glpat-testTOKENforUNIT_test"),
+		Groups: [][]byte{
+			[]byte("glpat-testTOKENforUNIT_test"),
 		},
 	}
 	tok, ok := extractGitLabToken(m)
@@ -70,7 +70,7 @@ func TestExtractGitLabToken_Present(t *testing.T) {
 }
 
 func TestExtractGitLabToken_Missing(t *testing.T) {
-	m := &types.Match{NamedGroups: map[string][]byte{}}
+	m := &types.Match{Groups: [][]byte{}}
 	_, ok := extractGitLabToken(m)
 	assert.False(t, ok)
 }
@@ -83,7 +83,7 @@ func TestExtractGitLabHost_FromSnippet(t *testing.T) {
 
 func TestExtractGitLabHost_DefaultsToGitLabCom(t *testing.T) {
 	m := &types.Match{
-		NamedGroups: map[string][]byte{"1": []byte("glpat-test")},
+		Groups: [][]byte{[]byte("glpat-test")},
 		Snippet: types.Snippet{
 			Before:   []byte("PRIVATE_TOKEN=glpat-test\n"),
 			Matching: []byte("x=1"),
@@ -228,14 +228,20 @@ func TestGitLabAPIScopeGroupOwnerCondition_NoGroups(t *testing.T) {
 }
 
 func TestGitLabSelfHostedCondition_SelfHosted(t *testing.T) {
-	c := &gitlabSelfHostedCondition{}
+	server := gitlabServer(t, []string{"api"}, false, "", false, nil)
+	defer server.Close()
+
+	c := &gitlabSelfHostedCondition{client: &redirectingClient{target: server.URL}}
 	fired, err := c.Evaluate(context.Background(), gitlabMatch("gitlab.mycompany.com"))
 	require.NoError(t, err)
 	assert.True(t, fired)
 }
 
 func TestGitLabSelfHostedCondition_GitLabCom(t *testing.T) {
-	c := &gitlabSelfHostedCondition{}
+	server := gitlabServer(t, []string{"api"}, false, "", false, nil)
+	defer server.Close()
+
+	c := &gitlabSelfHostedCondition{client: &redirectingClient{target: server.URL}}
 	fired, err := c.Evaluate(context.Background(), gitlabMatch("gitlab.com"))
 	require.NoError(t, err)
 	assert.False(t, fired)
@@ -331,8 +337,8 @@ func TestGitLabGoScorer_Structure(t *testing.T) {
 func TestGitLabGoScorer_MissingCredentials(t *testing.T) {
 	s := GitLabGoScorer()
 	m := &types.Match{
-		RuleID:      "np.gitlab.2",
-		NamedGroups: map[string][]byte{},
+		RuleID: "np.gitlab.2",
+		Groups: [][]byte{},
 	}
 
 	for _, mod := range s.Modifiers {
@@ -366,7 +372,7 @@ func TestGitLabAdminAPIScopeCondition_RevokedTokenDoesNotFire(t *testing.T) {
 
 func TestGitLabWriteRepoMultiGroupCondition_Fires(t *testing.T) {
 	groups := []map[string]interface{}{{"id": 1, "name": "mygroup"}}
-	server := gitlabServer(t, []string{"write_repository"}, false, "2099-01-01", false, groups)
+	server := gitlabServer(t, []string{"write_repository", "api"}, false, "2099-01-01", false, groups)
 	defer server.Close()
 
 	c := &gitlabWriteRepoMultiGroupCondition{client: &redirectingClient{target: server.URL}}
@@ -399,15 +405,28 @@ func TestGitLabNoGroupOwnerCondition_ReadAPIScope(t *testing.T) {
 
 func TestGitLabGoScorer_IsDynamic(t *testing.T) {
 	s := GitLabGoScorer()
-	staticMods := map[string]bool{
-		"self-hosted-instance": true,
-	}
-
 	for _, mod := range s.Modifiers {
-		if staticMods[mod.Name] {
-			assert.False(t, mod.IsDynamic(), "modifier %s should be static", mod.Name)
-		} else {
-			assert.True(t, mod.IsDynamic(), "modifier %s should be dynamic", mod.Name)
-		}
+		assert.True(t, mod.IsDynamic(), "modifier %s should be dynamic", mod.Name)
 	}
+}
+
+func TestGitLabSelfHostedCondition_RevokedDoesNotFire(t *testing.T) {
+	server := gitlabServer(t, []string{"api"}, true, "", false, nil)
+	defer server.Close()
+
+	c := &gitlabSelfHostedCondition{client: &redirectingClient{target: server.URL}}
+	fired, err := c.Evaluate(context.Background(), gitlabMatch("gitlab.mycompany.com"))
+	require.NoError(t, err)
+	assert.False(t, fired, "self-hosted delta must not fire on revoked token")
+}
+
+func TestGitLabWriteRepoMultiGroupCondition_NoAPIScope(t *testing.T) {
+	groups := []map[string]interface{}{{"id": 1, "name": "mygroup"}}
+	server := gitlabServer(t, []string{"write_repository"}, false, "2099-01-01", false, groups)
+	defer server.Close()
+
+	c := &gitlabWriteRepoMultiGroupCondition{client: &redirectingClient{target: server.URL}}
+	fired, err := c.Evaluate(context.Background(), gitlabMatch("gitlab.com"))
+	require.NoError(t, err)
+	assert.False(t, fired, "write-repo-multi-group should not fire without api/read_api scope")
 }

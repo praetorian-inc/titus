@@ -21,17 +21,22 @@ var gitlabHostPatterns = []*regexp.Regexp{
 
 const gitlabDefaultHost = "gitlab.com"
 
-// extractGitLabToken extracts the token from match.NamedGroups["1"].
-// GitLab PAT rules use unnamed capture groups.
+// extractGitLabToken extracts the token from the match. It checks positional
+// groups first (m.Groups[0]), then falls back to named groups "token" or "1".
+// GitLab PAT rules use unnamed capture groups which populate m.Groups.
 func extractGitLabToken(m *types.Match) (string, bool) {
 	if m == nil {
 		return "", false
 	}
-	tok, ok := m.NamedGroups["1"]
-	if !ok || len(tok) == 0 {
-		return "", false
+	if len(m.Groups) > 0 && len(m.Groups[0]) > 0 {
+		return string(m.Groups[0]), true
 	}
-	return string(tok), true
+	for _, name := range []string{"token", "1"} {
+		if v, ok := m.NamedGroups[name]; ok && len(v) > 0 {
+			return string(v), true
+		}
+	}
+	return "", false
 }
 
 // extractGitLabHost extracts the GitLab host from snippet context.
@@ -88,7 +93,7 @@ func gitlabFetchTokenSelf(ctx context.Context, client gitlabHTTPClient, host, to
 		return nil, resp.StatusCode, nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, resp.StatusCode, err
 	}
@@ -119,7 +124,7 @@ func gitlabFetchUser(ctx context.Context, client gitlabHTTPClient, host, token s
 		return nil, nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +156,7 @@ func gitlabHasGroupOwnerAccess(ctx context.Context, client gitlabHTTPClient, hos
 		return false, nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return false, err
 	}
@@ -182,7 +187,7 @@ func gitlabTokenExpired(info *gitlabTokenSelfResponse) bool {
 	if err != nil {
 		return false
 	}
-	return time.Now().UTC().After(t.UTC())
+	return time.Now().UTC().After(t.AddDate(0, 0, 1).UTC())
 }
 
 // gitlabScopesContain reports whether the target scope is in the scopes list.
@@ -398,12 +403,37 @@ func (c *gitlabAPIScopeGroupOwnerCondition) httpClient() gitlabHTTPClient {
 	return defaultHTTPClient
 }
 
-// gitlabSelfHostedCondition fires when the host is not gitlab.com (static).
-type gitlabSelfHostedCondition struct{}
+// gitlabSelfHostedCondition fires when the token is active AND the host is not
+// gitlab.com. It is dynamic because it must verify the token is not revoked
+// before firing, preventing the delta from applying to revoked tokens.
+type gitlabSelfHostedCondition struct {
+	client gitlabHTTPClient
+}
 
-func (c *gitlabSelfHostedCondition) Evaluate(_ context.Context, m *types.Match) (bool, error) {
+func (c *gitlabSelfHostedCondition) markDynamic() {}
+
+func (c *gitlabSelfHostedCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
+	token, ok := extractGitLabToken(m)
+	if !ok {
+		return false, nil
+	}
 	host := extractGitLabHost(m)
+
+	info, _, err := gitlabFetchTokenSelf(ctx, c.httpClient(), host, token)
+	if err != nil || info == nil {
+		return false, nil
+	}
+	if !gitlabTokenIsActive(info) {
+		return false, nil
+	}
 	return !strings.EqualFold(host, gitlabDefaultHost), nil
+}
+
+func (c *gitlabSelfHostedCondition) httpClient() gitlabHTTPClient {
+	if c.client != nil {
+		return c.client
+	}
+	return defaultHTTPClient
 }
 
 // gitlabWriteRepoMultiGroupCondition fires when the token has "write_repository"
@@ -430,6 +460,9 @@ func (c *gitlabWriteRepoMultiGroupCondition) Evaluate(ctx context.Context, m *ty
 		return false, nil
 	}
 	if !gitlabScopesContain(info.Scopes, "write_repository") {
+		return false, nil
+	}
+	if !gitlabScopesContain(info.Scopes, "api") && !gitlabScopesContain(info.Scopes, "read_api") {
 		return false, nil
 	}
 
