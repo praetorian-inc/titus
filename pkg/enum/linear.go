@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -86,6 +87,203 @@ type graphqlResponse struct {
 			Code string `json:"code"`
 		} `json:"extensions"`
 	} `json:"errors"`
+}
+
+// lComment holds author and body of a Linear comment.
+type lComment struct {
+	Author string
+	Body   string
+}
+
+// pageInfo carries Relay cursor pagination state.
+type pageInfo struct {
+	HasNextPage bool   `json:"hasNextPage"`
+	EndCursor   string `json:"endCursor"`
+}
+
+// issuesResponse maps the GraphQL issues query response.
+type issuesResponse struct {
+	Issues struct {
+		Nodes []struct {
+			ID          string `json:"id"`
+			Identifier  string `json:"identifier"`
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			URL         string `json:"url"`
+			Team        struct {
+				Key  string `json:"key"`
+				Name string `json:"name"`
+			} `json:"team"`
+			Project *struct {
+				Name string `json:"name"`
+			} `json:"project"`
+			Comments struct {
+				Nodes []struct {
+					ID   string `json:"id"`
+					Body string `json:"body"`
+					User struct {
+						Name  string `json:"name"`
+						Email string `json:"email"`
+					} `json:"user"`
+				} `json:"nodes"`
+				PageInfo pageInfo `json:"pageInfo"`
+			} `json:"comments"`
+		} `json:"nodes"`
+		PageInfo pageInfo `json:"pageInfo"`
+	} `json:"issues"`
+}
+
+// issueCommentsResponse maps the follow-up comment pagination response.
+type issueCommentsResponse struct {
+	Issue struct {
+		Comments struct {
+			Nodes []struct {
+				ID   string `json:"id"`
+				Body string `json:"body"`
+				User struct {
+					Name  string `json:"name"`
+					Email string `json:"email"`
+				} `json:"user"`
+			} `json:"nodes"`
+			PageInfo pageInfo `json:"pageInfo"`
+		} `json:"comments"`
+	} `json:"issue"`
+}
+
+const linearIssuesQuery = `
+query($after: String) {
+  issues(first: 50, after: $after) {
+    nodes {
+      id identifier title description url
+      team { key name }
+      project { name }
+      comments(first: 50) {
+        nodes {
+          id body
+          user { name email }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`
+
+const linearIssueCommentsQuery = `
+query($issueId: String!, $after: String) {
+  issue(id: $issueId) {
+    comments(first: 50, after: $after) {
+      nodes {
+        id body
+        user { name email }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`
+
+// lBuildIssueBlob assembles a Linear issue into a single blob.
+func lBuildIssueBlob(identifier, title, url, team, project, description string, comments []lComment) []byte {
+	var sb strings.Builder
+	sb.WriteString("Title: " + title + "\n")
+	sb.WriteString("URL: " + url + "\n")
+	sb.WriteString("Identifier: " + identifier + "\n")
+	sb.WriteString("Team: " + team + "\n")
+	if project != "" {
+		sb.WriteString("Project: " + project + "\n")
+	}
+	sb.WriteString("---\n")
+	sb.WriteString(description + "\n")
+	if len(comments) > 0 {
+		sb.WriteString("\n--- Comments ---\n")
+		for _, c := range comments {
+			sb.WriteString("\n[" + c.Author + "]:\n")
+			sb.WriteString(c.Body + "\n")
+		}
+	}
+	return []byte(sb.String())
+}
+
+// fetchRemainingComments paginates through remaining comments for an issue.
+func (e *LinearEnumerator) fetchRemainingComments(ctx context.Context, issueID, cursor string) ([]lComment, error) {
+	var all []lComment
+	for {
+		vars := map[string]interface{}{
+			"issueId": issueID,
+			"after":   cursor,
+		}
+		var resp issueCommentsResponse
+		if err := e.graphql(ctx, linearIssueCommentsQuery, vars, &resp); err != nil {
+			return nil, fmt.Errorf("fetch comments for issue %s: %w", issueID, err)
+		}
+		for _, node := range resp.Issue.Comments.Nodes {
+			author := node.User.Email
+			if author == "" {
+				author = node.User.Name
+			}
+			all = append(all, lComment{Author: author, Body: node.Body})
+		}
+		if !resp.Issue.Comments.PageInfo.HasNextPage {
+			break
+		}
+		cursor = resp.Issue.Comments.PageInfo.EndCursor
+	}
+	return all, nil
+}
+
+// enumerateIssues paginates through all Linear issues and emits one blob per issue.
+func (e *LinearEnumerator) enumerateIssues(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	var cursor string
+	for {
+		vars := map[string]interface{}{"after": cursor}
+		if cursor == "" {
+			vars = map[string]interface{}{}
+		}
+		var resp issuesResponse
+		if err := e.graphql(ctx, linearIssuesQuery, vars, &resp); err != nil {
+			return fmt.Errorf("fetch issues: %w", err)
+		}
+
+		for _, node := range resp.Issues.Nodes {
+			// Collect comments from the initial page
+			var comments []lComment
+			for _, cn := range node.Comments.Nodes {
+				author := cn.User.Email
+				if author == "" {
+					author = cn.User.Name
+				}
+				comments = append(comments, lComment{Author: author, Body: cn.Body})
+			}
+			// Fetch remaining comment pages if needed
+			if node.Comments.PageInfo.HasNextPage {
+				more, err := e.fetchRemainingComments(ctx, node.ID, node.Comments.PageInfo.EndCursor)
+				if err != nil {
+					return err
+				}
+				comments = append(comments, more...)
+			}
+
+			team := node.Team.Name
+			project := ""
+			if node.Project != nil {
+				project = node.Project.Name
+			}
+
+			blob := lBuildIssueBlob(node.Identifier, node.Title, node.URL, team, project, node.Description, comments)
+			blobID := types.ComputeBlobID(blob)
+			prov := linearProvenance("issue", node.Identifier, node.Title, node.URL, team, project)
+			e.logf("linear: issue %s (%s)", node.Identifier, node.Title)
+			if err := callback(blob, blobID, prov); err != nil {
+				return err
+			}
+		}
+
+		if !resp.Issues.PageInfo.HasNextPage {
+			break
+		}
+		cursor = resp.Issues.PageInfo.EndCursor
+	}
+	return nil
 }
 
 // graphql sends a GraphQL query to Linear's API with rate limiting and retry.

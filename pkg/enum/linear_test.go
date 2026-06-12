@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -145,4 +146,107 @@ func testLinearEnumerator(t *testing.T, url string) *LinearEnumerator {
 	require.NoError(t, err)
 	e.endpoint = url
 	return e
+}
+
+func TestLinearBuildIssueBlob(t *testing.T) {
+	comments := []lComment{
+		{Author: "alice@example.com", Body: "First comment"},
+		{Author: "Bob Smith", Body: "Second comment"},
+	}
+	blob := lBuildIssueBlob("ENG-42", "Fix the bug", "https://linear.app/eng/ENG-42", "Engineering", "Alpha", "Bug description here.", comments)
+
+	content := string(blob)
+	assert.Contains(t, content, "Title: Fix the bug")
+	assert.Contains(t, content, "URL: https://linear.app/eng/ENG-42")
+	assert.Contains(t, content, "Identifier: ENG-42")
+	assert.Contains(t, content, "Team: Engineering")
+	assert.Contains(t, content, "Project: Alpha")
+	assert.Contains(t, content, "Bug description here.")
+	assert.Contains(t, content, "[alice@example.com]:")
+	assert.Contains(t, content, "First comment")
+	assert.Contains(t, content, "[Bob Smith]:")
+	assert.Contains(t, content, "Second comment")
+}
+
+func TestLinearBuildIssueBlob_NoProject(t *testing.T) {
+	blob := lBuildIssueBlob("ENG-1", "Title", "https://linear.app/eng/ENG-1", "Engineering", "", "Description.", nil)
+	content := string(blob)
+	assert.NotContains(t, content, "Project:")
+}
+
+func TestLinearEnumerateIssues(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query, _ := body["query"].(string)
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(query, "issues(") {
+			// Return one issue with one comment, no further pages
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"issues": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{
+								"id":          "issue-1",
+								"identifier":  "ENG-1",
+								"title":       "Test Issue",
+								"description": "Issue description",
+								"url":         "https://linear.app/eng/ENG-1",
+								"team": map[string]interface{}{
+									"key":  "ENG",
+									"name": "Engineering",
+								},
+								"project": map[string]interface{}{
+									"name": "Alpha",
+								},
+								"comments": map[string]interface{}{
+									"nodes": []map[string]interface{}{
+										{
+											"id":   "comment-1",
+											"body": "Great issue!",
+											"user": map[string]interface{}{
+												"name":  "Alice",
+												"email": "alice@example.com",
+											},
+										},
+									},
+									"pageInfo": map[string]interface{}{
+										"hasNextPage": false,
+										"endCursor":   "",
+									},
+								},
+							},
+						},
+						"pageInfo": map[string]interface{}{
+							"hasNextPage": false,
+							"endCursor":   "",
+						},
+					},
+				},
+			})
+		} else {
+			// Unexpected query
+			http.Error(w, "unexpected query", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	e := testLinearEnumerator(t, server.URL)
+
+	var blobs [][]byte
+	err := e.enumerateIssues(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		blobs = append(blobs, content)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, blobs, 1)
+
+	content := string(blobs[0])
+	assert.Contains(t, content, "Title: Test Issue")
+	assert.Contains(t, content, "Identifier: ENG-1")
+	assert.Contains(t, content, "Issue description")
+	assert.Contains(t, content, "[alice@example.com]:")
+	assert.Contains(t, content, "Great issue!")
 }
