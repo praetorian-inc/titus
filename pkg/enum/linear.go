@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -559,5 +560,45 @@ func (e *LinearEnumerator) graphql(ctx context.Context, query string, variables 
 
 // Enumerate discovers content from a Linear workspace and yields blobs.
 func (e *LinearEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	return fmt.Errorf("not implemented")
+	var callbackMu sync.Mutex
+	safeCallback := func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		callbackMu.Lock()
+		defer callbackMu.Unlock()
+		return callback(content, blobID, prov)
+	}
+
+	type result struct {
+		name string
+		err  error
+	}
+
+	ch := make(chan result, 3)
+
+	go func() {
+		e.logf("Enumerating issues...")
+		ch <- result{"issues", e.enumerateIssues(ctx, safeCallback)}
+	}()
+	go func() {
+		e.logf("Enumerating documents...")
+		ch <- result{"documents", e.enumerateDocuments(ctx, safeCallback)}
+	}()
+	go func() {
+		e.logf("Enumerating project updates...")
+		ch <- result{"projectUpdates", e.enumerateProjectUpdates(ctx, safeCallback)}
+	}()
+
+	var errs []string
+	for i := 0; i < 3; i++ {
+		r := <-ch
+		if r.err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", r.name, r.err))
+		} else {
+			e.logf("Finished enumerating %s", r.name)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("enumeration errors: %s", strings.Join(errs, "; "))
+	}
+	return nil
 }

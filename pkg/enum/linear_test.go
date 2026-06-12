@@ -347,3 +347,80 @@ func TestLinearEnumerateProjectUpdates(t *testing.T) {
 	require.Len(t, blobs, 1)
 	assert.Contains(t, blobs[0], "DB_PASS=secret")
 }
+
+func TestLinearEnumerate_FullIntegration(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query := body["query"].(string)
+
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case strings.Contains(query, "issues("):
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"issues": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{
+								"id": "i1", "identifier": "ENG-1", "title": "Issue 1",
+								"description": "desc", "url": "https://linear.app/ENG-1",
+								"team": map[string]interface{}{"key": "ENG", "name": "Eng"},
+								"project": nil,
+								"comments": map[string]interface{}{
+									"nodes":    []interface{}{},
+									"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+								},
+							},
+						},
+						"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+					},
+				},
+			})
+		case strings.Contains(query, "documents("):
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"documents": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{
+								"id": "d1", "title": "Doc 1", "slugId": "doc-1",
+								"url":     "https://linear.app/docs/1",
+								"content": `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"doc content"}]}]}`,
+								"project": nil,
+							},
+						},
+						"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+					},
+				},
+			})
+		case strings.Contains(query, "projectUpdates("):
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"projectUpdates": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{
+								"id": "pu1", "body": "update body", "diffMarkdown": "",
+								"url":     "https://linear.app/updates/1",
+								"project": map[string]interface{}{"name": "Proj"},
+							},
+						},
+						"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+					},
+				},
+			})
+		default:
+			json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]interface{}{}})
+		}
+	}))
+	defer server.Close()
+
+	e := testLinearEnumerator(t, server.URL)
+
+	var blobs []string
+	err := e.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		blobs = append(blobs, string(content))
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Len(t, blobs, 3, "expected 1 issue + 1 doc + 1 project update")
+}
