@@ -72,7 +72,7 @@ func NewNotionEnumerator(cfg NotionConfig) (*NotionEnumerator, error) {
 // logf writes a progress message when verbose output is enabled.
 func (e *NotionEnumerator) logf(format string, args ...interface{}) {
 	if e.config.Verbose != nil {
-		fmt.Fprintf(e.config.Verbose, format+"\n", args...)
+		_, _ = fmt.Fprintf(e.config.Verbose, format+"\n", args...)
 	}
 }
 
@@ -80,7 +80,7 @@ func (e *NotionEnumerator) logf(format string, args ...interface{}) {
 // The %-80s left-pads to 80 chars to clear any leftover characters from the previous line.
 func (e *NotionEnumerator) progressf(format string, args ...interface{}) {
 	if e.config.Verbose != nil {
-		fmt.Fprintf(e.config.Verbose, "\r%-80s", fmt.Sprintf(format, args...))
+		_, _ = fmt.Fprintf(e.config.Verbose, "\r%-80s", fmt.Sprintf(format, args...))
 	}
 }
 
@@ -841,7 +841,7 @@ func parseNotionPageID(input string) string {
 		hex := clean[len(clean)-32:]
 		// Validate it's hex
 		for _, c := range hex {
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 				return input // not hex, return as-is
 			}
 		}
