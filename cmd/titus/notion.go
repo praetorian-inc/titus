@@ -178,8 +178,8 @@ func runNotionScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning Notion: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Notion scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", notionOutputPath)
+	fmt.Fprintf(cmd.ErrOrStderr(), "Notion scan complete: %d matches, %d findings\n", matchCount, findingCount)
+	fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s\n", notionOutputPath)
 
 	if notionOutputFormat == "json" {
 		matches, err := s.GetAllMatches()

@@ -161,7 +161,15 @@ func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content 
 			}
 		}
 	}
-	for _, id := range e.searchBlockIDs(ctx, spaceID, teamID) {
+	searchIDs, searchErr := e.searchBlockIDs(ctx, spaceID, teamID)
+	if searchErr != nil {
+		if teamID != "" {
+			// In teamspace mode, search is the primary discovery source.
+			return fmt.Errorf("search failed in teamspace mode: %w", searchErr)
+		}
+		e.logf("Warning: search failed (continuing with workspace roots): %v", searchErr)
+	}
+	for _, id := range searchIDs {
 		if !seen[id] {
 			seen[id] = true
 			allIDs = append(allIDs, id)
@@ -188,6 +196,9 @@ func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content 
 		pageCh <- id
 	}
 	close(pageCh)
+
+	var firstErr error
+	var errOnce sync.Once
 
 	var wg sync.WaitGroup
 	for i := 0; i < e.config.Concurrency; i++ {
@@ -232,7 +243,12 @@ func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content 
 				}
 
 				rendered, err := e.renderPage(ctx, pageID)
-				if err != nil || rendered == "" {
+				if err != nil {
+					continue
+				}
+
+				// Skip pages with no rendered content and no title.
+				if rendered == "" && title == "" {
 					continue
 				}
 
@@ -245,6 +261,7 @@ func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content 
 				cbErr := callback(blob, blobID, prov)
 				callbackMu.Unlock()
 				if cbErr != nil {
+					errOnce.Do(func() { firstErr = cbErr })
 					return
 				}
 				n := scanned.Add(1)
@@ -253,6 +270,10 @@ func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content 
 		}()
 	}
 	wg.Wait()
+
+	if firstErr != nil {
+		return firstErr
+	}
 	e.progressf("Scanning pages: %d/%d (100%%)\n", scanned.Load(), totalIDs)
 
 	// Phase 4: Process databases (serial).
@@ -270,7 +291,7 @@ func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content 
 				return ctx.Err()
 			}
 			rendered, err := e.renderPage(ctx, rowID)
-			if err != nil || rendered == "" {
+			if err != nil {
 				continue
 			}
 			pageURL := fmt.Sprintf("https://www.notion.so/%s", nCleanID(rowID))
@@ -314,6 +335,13 @@ func (e *NotionEnumerator) discoverWorkspace(ctx context.Context) (string, strin
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", "", nil, fmt.Errorf("parsing getSpaces: %w", err)
 	}
+
+	type workspaceCandidate struct {
+		spaceID     string
+		name        string
+		topBlockIDs []string
+	}
+	var candidates []workspaceCandidate
 
 	for _, userData := range result {
 		userMap, ok := userData.(map[string]interface{})
@@ -381,18 +409,31 @@ func (e *NotionEnumerator) discoverWorkspace(ctx context.Context) (string, strin
 				}
 			}
 			// Also extract workspace-level root pages (teamspace roots).
+			blocksCopy := make([]string, len(topBlockIDs))
+			copy(blocksCopy, topBlockIDs)
 			if pagesArr := nArr(sv, "pages"); pagesArr != nil {
 				for _, p := range pagesArr {
 					if pid, ok := p.(string); ok {
-						topBlockIDs = append(topBlockIDs, pid)
+						blocksCopy = append(blocksCopy, pid)
 					}
 				}
 			}
-			return spaceID, name, topBlockIDs, nil
+			candidates = append(candidates, workspaceCandidate{spaceID, name, blocksCopy})
 		}
 	}
 
-	return "", "", nil, fmt.Errorf("no workspace found")
+	if len(candidates) == 0 {
+		return "", "", nil, fmt.Errorf("no workspace found")
+	}
+	if len(candidates) > 1 && e.config.Workspace == "" {
+		var names []string
+		for _, c := range candidates {
+			names = append(names, fmt.Sprintf("%s (id: %s)", c.name, c.spaceID))
+		}
+		sort.Strings(names)
+		return "", "", nil, fmt.Errorf("multiple workspaces found, use --workspace to select one: %s", strings.Join(names, ", "))
+	}
+	return candidates[0].spaceID, candidates[0].name, candidates[0].topBlockIDs, nil
 }
 
 // getTeams returns a map of team ID -> team name for the workspace.
@@ -466,7 +507,7 @@ func (e *NotionEnumerator) resolveTeamID(ctx context.Context, spaceID, teamspace
 
 // searchBlockIDs calls the Notion /search endpoint to discover block IDs for
 // shared and team pages that may not be reachable from the user's sidebar roots.
-func (e *NotionEnumerator) searchBlockIDs(ctx context.Context, spaceID string, teamID string) []string {
+func (e *NotionEnumerator) searchBlockIDs(ctx context.Context, spaceID string, teamID string) ([]string, error) {
 	inTeams := []interface{}{}
 	if teamID != "" {
 		inTeams = []interface{}{teamID}
@@ -495,12 +536,12 @@ func (e *NotionEnumerator) searchBlockIDs(ctx context.Context, spaceID string, t
 
 	body, err := e.nPost(ctx, "/search", payload)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("notion search: %w", err)
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil
+		return nil, fmt.Errorf("parsing search response: %w", err)
 	}
 
 	var ids []string
@@ -514,7 +555,7 @@ func (e *NotionEnumerator) searchBlockIDs(ctx context.Context, spaceID string, t
 			ids = append(ids, id)
 		}
 	}
-	return ids
+	return ids, nil
 }
 
 // nPost sends a POST to the Notion internal API with rate limiting and bounded retry.
@@ -547,7 +588,7 @@ func (e *NotionEnumerator) nPost(ctx context.Context, endpoint string, payload i
 		}
 
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			continue
 		}
