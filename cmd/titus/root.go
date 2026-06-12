@@ -33,6 +33,7 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(gitlabCmd)
 	rootCmd.AddCommand(exploreCmd)
+	rootCmd.AddCommand(notionCmd)
 }
 
 // Execute runs the root command.
