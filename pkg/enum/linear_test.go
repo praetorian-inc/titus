@@ -348,6 +348,96 @@ func TestLinearEnumerateProjectUpdates(t *testing.T) {
 	assert.Contains(t, blobs[0], "DB_PASS=secret")
 }
 
+func TestLinearEnumerate_Pagination(t *testing.T) {
+	issuePage := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query := body["query"].(string)
+		vars, _ := body["variables"].(map[string]interface{})
+
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case strings.Contains(query, "issues("):
+			issuePage++
+			if issuePage == 1 {
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"data": map[string]interface{}{
+						"issues": map[string]interface{}{
+							"nodes": []map[string]interface{}{
+								{
+									"id": "i1", "identifier": "ENG-1", "title": "First",
+									"description": "page1", "url": "https://linear.app/ENG-1",
+									"team": map[string]interface{}{"key": "ENG", "name": "Eng"},
+									"project": nil,
+									"comments": map[string]interface{}{
+										"nodes":    []interface{}{},
+										"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+									},
+								},
+							},
+							"pageInfo": map[string]interface{}{"hasNextPage": true, "endCursor": "cursor-1"},
+						},
+					},
+				})
+			} else {
+				assert.Equal(t, "cursor-1", vars["after"])
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"data": map[string]interface{}{
+						"issues": map[string]interface{}{
+							"nodes": []map[string]interface{}{
+								{
+									"id": "i2", "identifier": "ENG-2", "title": "Second",
+									"description": "page2", "url": "https://linear.app/ENG-2",
+									"team": map[string]interface{}{"key": "ENG", "name": "Eng"},
+									"project": nil,
+									"comments": map[string]interface{}{
+										"nodes":    []interface{}{},
+										"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+									},
+								},
+							},
+							"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+						},
+					},
+				})
+			}
+		case strings.Contains(query, "documents("):
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"documents": map[string]interface{}{
+						"nodes":    []interface{}{},
+						"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+					},
+				},
+			})
+		case strings.Contains(query, "projectUpdates("):
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"projectUpdates": map[string]interface{}{
+						"nodes":    []interface{}{},
+						"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+					},
+				},
+			})
+		}
+	}))
+	defer server.Close()
+
+	e := testLinearEnumerator(t, server.URL)
+
+	var blobs []string
+	err := e.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		blobs = append(blobs, string(content))
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Len(t, blobs, 2)
+	assert.Contains(t, blobs[0], "page1")
+	assert.Contains(t, blobs[1], "page2")
+}
+
 func TestLinearEnumerate_FullIntegration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
