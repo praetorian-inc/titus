@@ -250,3 +250,100 @@ func TestLinearEnumerateIssues(t *testing.T) {
 	assert.Contains(t, content, "[alice@example.com]:")
 	assert.Contains(t, content, "Great issue!")
 }
+
+func TestLinearExtractProseMirrorText(t *testing.T) {
+	doc := `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"API key: sk_live_abc"}]},{"type":"paragraph","content":[{"type":"text","text":"Deploy to production"}]}]}`
+	text := lExtractProseMirrorText([]byte(doc))
+	assert.Contains(t, text, "API key: sk_live_abc")
+	assert.Contains(t, text, "Deploy to production")
+}
+
+func TestLinearExtractProseMirrorText_Empty(t *testing.T) {
+	assert.Equal(t, "", lExtractProseMirrorText(nil))
+	assert.Equal(t, "", lExtractProseMirrorText([]byte("")))
+	assert.Equal(t, "", lExtractProseMirrorText([]byte("not json")))
+}
+
+func TestLinearBuildDocBlob(t *testing.T) {
+	blob := lBuildDocBlob("Runbook", "https://linear.app/docs/abc", "Eng", "extracted text here")
+	text := string(blob)
+	assert.Contains(t, text, "Title: Runbook")
+	assert.Contains(t, text, "URL: https://linear.app/docs/abc")
+	assert.Contains(t, text, "Project: Eng")
+	assert.Contains(t, text, "extracted text here")
+}
+
+func TestLinearBuildProjectUpdateBlob(t *testing.T) {
+	blob := lBuildProjectUpdateBlob("Auth Rewrite", "https://linear.app/updates/1", "Status update body with secret key=abc", "diff content")
+	text := string(blob)
+	assert.Contains(t, text, "Project: Auth Rewrite")
+	assert.Contains(t, text, "secret key=abc")
+	assert.Contains(t, text, "diff content")
+}
+
+func TestLinearEnumerateDocuments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		query := body["query"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(query, "documents(") {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": map[string]interface{}{
+					"documents": map[string]interface{}{
+						"nodes": []map[string]interface{}{
+							{
+								"id": "doc-1", "title": "Setup Guide", "slugId": "setup",
+								"url":     "https://linear.app/docs/setup",
+								"content": `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"password=hunter2"}]}]}`,
+								"project": map[string]interface{}{"name": "Infra"},
+							},
+						},
+						"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+					},
+				},
+			})
+		}
+	}))
+	defer server.Close()
+	e := testLinearEnumerator(t, server.URL)
+	var blobs []string
+	err := e.enumerateDocuments(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		blobs = append(blobs, string(content))
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, blobs, 1)
+	assert.Contains(t, blobs[0], "password=hunter2")
+}
+
+func TestLinearEnumerateProjectUpdates(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": map[string]interface{}{
+				"projectUpdates": map[string]interface{}{
+					"nodes": []map[string]interface{}{
+						{
+							"id": "pu-1", "body": "Deployed with DB_PASS=secret",
+							"url":          "https://linear.app/updates/1",
+							"diffMarkdown": "changed config",
+							"project":      map[string]interface{}{"name": "Backend"},
+						},
+					},
+					"pageInfo": map[string]interface{}{"hasNextPage": false, "endCursor": ""},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+	e := testLinearEnumerator(t, server.URL)
+	var blobs []string
+	err := e.enumerateProjectUpdates(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		blobs = append(blobs, string(content))
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, blobs, 1)
+	assert.Contains(t, blobs[0], "DB_PASS=secret")
+}

@@ -286,6 +286,202 @@ func (e *LinearEnumerator) enumerateIssues(ctx context.Context, callback func(co
 	return nil
 }
 
+// documentsResponse maps the GraphQL documents query response.
+type documentsResponse struct {
+	Documents struct {
+		Nodes []struct {
+			ID      string `json:"id"`
+			Title   string `json:"title"`
+			Content string `json:"content"`
+			SlugID  string `json:"slugId"`
+			URL     string `json:"url"`
+			Project *struct {
+				Name string `json:"name"`
+			} `json:"project"`
+		} `json:"nodes"`
+		PageInfo pageInfo `json:"pageInfo"`
+	} `json:"documents"`
+}
+
+// projectUpdatesResponse maps the GraphQL projectUpdates query response.
+type projectUpdatesResponse struct {
+	ProjectUpdates struct {
+		Nodes []struct {
+			ID           string `json:"id"`
+			Body         string `json:"body"`
+			DiffMarkdown string `json:"diffMarkdown"`
+			URL          string `json:"url"`
+			Project      struct {
+				Name string `json:"name"`
+			} `json:"project"`
+		} `json:"nodes"`
+		PageInfo pageInfo `json:"pageInfo"`
+	} `json:"projectUpdates"`
+}
+
+const linearDocumentsQuery = `
+query($after: String) {
+  documents(first: 50, after: $after) {
+    nodes {
+      id title content slugId url
+      project { name }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`
+
+const linearProjectUpdatesQuery = `
+query($after: String) {
+  projectUpdates(first: 50, after: $after) {
+    nodes {
+      id body diffMarkdown url
+      project { name }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`
+
+// lWalkProseMirror recursively walks a ProseMirror node tree, writing text to sb.
+func lWalkProseMirror(node map[string]interface{}, sb *strings.Builder) {
+	nodeType, _ := node["type"].(string)
+	if nodeType == "text" {
+		if text, ok := node["text"].(string); ok {
+			sb.WriteString(text)
+		}
+		return
+	}
+	content, ok := node["content"].([]interface{})
+	if !ok {
+		return
+	}
+	for _, child := range content {
+		childMap, ok := child.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		lWalkProseMirror(childMap, sb)
+		// Add a newline after block-level nodes
+		childType, _ := childMap["type"].(string)
+		if childType != "text" {
+			sb.WriteString("\n")
+		}
+	}
+}
+
+// lExtractProseMirrorText extracts all text nodes from ProseMirror JSON.
+func lExtractProseMirrorText(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	var node map[string]interface{}
+	if err := json.Unmarshal(data, &node); err != nil {
+		return ""
+	}
+	var sb strings.Builder
+	lWalkProseMirror(node, &sb)
+	return strings.TrimSpace(sb.String())
+}
+
+// lBuildDocBlob formats a Linear document as a blob.
+func lBuildDocBlob(title, url, project, content string) []byte {
+	var sb strings.Builder
+	sb.WriteString("Title: " + title + "\n")
+	sb.WriteString("URL: " + url + "\n")
+	if project != "" {
+		sb.WriteString("Project: " + project + "\n")
+	}
+	sb.WriteString("---\n")
+	sb.WriteString(content)
+	return []byte(sb.String())
+}
+
+// lBuildProjectUpdateBlob formats a Linear project update as a blob.
+func lBuildProjectUpdateBlob(project, url, body, diff string) []byte {
+	var sb strings.Builder
+	sb.WriteString("Project: " + project + "\n")
+	sb.WriteString("URL: " + url + "\n")
+	sb.WriteString("---\n")
+	sb.WriteString(body)
+	if diff != "" {
+		sb.WriteString("\n\n--- Diff ---\n")
+		sb.WriteString(diff)
+	}
+	return []byte(sb.String())
+}
+
+// enumerateDocuments paginates through all Linear documents and emits one blob per document.
+func (e *LinearEnumerator) enumerateDocuments(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	var cursor string
+	for {
+		vars := map[string]interface{}{"after": cursor}
+		if cursor == "" {
+			vars = map[string]interface{}{}
+		}
+		var resp documentsResponse
+		if err := e.graphql(ctx, linearDocumentsQuery, vars, &resp); err != nil {
+			return fmt.Errorf("fetch documents: %w", err)
+		}
+
+		for _, doc := range resp.Documents.Nodes {
+			textContent := lExtractProseMirrorText([]byte(doc.Content))
+			if doc.Title == "" && textContent == "" {
+				continue
+			}
+			project := ""
+			if doc.Project != nil {
+				project = doc.Project.Name
+			}
+			blob := lBuildDocBlob(doc.Title, doc.URL, project, textContent)
+			blobID := types.ComputeBlobID(blob)
+			prov := linearProvenance("document", doc.SlugID, doc.Title, doc.URL, "", project)
+			e.logf("linear: document %s (%s)", doc.SlugID, doc.Title)
+			if err := callback(blob, blobID, prov); err != nil {
+				return err
+			}
+		}
+
+		if !resp.Documents.PageInfo.HasNextPage {
+			break
+		}
+		cursor = resp.Documents.PageInfo.EndCursor
+	}
+	return nil
+}
+
+// enumerateProjectUpdates paginates through all Linear project updates and emits one blob per update.
+func (e *LinearEnumerator) enumerateProjectUpdates(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	var cursor string
+	for {
+		vars := map[string]interface{}{"after": cursor}
+		if cursor == "" {
+			vars = map[string]interface{}{}
+		}
+		var resp projectUpdatesResponse
+		if err := e.graphql(ctx, linearProjectUpdatesQuery, vars, &resp); err != nil {
+			return fmt.Errorf("fetch project updates: %w", err)
+		}
+
+		for _, pu := range resp.ProjectUpdates.Nodes {
+			if pu.Body == "" && pu.DiffMarkdown == "" {
+				continue
+			}
+			blob := lBuildProjectUpdateBlob(pu.Project.Name, pu.URL, pu.Body, pu.DiffMarkdown)
+			blobID := types.ComputeBlobID(blob)
+			prov := linearProvenance("projectUpdate", pu.ID, "", pu.URL, "", pu.Project.Name)
+			e.logf("linear: project update %s", pu.ID)
+			if err := callback(blob, blobID, prov); err != nil {
+				return err
+			}
+		}
+
+		if !resp.ProjectUpdates.PageInfo.HasNextPage {
+			break
+		}
+		cursor = resp.ProjectUpdates.PageInfo.EndCursor
+	}
+	return nil
+}
+
 // graphql sends a GraphQL query to Linear's API with rate limiting and retry.
 // It retries up to 3 times on rate-limit errors (HTTP 400 with RATELIMITED code).
 func (e *LinearEnumerator) graphql(ctx context.Context, query string, variables map[string]interface{}, dest interface{}) error {
