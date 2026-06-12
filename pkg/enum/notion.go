@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,9 @@ type NotionConfig struct {
 	Concurrency int       // parallel workers (default 3)
 	RateLimit   float64   // requests per second (default 3)
 	Verbose     io.Writer // progress output (nil = silent)
+	PageID      string    // scan only this page (URL or ID); empty = full workspace
+	Workspace   string    // workspace name or ID filter
+	Teamspace   string    // teamspace name or ID filter
 }
 
 // NotionEnumerator enumerates blobs from a Notion workspace via the internal API.
@@ -84,6 +88,45 @@ func (e *NotionEnumerator) progressf(format string, args ...interface{}) {
 // (getSpaces + search) and then classifies/renders them concurrently.
 // This avoids the per-page BFS approach which is too slow at 3 req/sec.
 func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	// Single-page mode: skip discovery, scan just this page.
+	if e.config.PageID != "" {
+		pageID := parseNotionPageID(e.config.PageID)
+
+		// Get workspace name for provenance
+		_, spaceName, _, _ := e.discoverWorkspace(ctx)
+		if spaceName == "" {
+			spaceName = "Notion"
+		}
+
+		e.logf("Scanning single page: %s", pageID)
+
+		rendered, err := e.renderPage(ctx, pageID)
+		if err != nil {
+			return fmt.Errorf("loading page %s: %w", pageID, err)
+		}
+		if rendered == "" {
+			e.logf("Page is empty")
+			return nil
+		}
+
+		// Get title
+		bv, _ := e.loadPageChunkSingle(ctx, pageID)
+		title := ""
+		if bv != nil {
+			title = nExtractTitle(bv)
+		}
+		if title == "" {
+			title = pageID
+		}
+
+		pageURL := fmt.Sprintf("https://www.notion.so/%s", nCleanID(pageID))
+		blob := nBuildBlob(title, pageURL, spaceName, rendered)
+		blobID := types.ComputeBlobID(blob)
+		prov := notionProvenance(pageID, title, pageURL, spaceName)
+
+		return callback(blob, blobID, prov)
+	}
+
 	// Phase 1: Discover workspace.
 	spaceID, spaceName, topBlockIDs, err := e.discoverWorkspace(ctx)
 	if err != nil {
@@ -95,16 +138,30 @@ func (e *NotionEnumerator) Enumerate(ctx context.Context, callback func(content 
 	e.logf("Workspace: %s (id: %s)", spaceName, spaceID)
 	e.logf("Found %d root page IDs from workspace", len(topBlockIDs))
 
+	// Resolve teamspace filter if set.
+	var teamID string
+	if e.config.Teamspace != "" {
+		tid, tname, err := e.resolveTeamID(ctx, spaceID, e.config.Teamspace)
+		if err != nil {
+			return err
+		}
+		teamID = tid
+		e.logf("Teamspace: %s (id: %s)", tname, tid)
+	}
+
 	// Phase 2: Collect page IDs from all sources (no per-page API calls).
 	seen := make(map[string]bool)
 	var allIDs []string
-	for _, id := range topBlockIDs {
-		if !seen[id] {
-			seen[id] = true
-			allIDs = append(allIDs, id)
+	// When teamspace is active, skip workspace-wide roots and rely only on search.
+	if teamID == "" {
+		for _, id := range topBlockIDs {
+			if !seen[id] {
+				seen[id] = true
+				allIDs = append(allIDs, id)
+			}
 		}
 	}
-	for _, id := range e.searchBlockIDs(ctx, spaceID) {
+	for _, id := range e.searchBlockIDs(ctx, spaceID, teamID) {
 		if !seen[id] {
 			seen[id] = true
 			allIDs = append(allIDs, id)
@@ -317,6 +374,12 @@ func (e *NotionEnumerator) discoverWorkspace(ctx context.Context) (string, strin
 			if name == "" {
 				name = "Untitled Workspace"
 			}
+			// Workspace filter: skip spaces that don't match.
+			if e.config.Workspace != "" {
+				if !strings.EqualFold(name, e.config.Workspace) && spaceID != e.config.Workspace {
+					continue
+				}
+			}
 			// Also extract workspace-level root pages (teamspace roots).
 			if pagesArr := nArr(sv, "pages"); pagesArr != nil {
 				for _, p := range pagesArr {
@@ -332,9 +395,83 @@ func (e *NotionEnumerator) discoverWorkspace(ctx context.Context) (string, strin
 	return "", "", nil, fmt.Errorf("no workspace found")
 }
 
+// getTeams returns a map of team ID -> team name for the workspace.
+func (e *NotionEnumerator) getTeams(ctx context.Context, spaceID string) (map[string]string, error) {
+	body, err := e.nPost(ctx, "/getTeams", map[string]interface{}{
+		"spaceId": spaceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	teams := make(map[string]string)
+	recordMap, _ := result["recordMap"].(map[string]interface{})
+	if recordMap == nil {
+		return teams, nil
+	}
+	teamMap, _ := recordMap["team"].(map[string]interface{})
+	for tid, t := range teamMap {
+		tv, _ := t.(map[string]interface{})
+		if tv == nil {
+			continue
+		}
+		v := tv
+		if inner, ok := v["value"].(map[string]interface{}); ok {
+			v = inner
+		}
+		if inner, ok := v["value"].(map[string]interface{}); ok {
+			v = inner
+		}
+		name, _ := v["name"].(string)
+		if name != "" {
+			teams[tid] = name
+		}
+	}
+	return teams, nil
+}
+
+// resolveTeamID resolves a teamspace name or ID to a team ID.
+func (e *NotionEnumerator) resolveTeamID(ctx context.Context, spaceID, teamspace string) (string, string, error) {
+	teams, err := e.getTeams(ctx, spaceID)
+	if err != nil {
+		return "", "", fmt.Errorf("listing teams: %w", err)
+	}
+
+	// Check if it's a direct team ID.
+	if name, ok := teams[teamspace]; ok {
+		return teamspace, name, nil
+	}
+
+	// Try matching by name (case-insensitive).
+	lower := strings.ToLower(teamspace)
+	for tid, name := range teams {
+		if strings.ToLower(name) == lower {
+			return tid, name, nil
+		}
+	}
+
+	// List available teams in error.
+	var available []string
+	for _, name := range teams {
+		available = append(available, name)
+	}
+	sort.Strings(available)
+	return "", "", fmt.Errorf("teamspace %q not found; available: %s", teamspace, strings.Join(available, ", "))
+}
+
 // searchBlockIDs calls the Notion /search endpoint to discover block IDs for
 // shared and team pages that may not be reachable from the user's sidebar roots.
-func (e *NotionEnumerator) searchBlockIDs(ctx context.Context, spaceID string) []string {
+func (e *NotionEnumerator) searchBlockIDs(ctx context.Context, spaceID string, teamID string) []string {
+	inTeams := []interface{}{}
+	if teamID != "" {
+		inTeams = []interface{}{teamID}
+	}
+
 	payload := map[string]interface{}{
 		"type":    "BlocksInSpace",
 		"query":   "",
@@ -345,6 +482,7 @@ func (e *NotionEnumerator) searchBlockIDs(ctx context.Context, spaceID string) [
 			"excludeTemplates":          false,
 			"navigableBlockContentOnly": true,
 			"requireEditPermissions":    false,
+			"inTeams":                   inTeams,
 			"ancestors":                 []interface{}{},
 			"createdBy":                 []interface{}{},
 			"editedBy":                  []interface{}{},
@@ -638,6 +776,38 @@ func (e *NotionEnumerator) renderPage(ctx context.Context, pageID string) (strin
 
 	childIDs := nArr(root, "content")
 	return nRenderBlocks(blocks, childIDs, 0), nil
+}
+
+// parseNotionPageID extracts a page ID from a Notion URL or raw ID.
+// Accepts formats:
+//   - 37da484a-7dc4-80dd-936b-d247d86f7ef7 (raw UUID)
+//   - 37da484a7dc480dd936bd247d86f7ef7 (no dashes)
+//   - https://www.notion.so/Page-Title-37da484a7dc480dd936bd247d86f7ef7
+//   - https://app.notion.com/p/Page-Title-37da484a7dc480dd936bd247d86f7ef7?params...
+func parseNotionPageID(input string) string {
+	// Strip query params
+	if idx := strings.Index(input, "?"); idx != -1 {
+		input = input[:idx]
+	}
+	// Take the last path segment
+	if strings.Contains(input, "/") {
+		parts := strings.Split(input, "/")
+		input = parts[len(parts)-1]
+	}
+	// The ID is the last 32 hex chars (no dashes) of the segment
+	clean := strings.ReplaceAll(input, "-", "")
+	if len(clean) >= 32 {
+		hex := clean[len(clean)-32:]
+		// Validate it's hex
+		for _, c := range hex {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return input // not hex, return as-is
+			}
+		}
+		// Format as UUID with dashes
+		return fmt.Sprintf("%s-%s-%s-%s-%s", hex[0:8], hex[8:12], hex[12:16], hex[16:20], hex[20:32])
+	}
+	return input
 }
 
 // --- Helper functions (n-prefixed to avoid name collisions) ---

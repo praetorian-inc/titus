@@ -18,6 +18,9 @@ var (
 	notionConcurrency  int
 	notionOutputPath   string
 	notionOutputFormat string
+	notionPageID       string
+	notionWorkspace    string
+	notionTeamspace    string
 )
 
 var notionCmd = &cobra.Command{
@@ -34,7 +37,11 @@ Authentication:
 Examples:
   titus notion --token <token_v2>
   titus notion --token <token_v2> --concurrency 20
-  NOTION_TOKEN=<token_v2> titus notion --output notion-scan.db`,
+  NOTION_TOKEN=<token_v2> titus notion --output notion-scan.db
+  titus notion --token <token_v2> --page https://app.notion.com/p/Page-Title-abc123def456
+  titus notion --token <token_v2> --page 37da484a-7dc4-80dd-936b-d247d86f7ef7
+  titus notion --token <token_v2> --teamspace Engineering
+  titus notion --token <token_v2> --workspace Praetorian --teamspace "Sales & Marketing"`,
 	RunE: runNotionScan,
 }
 
@@ -43,6 +50,9 @@ func init() {
 	notionCmd.Flags().IntVar(&notionConcurrency, "concurrency", 10, "Number of parallel page fetchers")
 	notionCmd.Flags().StringVar(&notionOutputPath, "output", "titus.db", "Output database path")
 	notionCmd.Flags().StringVar(&notionOutputFormat, "format", "human", "Output format: json, human")
+	notionCmd.Flags().StringVar(&notionPageID, "page", "", "Scan a single page (URL or page ID)")
+	notionCmd.Flags().StringVar(&notionWorkspace, "workspace", "", "Workspace name or ID (for multi-workspace accounts)")
+	notionCmd.Flags().StringVar(&notionTeamspace, "teamspace", "", "Scan only pages in this teamspace (name or ID)")
 }
 
 func runNotionScan(cmd *cobra.Command, args []string) error {
@@ -63,6 +73,9 @@ func runNotionScan(cmd *cobra.Command, args []string) error {
 		Token:       token,
 		Concurrency: notionConcurrency,
 		Verbose:     verboseWriter,
+		PageID:      notionPageID,
+		Workspace:   notionWorkspace,
+		Teamspace:   notionTeamspace,
 	})
 	if err != nil {
 		return fmt.Errorf("creating Notion enumerator: %w", err)
