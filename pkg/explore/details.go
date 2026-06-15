@@ -228,9 +228,22 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 						fieldLabelStyle.Render("Source:"),
 						fieldValueStyle.Render(source)))
 				}
-				if id, _ := p.Payload["identifier"].(string); id != "" {
+				id, _ := p.Payload["identifier"].(string)
+				if id == "" {
+					id, _ = p.Payload["pageID"].(string)
+				}
+				if id != "" {
+					label := "ID:"
+					switch p.Payload["entityType"] {
+					case "issue":
+						label = "Issue:"
+					case "document":
+						label = "Document:"
+					case "projectUpdate":
+						label = "Update:"
+					}
 					lines = append(lines, fmt.Sprintf("  %s %s",
-						fieldLabelStyle.Render("Issue:"),
+						fieldLabelStyle.Render(label),
 						fieldValueStyle.Render(id)))
 				}
 				if title, _ := p.Payload["title"].(string); title != "" {
