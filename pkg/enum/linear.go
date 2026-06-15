@@ -612,7 +612,9 @@ func (e *LinearEnumerator) Enumerate(ctx context.Context, callback func(content 
 	// Discovery phase: get issue count for progress reporting.
 	issueTotal := e.discoverCounts(ctx)
 	if issueTotal > 0 {
-		e.logf("Found %d issues across all teams", issueTotal)
+		e.logf("Found %d issues, scanning for secrets...", issueTotal)
+	} else {
+		e.logf("Scanning for secrets...")
 	}
 
 	var callbackMu sync.Mutex
@@ -632,15 +634,12 @@ func (e *LinearEnumerator) Enumerate(ctx context.Context, callback func(content 
 	ch := make(chan result, 3)
 
 	go func() {
-		e.logf("Enumerating issues...")
 		ch <- result{"issues", e.enumerateIssues(ctx, issueTotal, &issueCount, safeCallback)}
 	}()
 	go func() {
-		e.logf("Enumerating documents...")
 		ch <- result{"documents", e.enumerateDocuments(ctx, &docCount, safeCallback)}
 	}()
 	go func() {
-		e.logf("Enumerating project updates...")
 		ch <- result{"projectUpdates", e.enumerateProjectUpdates(ctx, &updateCount, safeCallback)}
 	}()
 
