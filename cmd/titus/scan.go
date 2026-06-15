@@ -1601,8 +1601,7 @@ type scoringEngineInterface interface {
 // Loader errors (malformed YAML, bad regex) are hard failures: scan startup
 // must abort rather than silently scoring all findings at base.
 func buildScoringEngine() (scoringEngineInterface, error) {
-	loader := scoring.NewLoader()
-	yamlScorers, err := loader.LoadBuiltinScorers()
+	allScorers, err := scoring.AllBuiltinScorers()
 	if err != nil {
 		return nil, fmt.Errorf("loading scorers: %w", err)
 	}
@@ -1611,6 +1610,5 @@ func buildScoringEngine() (scoringEngineInterface, error) {
 		Timeout:      scanScoreTimeout,
 		Budget:       scanScoreBudget,
 	}
-	allScorers := append(scoring.BuiltinGoScorers(), yamlScorers...)
 	return scoring.NewEngine(allScorers, cfg), nil
 }
