@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -73,6 +74,44 @@ func (e *LinearEnumerator) logf(format string, args ...interface{}) {
 	if e.config.Verbose != nil {
 		fmt.Fprintf(e.config.Verbose, format+"\n", args...)
 	}
+}
+
+// progressf writes an in-place progress update using \r.
+func (e *LinearEnumerator) progressf(format string, args ...interface{}) {
+	if e.config.Verbose != nil {
+		fmt.Fprintf(e.config.Verbose, "\r%-80s", fmt.Sprintf(format, args...))
+	}
+}
+
+// countsResponse maps the discovery count query.
+type countsResponse struct {
+	Teams struct {
+		Nodes []struct {
+			IssueCount int `json:"issueCount"`
+		} `json:"nodes"`
+	} `json:"teams"`
+}
+
+const linearCountsQuery = `{
+  teams {
+    nodes {
+      issueCount
+    }
+  }
+}`
+
+// discoverCounts queries the workspace for entity counts to drive progress reporting.
+// Returns total issue count (sum of all teams' issueCount).
+func (e *LinearEnumerator) discoverCounts(ctx context.Context) int {
+	var resp countsResponse
+	if err := e.graphql(ctx, linearCountsQuery, nil, &resp); err != nil {
+		return 0
+	}
+	total := 0
+	for _, t := range resp.Teams.Nodes {
+		total += t.IssueCount
+	}
+	return total
 }
 
 type graphqlRequest struct {
@@ -233,7 +272,7 @@ func (e *LinearEnumerator) fetchRemainingComments(ctx context.Context, issueID, 
 }
 
 // enumerateIssues paginates through all Linear issues and emits one blob per issue.
-func (e *LinearEnumerator) enumerateIssues(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+func (e *LinearEnumerator) enumerateIssues(ctx context.Context, total int, count *atomic.Int64, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	var cursor string
 	for {
 		vars := map[string]interface{}{"after": cursor}
@@ -273,7 +312,12 @@ func (e *LinearEnumerator) enumerateIssues(ctx context.Context, callback func(co
 			blob := lBuildIssueBlob(node.Identifier, node.Title, node.URL, team, project, node.Description, comments)
 			blobID := types.ComputeBlobID(blob)
 			prov := linearProvenance("issue", node.Identifier, node.Title, node.URL, team, project)
-			e.logf("linear: issue %s (%s)", node.Identifier, node.Title)
+			n := count.Add(1)
+			if total > 0 {
+				e.progressf("Scanning issues: %d/%d (%d%%)", n, total, n*100/int64(total))
+			} else {
+				e.progressf("Scanning issues: %d", n)
+			}
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
 			}
@@ -411,7 +455,7 @@ func lBuildProjectUpdateBlob(project, url, body, diff string) []byte {
 }
 
 // enumerateDocuments paginates through all Linear documents and emits one blob per document.
-func (e *LinearEnumerator) enumerateDocuments(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+func (e *LinearEnumerator) enumerateDocuments(ctx context.Context, count *atomic.Int64, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	var cursor string
 	for {
 		vars := map[string]interface{}{"after": cursor}
@@ -435,7 +479,8 @@ func (e *LinearEnumerator) enumerateDocuments(ctx context.Context, callback func
 			blob := lBuildDocBlob(doc.Title, doc.URL, project, textContent)
 			blobID := types.ComputeBlobID(blob)
 			prov := linearProvenance("document", doc.SlugID, doc.Title, doc.URL, "", project)
-			e.logf("linear: document %s (%s)", doc.SlugID, doc.Title)
+			n := count.Add(1)
+			e.progressf("Scanning documents: %d", n)
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
 			}
@@ -450,7 +495,7 @@ func (e *LinearEnumerator) enumerateDocuments(ctx context.Context, callback func
 }
 
 // enumerateProjectUpdates paginates through all Linear project updates and emits one blob per update.
-func (e *LinearEnumerator) enumerateProjectUpdates(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+func (e *LinearEnumerator) enumerateProjectUpdates(ctx context.Context, count *atomic.Int64, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	var cursor string
 	for {
 		vars := map[string]interface{}{"after": cursor}
@@ -469,7 +514,8 @@ func (e *LinearEnumerator) enumerateProjectUpdates(ctx context.Context, callback
 			blob := lBuildProjectUpdateBlob(pu.Project.Name, pu.URL, pu.Body, pu.DiffMarkdown)
 			blobID := types.ComputeBlobID(blob)
 			prov := linearProvenance("projectUpdate", pu.ID, "", pu.URL, "", pu.Project.Name)
-			e.logf("linear: project update %s", pu.ID)
+			n := count.Add(1)
+			e.progressf("Scanning project updates: %d", n)
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
 			}
@@ -560,12 +606,20 @@ func (e *LinearEnumerator) graphql(ctx context.Context, query string, variables 
 
 // Enumerate discovers content from a Linear workspace and yields blobs.
 func (e *LinearEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	// Discovery phase: get issue count for progress reporting.
+	issueTotal := e.discoverCounts(ctx)
+	if issueTotal > 0 {
+		e.logf("Found %d issues across all teams", issueTotal)
+	}
+
 	var callbackMu sync.Mutex
 	safeCallback := func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		callbackMu.Lock()
 		defer callbackMu.Unlock()
 		return callback(content, blobID, prov)
 	}
+
+	var issueCount, docCount, updateCount atomic.Int64
 
 	type result struct {
 		name string
@@ -576,15 +630,15 @@ func (e *LinearEnumerator) Enumerate(ctx context.Context, callback func(content 
 
 	go func() {
 		e.logf("Enumerating issues...")
-		ch <- result{"issues", e.enumerateIssues(ctx, safeCallback)}
+		ch <- result{"issues", e.enumerateIssues(ctx, issueTotal, &issueCount, safeCallback)}
 	}()
 	go func() {
 		e.logf("Enumerating documents...")
-		ch <- result{"documents", e.enumerateDocuments(ctx, safeCallback)}
+		ch <- result{"documents", e.enumerateDocuments(ctx, &docCount, safeCallback)}
 	}()
 	go func() {
 		e.logf("Enumerating project updates...")
-		ch <- result{"projectUpdates", e.enumerateProjectUpdates(ctx, safeCallback)}
+		ch <- result{"projectUpdates", e.enumerateProjectUpdates(ctx, &updateCount, safeCallback)}
 	}()
 
 	var errs []string
@@ -592,10 +646,15 @@ func (e *LinearEnumerator) Enumerate(ctx context.Context, callback func(content 
 		r := <-ch
 		if r.err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", r.name, r.err))
-		} else {
-			e.logf("Finished enumerating %s", r.name)
 		}
 	}
+
+	// Final newline to clear the progress bar
+	if e.config.Verbose != nil {
+		fmt.Fprintln(e.config.Verbose)
+	}
+
+	e.logf("Scanned %d issues, %d documents, %d project updates", issueCount.Load(), docCount.Load(), updateCount.Load())
 
 	if len(errs) > 0 {
 		return fmt.Errorf("enumeration errors: %s", strings.Join(errs, "; "))

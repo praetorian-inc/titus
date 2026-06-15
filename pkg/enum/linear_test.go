@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -236,7 +237,8 @@ func TestLinearEnumerateIssues(t *testing.T) {
 	e := testLinearEnumerator(t, server.URL)
 
 	var blobs [][]byte
-	err := e.enumerateIssues(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+	var count atomic.Int64
+	err := e.enumerateIssues(context.Background(), 0, &count, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		blobs = append(blobs, content)
 		return nil
 	})
@@ -308,7 +310,8 @@ func TestLinearEnumerateDocuments(t *testing.T) {
 	defer server.Close()
 	e := testLinearEnumerator(t, server.URL)
 	var blobs []string
-	err := e.enumerateDocuments(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+	var count atomic.Int64
+	err := e.enumerateDocuments(context.Background(), &count, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		blobs = append(blobs, string(content))
 		return nil
 	})
@@ -339,7 +342,8 @@ func TestLinearEnumerateProjectUpdates(t *testing.T) {
 	defer server.Close()
 	e := testLinearEnumerator(t, server.URL)
 	var blobs []string
-	err := e.enumerateProjectUpdates(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+	var count atomic.Int64
+	err := e.enumerateProjectUpdates(context.Background(), &count, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		blobs = append(blobs, string(content))
 		return nil
 	})
