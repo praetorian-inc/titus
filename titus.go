@@ -305,8 +305,7 @@ func NewScanner(opts ...Option) (*Scanner, error) {
 	// Initialize scoring engine if enabled
 	var scoringEngine *scoring.Engine
 	if config.enableScoring {
-		loader := scoring.NewLoader()
-		scorers, err := loader.LoadBuiltinScorers()
+		scorers, err := scoring.AllBuiltinScorers()
 		if err != nil {
 			return nil, fmt.Errorf("loading scorers: %w", err)
 		}
