@@ -59,7 +59,8 @@ func TestAllBuiltinScorers_IncludesGoAndYAML(t *testing.T) {
 	if goIdx != -1 && yamlIdx != -1 && goIdx > yamlIdx {
 		t.Errorf("Go scorers must precede YAML for first-match-wins: goIdx=%d yamlIdx=%d", goIdx, yamlIdx)
 	}
-  
+}
+
 func TestBuiltinGoScorers_IncludesGitLab(t *testing.T) {
 	scorers := BuiltinGoScorers()
 	var found bool
