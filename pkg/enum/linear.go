@@ -328,6 +328,11 @@ func (e *LinearEnumerator) enumerateIssues(ctx context.Context, total int, count
 		}
 		cursor = resp.Issues.PageInfo.EndCursor
 	}
+	if total > 0 {
+		e.progressf("Scanning issues: %d/%d (100%%)\n", count.Load(), total)
+	} else {
+		e.progressf("Scanning issues: %d\n", count.Load())
+	}
 	return nil
 }
 
@@ -479,8 +484,7 @@ func (e *LinearEnumerator) enumerateDocuments(ctx context.Context, count *atomic
 			blob := lBuildDocBlob(doc.Title, doc.URL, project, textContent)
 			blobID := types.ComputeBlobID(blob)
 			prov := linearProvenance("document", doc.SlugID, doc.Title, doc.URL, "", project)
-			n := count.Add(1)
-			e.progressf("Scanning documents: %d", n)
+			count.Add(1)
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
 			}
@@ -514,8 +518,7 @@ func (e *LinearEnumerator) enumerateProjectUpdates(ctx context.Context, count *a
 			blob := lBuildProjectUpdateBlob(pu.Project.Name, pu.URL, pu.Body, pu.DiffMarkdown)
 			blobID := types.ComputeBlobID(blob)
 			prov := linearProvenance("projectUpdate", pu.ID, "", pu.URL, "", pu.Project.Name)
-			n := count.Add(1)
-			e.progressf("Scanning project updates: %d", n)
+			count.Add(1)
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
 			}
@@ -647,11 +650,6 @@ func (e *LinearEnumerator) Enumerate(ctx context.Context, callback func(content 
 		if r.err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", r.name, r.err))
 		}
-	}
-
-	// Final newline to clear the progress bar
-	if e.config.Verbose != nil {
-		fmt.Fprintln(e.config.Verbose)
 	}
 
 	e.logf("Scanned %d issues, %d documents, %d project updates", issueCount.Load(), docCount.Load(), updateCount.Load())
