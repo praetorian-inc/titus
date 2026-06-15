@@ -15,7 +15,6 @@ import (
 
 var (
 	linearToken        string
-	linearConcurrency  int
 	linearOutputPath   string
 	linearOutputFormat string
 )
@@ -39,9 +38,13 @@ Examples:
 
 func init() {
 	linearCmd.Flags().StringVar(&linearToken, "token", "", "Linear API key (or LINEAR_TOKEN env)")
-	linearCmd.Flags().IntVar(&linearConcurrency, "concurrency", 3, "Number of parallel entity fetchers")
 	linearCmd.Flags().StringVar(&linearOutputPath, "output", "titus.db", "Output database path")
 	linearCmd.Flags().StringVar(&linearOutputFormat, "format", "human", "Output format: json, human")
+	linearCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
+	linearCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
+	linearCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
+	linearCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all")
+	linearCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Include noisy rules that may produce more false positives")
 }
 
 func runLinearScan(cmd *cobra.Command, args []string) error {
@@ -59,15 +62,14 @@ func runLinearScan(cmd *cobra.Command, args []string) error {
 	}
 
 	enumerator, err := enum.NewLinearEnumerator(enum.LinearConfig{
-		Token:       token,
-		Concurrency: linearConcurrency,
-		Verbose:     verboseWriter,
+		Token:   token,
+		Verbose: verboseWriter,
 	})
 	if err != nil {
 		return fmt.Errorf("creating Linear enumerator: %w", err)
 	}
 
-	rules, err := loadRules("", "", "", scanRuleset, false)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
@@ -164,9 +166,6 @@ func runLinearScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning Linear: %w", err)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Linear scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", linearOutputPath)
-
 	if linearOutputFormat == "json" {
 		matches, err := s.GetAllMatches()
 		if err != nil {
@@ -174,6 +173,9 @@ func runLinearScan(cmd *cobra.Command, args []string) error {
 		}
 		return outputMatches(cmd, matches)
 	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Linear scan complete: %d matches, %d findings\n", matchCount, findingCount)
+	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", linearOutputPath)
 
 	findings, err := s.GetFindings()
 	if err != nil {

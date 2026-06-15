@@ -21,10 +21,9 @@ const linearAPIEndpoint = "https://api.linear.app/graphql"
 
 // LinearConfig configures the Linear workspace enumerator.
 type LinearConfig struct {
-	Token       string    // Linear API key (lin_api_...)
-	Concurrency int       // parallel workers (default 3)
-	RateLimit   float64   // requests per second (default 2)
-	Verbose     io.Writer // progress output (nil = silent)
+	Token     string    // Linear API key (lin_api_...)
+	RateLimit float64   // requests per second (default 2)
+	Verbose   io.Writer // progress output (nil = silent)
 }
 
 // LinearEnumerator enumerates blobs from a Linear workspace via the GraphQL API.
@@ -39,9 +38,6 @@ type LinearEnumerator struct {
 func NewLinearEnumerator(cfg LinearConfig) (*LinearEnumerator, error) {
 	if cfg.Token == "" {
 		return nil, fmt.Errorf("linear API token is required")
-	}
-	if cfg.Concurrency <= 0 {
-		cfg.Concurrency = 3
 	}
 	if cfg.RateLimit <= 0 {
 		cfg.RateLimit = 2.0
@@ -261,12 +257,19 @@ func (e *LinearEnumerator) fetchRemainingComments(ctx context.Context, issueID, 
 			if author == "" {
 				author = node.User.Name
 			}
+			if author == "" {
+				author = "Unknown"
+			}
 			all = append(all, lComment{Author: author, Body: node.Body})
 		}
 		if !resp.Issue.Comments.PageInfo.HasNextPage {
 			break
 		}
-		cursor = resp.Issue.Comments.PageInfo.EndCursor
+		newCursor := resp.Issue.Comments.PageInfo.EndCursor
+		if newCursor == cursor {
+			break // cursor didn't advance, avoid infinite loop
+		}
+		cursor = newCursor
 	}
 	return all, nil
 }
@@ -291,6 +294,9 @@ func (e *LinearEnumerator) enumerateIssues(ctx context.Context, total int, count
 				author := cn.User.Email
 				if author == "" {
 					author = cn.User.Name
+				}
+				if author == "" {
+					author = "Unknown"
 				}
 				comments = append(comments, lComment{Author: author, Body: cn.Body})
 			}
@@ -326,7 +332,11 @@ func (e *LinearEnumerator) enumerateIssues(ctx context.Context, total int, count
 		if !resp.Issues.PageInfo.HasNextPage {
 			break
 		}
-		cursor = resp.Issues.PageInfo.EndCursor
+		newCursor := resp.Issues.PageInfo.EndCursor
+		if newCursor == cursor {
+			break // cursor didn't advance, avoid infinite loop
+		}
+		cursor = newCursor
 	}
 	if total > 0 {
 		e.progressf("Scanning issues: %d/%d (100%%)\n", count.Load(), total)
@@ -493,7 +503,11 @@ func (e *LinearEnumerator) enumerateDocuments(ctx context.Context, count *atomic
 		if !resp.Documents.PageInfo.HasNextPage {
 			break
 		}
-		cursor = resp.Documents.PageInfo.EndCursor
+		newCursor := resp.Documents.PageInfo.EndCursor
+		if newCursor == cursor {
+			break // cursor didn't advance, avoid infinite loop
+		}
+		cursor = newCursor
 	}
 	return nil
 }
@@ -527,7 +541,11 @@ func (e *LinearEnumerator) enumerateProjectUpdates(ctx context.Context, count *a
 		if !resp.ProjectUpdates.PageInfo.HasNextPage {
 			break
 		}
-		cursor = resp.ProjectUpdates.PageInfo.EndCursor
+		newCursor := resp.ProjectUpdates.PageInfo.EndCursor
+		if newCursor == cursor {
+			break // cursor didn't advance, avoid infinite loop
+		}
+		cursor = newCursor
 	}
 	return nil
 }
@@ -564,6 +582,26 @@ func (e *LinearEnumerator) graphql(ctx context.Context, query string, variables 
 				continue
 			}
 			return fmt.Errorf("http request: %w", err)
+		}
+
+		// Retry on server errors (5xx)
+		if resp.StatusCode >= 500 {
+			resp.Body.Close()
+			if attempt < maxAttempts-1 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(2 * time.Second):
+				}
+				continue
+			}
+			return fmt.Errorf("linear API returned %d after %d attempts", resp.StatusCode, maxAttempts)
+		}
+
+		// Non-200/400 is unexpected — don't retry
+		if resp.StatusCode != 200 && resp.StatusCode != 400 {
+			resp.Body.Close()
+			return fmt.Errorf("linear API returned unexpected status %d", resp.StatusCode)
 		}
 
 		var gqlResp graphqlResponse

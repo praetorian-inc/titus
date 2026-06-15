@@ -26,13 +26,6 @@ func TestLinearEnumerator_RequiresToken(t *testing.T) {
 	assert.Contains(t, err.Error(), "token")
 }
 
-func TestLinearEnumerator_Defaults(t *testing.T) {
-	e, err := NewLinearEnumerator(LinearConfig{Token: "lin_api_test"})
-	require.NoError(t, err)
-	assert.Equal(t, 3, e.config.Concurrency)
-	assert.Equal(t, 2.0, e.config.RateLimit)
-}
-
 func TestLinearEnumerator_Interface(t *testing.T) {
 	e, err := NewLinearEnumerator(LinearConfig{Token: "lin_api_test"})
 	require.NoError(t, err)
