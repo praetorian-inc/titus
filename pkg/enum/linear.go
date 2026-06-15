@@ -68,14 +68,14 @@ func linearProvenance(entityType, identifier, title, url, team, project string) 
 // logf writes a progress message when verbose output is enabled.
 func (e *LinearEnumerator) logf(format string, args ...interface{}) {
 	if e.config.Verbose != nil {
-		fmt.Fprintf(e.config.Verbose, format+"\n", args...)
+		_, _ = fmt.Fprintf(e.config.Verbose, format+"\n", args...)
 	}
 }
 
 // progressf writes an in-place progress update using \r.
 func (e *LinearEnumerator) progressf(format string, args ...interface{}) {
 	if e.config.Verbose != nil {
-		fmt.Fprintf(e.config.Verbose, "\r%-80s", fmt.Sprintf(format, args...))
+		_, _ = fmt.Fprintf(e.config.Verbose, "\r%-80s", fmt.Sprintf(format, args...))
 	}
 }
 

@@ -174,8 +174,8 @@ func runLinearScan(cmd *cobra.Command, args []string) error {
 		return outputMatches(cmd, matches)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Linear scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", linearOutputPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Linear scan complete: %d matches, %d findings\n", matchCount, findingCount)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", linearOutputPath)
 
 	findings, err := s.GetFindings()
 	if err != nil {

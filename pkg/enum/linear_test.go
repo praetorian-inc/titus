@@ -57,11 +57,14 @@ func TestLinearGraphQL_Success(t *testing.T) {
 		assert.Equal(t, "lin_api_test", r.Header.Get("Authorization"))
 
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
 		assert.Equal(t, "{ viewer { id } }", body["query"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"viewer": map[string]interface{}{"id": "user-1"},
 			},
@@ -85,7 +88,7 @@ func TestLinearGraphQL_RateLimitRetry(t *testing.T) {
 		attempts++
 		if attempts == 1 {
 			w.WriteHeader(400)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"errors": []map[string]interface{}{
 					{
 						"message":    "rate limited",
@@ -95,7 +98,7 @@ func TestLinearGraphQL_RateLimitRetry(t *testing.T) {
 			})
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{"viewer": map[string]interface{}{"id": "ok"}},
 		})
 	}))
@@ -114,7 +117,7 @@ func TestLinearGraphQL_RateLimitRetry(t *testing.T) {
 
 func TestLinearGraphQL_GraphQLErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"errors": []map[string]interface{}{
 				{"message": "Authentication required"},
 			},
@@ -171,14 +174,17 @@ func TestLinearBuildIssueBlob_NoProject(t *testing.T) {
 func TestLinearEnumerateIssues(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
 		query, _ := body["query"].(string)
 
 		w.Header().Set("Content-Type", "application/json")
 
 		if strings.Contains(query, "issues(") {
 			// Return one issue with one comment, no further pages
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"issues": map[string]interface{}{
 						"nodes": []map[string]interface{}{
@@ -279,11 +285,14 @@ func TestLinearBuildProjectUpdateBlob(t *testing.T) {
 func TestLinearEnumerateDocuments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
 		query := body["query"].(string)
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(query, "documents(") {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"documents": map[string]interface{}{
 						"nodes": []map[string]interface{}{
@@ -316,7 +325,7 @@ func TestLinearEnumerateDocuments(t *testing.T) {
 func TestLinearEnumerateProjectUpdates(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"projectUpdates": map[string]interface{}{
 					"nodes": []map[string]interface{}{
@@ -349,7 +358,10 @@ func TestLinearEnumerate_Pagination(t *testing.T) {
 	issuePage := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
 		query := body["query"].(string)
 		vars, _ := body["variables"].(map[string]interface{})
 
@@ -359,7 +371,7 @@ func TestLinearEnumerate_Pagination(t *testing.T) {
 		case strings.Contains(query, "issues("):
 			issuePage++
 			if issuePage == 1 {
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"data": map[string]interface{}{
 						"issues": map[string]interface{}{
 							"nodes": []map[string]interface{}{
@@ -380,7 +392,7 @@ func TestLinearEnumerate_Pagination(t *testing.T) {
 				})
 			} else {
 				assert.Equal(t, "cursor-1", vars["after"])
-				json.NewEncoder(w).Encode(map[string]interface{}{
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"data": map[string]interface{}{
 						"issues": map[string]interface{}{
 							"nodes": []map[string]interface{}{
@@ -401,7 +413,7 @@ func TestLinearEnumerate_Pagination(t *testing.T) {
 				})
 			}
 		case strings.Contains(query, "documents("):
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"documents": map[string]interface{}{
 						"nodes":    []interface{}{},
@@ -410,7 +422,7 @@ func TestLinearEnumerate_Pagination(t *testing.T) {
 				},
 			})
 		case strings.Contains(query, "projectUpdates("):
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"projectUpdates": map[string]interface{}{
 						"nodes":    []interface{}{},
@@ -438,14 +450,17 @@ func TestLinearEnumerate_Pagination(t *testing.T) {
 func TestLinearEnumerate_FullIntegration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
 		query := body["query"].(string)
 
 		w.Header().Set("Content-Type", "application/json")
 
 		switch {
 		case strings.Contains(query, "issues("):
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"issues": map[string]interface{}{
 						"nodes": []map[string]interface{}{
@@ -465,7 +480,7 @@ func TestLinearEnumerate_FullIntegration(t *testing.T) {
 				},
 			})
 		case strings.Contains(query, "documents("):
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"documents": map[string]interface{}{
 						"nodes": []map[string]interface{}{
@@ -481,7 +496,7 @@ func TestLinearEnumerate_FullIntegration(t *testing.T) {
 				},
 			})
 		case strings.Contains(query, "projectUpdates("):
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": map[string]interface{}{
 					"projectUpdates": map[string]interface{}{
 						"nodes": []map[string]interface{}{
@@ -496,7 +511,7 @@ func TestLinearEnumerate_FullIntegration(t *testing.T) {
 				},
 			})
 		default:
-			json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]interface{}{}})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]interface{}{}})
 		}
 	}))
 	defer server.Close()
