@@ -132,6 +132,11 @@ func (c *Core) ScanBatch(items []ContentItem) (*BatchScanResult, error) {
 	}, nil
 }
 
+// ScanBlob scans raw content with a known BlobID.
+func (c *Core) ScanBlob(content []byte, blobID types.BlobID) ([]*types.Match, error) {
+	return c.matcher.MatchWithBlobID(content, blobID)
+}
+
 // Close releases scanner resources
 func (c *Core) Close() {
 	if c.matcher != nil {
