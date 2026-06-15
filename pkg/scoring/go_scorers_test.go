@@ -59,4 +59,16 @@ func TestAllBuiltinScorers_IncludesGoAndYAML(t *testing.T) {
 	if goIdx != -1 && yamlIdx != -1 && goIdx > yamlIdx {
 		t.Errorf("Go scorers must precede YAML for first-match-wins: goIdx=%d yamlIdx=%d", goIdx, yamlIdx)
 	}
+  
+func TestBuiltinGoScorers_IncludesGitLab(t *testing.T) {
+	scorers := BuiltinGoScorers()
+	var found bool
+	for _, s := range scorers {
+		if s.Name == "gitlab-pat-scope" {
+			found = true
+			assert.Contains(t, s.RuleIDs, "np.gitlab.2")
+			assert.Contains(t, s.RuleIDs, "np.gitlab.4")
+		}
+	}
+	assert.True(t, found, "BuiltinGoScorers must include gitlab-pat-scope scorer")
 }
