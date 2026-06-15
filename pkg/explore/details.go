@@ -222,6 +222,55 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 							fieldValueStyle.Render(p.Commit.CommitterTimestamp.Format("2006-01-02 15:04:05"))))
 					}
 				}
+			case types.ExtendedProvenance:
+				if source, _ := p.Payload["source"].(string); source != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("Source:"),
+						fieldValueStyle.Render(source)))
+				}
+				id, _ := p.Payload["identifier"].(string)
+				if id == "" {
+					id, _ = p.Payload["pageID"].(string)
+				}
+				if id != "" {
+					label := "ID:"
+					switch p.Payload["entityType"] {
+					case "issue":
+						label = "Issue:"
+					case "document":
+						label = "Document:"
+					case "projectUpdate":
+						label = "Update:"
+					}
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render(label),
+						fieldValueStyle.Render(id)))
+				}
+				if title, _ := p.Payload["title"].(string); title != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("Title:"),
+						fieldValueStyle.Render(title)))
+				}
+				if url, _ := p.Payload["url"].(string); url != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("URL:"),
+						fieldValueStyle.Render(url)))
+				}
+				if team, _ := p.Payload["team"].(string); team != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("Team:"),
+						fieldValueStyle.Render(team)))
+				}
+				if project, _ := p.Payload["project"].(string); project != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("Project:"),
+						fieldValueStyle.Render(project)))
+				}
+				if space, _ := p.Payload["space"].(string); space != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("Space:"),
+						fieldValueStyle.Render(space)))
+				}
 			}
 		}
 	}
