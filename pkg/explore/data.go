@@ -197,6 +197,13 @@ func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[strin
 			if gp, ok := prov.(types.GitProvenance); ok && gp.RepoPath != "" {
 				repoSet[gp.RepoPath] = struct{}{}
 			}
+			if ep, ok := prov.(types.ExtendedProvenance); ok {
+				if url, _ := ep.Payload["url"].(string); url != "" {
+					repoSet[url] = struct{}{}
+				} else if source, _ := ep.Payload["source"].(string); source != "" {
+					repoSet[source] = struct{}{}
+				}
+			}
 		}
 	}
 	repos := make([]string, 0, len(repoSet))

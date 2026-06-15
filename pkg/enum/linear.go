@@ -59,6 +59,7 @@ func linearProvenance(entityType, identifier, title, url, team, project string) 
 			"identifier": identifier,
 			"title":      title,
 			"url":        url,
+			"path":       url,
 			"team":       team,
 			"project":    project,
 		},

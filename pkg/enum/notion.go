@@ -46,6 +46,7 @@ func notionProvenance(pageID, title, pageURL, space string) types.ExtendedProven
 			"pageID": pageID,
 			"title":  title,
 			"url":    pageURL,
+			"path":   pageURL,
 			"space":  space,
 		},
 	}
