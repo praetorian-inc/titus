@@ -271,7 +271,7 @@ func (s *Server) streamEnumeration(ctx context.Context, enumerator enum.Enumerat
 
 		matches, err := s.core.ScanBlob(content, blobID)
 		if err != nil {
-			return err
+			return nil
 		}
 
 		if len(matches) == 0 {
@@ -288,12 +288,15 @@ func (s *Server) streamEnumeration(ctx context.Context, enumerator enum.Enumerat
 		data, _ := json.Marshal(result)
 
 		s.encoderMu.Lock()
-		_ = s.encoder.Encode(Response{
+		err = s.encoder.Encode(Response{
 			Success: true,
 			Type:    prefix + "_result",
 			Data:    data,
 		})
 		s.encoderMu.Unlock()
+		if err != nil {
+			return err
+		}
 
 		return nil
 	})

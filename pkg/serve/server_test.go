@@ -215,9 +215,10 @@ func TestServer_ScanPath(t *testing.T) {
 	for _, line := range lines[1:] {
 		var resp Response
 		require.NoError(t, json.Unmarshal([]byte(line), &resp))
-		if resp.Type == "scan_path_result" {
+		switch resp.Type {
+		case "scan_path_result":
 			results = append(results, resp)
-		} else if resp.Type == "scan_path_done" {
+		case "scan_path_done":
 			done = resp
 		}
 	}
@@ -304,9 +305,10 @@ func TestServer_ScanGit(t *testing.T) {
 	for _, line := range lines[1:] {
 		var resp Response
 		require.NoError(t, json.Unmarshal([]byte(line), &resp))
-		if resp.Type == "scan_git_result" {
+		switch resp.Type {
+		case "scan_git_result":
 			results = append(results, resp)
-		} else if resp.Type == "scan_git_done" {
+		case "scan_git_done":
 			done = resp
 		}
 	}
