@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -89,13 +90,20 @@ type slConversation struct {
 	IsArchived bool   `json:"is_archived"`
 }
 
+// slAttachment represents a Slack message attachment.
+type slAttachment struct {
+	Text     string `json:"text"`
+	Fallback string `json:"fallback"`
+}
+
 // slMessage represents a Slack message.
 type slMessage struct {
-	Type       string `json:"type"`
-	User       string `json:"user"`
-	Text       string `json:"text"`
-	TS         string `json:"ts"`
-	ReplyCount int    `json:"reply_count"`
+	Type        string         `json:"type"`
+	User        string         `json:"user"`
+	Text        string         `json:"text"`
+	TS          string         `json:"ts"`
+	ReplyCount  int            `json:"reply_count"`
+	Attachments []slAttachment `json:"attachments,omitempty"`
 }
 
 // slConversationsListResponse maps conversations.list API response.
@@ -214,7 +222,7 @@ func (e *SlackEnumerator) slListConversations(ctx context.Context) ([]slConversa
 	for {
 		endpoint := "conversations.list?types=public_channel,private_channel,mpim,im&limit=200"
 		if cursor != "" {
-			endpoint += "&cursor=" + cursor
+			endpoint += "&cursor=" + url.QueryEscape(cursor)
 		}
 
 		body, err := e.slGet(ctx, endpoint)
@@ -250,7 +258,7 @@ func (e *SlackEnumerator) slFetchHistory(ctx context.Context, channelID string) 
 	for {
 		endpoint := "conversations.history?channel=" + channelID + "&limit=200"
 		if cursor != "" {
-			endpoint += "&cursor=" + cursor
+			endpoint += "&cursor=" + url.QueryEscape(cursor)
 		}
 
 		body, err := e.slGet(ctx, endpoint)
@@ -286,7 +294,7 @@ func (e *SlackEnumerator) slFetchReplies(ctx context.Context, channelID, threadT
 	for {
 		endpoint := "conversations.replies?channel=" + channelID + "&ts=" + threadTS + "&limit=200"
 		if cursor != "" {
-			endpoint += "&cursor=" + cursor
+			endpoint += "&cursor=" + url.QueryEscape(cursor)
 		}
 
 		body, err := e.slGet(ctx, endpoint)
@@ -314,17 +322,31 @@ func (e *SlackEnumerator) slFetchReplies(ctx context.Context, channelID, threadT
 	return all, nil
 }
 
-// slBuildChannelBlob assembles all messages from a channel into a single blob.
-func slBuildChannelBlob(channelName, channelURL, channelID string, messages []slMessage) []byte {
+// slBuildMessageBlob assembles a single message and its thread replies into a blob.
+func slBuildMessageBlob(channelName, channelURL, channelID string, msg slMessage, replies []slMessage) []byte {
 	var sb strings.Builder
 	sb.WriteString("Channel: " + channelName + "\n")
 	sb.WriteString("URL: " + channelURL + "\n")
 	sb.WriteString("ID: " + channelID + "\n")
 	sb.WriteString("---\n")
-	for _, msg := range messages {
-		sb.WriteString("[" + msg.User + "] [" + msg.TS + "]: " + msg.Text + "\n")
+	slWriteMessage(&sb, msg)
+	for _, reply := range replies {
+		slWriteMessage(&sb, reply)
 	}
 	return []byte(sb.String())
+}
+
+// slWriteMessage writes a single message's text and attachment content to a builder.
+func slWriteMessage(sb *strings.Builder, msg slMessage) {
+	sb.WriteString("[" + msg.User + "] [" + msg.TS + "]: " + msg.Text + "\n")
+	for _, att := range msg.Attachments {
+		if att.Text != "" {
+			sb.WriteString("  [attachment]: " + att.Text + "\n")
+		}
+		if att.Fallback != "" && att.Fallback != att.Text {
+			sb.WriteString("  [attachment-fallback]: " + att.Fallback + "\n")
+		}
+	}
 }
 
 // slChannelURL returns the Slack web URL for a channel.
@@ -353,6 +375,20 @@ func slFilterChannels(conversations []slConversation, filter string) []slConvers
 	return filtered
 }
 
+// slIsAccessError returns true if the error string indicates a channel access
+// issue that should be skipped rather than aborting the entire scan.
+func slIsAccessError(errMsg string) bool {
+	switch {
+	case strings.Contains(errMsg, "not_in_channel"),
+		strings.Contains(errMsg, "channel_not_found"),
+		strings.Contains(errMsg, "account_inactive"),
+		strings.Contains(errMsg, "is_archived"),
+		strings.Contains(errMsg, "missing_scope"):
+		return true
+	}
+	return false
+}
+
 // Enumerate discovers content from a Slack workspace and yields blobs.
 func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	e.logf("Listing conversations...")
@@ -376,49 +412,53 @@ func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content [
 		}
 		channelURL := slChannelURL(conv.ID)
 
-		// Fetch channel history
+		// Fetch channel history; skip inaccessible channels
 		messages, err := e.slFetchHistory(ctx, conv.ID)
 		if err != nil {
+			if slIsAccessError(err.Error()) {
+				e.logf("Skipping channel %s: %v", channelName, err)
+				channelCount.Add(1)
+				continue
+			}
 			return fmt.Errorf("fetching history for %s: %w", channelName, err)
 		}
 
-		// For messages with threads, fetch replies
-		var allMessages []slMessage
+		// Emit one blob per message (with thread replies inline)
 		for _, msg := range messages {
-			allMessages = append(allMessages, msg)
+			var replies []slMessage
 			if msg.ReplyCount > 0 {
-				replies, err := e.slFetchReplies(ctx, conv.ID, msg.TS)
+				threadReplies, err := e.slFetchReplies(ctx, conv.ID, msg.TS)
 				if err != nil {
-					return fmt.Errorf("fetching replies for %s/%s: %w", channelName, msg.TS, err)
-				}
-				// Skip the first reply since it's the parent message itself
-				for _, reply := range replies {
-					if reply.TS != msg.TS {
-						allMessages = append(allMessages, reply)
+					if slIsAccessError(err.Error()) {
+						e.logf("Skipping replies for %s/%s: %v", channelName, msg.TS, err)
+					} else {
+						e.logf("Error fetching replies for %s/%s: %v", channelName, msg.TS, err)
+					}
+					// Continue with the message itself, without replies
+				} else {
+					// Skip the parent message from replies since it duplicates msg
+					for _, reply := range threadReplies {
+						if reply.TS != msg.TS {
+							replies = append(replies, reply)
+						}
 					}
 				}
 			}
-		}
 
-		if len(allMessages) == 0 {
-			n := channelCount.Add(1)
-			e.progressf("Scanning channels: %d/%d (%d%%)", n, total, n*100/int64(total))
-			continue
-		}
+			blob := slBuildMessageBlob(channelName, channelURL, conv.ID, msg, replies)
+			blobID := types.ComputeBlobID(blob)
+			prov := slackProvenance(channelName, conv.ID, channelURL, channelURL)
 
-		blob := slBuildChannelBlob(channelName, channelURL, conv.ID, allMessages)
-		blobID := types.ComputeBlobID(blob)
-		prov := slackProvenance(channelName, conv.ID, channelURL, channelURL)
+			if err := callback(blob, blobID, prov); err != nil {
+				return err
+			}
+		}
 
 		n := channelCount.Add(1)
 		if total > 0 {
 			e.progressf("Scanning channels: %d/%d (%d%%)", n, total, n*100/int64(total))
 		} else {
 			e.progressf("Scanning channels: %d", n)
-		}
-
-		if err := callback(blob, blobID, prov); err != nil {
-			return err
 		}
 	}
 

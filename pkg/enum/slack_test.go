@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -46,12 +47,19 @@ var _ Enumerator = (*SlackEnumerator)(nil)
 // Ensure types package is referenced so imports stay tidy.
 var _ types.Provenance = types.ExtendedProvenance{}
 
-func TestSlackBuildChannelBlob(t *testing.T) {
-	messages := []slMessage{
-		{User: "U001", TS: "1234567890.000100", Text: "Hello world"},
+func TestSlackBuildMessageBlob(t *testing.T) {
+	msg := slMessage{
+		User: "U001",
+		TS:   "1234567890.000100",
+		Text: "Hello world",
+		Attachments: []slAttachment{
+			{Text: "attached content", Fallback: "fallback text"},
+		},
+	}
+	replies := []slMessage{
 		{User: "U002", TS: "1234567890.000200", Text: "API_KEY=sk_live_abc123"},
 	}
-	blob := slBuildChannelBlob("general", "https://app.slack.com/client/C12345", "C12345", messages)
+	blob := slBuildMessageBlob("general", "https://app.slack.com/client/C12345", "C12345", msg, replies)
 
 	content := string(blob)
 	assert.Contains(t, content, "Channel: general")
@@ -59,7 +67,33 @@ func TestSlackBuildChannelBlob(t *testing.T) {
 	assert.Contains(t, content, "ID: C12345")
 	assert.Contains(t, content, "---")
 	assert.Contains(t, content, "[U001] [1234567890.000100]: Hello world")
+	assert.Contains(t, content, "[attachment]: attached content")
+	assert.Contains(t, content, "[attachment-fallback]: fallback text")
 	assert.Contains(t, content, "[U002] [1234567890.000200]: API_KEY=sk_live_abc123")
+}
+
+func TestSlackBuildMessageBlob_NoAttachments(t *testing.T) {
+	msg := slMessage{User: "U001", TS: "1000.0001", Text: "plain message"}
+	blob := slBuildMessageBlob("general", "https://app.slack.com/client/C12345", "C12345", msg, nil)
+	content := string(blob)
+	assert.Contains(t, content, "[U001] [1000.0001]: plain message")
+	assert.NotContains(t, content, "[attachment]")
+}
+
+func TestSlackBuildMessageBlob_AttachmentSameTextAndFallback(t *testing.T) {
+	msg := slMessage{
+		User: "U001",
+		TS:   "1000.0001",
+		Text: "msg",
+		Attachments: []slAttachment{
+			{Text: "same", Fallback: "same"},
+		},
+	}
+	blob := slBuildMessageBlob("general", "https://app.slack.com/client/C12345", "C12345", msg, nil)
+	content := string(blob)
+	assert.Contains(t, content, "[attachment]: same")
+	// Fallback should be omitted when it matches text
+	assert.NotContains(t, content, "[attachment-fallback]")
 }
 
 func TestSlackAPI_Success(t *testing.T) {
@@ -134,13 +168,113 @@ func TestSlackAPI_RateLimitRetry(t *testing.T) {
 	assert.Equal(t, "general", conversations[0].Name)
 }
 
+func TestSlackPaginationCursorURLEncoded(t *testing.T) {
+	// Slack cursors are base64 and may contain +, /, = characters.
+	// Verify they are URL-encoded in the request.
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		if callCount == 1 {
+			// First page: return a cursor with special characters
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"channels": []map[string]interface{}{
+					{"id": "C001", "name": "chan1", "is_channel": true},
+				},
+				"response_metadata": map[string]interface{}{
+					"next_cursor": "dXNlcjpV+MDM/Nw==",
+				},
+			})
+			return
+		}
+
+		// Second page: verify cursor was URL-encoded
+		cursorParam := r.URL.Query().Get("cursor")
+		assert.Equal(t, "dXNlcjpV+MDM/Nw==", cursorParam, "cursor should be properly decoded from URL-encoded form")
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok": true,
+			"channels": []map[string]interface{}{
+				{"id": "C002", "name": "chan2", "is_channel": true},
+			},
+			"response_metadata": map[string]interface{}{
+				"next_cursor": "",
+			},
+		})
+	}))
+	defer server.Close()
+
+	e := testSlackEnumerator(t, server.URL+"/")
+
+	conversations, err := e.slListConversations(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 2, callCount)
+	require.Len(t, conversations, 2)
+}
+
+func TestSlackEnumerate_NotInChannelSkipped(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		path := r.URL.Path
+
+		switch {
+		case strings.Contains(path, "conversations.list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"channels": []map[string]interface{}{
+					{"id": "C_INACCESSIBLE", "name": "private-chan", "is_channel": true},
+					{"id": "C_OK", "name": "public-chan", "is_channel": true},
+				},
+				"response_metadata": map[string]interface{}{
+					"next_cursor": "",
+				},
+			})
+
+		case strings.Contains(path, "conversations.history"):
+			channelID := r.URL.Query().Get("channel")
+			if channelID == "C_INACCESSIBLE" {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"ok":    false,
+					"error": "not_in_channel",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"messages": []map[string]interface{}{
+					{"user": "U001", "text": "hello from public", "ts": "1000.0001"},
+				},
+				"has_more": false,
+				"response_metadata": map[string]interface{}{"next_cursor": ""},
+			})
+
+		default:
+			http.Error(w, "unexpected endpoint: "+path, http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	e := testSlackEnumerator(t, server.URL+"/")
+
+	var blobs []string
+	err := e.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		blobs = append(blobs, string(content))
+		return nil
+	})
+	require.NoError(t, err, "not_in_channel should be skipped, not abort the scan")
+	require.Len(t, blobs, 1, "should have one blob from the accessible channel")
+	assert.Contains(t, blobs[0], "hello from public")
+}
+
 func TestSlackEnumerate_FullIntegration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		path := r.URL.Path
 
 		switch {
-		case pathContains(path, "conversations.list"):
+		case strings.Contains(path, "conversations.list"):
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok": true,
 				"channels": []map[string]interface{}{
@@ -155,7 +289,7 @@ func TestSlackEnumerate_FullIntegration(t *testing.T) {
 				},
 			})
 
-		case pathContains(path, "conversations.replies"):
+		case strings.Contains(path, "conversations.replies"):
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok": true,
 				"messages": []map[string]interface{}{
@@ -176,7 +310,7 @@ func TestSlackEnumerate_FullIntegration(t *testing.T) {
 				},
 			})
 
-		case pathContains(path, "conversations.history"):
+		case strings.Contains(path, "conversations.history"):
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok": true,
 				"messages": []map[string]interface{}{
@@ -212,28 +346,78 @@ func TestSlackEnumerate_FullIntegration(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	require.Len(t, blobs, 1)
+	// Per-message blobs: one for the thread parent (with reply), one for the standalone
+	require.Len(t, blobs, 2)
 
-	content := blobs[0]
-	assert.Contains(t, content, "Channel: engineering")
-	assert.Contains(t, content, "ID: C12345")
-	assert.Contains(t, content, "thread parent")
-	assert.Contains(t, content, "SECRET_KEY=abc123")
-	assert.Contains(t, content, "PASSWORD=hunter2")
+	// First blob: thread parent with its reply
+	assert.Contains(t, blobs[0], "Channel: engineering")
+	assert.Contains(t, blobs[0], "thread parent")
+	assert.Contains(t, blobs[0], "SECRET_KEY=abc123")
+
+	// Second blob: standalone message
+	assert.Contains(t, blobs[1], "Channel: engineering")
+	assert.Contains(t, blobs[1], "PASSWORD=hunter2")
 }
 
-// pathContains checks if the URL path contains the given substring.
-func pathContains(path, sub string) bool {
-	return len(path) >= len(sub) && contains(path, sub)
-}
+func TestSlackEnumerate_Attachments(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		path := r.URL.Path
 
-func contains(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+		switch {
+		case strings.Contains(path, "conversations.list"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"channels": []map[string]interface{}{
+					{"id": "C001", "name": "general", "is_channel": true},
+				},
+				"response_metadata": map[string]interface{}{"next_cursor": ""},
+			})
+
+		case strings.Contains(path, "conversations.history"):
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok": true,
+				"messages": []map[string]interface{}{
+					{
+						"user": "U001",
+						"text": "check this out",
+						"ts":   "1000.0001",
+						"attachments": []map[string]interface{}{
+							{"text": "SECRET=attached_secret_value", "fallback": "attachment fallback"},
+						},
+					},
+				},
+				"has_more": false,
+				"response_metadata": map[string]interface{}{"next_cursor": ""},
+			})
+
+		default:
+			http.Error(w, "unexpected: "+path, http.StatusBadRequest)
 		}
-	}
-	return false
+	}))
+	defer server.Close()
+
+	e := testSlackEnumerator(t, server.URL+"/")
+
+	var blobs []string
+	err := e.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		blobs = append(blobs, string(content))
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, blobs, 1)
+	assert.Contains(t, blobs[0], "SECRET=attached_secret_value")
+	assert.Contains(t, blobs[0], "attachment fallback")
+}
+
+func TestSlackIsAccessError(t *testing.T) {
+	assert.True(t, slIsAccessError("conversations.history error: not_in_channel"))
+	assert.True(t, slIsAccessError("channel_not_found"))
+	assert.True(t, slIsAccessError("account_inactive"))
+	assert.True(t, slIsAccessError("is_archived"))
+	assert.True(t, slIsAccessError("missing_scope"))
+	assert.False(t, slIsAccessError("some other error"))
+	assert.False(t, slIsAccessError(""))
 }
 
 // testSlackEnumerator creates a SlackEnumerator pointing at a test server.

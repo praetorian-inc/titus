@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +17,7 @@ var (
 	slackOutputPath   string
 	slackOutputFormat string
 	slackChannels     string
+	slackRateLimit    float64
 )
 
 var slackCmd = &cobra.Command{
@@ -48,6 +48,7 @@ func init() {
 	slackCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	slackCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all")
 	slackCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Include noisy rules that may produce more false positives")
+	slackCmd.Flags().Float64Var(&slackRateLimit, "rate-limit", 1.0, "API requests per second (default 1.0)")
 }
 
 func runSlackScan(cmd *cobra.Command, args []string) error {
@@ -65,9 +66,10 @@ func runSlackScan(cmd *cobra.Command, args []string) error {
 	}
 
 	enumerator, err := enum.NewSlackEnumerator(enum.SlackConfig{
-		Token:    token,
-		Channels: slackChannels,
-		Verbose:  verboseWriter,
+		Token:     token,
+		RateLimit: slackRateLimit,
+		Channels:  slackChannels,
+		Verbose:   verboseWriter,
 	})
 	if err != nil {
 		return fmt.Errorf("creating Slack enumerator: %w", err)
@@ -106,7 +108,7 @@ func runSlackScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
 	matchCount := 0
 	findingCount := 0
 
