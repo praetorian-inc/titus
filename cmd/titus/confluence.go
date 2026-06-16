@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +19,7 @@ var (
 	confluenceOutputPath   string
 	confluenceOutputFormat string
 	confluenceSpaces       string
+	confluenceRateLimit    float64
 )
 
 var confluenceCmd = &cobra.Command{
@@ -35,8 +35,8 @@ Authentication:
 
 Examples:
   titus confluence --base-url https://mysite.atlassian.net/wiki --username user@example.com --token ATATT...
-  CONFLUENCE_BASE_URL=https://mysite.atlassian.net/wiki CONFLUENCE_TOKEN=ATATT... titus confluence
-  titus confluence --base-url https://mysite.atlassian.net/wiki --token PAT_TOKEN --spaces DEV,OPS`,
+  CONFLUENCE_BASE_URL=https://mysite.atlassian.net/wiki CONFLUENCE_USERNAME=user@example.com CONFLUENCE_TOKEN=ATATT... titus confluence
+  titus confluence --base-url https://confluence.internal --token PAT_TOKEN --spaces DEV,OPS`,
 	RunE: runConfluenceScan,
 }
 
@@ -52,6 +52,7 @@ func init() {
 	confluenceCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all")
 	confluenceCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Include noisy rules that may produce more false positives")
 	confluenceCmd.Flags().StringVar(&confluenceSpaces, "spaces", "", "Comma-separated space keys to scan (empty = all)")
+	confluenceCmd.Flags().Float64Var(&confluenceRateLimit, "rate-limit", 5.0, "Requests per second")
 }
 
 func runConfluenceScan(cmd *cobra.Command, args []string) error {
@@ -82,11 +83,12 @@ func runConfluenceScan(cmd *cobra.Command, args []string) error {
 	}
 
 	enumerator, err := enum.NewConfluenceEnumerator(enum.ConfluenceConfig{
-		Token:    token,
-		Username: username,
-		BaseURL:  baseURL,
-		Spaces:   confluenceSpaces,
-		Verbose:  verboseWriter,
+		Token:     token,
+		Username:  username,
+		BaseURL:   baseURL,
+		RateLimit: confluenceRateLimit,
+		Spaces:    confluenceSpaces,
+		Verbose:   verboseWriter,
 	})
 	if err != nil {
 		return fmt.Errorf("creating Confluence enumerator: %w", err)
@@ -125,7 +127,7 @@ func runConfluenceScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
 	matchCount := 0
 	findingCount := 0
 

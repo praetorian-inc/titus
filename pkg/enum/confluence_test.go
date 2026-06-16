@@ -105,6 +105,16 @@ func TestConfluenceStripHTML(t *testing.T) {
 			expected: "key=\"secret\"",
 		},
 		{
+			name:     "CDATA in code macro",
+			input:    `<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[API_KEY=secret123]]></ac:plain-text-body></ac:structured-macro>`,
+			expected: "API_KEY=secret123",
+		},
+		{
+			name:     "CDATA with HTML around it",
+			input:    `<p>Config:</p><ac:plain-text-body><![CDATA[DB_PASS=hunter2]]></ac:plain-text-body><p>End</p>`,
+			expected: "Config:DB_PASS=hunter2End",
+		},
+		{
 			name:     "empty",
 			input:    "",
 			expected: "",
@@ -158,6 +168,50 @@ func TestConfluenceAPI_Success(t *testing.T) {
 	assert.Len(t, spaces, 2)
 	assert.Equal(t, "DEV", spaces[0].Key)
 	assert.Equal(t, "OPS", spaces[1].Key)
+}
+
+func TestConfluenceEnumerator_RejectsInsecureHTTP(t *testing.T) {
+	_, err := NewConfluenceEnumerator(ConfluenceConfig{
+		Token:   "test-token",
+		BaseURL: "http://example.com/wiki",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "plaintext HTTP")
+}
+
+func TestConfluenceEnumerator_AllowsInsecureHTTP(t *testing.T) {
+	e, err := NewConfluenceEnumerator(ConfluenceConfig{
+		Token:             "test-token",
+		BaseURL:           "http://example.com/wiki",
+		AllowInsecureHTTP: true,
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, e)
+}
+
+func TestConfluenceAPI_BasicAuth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		assert.True(t, ok, "expected Basic auth")
+		assert.Equal(t, "user@example.com", user)
+		assert.Equal(t, "test-token", pass)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"results": []map[string]interface{}{},
+			"start":   0,
+			"limit":   25,
+			"size":    0,
+			"_links":  map[string]interface{}{"next": ""},
+		})
+	}))
+	defer server.Close()
+
+	e := testConfluenceEnumerator(t, server.URL)
+	e.config.Username = "user@example.com"
+	spaces, err := e.cfFetchSpaces(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, spaces, 0)
 }
 
 func TestConfluenceAPI_RateLimitRetry(t *testing.T) {

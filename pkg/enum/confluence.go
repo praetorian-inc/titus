@@ -20,12 +20,13 @@ import (
 
 // ConfluenceConfig configures the Confluence instance enumerator.
 type ConfluenceConfig struct {
-	BaseURL   string    // Confluence base URL (e.g., https://mysite.atlassian.net/wiki)
-	Token     string    // API token or PAT
-	Username  string    // Username for Cloud basic auth (empty = PAT/Bearer)
-	RateLimit float64   // requests per second (default 5)
-	Spaces    string    // comma-separated space key filter (empty = all)
-	Verbose   io.Writer // progress output (nil = silent)
+	BaseURL          string    // Confluence base URL (e.g., https://mysite.atlassian.net/wiki)
+	Token            string    // API token or PAT
+	Username         string    // Username for Cloud basic auth (empty = PAT/Bearer)
+	RateLimit        float64   // requests per second (default 5)
+	Spaces           string    // comma-separated space key filter (empty = all)
+	AllowInsecureHTTP bool     // allow plaintext HTTP base URLs
+	Verbose          io.Writer // progress output (nil = silent)
 }
 
 // ConfluenceEnumerator enumerates blobs from a Confluence instance via the REST API.
@@ -48,8 +49,8 @@ func NewConfluenceEnumerator(cfg ConfluenceConfig) (*ConfluenceEnumerator, error
 	if err != nil {
 		return nil, fmt.Errorf("confluence base URL: %w", err)
 	}
-	if insecure && cfg.Verbose != nil {
-		_, _ = fmt.Fprintf(cfg.Verbose, "WARNING: using plaintext HTTP; token may be exposed\n")
+	if insecure && !cfg.AllowInsecureHTTP {
+		return nil, fmt.Errorf("confluence base URL uses plaintext HTTP, which exposes credentials; use HTTPS or set AllowInsecureHTTP")
 	}
 	if cfg.RateLimit <= 0 {
 		cfg.RateLimit = 5.0
@@ -94,10 +95,15 @@ func (e *ConfluenceEnumerator) progressf(format string, args ...interface{}) {
 	}
 }
 
-var cfHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
+var (
+	cfCDATARe  = regexp.MustCompile(`(?s)<!\[CDATA\[(.*?)\]\]>`)
+	cfHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
+)
 
-// cfStripHTML removes HTML tags and unescapes HTML entities.
+// cfStripHTML removes HTML tags and unescapes HTML entities, preserving CDATA content.
 func cfStripHTML(s string) string {
+	// Extract CDATA content before stripping HTML tags.
+	s = cfCDATARe.ReplaceAllString(s, "$1")
 	stripped := cfHTMLTagRe.ReplaceAllString(s, "")
 	return html.UnescapeString(stripped)
 }
@@ -262,10 +268,10 @@ func (e *ConfluenceEnumerator) cfFetchSpaces(ctx context.Context) ([]cfSpace, er
 			}
 		}
 
-		if page.Size < page.Limit || page.Links.Next == "" {
+		if page.Size == 0 || page.Links.Next == "" {
 			break
 		}
-		start += limit
+		start += page.Size
 	}
 	return allSpaces, nil
 }
@@ -294,10 +300,10 @@ func (e *ConfluenceEnumerator) cfFetchContent(ctx context.Context, spaceKey, con
 		}
 		allContent = append(allContent, items...)
 
-		if page.Size < page.Limit || page.Links.Next == "" {
+		if page.Size == 0 || page.Links.Next == "" {
 			break
 		}
-		start += limit
+		start += page.Size
 	}
 	return allContent, nil
 }
@@ -332,10 +338,10 @@ func (e *ConfluenceEnumerator) cfFetchComments(ctx context.Context, contentID st
 			})
 		}
 
-		if page.Size < page.Limit || page.Links.Next == "" {
+		if page.Size == 0 || page.Links.Next == "" {
 			break
 		}
-		start += limit
+		start += page.Size
 	}
 	return allComments, nil
 }
@@ -353,26 +359,27 @@ func (e *ConfluenceEnumerator) Enumerate(ctx context.Context, callback func(cont
 
 	for _, space := range spaces {
 		// Fetch pages
+		var allContent []cfContent
 		pages, err := e.cfFetchContent(ctx, space.Key, "page")
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("space %s pages: %v", space.Key, err))
-			continue
+		} else {
+			allContent = append(allContent, pages...)
 		}
 
 		// Fetch blog posts
 		blogs, err := e.cfFetchContent(ctx, space.Key, "blogpost")
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("space %s blogposts: %v", space.Key, err))
-			continue
+		} else {
+			allContent = append(allContent, blogs...)
 		}
-
-		allContent := append(pages, blogs...)
 
 		for _, item := range allContent {
 			comments, err := e.cfFetchComments(ctx, item.ID)
 			if err != nil {
 				errs = append(errs, fmt.Sprintf("comments for %s: %v", item.ID, err))
-				continue
+				// Continue to emit the page body even without comments.
 			}
 
 			strippedBody := cfStripHTML(item.Body.Storage.Value)
