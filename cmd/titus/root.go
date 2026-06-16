@@ -35,6 +35,7 @@ func init() {
 	rootCmd.AddCommand(exploreCmd)
 	rootCmd.AddCommand(linearCmd)
 	rootCmd.AddCommand(notionCmd)
+	rootCmd.AddCommand(slackCmd)
 }
 
 // Execute runs the root command.
