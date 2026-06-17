@@ -140,6 +140,8 @@ func (s *Server) handleScan(payload json.RawMessage) {
 		return
 	}
 
+	populateSourcePositions([]byte(p.Content), result.Matches)
+
 	data, _ := json.Marshal(result)
 	_ = s.encoder.Encode(Response{
 		Success: true,
@@ -159,6 +161,10 @@ func (s *Server) handleScanBatch(payload json.RawMessage) {
 	if err != nil {
 		s.sendError("scan_batch", err.Error())
 		return
+	}
+
+	for i, scanResult := range result.Results {
+		populateSourcePositions([]byte(p.Items[i].Content), scanResult.Matches)
 	}
 
 	data, _ := json.Marshal(result)
@@ -306,6 +312,7 @@ func (s *Server) streamEnumeration(ctx context.Context, enumerator enum.Enumerat
 					continue
 				}
 
+				populateSourcePositions(job.content, matches)
 				totalMatches.Add(int64(len(matches)))
 
 				result := ScanBlobResult{
@@ -346,6 +353,17 @@ func (s *Server) streamEnumeration(ctx context.Context, enumerator enum.Enumerat
 		Data:    doneData,
 	})
 	s.encoderMu.Unlock()
+}
+
+func populateSourcePositions(content []byte, matches []*types.Match) {
+	for _, m := range matches {
+		startLine, startCol := types.ComputeLineColumn(content, int(m.Location.Offset.Start))
+		endLine, endCol := types.ComputeLineColumn(content, int(m.Location.Offset.End))
+		m.Location.Source.Start.Line = startLine
+		m.Location.Source.Start.Column = startCol
+		m.Location.Source.End.Line = endLine
+		m.Location.Source.End.Column = endCol
+	}
 }
 
 func (s *Server) sendError(reqType, msg string) {
