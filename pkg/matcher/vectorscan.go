@@ -322,6 +322,15 @@ func preprocessPatternForHyperscan(pattern string) string {
 		pattern = stripExtendedMode(pattern)
 	}
 
+	// Strip lookaround assertions ((?=...) (?!...) (?<=...) (?<!...)).
+	// Hyperscan does not support lookaround. Since Hyperscan is only an
+	// over-approximating prefilter and regexp2 keeps the FULL pattern (lookarounds
+	// included) for precise match + capture extraction, removing a lookaround here
+	// only widens the prefilter — it can never introduce a false negative or change
+	// a reported match — and it lets otherwise-incompatible rules join the single
+	// combined Hyperscan pass instead of a separate per-blob regexp2 fallback scan.
+	pattern = stripLookarounds(pattern)
+
 	// Remove inline flag modifiers (we set them via Hyperscan flags instead)
 	pattern = strings.ReplaceAll(pattern, "(?i)", "")
 	pattern = strings.ReplaceAll(pattern, "(?s)", "")
@@ -334,6 +343,76 @@ func preprocessPatternForHyperscan(pattern string) string {
 	pattern = namedGroupRegex.ReplaceAllString(pattern, "(?:")
 
 	return pattern
+}
+
+// lookaroundEnd returns the index just past the balanced ')' that closes the
+// group starting at runes[start] (which must be '('). It honours backslash
+// escapes and [...] character classes.
+//
+// If the group is unbalanced or truncated (malformed pattern), it returns
+// len(runes). In that case stripLookarounds drops the remainder of the pattern
+// from the lookaround start onward. This is safe: a malformed pattern would
+// fail Hyperscan compilation anyway (→ regexp2 fallback), and regexp2 always
+// uses the unmodified rule.Pattern for precise extraction, so no reported match
+// can change.
+func lookaroundEnd(runes []rune, start int) int {
+	depth := 0
+	inClass := false
+	for j := start; j < len(runes); {
+		c := runes[j]
+		if c == '\\' { // skip escaped char
+			j += 2
+			continue
+		}
+		if inClass {
+			if c == ']' {
+				inClass = false
+			}
+			j++
+			continue
+		}
+		switch c {
+		case '[':
+			inClass = true
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return j + 1
+			}
+		}
+		j++
+	}
+	return len(runes)
+}
+
+// stripLookarounds removes lookaround assertions ((?=...) (?!...) (?<=...) (?<!...)) and
+// their balanced contents from a pattern. Hyperscan does not support lookaround;
+// since Hyperscan is only an over-approximating prefilter (regexp2 keeps the full
+// pattern for precise extraction), removing a lookaround only widens the prefilter
+// and can never change a reported match.
+//
+// Malformed or unclosed lookaround: if lookaroundEnd cannot find the closing ')',
+// it returns len(runes) and the remainder of the pattern is dropped from the
+// lookaround start onward. This is safe for the same reason — such a pattern
+// would fail Hyperscan compilation (→ regexp2 fallback) regardless.
+func stripLookarounds(pattern string) string {
+	runes := []rune(pattern)
+	var b strings.Builder
+	for i := 0; i < len(runes); {
+		if runes[i] == '(' && i+2 < len(runes) && runes[i+1] == '?' {
+			look := runes[i+2] == '=' || runes[i+2] == '!' ||
+				(runes[i+2] == '<' && i+3 < len(runes) && (runes[i+3] == '=' || runes[i+3] == '!'))
+			if look {
+				i = lookaroundEnd(runes, i) // drop the entire lookaround group
+				continue
+			}
+		}
+		b.WriteRune(runes[i])
+		i++
+	}
+	return b.String()
 }
 
 // hasExtendedMode checks if pattern uses extended mode.
