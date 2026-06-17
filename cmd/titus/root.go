@@ -36,6 +36,7 @@ func init() {
 	rootCmd.AddCommand(linearCmd)
 	rootCmd.AddCommand(notionCmd)
 	rootCmd.AddCommand(slackCmd)
+	rootCmd.AddCommand(confluenceCmd)
 }
 
 // Execute runs the root command.
