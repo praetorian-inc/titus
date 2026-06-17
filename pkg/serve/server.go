@@ -5,7 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"runtime"
+	"sync"
+	"sync/atomic"
 
+	"golang.org/x/sync/errgroup"
+
+	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/scanner"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/praetorian-inc/titus/pkg/validator"
@@ -20,6 +26,7 @@ type Server struct {
 	validator *validator.Engine
 	encoder   *json.Encoder
 	decoder   *json.Decoder
+	encoderMu sync.Mutex
 }
 
 // NewServer creates a new streaming server
@@ -99,6 +106,10 @@ func (s *Server) processRequest(ctx context.Context, req Request) bool {
 		s.handleScanBatch(req.Payload)
 	case "validate":
 		s.handleValidate(ctx, req.Payload)
+	case "scan_path":
+		s.handleScanPath(ctx, req.Payload)
+	case "scan_git":
+		s.handleScanGit(ctx, req.Payload)
 	case "close":
 		return true
 	default:
@@ -210,7 +221,136 @@ func (s *Server) handleValidate(ctx context.Context, payload json.RawMessage) {
 	})
 }
 
+func (s *Server) handleScanPath(ctx context.Context, payload json.RawMessage) {
+	var p ScanPathPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		s.sendError("scan_path", err.Error())
+		return
+	}
+
+	maxFileSize := int64(10 * 1024 * 1024)
+	if p.MaxFileSize > 0 {
+		maxFileSize = p.MaxFileSize
+	}
+
+	enumerator := enum.NewFilesystemEnumerator(enum.Config{
+		Root:            p.Path,
+		MaxFileSize:     maxFileSize,
+		ExtractArchives: p.ExtractArchives,
+		ExtractLimits:   enum.DefaultExtractionLimits(),
+		IgnoreFile:      p.IgnoreFile,
+	})
+
+	s.streamEnumeration(ctx, enumerator, "scan_path")
+}
+
+func (s *Server) handleScanGit(ctx context.Context, payload json.RawMessage) {
+	var p ScanGitPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		s.sendError("scan_git", err.Error())
+		return
+	}
+
+	maxFileSize := int64(10 * 1024 * 1024)
+	if p.MaxFileSize > 0 {
+		maxFileSize = p.MaxFileSize
+	}
+
+	enumerator := enum.NewGitEnumerator(enum.Config{
+		Root:        p.Path,
+		MaxFileSize: maxFileSize,
+	})
+	enumerator.WalkAll = p.WalkAll
+
+	s.streamEnumeration(ctx, enumerator, "scan_git")
+}
+
+// streamBlobJob is a unit of work for streamEnumeration's worker pool.
+type streamBlobJob struct {
+	content []byte
+	blobID  types.BlobID
+	prov    types.Provenance
+}
+
+func (s *Server) streamEnumeration(ctx context.Context, enumerator enum.Enumerator, prefix string) {
+	var totalMatches atomic.Int64
+	var totalBlobs atomic.Int64
+
+	numWorkers := runtime.NumCPU()
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	jobs := make(chan streamBlobJob, 2*numWorkers)
+	g, gctx := errgroup.WithContext(ctx)
+
+	// Producer: enumerate blobs and push them to the workers.
+	g.Go(func() error {
+		defer close(jobs)
+		return enumerator.Enumerate(gctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			totalBlobs.Add(1)
+			select {
+			case jobs <- streamBlobJob{content: content, blobID: blobID, prov: prov}:
+				return nil
+			case <-gctx.Done():
+				return gctx.Err()
+			}
+		})
+	})
+
+	// Consumers: scan each blob and stream matching results.
+	for range numWorkers {
+		g.Go(func() error {
+			for job := range jobs {
+				matches, err := s.core.ScanBlob(job.content, job.blobID)
+				if err != nil || len(matches) == 0 {
+					continue
+				}
+
+				totalMatches.Add(int64(len(matches)))
+
+				result := ScanBlobResult{
+					Source:  job.prov.Path(),
+					Kind:    job.prov.Kind(),
+					Matches: matches,
+				}
+				data, _ := json.Marshal(result)
+
+				s.encoderMu.Lock()
+				encErr := s.encoder.Encode(Response{
+					Success: true,
+					Type:    prefix + "_result",
+					Data:    data,
+				})
+				s.encoderMu.Unlock()
+				if encErr != nil {
+					return encErr
+				}
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		s.sendError(prefix, err.Error())
+		return
+	}
+
+	doneData, _ := json.Marshal(ScanDoneData{
+		TotalMatches: int(totalMatches.Load()),
+		TotalBlobs:   int(totalBlobs.Load()),
+	})
+	s.encoderMu.Lock()
+	_ = s.encoder.Encode(Response{
+		Success: true,
+		Type:    prefix + "_done",
+		Data:    doneData,
+	})
+	s.encoderMu.Unlock()
+}
+
 func (s *Server) sendError(reqType, msg string) {
+	s.encoderMu.Lock()
+	defer s.encoderMu.Unlock()
 	_ = s.encoder.Encode(Response{
 		Success: false,
 		Type:    reqType,
