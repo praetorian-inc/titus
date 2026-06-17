@@ -221,7 +221,7 @@ func (e *SlackEnumerator) slListConversations(ctx context.Context) ([]slConversa
 	cursor := ""
 
 	for {
-		endpoint := "conversations.list?types=public_channel&limit=200"
+		endpoint := "conversations.list?types=public_channel,private_channel,mpim,im&limit=200"
 		if cursor != "" {
 			endpoint += "&cursor=" + url.QueryEscape(cursor)
 		}

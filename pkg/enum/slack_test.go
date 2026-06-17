@@ -111,6 +111,7 @@ func TestSlackAPI_Success(t *testing.T) {
 					"name":        "general",
 					"is_channel":  true,
 					"is_archived": false,
+					"is_member":   true,
 				},
 			},
 			"response_metadata": map[string]interface{}{
@@ -150,6 +151,7 @@ func TestSlackAPI_RateLimitRetry(t *testing.T) {
 					"id":         "C12345",
 					"name":       "general",
 					"is_channel": true,
+					"is_member":  true,
 				},
 			},
 			"response_metadata": map[string]interface{}{
@@ -181,7 +183,7 @@ func TestSlackPaginationCursorURLEncoded(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok": true,
 				"channels": []map[string]interface{}{
-					{"id": "C001", "name": "chan1", "is_channel": true},
+					{"id": "C001", "name": "chan1", "is_channel": true, "is_member": true},
 				},
 				"response_metadata": map[string]interface{}{
 					"next_cursor": "dXNlcjpV+MDM/Nw==",
@@ -197,7 +199,7 @@ func TestSlackPaginationCursorURLEncoded(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok": true,
 			"channels": []map[string]interface{}{
-				{"id": "C002", "name": "chan2", "is_channel": true},
+				{"id": "C002", "name": "chan2", "is_channel": true, "is_member": true},
 			},
 			"response_metadata": map[string]interface{}{
 				"next_cursor": "",
@@ -224,8 +226,8 @@ func TestSlackEnumerate_NotInChannelSkipped(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok": true,
 				"channels": []map[string]interface{}{
-					{"id": "C_INACCESSIBLE", "name": "private-chan", "is_channel": true},
-					{"id": "C_OK", "name": "public-chan", "is_channel": true},
+					{"id": "C_INACCESSIBLE", "name": "private-chan", "is_channel": true, "is_member": true},
+					{"id": "C_OK", "name": "public-chan", "is_channel": true, "is_member": true},
 				},
 				"response_metadata": map[string]interface{}{
 					"next_cursor": "",
@@ -282,6 +284,7 @@ func TestSlackEnumerate_FullIntegration(t *testing.T) {
 						"id":         "C12345",
 						"name":       "engineering",
 						"is_channel": true,
+						"is_member":  true,
 					},
 				},
 				"response_metadata": map[string]interface{}{
@@ -369,7 +372,7 @@ func TestSlackEnumerate_Attachments(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok": true,
 				"channels": []map[string]interface{}{
-					{"id": "C001", "name": "general", "is_channel": true},
+					{"id": "C001", "name": "general", "is_channel": true, "is_member": true},
 				},
 				"response_metadata": map[string]interface{}{"next_cursor": ""},
 			})
@@ -408,6 +411,29 @@ func TestSlackEnumerate_Attachments(t *testing.T) {
 	require.Len(t, blobs, 1)
 	assert.Contains(t, blobs[0], "SECRET=attached_secret_value")
 	assert.Contains(t, blobs[0], "attachment fallback")
+}
+
+func TestSlackListConversations_FiltersByMembership(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok": true,
+			"channels": []map[string]interface{}{
+				{"id": "C_JOINED", "name": "joined-chan", "is_channel": true, "is_member": true},
+				{"id": "C_NOT_JOINED", "name": "other-chan", "is_channel": true, "is_member": false},
+				{"id": "C_MISSING", "name": "no-field-chan", "is_channel": true},
+			},
+			"response_metadata": map[string]interface{}{"next_cursor": ""},
+		})
+	}))
+	defer server.Close()
+
+	e := testSlackEnumerator(t, server.URL+"/")
+
+	conversations, err := e.slListConversations(context.Background())
+	require.NoError(t, err)
+	require.Len(t, conversations, 1)
+	assert.Equal(t, "C_JOINED", conversations[0].ID)
 }
 
 func TestSlackIsAccessError(t *testing.T) {
