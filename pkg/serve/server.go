@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"runtime"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/scanner"
@@ -262,46 +265,72 @@ func (s *Server) handleScanGit(ctx context.Context, payload json.RawMessage) {
 	s.streamEnumeration(ctx, enumerator, "scan_git")
 }
 
+// streamBlobJob is a unit of work for streamEnumeration's worker pool.
+type streamBlobJob struct {
+	content []byte
+	blobID  types.BlobID
+	prov    types.Provenance
+}
+
 func (s *Server) streamEnumeration(ctx context.Context, enumerator enum.Enumerator, prefix string) {
 	var totalMatches atomic.Int64
 	var totalBlobs atomic.Int64
 
-	err := enumerator.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		totalBlobs.Add(1)
+	numWorkers := runtime.NumCPU()
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+	jobs := make(chan streamBlobJob, 2*numWorkers)
+	g, gctx := errgroup.WithContext(ctx)
 
-		matches, err := s.core.ScanBlob(content, blobID)
-		if err != nil {
-			return nil
-		}
-
-		if len(matches) == 0 {
-			return nil
-		}
-
-		totalMatches.Add(int64(len(matches)))
-
-		result := ScanBlobResult{
-			Source:  prov.Path(),
-			Kind:    prov.Kind(),
-			Matches: matches,
-		}
-		data, _ := json.Marshal(result)
-
-		s.encoderMu.Lock()
-		err = s.encoder.Encode(Response{
-			Success: true,
-			Type:    prefix + "_result",
-			Data:    data,
+	// Producer: enumerate blobs and push them to the workers.
+	g.Go(func() error {
+		defer close(jobs)
+		return enumerator.Enumerate(gctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			totalBlobs.Add(1)
+			select {
+			case jobs <- streamBlobJob{content: content, blobID: blobID, prov: prov}:
+				return nil
+			case <-gctx.Done():
+				return gctx.Err()
+			}
 		})
-		s.encoderMu.Unlock()
-		if err != nil {
-			return err
-		}
-
-		return nil
 	})
 
-	if err != nil {
+	// Consumers: scan each blob and stream matching results.
+	for range numWorkers {
+		g.Go(func() error {
+			for job := range jobs {
+				matches, err := s.core.ScanBlob(job.content, job.blobID)
+				if err != nil || len(matches) == 0 {
+					continue
+				}
+
+				totalMatches.Add(int64(len(matches)))
+
+				result := ScanBlobResult{
+					Source:  job.prov.Path(),
+					Kind:    job.prov.Kind(),
+					Matches: matches,
+				}
+				data, _ := json.Marshal(result)
+
+				s.encoderMu.Lock()
+				encErr := s.encoder.Encode(Response{
+					Success: true,
+					Type:    prefix + "_result",
+					Data:    data,
+				})
+				s.encoderMu.Unlock()
+				if encErr != nil {
+					return encErr
+				}
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
 		s.sendError(prefix, err.Error())
 		return
 	}
@@ -320,6 +349,8 @@ func (s *Server) streamEnumeration(ctx context.Context, enumerator enum.Enumerat
 }
 
 func (s *Server) sendError(reqType, msg string) {
+	s.encoderMu.Lock()
+	defer s.encoderMu.Unlock()
 	_ = s.encoder.Encode(Response{
 		Success: false,
 		Type:    reqType,
