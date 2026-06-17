@@ -88,6 +88,7 @@ type slConversation struct {
 	IsMPIM     bool   `json:"is_mpim"`
 	IsPrivate  bool   `json:"is_private"`
 	IsArchived bool   `json:"is_archived"`
+	IsMember   bool   `json:"is_member"`
 }
 
 // slAttachment represents a Slack message attachment.
@@ -220,7 +221,7 @@ func (e *SlackEnumerator) slListConversations(ctx context.Context) ([]slConversa
 	cursor := ""
 
 	for {
-		endpoint := "conversations.list?types=public_channel,private_channel,mpim,im&limit=200"
+		endpoint := "conversations.list?types=public_channel&limit=200"
 		if cursor != "" {
 			endpoint += "&cursor=" + url.QueryEscape(cursor)
 		}
@@ -238,7 +239,11 @@ func (e *SlackEnumerator) slListConversations(ctx context.Context) ([]slConversa
 			return nil, fmt.Errorf("conversations.list error: %s", resp.Error)
 		}
 
-		all = append(all, resp.Channels...)
+		for _, ch := range resp.Channels {
+			if ch.IsMember {
+				all = append(all, ch)
+			}
+		}
 
 		nextCursor := resp.ResponseMetadata.NextCursor
 		if nextCursor == "" || nextCursor == cursor {
