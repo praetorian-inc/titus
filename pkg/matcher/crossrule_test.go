@@ -366,3 +366,66 @@ func TestCrossRuleDeduplicator_WinnerStableUnderInputReorder(t *testing.T) {
 	assert.Equal(t, "np.aws.1", expectedWinner,
 		"lexicographically smaller ruleID must win when all other score fields are equal")
 }
+
+func TestCrossRule_SpecificBeatsGeneric(t *testing.T) {
+	// np.aws.2 (provider-specific) and np.generic.2 (generic catch-all) capture
+	// the same secret, so they cluster. The generic rule has a longer pattern
+	// string, which would otherwise win the patternLen tiebreaker — but the
+	// "generic" category demotes it below the specific rule.
+	rules := map[string]*types.Rule{
+		"np.aws.2": {
+			ID:         "np.aws.2",
+			Pattern:    "short_specific_pattern",
+			Categories: []string{"api", "fuzzy", "secret"},
+		},
+		"np.generic.2": {
+			ID:         "np.generic.2",
+			Pattern:    "a_much_longer_generic_catch_all_pattern_string",
+			Categories: []string{"fuzzy", "generic", "secret"},
+		},
+	}
+
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	matches := []*types.Match{
+		makeMatch("np.generic.2", "FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/"),
+		makeMatch("np.aws.2", "FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/"),
+	}
+
+	result := dedup.Deduplicate(matches)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, "np.aws.2", result[0].RuleID,
+		"provider-specific rule must beat the generic catch-all rule")
+}
+
+func TestCrossRule_ValidatorBeatsSpecificity(t *testing.T) {
+	// A generic rule with a validator still beats a specific rule without one:
+	// validator presence is a stronger signal than the generic/specific split.
+	rules := map[string]*types.Rule{
+		"np.specific.1": {
+			ID:         "np.specific.1",
+			Pattern:    "specific",
+			Categories: []string{"api", "secret"},
+		},
+		"np.generic.2": {
+			ID:         "np.generic.2",
+			Pattern:    "generic",
+			Categories: []string{"generic", "secret"},
+		},
+	}
+
+	canValidate := func(ruleID string) bool { return ruleID == "np.generic.2" }
+	dedup := NewCrossRuleDeduplicator(rules, canValidate)
+
+	matches := []*types.Match{
+		makeMatch("np.specific.1", "SHARED_SECRET_VALUE"),
+		makeMatch("np.generic.2", "SHARED_SECRET_VALUE"),
+	}
+
+	result := dedup.Deduplicate(matches)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, "np.generic.2", result[0].RuleID,
+		"a validated generic match still beats an unvalidated specific match")
+}

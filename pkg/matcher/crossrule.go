@@ -133,7 +133,7 @@ func minStartOffset(cluster []*types.Match) int64 {
 }
 
 // pickWinner selects the most informative match from a cluster.
-// Priority: has validator > group count > total captured length > pattern length.
+// Priority: has validator > non-generic rule > group count > total captured length > pattern length.
 func (d *CrossRuleDeduplicator) pickWinner(cluster []*types.Match) *types.Match {
 	best := 0
 	bestScore := d.score(cluster[0])
@@ -160,12 +160,15 @@ func (d *CrossRuleDeduplicator) score(m *types.Match) matchScore {
 	}
 
 	patternLen := 0
+	isGeneric := false
 	if r, ok := d.rules[m.RuleID]; ok {
 		patternLen = len(r.Pattern)
+		isGeneric = ruleHasCategory(r, "generic")
 	}
 
 	return matchScore{
 		hasValidator: hasValidator,
+		isGeneric:    isGeneric,
 		groupCount:   len(m.Groups),
 		groupsLen:    groupsLen,
 		patternLen:   patternLen,
@@ -173,9 +176,20 @@ func (d *CrossRuleDeduplicator) score(m *types.Match) matchScore {
 	}
 }
 
+// ruleHasCategory reports whether the rule is tagged with the given category.
+func ruleHasCategory(r *types.Rule, category string) bool {
+	for _, c := range r.Categories {
+		if c == category {
+			return true
+		}
+	}
+	return false
+}
+
 // matchScore captures the ranking criteria for comparing matches.
 type matchScore struct {
 	hasValidator bool
+	isGeneric    bool // rule carries the "generic" category (catch-all)
 	groupCount   int
 	groupsLen    int
 	patternLen   int
@@ -186,6 +200,13 @@ type matchScore struct {
 func (s matchScore) Better(other matchScore) bool {
 	if s.hasValidator != other.hasValidator {
 		return s.hasValidator
+	}
+	// A provider-specific rule beats a generic catch-all rule (e.g. np.aws.2
+	// over np.generic.2). Generic rules exist to catch credentials that no
+	// specific rule recognises, so whenever a specific rule also fires on the
+	// same secret it is the more informative match.
+	if s.isGeneric != other.isGeneric {
+		return !s.isGeneric
 	}
 	if s.groupCount != other.groupCount {
 		return s.groupCount > other.groupCount
