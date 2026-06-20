@@ -73,3 +73,16 @@ func TestBuiltinGoScorers_IncludesGitLab(t *testing.T) {
 	}
 	assert.True(t, found, "BuiltinGoScorers must include gitlab-pat-scope scorer")
 }
+
+func TestBuiltinGoScorers_IncludesGCP(t *testing.T) {
+	scorers := BuiltinGoScorers()
+	var found bool
+	for _, s := range scorers {
+		if s.Name == "gcp-sa-iam-scope" {
+			found = true
+			assert.Contains(t, s.RuleIDs, "kingfisher.gcp.1")
+			assert.Equal(t, 10, len(s.Modifiers), "GCP scorer must have 10 modifiers")
+		}
+	}
+	assert.True(t, found, "BuiltinGoScorers must include gcp-sa-iam-scope scorer")
+}

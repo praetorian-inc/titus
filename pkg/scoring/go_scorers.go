@@ -13,6 +13,7 @@ func BuiltinGoScorers() []*Scorer {
 		MongoDBGoScorer(),
 		MongoDBAtlasGoScorer(),
 		GitLabGoScorer(),
+		GCPGoScorer(),
 	}
 }
 
