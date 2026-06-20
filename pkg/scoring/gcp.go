@@ -50,12 +50,19 @@ func findGCPServiceAccountKey(obj map[string]interface{}) *gcpServiceAccountKey 
 		}
 	}
 	for _, v := range obj {
-		nested, ok := v.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if key := findGCPServiceAccountKey(nested); key != nil {
-			return key
+		switch val := v.(type) {
+		case map[string]interface{}:
+			if key := findGCPServiceAccountKey(val); key != nil {
+				return key
+			}
+		case []interface{}:
+			for _, elem := range val {
+				if nested, ok := elem.(map[string]interface{}); ok {
+					if key := findGCPServiceAccountKey(nested); key != nil {
+						return key
+					}
+				}
+			}
 		}
 	}
 	return nil
@@ -79,19 +86,24 @@ func (c *gcpSADisabledCondition) Evaluate(ctx context.Context, m *types.Match) (
 		factory = defaultGCPClientFactory
 	}
 	_, err := factory(ctx, key)
-	if err != nil && strings.Contains(strings.ToLower(err.Error()), "disabled") {
-		return true, nil
+	if err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "disabled") || strings.Contains(lower, "deleted") {
+			return true, nil
+		}
 	}
 	return false, nil
 }
 
 // gcpRoleBindingCondition fires when the SA's project IAM bindings match
 // specific roles. When onlyIfExclusive is true, ALL of the SA's roles must
-// be in matchRoles (used for read-only detection).
+// be in matchRoles (used for read-only detection). When checkOrgBindings is
+// true, org-level bindings are also checked (used for org-admin detection).
 type gcpRoleBindingCondition struct {
-	matchRoles      []string
-	onlyIfExclusive bool
-	clientFactory   gcpClientFactory
+	matchRoles       []string
+	onlyIfExclusive  bool
+	checkOrgBindings bool
+	clientFactory    gcpClientFactory
 }
 
 func (c *gcpRoleBindingCondition) markDynamic() {}
@@ -127,6 +139,20 @@ func (c *gcpRoleBindingCondition) Evaluate(ctx context.Context, m *types.Match) 
 			if mem == member {
 				saRoles = append(saRoles, b.Role)
 				break
+			}
+		}
+	}
+
+	if c.checkOrgBindings {
+		orgBindings, err := api.GetOrgIAMPolicy(ctx, key.ProjectID)
+		if err == nil {
+			for _, b := range orgBindings {
+				for _, mem := range b.Members {
+					if mem == member {
+						saRoles = append(saRoles, b.Role)
+						break
+					}
+				}
 			}
 		}
 	}
@@ -269,7 +295,7 @@ func GCPGoScorer() *Scorer {
 		Modifiers: []Modifier{
 			{Name: "sa-disabled", Priority: 100, Kind: ModifierKindSetScore, Value: 5, Condition: &gcpSADisabledCondition{}},
 			{Name: "owner-or-org-admin", Priority: 95, Kind: ModifierKindSetScore, Value: 99,
-				Condition: &gcpRoleBindingCondition{matchRoles: []string{"roles/owner", "roles/resourcemanager.organizationAdmin"}}},
+				Condition: &gcpRoleBindingCondition{matchRoles: []string{"roles/owner", "roles/resourcemanager.organizationAdmin"}, checkOrgBindings: true}},
 			{Name: "priv-escalation-path", Priority: 85, Kind: ModifierKindDelta, Value: 20,
 				Condition: &gcpRoleBindingCondition{matchRoles: []string{"roles/iam.serviceAccountAdmin", "roles/iam.securityAdmin"}}},
 			{Name: "secret-accessor", Priority: 80, Kind: ModifierKindDelta, Value: 15,

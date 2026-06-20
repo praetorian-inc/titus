@@ -401,6 +401,17 @@ func TestExtractGCPCredentials_DeeplyNestedJSON(t *testing.T) {
 	assert.Equal(t, "deep", key.ProjectID)
 }
 
+func TestExtractGCPCredentials_ArrayNestedJSON(t *testing.T) {
+	m := &types.Match{
+		NamedGroups: map[string][]byte{
+			"service_account_nested": []byte(`{"credentials":[{"project_id":"array-project","client_email":"sa@array-project.iam.gserviceaccount.com","private_key":"-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----\n"}]}`),
+		},
+	}
+	key, ok := extractGCPCredentials(m)
+	require.True(t, ok)
+	assert.Equal(t, "array-project", key.ProjectID)
+}
+
 // --- gcpSADisabledCondition edge cases ---
 
 func TestGCPSADisabledCondition_DoesNotFireOnNonDisabledError(t *testing.T) {
@@ -418,6 +429,15 @@ func TestGCPSADisabledCondition_ReturnsFalseOnBadCredentials(t *testing.T) {
 	fired, err := cond.Evaluate(context.Background(), m)
 	require.NoError(t, err)
 	assert.False(t, fired)
+}
+
+func TestGCPSADisabledCondition_FiresWhenDeleted(t *testing.T) {
+	cond := &gcpSADisabledCondition{
+		clientFactory: fakeGCPFactoryErr(errors.New("account has been deleted")),
+	}
+	fired, err := cond.Evaluate(context.Background(), gcpTestMatch())
+	require.NoError(t, err)
+	assert.True(t, fired)
 }
 
 // --- gcpRoleBindingCondition edge cases ---
@@ -454,6 +474,22 @@ func TestGCPRoleBindingCondition_MultipleMatchRoles(t *testing.T) {
 		matchRoles: []string{"roles/owner", "roles/resourcemanager.organizationAdmin"},
 		clientFactory: fakeGCPFactory(&mockGCPAPI{
 			projectBindings: []gcpIAMBinding{
+				{Role: "roles/resourcemanager.organizationAdmin", Members: []string{"serviceAccount:sa@test-project.iam.gserviceaccount.com"}},
+			},
+		}),
+	}
+	fired, err := cond.Evaluate(context.Background(), gcpTestMatch())
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestGCPRoleBindingCondition_CheckOrgBindingsFiresWhenOrgAdminAtOrgLevel(t *testing.T) {
+	cond := &gcpRoleBindingCondition{
+		matchRoles:       []string{"roles/owner", "roles/resourcemanager.organizationAdmin"},
+		checkOrgBindings: true,
+		clientFactory: fakeGCPFactory(&mockGCPAPI{
+			projectBindings: []gcpIAMBinding{},
+			orgBindings: []gcpIAMBinding{
 				{Role: "roles/resourcemanager.organizationAdmin", Members: []string{"serviceAccount:sa@test-project.iam.gserviceaccount.com"}},
 			},
 		}),

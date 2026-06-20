@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -18,7 +19,7 @@ type gcpServiceAccountKey struct {
 }
 
 // toJSON reconstructs a minimal service account JSON blob suitable for
-// google.CredentialsFromJSON. The type and token_uri fields are required by
+// google.CredentialsFromJSONWithType. The type and token_uri fields are required by
 // the Google auth library.
 func (k *gcpServiceAccountKey) toJSON() ([]byte, error) {
 	return json.Marshal(map[string]string{
@@ -55,7 +56,7 @@ func defaultGCPClientFactory(ctx context.Context, key *gcpServiceAccountKey) (gc
 	if err != nil {
 		return nil, err
 	}
-	creds, err := google.CredentialsFromJSON(ctx, saJSON,
+	creds, err := google.CredentialsFromJSONWithType(ctx, saJSON, google.ServiceAccount,
 		"https://www.googleapis.com/auth/cloud-platform",
 	)
 	if err != nil {
@@ -79,7 +80,7 @@ type gcpHTTPAPI struct {
 
 func (a *gcpHTTPAPI) GetProjectIAMPolicy(ctx context.Context, project string) ([]gcpIAMBinding, error) {
 	url := "https://cloudresourcemanager.googleapis.com/v1/projects/" + project + ":getIamPolicy"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +111,7 @@ func (a *gcpHTTPAPI) GetProjectIAMPolicy(ctx context.Context, project string) ([
 
 func (a *gcpHTTPAPI) getOrgID(ctx context.Context, project string) (string, error) {
 	url := "https://cloudresourcemanager.googleapis.com/v1/projects/" + project + ":getAncestry"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
 	if err != nil {
 		return "", err
 	}
@@ -127,7 +128,7 @@ func (a *gcpHTTPAPI) getOrgID(ctx context.Context, project string) (string, erro
 		return "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", nil
+		return "", fmt.Errorf("getAncestry: HTTP %d", resp.StatusCode)
 	}
 
 	var result struct {
@@ -154,7 +155,7 @@ func (a *gcpHTTPAPI) GetOrgIAMPolicy(ctx context.Context, project string) ([]gcp
 	}
 
 	url := "https://cloudresourcemanager.googleapis.com/v1/organizations/" + orgID + ":getIamPolicy"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +186,7 @@ func (a *gcpHTTPAPI) GetOrgIAMPolicy(ctx context.Context, project string) ([]gcp
 
 func (a *gcpHTTPAPI) CountAccessibleProjects(ctx context.Context) (int, error) {
 	// Single page of up to 100 projects — sufficient for the >= 5 threshold.
-	url := "https://cloudresourcemanager.googleapis.com/v3/projects?pageSize=100"
+	url := "https://cloudresourcemanager.googleapis.com/v1/projects?pageSize=100"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, err
