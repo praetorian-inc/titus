@@ -288,9 +288,6 @@ rules:
 
   pattern_requirements:
     ignore_if_contains:
-      - "// "
-      - "# "
-      - "/* "
       - "xxxx"
       - "XXXX"
       - "EXAMPLE"
@@ -334,9 +331,6 @@ rules:
 
   pattern_requirements:
     ignore_if_contains:
-      - "// "
-      - "# "
-      - "/* "
       - "xxxx"
       - "XXXX"
       - "your-"
@@ -351,6 +345,12 @@ rules:
       - "secret_here"
       - "change-me"
       - "replace-me"
+      - "process.env"
+      - "os.environ"
+      - "os.getenv"
+      - "os.Getenv"
+      - "config."
+      - "var."
 
   references:
   - https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.environmentcredential
