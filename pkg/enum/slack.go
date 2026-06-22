@@ -21,7 +21,8 @@ const slackAPIBase = "https://slack.com/api/"
 
 // SlackConfig configures the Slack workspace enumerator.
 type SlackConfig struct {
-	Token     string    // Slack Bot or User token (xoxb-... or xoxp-...)
+	Token     string    // Slack API token (xoxb-..., xoxp-..., or xoxc-...)
+	Cookie    string    // Session cookie (xoxd-...) — required when using xoxc- tokens
 	RateLimit float64   // requests per second (default 1.0)
 	Channels  string    // comma-separated channel name filter (empty = all)
 	Verbose   io.Writer // progress output (nil = silent)
@@ -40,6 +41,9 @@ func NewSlackEnumerator(cfg SlackConfig) (*SlackEnumerator, error) {
 	if cfg.Token == "" {
 		return nil, fmt.Errorf("slack API token is required")
 	}
+	if strings.HasPrefix(cfg.Token, "xoxc-") && cfg.Cookie == "" {
+		return nil, fmt.Errorf("xoxc- tokens require a session cookie (--cookie with xoxd-... value)")
+	}
 	if cfg.RateLimit <= 0 {
 		cfg.RateLimit = 1.0
 	}
@@ -51,15 +55,14 @@ func NewSlackEnumerator(cfg SlackConfig) (*SlackEnumerator, error) {
 	}, nil
 }
 
-// slackProvenance builds an ExtendedProvenance for a Slack channel.
-func slackProvenance(channel, channelID, url, path string) types.ExtendedProvenance {
+// slackProvenance builds an ExtendedProvenance for a Slack message.
+func slackProvenance(channel, channelID, messageURL, author string) types.ExtendedProvenance {
 	return types.ExtendedProvenance{
 		Payload: map[string]interface{}{
-			"source":    "slack",
-			"channel":   channel,
-			"channelID": channelID,
-			"url":       url,
-			"path":      path,
+			"source":  "slack",
+			"channel": channel,
+			"author":  author,
+			"url":     messageURL,
 		},
 	}
 }
@@ -154,6 +157,13 @@ func (e *SlackEnumerator) slGet(ctx context.Context, endpoint string) ([]byte, e
 			return nil, fmt.Errorf("build request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+e.config.Token)
+		if e.config.Cookie != "" {
+			cookie := e.config.Cookie
+			if !strings.HasPrefix(cookie, "d=") {
+				cookie = "d=" + cookie
+			}
+			req.Header.Set("Cookie", cookie)
+		}
 
 		resp, err := e.client.Do(req)
 		if err != nil {
@@ -328,22 +338,26 @@ func (e *SlackEnumerator) slFetchReplies(ctx context.Context, channelID, threadT
 }
 
 // slBuildMessageBlob assembles a single message and its thread replies into a blob.
-func slBuildMessageBlob(channelName, channelURL, channelID string, msg slMessage, replies []slMessage) []byte {
+func slBuildMessageBlob(channelName, messageURL, channelID string, msg slMessage, replies []slMessage, userNames map[string]string) []byte {
 	var sb strings.Builder
 	sb.WriteString("Channel: " + channelName + "\n")
-	sb.WriteString("URL: " + channelURL + "\n")
+	sb.WriteString("URL: " + messageURL + "\n")
 	sb.WriteString("ID: " + channelID + "\n")
 	sb.WriteString("---\n")
-	slWriteMessage(&sb, msg)
+	slWriteMessage(&sb, msg, userNames)
 	for _, reply := range replies {
-		slWriteMessage(&sb, reply)
+		slWriteMessage(&sb, reply, userNames)
 	}
 	return []byte(sb.String())
 }
 
 // slWriteMessage writes a single message's text and attachment content to a builder.
-func slWriteMessage(sb *strings.Builder, msg slMessage) {
-	sb.WriteString("[" + msg.User + "] [" + msg.TS + "]: " + msg.Text + "\n")
+func slWriteMessage(sb *strings.Builder, msg slMessage, userNames map[string]string) {
+	author := msg.User
+	if name, ok := userNames[msg.User]; ok {
+		author = name
+	}
+	sb.WriteString("[" + author + "] [" + msg.TS + "]: " + msg.Text + "\n")
 	for _, att := range msg.Attachments {
 		if att.Text != "" {
 			sb.WriteString("  [attachment]: " + att.Text + "\n")
@@ -354,9 +368,67 @@ func slWriteMessage(sb *strings.Builder, msg slMessage) {
 	}
 }
 
+// slMessagePermalink builds a deep link to a specific Slack message.
+// Format: https://{team}.slack.com/archives/{channelID}/p{timestamp_without_dot}
+func slMessagePermalink(teamDomain, channelID, ts string) string {
+	if teamDomain == "" {
+		return ""
+	}
+	tsNoDot := strings.ReplaceAll(ts, ".", "")
+	return teamDomain + "/archives/" + channelID + "/p" + tsNoDot
+}
+
 // slChannelURL returns the Slack web URL for a channel.
 func slChannelURL(channelID string) string {
 	return "https://app.slack.com/client/" + channelID
+}
+
+// slFetchUserNames builds a user ID to display name lookup by paginating users.list.
+func (e *SlackEnumerator) slFetchUserNames(ctx context.Context) map[string]string {
+	names := make(map[string]string)
+	cursor := ""
+	for {
+		endpoint := "users.list?limit=200"
+		if cursor != "" {
+			endpoint += "&cursor=" + url.QueryEscape(cursor)
+		}
+		body, err := e.slGet(ctx, endpoint)
+		if err != nil {
+			break
+		}
+		var resp struct {
+			OK      bool `json:"ok"`
+			Members []struct {
+				ID      string `json:"id"`
+				Name    string `json:"name"`
+				Profile struct {
+					DisplayName string `json:"display_name"`
+					RealName    string `json:"real_name"`
+				} `json:"profile"`
+			} `json:"members"`
+			ResponseMetadata struct {
+				NextCursor string `json:"next_cursor"`
+			} `json:"response_metadata"`
+		}
+		if json.Unmarshal(body, &resp) != nil || !resp.OK {
+			break
+		}
+		for _, m := range resp.Members {
+			name := m.Profile.DisplayName
+			if name == "" {
+				name = m.Profile.RealName
+			}
+			if name == "" {
+				name = m.Name
+			}
+			names[m.ID] = name
+		}
+		cursor = resp.ResponseMetadata.NextCursor
+		if cursor == "" {
+			break
+		}
+	}
+	return names
 }
 
 // slFilterChannels filters conversations by the --channels flag.
@@ -396,6 +468,19 @@ func slIsAccessError(errMsg string) bool {
 
 // Enumerate discovers content from a Slack workspace and yields blobs.
 func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	// Get workspace info for building message permalinks
+	teamDomain := ""
+	authBody, err := e.slGet(ctx, "auth.test")
+	if err == nil {
+		var authResp struct {
+			OK  bool   `json:"ok"`
+			URL string `json:"url"`
+		}
+		if json.Unmarshal(authBody, &authResp) == nil && authResp.OK {
+			teamDomain = strings.TrimSuffix(authResp.URL, "/")
+		}
+	}
+
 	e.logf("Listing conversations...")
 
 	conversations, err := e.slListConversations(ctx)
@@ -408,6 +493,11 @@ func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content [
 	total := len(conversations)
 	e.logf("Found %d conversations, scanning for secrets...", total)
 
+	// Build user lookup for display names
+	e.logf("Fetching user directory...")
+	userNames := e.slFetchUserNames(ctx)
+	e.logf("Loaded %d users", len(userNames))
+
 	var channelCount atomic.Int64
 
 	for _, conv := range conversations {
@@ -415,7 +505,6 @@ func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content [
 		if channelName == "" {
 			channelName = conv.ID
 		}
-		channelURL := slChannelURL(conv.ID)
 
 		// Fetch channel history; skip inaccessible channels
 		messages, err := e.slFetchHistory(ctx, conv.ID)
@@ -450,9 +539,21 @@ func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content [
 				}
 			}
 
-			blob := slBuildMessageBlob(channelName, channelURL, conv.ID, msg, replies)
+			// Resolve author name
+			authorName := msg.User
+			if name, ok := userNames[msg.User]; ok {
+				authorName = name
+			}
+
+			// Build message permalink
+			messageURL := slMessagePermalink(teamDomain, conv.ID, msg.TS)
+			if messageURL == "" {
+				messageURL = slChannelURL(conv.ID)
+			}
+
+			blob := slBuildMessageBlob(channelName, messageURL, conv.ID, msg, replies, userNames)
 			blobID := types.ComputeBlobID(blob)
-			prov := slackProvenance(channelName, conv.ID, channelURL, channelURL)
+			prov := slackProvenance(channelName, conv.ID, messageURL, authorName)
 
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
