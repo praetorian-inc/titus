@@ -38,6 +38,7 @@ func init() {
 	rootCmd.AddCommand(slackCmd)
 	rootCmd.AddCommand(confluenceCmd)
 	rootCmd.AddCommand(jiraCmd)
+	rootCmd.AddCommand(sharepointCmd)
 }
 
 // Execute runs the root command.
