@@ -1,0 +1,15 @@
+{
+  "name": "titus-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@caido/sdk-backend": "^0.4.0",
+    "vite": "^5.2.0",
+    "typescript": "^5.4.0"
+  }
+}
