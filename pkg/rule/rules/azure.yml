@@ -276,3 +276,111 @@ rules:
     Azure AI services such as Document Intelligence, Computer Vision, Speech, or
     Language services. The endpoint alone is not a credential but can be combined
     with API keys for unauthorized access to AI services.
+
+
+- name: Azure AD Client Secret
+  id: np.azure.7
+  base_score: 80
+
+  pattern: '(?P<client_secret>[a-zA-Z0-9_~.]{3}[0-9]Q~[a-zA-Z0-9_~.\-]{31,34})'
+
+  min_entropy: 3.0
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "// "
+      - "# "
+      - "/* "
+      - "xxxx"
+      - "XXXX"
+      - "EXAMPLE"
+      - "example"
+
+  references:
+  - https://learn.microsoft.com/en-us/purview/sit-defn-azure-ad-client-secret
+  - https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'client_secret=ArE8Q~1pQL_W_8IZiTnG6TNB-.kGWlfzN61fUa2U'
+  - '"client_secret": "paX8Q~_SRO9~UScMi4GTyw.oC8U_De.MiqDX~dBO"'
+  - "$AppSecret = '_O28Q~.QZNE5QJ4pOCaxqTSx13dbkDI2_2Ns5blI'"
+  - 'AZURE_CLIENT_SECRET=mNk7Q~AbCdEfGhIj.KlMnOpQrSt_UvWx-Yz01'
+
+  negative_examples:
+  - 'AZURE_CLIENT_SECRET=your-client-secret-here'
+  - 'client_secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+  - 'AppSecret=EXAMPLE_SECRET_VALUE_HERE_NOT_REAL'
+  - 'abcQ~only30charsaftertheQtildemar'
+  - 'xxxQ~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+  description: >
+    Azure AD (Microsoft Entra ID) client secret in the new format with Q~ marker.
+    Used for service principal authentication. An attacker with this secret and the
+    corresponding tenant ID and client ID can authenticate as the service principal
+    and access Azure resources according to its assigned RBAC roles.
+
+
+- name: Azure Service Principal Credentials
+  id: np.azure.8
+  base_score: 70
+
+  pattern: '(?i)["'']?(?:AZURE_CLIENT_SECRET|ARM_CLIENT_SECRET)["'']?\s*[:=]\s*["'']?(?P<client_secret>[a-zA-Z0-9_.~\-]{16,80})["'']?'
+
+  min_entropy: 3.0
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "// "
+      - "# "
+      - "/* "
+      - "xxxx"
+      - "XXXX"
+      - "your-"
+      - "YOUR_"
+      - "your_"
+      - "EXAMPLE"
+      - "example"
+      - "PLACEHOLDER"
+      - "placeholder"
+      - "secret-here"
+      - "SECRET_HERE"
+      - "secret_here"
+      - "change-me"
+      - "replace-me"
+
+  references:
+  - https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.environmentcredential
+  - https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+  - https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/service_principal_client_secret
+
+  categories:
+  - api
+  - secret
+
+  examples:
+  - 'AZURE_CLIENT_SECRET=~C2U~tDO74Tj-w2glcIWqa_BtCZ46KmVA.'
+  - 'ARM_CLIENT_SECRET="myLegacySecret.Value_2024~xYz"'
+  - 'AZURE_CLIENT_SECRET="paX8Q~_SRO9~UScMi4GTyw.oC8U_De.MiqDX~dBO"'
+  - 'export AZURE_CLIENT_SECRET="test.secret.value_1234~5678-abcd"'
+  - "ARM_CLIENT_SECRET='Xr9v~mPw2Jk.nQ5sLf8Y_TgBhUc3Ae6D.'"
+
+  negative_examples:
+  - 'AZURE_CLIENT_SECRET=your-client-secret-here'
+  - 'AZURE_CLIENT_SECRET=<your-secret-here>'
+  - 'AZURE_CLIENT_SECRET=""'
+  - 'AZURE_CLIENT_SECRET=$SECRET_VAR'
+  - 'AZURE_CLIENT_SECRET=${CLIENT_SECRET}'
+  - 'AZURE_CLIENT_SECRET=short'
+  - 'AZURE_CLIENT_SECRET=change-me-before-deploy'
+  - 'ARM_CLIENT_SECRET=replace-me-with-real-secret'
+
+  description: >
+    Azure service principal client secret detected via Azure-specific environment
+    variable labels (AZURE_CLIENT_SECRET, ARM_CLIENT_SECRET). An attacker with
+    this secret and the associated tenant ID and client ID can authenticate as
+    the service principal and access Azure resources according to its assigned
+    RBAC roles.
