@@ -37,16 +37,16 @@ type azureAppRoleAssignment struct {
 	ResourceDisplayName string
 }
 
-const ( // #nosec G101 -- Azure RBAC role definition GUIDs, not credentials.
+const (
 	azureRoleOwner            = "8e3af657-a8ff-443c-a75c-2fe8c4bcb635"
 	azureRoleContributor      = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 	azureRoleReader           = "acdd72a7-3385-48ef-bd42-f606fba81ae7"
 	azureRoleKVAdmin          = "00482a5a-887f-4fb3-b363-3b7fe8e74483"
-	azureRoleKVSecretsOfficer = "b86a8fe4-44ce-4948-aee5-eccb2c155cd7"
-	azureRoleKVSecretsUser    = "4633458b-17de-408a-b874-0445c86b69e6"
+	azureRoleKVSecretsOfficer = "b86a8fe4-44ce-4948-aee5-eccb2c155cd7" // #nosec G101 -- Azure RBAC role definition GUID, not a credential.
+	azureRoleKVSecretsUser    = "4633458b-17de-408a-b874-0445c86b69e6" // #nosec G101 -- Azure RBAC role definition GUID, not a credential.
 )
 
-const ( // #nosec G101 -- Azure directory role template IDs, not credentials.
+const (
 	azureDirRoleGlobalAdmin   = "62e90394-69f5-4237-9190-012177145e10"
 	azureDirRolePrivRoleAdmin = "e8611ab8-c189-46e8-94e1-60213ab1f814"
 )
