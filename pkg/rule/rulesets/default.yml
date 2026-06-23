@@ -32,6 +32,8 @@ rulesets:
   - np.azure.4        # Azure DevOps Personal Access Token
   - np.azure.5        # Azure API Management Subscription Key
   - np.azure.6        # Azure Notification Hub Access Key
+  - np.azure.7        # Azure AD Client Secret
+  - np.azure.8        # Azure Service Principal Credentials
   - np.bitbucket.1    # Bitbucket App Password
   - np.blynk.1        # Blynk Device Access Token
   - np.blynk.2        # Blynk Organization Access Token
