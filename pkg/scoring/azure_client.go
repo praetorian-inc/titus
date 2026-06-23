@@ -56,7 +56,7 @@ var graphMinimalAppRoles = map[string]bool{
 	"df021288-bdef-4463-88db-98f22de89214": true, // User.Read.All
 	"97235f07-e226-4f63-ace3-39588e11d3a1": true, // User.ReadBasic.All
 	"e1fe6dd8-ba31-4d61-89e7-88639da4683d": true, // User.Read
-	"00000003-0000-0000-c000-000000000000": true, // default/.default (no actual permissions)
+	"00000000-0000-0000-0000-000000000000": true, // default access (no specific app role)
 }
 
 type azureAPI interface {

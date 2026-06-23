@@ -19,6 +19,7 @@ type mockAzureAPI struct {
 	appRoleAssignments []azureAppRoleAssignment
 	subsErr            error
 	roleErr            error
+	roleErrBySub       map[string]error
 	dirRoleErr         error
 	appRoleErr         error
 }
@@ -28,6 +29,9 @@ func (m *mockAzureAPI) ListSubscriptions(_ context.Context) ([]azureSubscription
 }
 
 func (m *mockAzureAPI) ListRoleAssignments(_ context.Context, subscriptionID string) ([]azureRoleAssignment, error) {
+	if err, ok := m.roleErrBySub[subscriptionID]; ok {
+		return nil, err
+	}
 	if m.roleErr != nil {
 		return nil, m.roleErr
 	}
@@ -557,7 +561,6 @@ func TestAzureRBACCondition_ReturnsFalseOnSubscriptionError(t *testing.T) {
 }
 
 func TestAzureRBACCondition_SkipsBadSubscriptionGracefully(t *testing.T) {
-	calls := 0
 	cond := &azureRBACCondition{
 		matchRoles:        []string{azureRoleOwner},
 		subscriptionLevel: true,
@@ -566,10 +569,11 @@ func TestAzureRBACCondition_SkipsBadSubscriptionGracefully(t *testing.T) {
 			roleAssignments: map[string][]azureRoleAssignment{
 				"sub2": {{RoleDefinitionID: azureRoleOwner, Scope: "/subscriptions/sub2"}},
 			},
-			roleErr: nil,
+			roleErrBySub: map[string]error{
+				"sub1": errors.New("permission denied"),
+			},
 		}),
 	}
-	_ = calls
 	fired, err := cond.Evaluate(context.Background(), azureTestMatch())
 	require.NoError(t, err)
 	assert.True(t, fired)
