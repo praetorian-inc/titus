@@ -14,6 +14,7 @@ func BuiltinGoScorers() []*Scorer {
 		MongoDBAtlasGoScorer(),
 		GitLabGoScorer(),
 		GCPGoScorer(),
+		AzureGoScorer(),
 	}
 }
 
