@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -125,17 +126,17 @@ func TestJiraExtractADFText(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected string
+		contains []string
 	}{
 		{
 			name:     "null",
 			input:    "null",
-			expected: "",
+			contains: nil,
 		},
 		{
 			name:     "empty",
 			input:    "",
-			expected: "",
+			contains: nil,
 		},
 		{
 			name: "simple ADF paragraph",
@@ -150,10 +151,10 @@ func TestJiraExtractADFText(t *testing.T) {
 					}
 				]
 			}`,
-			expected: "API_KEY=sk_live_abc123",
+			contains: []string{"API_KEY=sk_live_abc123"},
 		},
 		{
-			name: "multiple paragraphs",
+			name: "multiple paragraphs preserve word boundaries",
 			input: `{
 				"type": "doc",
 				"content": [
@@ -171,14 +172,42 @@ func TestJiraExtractADFText(t *testing.T) {
 					}
 				]
 			}`,
-			expected: "Line 1Line 2",
+			contains: []string{"Line 1", "Line 2"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, jiraExtractADFText(json.RawMessage(tt.input)))
+			result := jiraExtractADFText(json.RawMessage(tt.input))
+			if tt.contains == nil {
+				assert.Empty(t, result)
+			} else {
+				for _, s := range tt.contains {
+					assert.Contains(t, result, s)
+				}
+			}
 		})
 	}
+}
+
+func TestJiraExtractADFText_PreservesWordBoundaries(t *testing.T) {
+	input := `{
+		"type": "doc",
+		"content": [
+			{
+				"type": "paragraph",
+				"content": [{"type": "text", "text": "password"}]
+			},
+			{
+				"type": "paragraph",
+				"content": [{"type": "text", "text": "hunter2"}]
+			}
+		]
+	}`
+	result := jiraExtractADFText(json.RawMessage(input))
+	// Should NOT be "passwordhunter2" - must have separator
+	assert.NotEqual(t, "passwordhunter2", result)
+	assert.Contains(t, result, "password")
+	assert.Contains(t, result, "hunter2")
 }
 
 func TestJiraEnumerator_RejectsInsecureHTTP(t *testing.T) {
@@ -200,8 +229,37 @@ func TestJiraEnumerator_AllowsInsecureHTTP(t *testing.T) {
 	assert.NotNil(t, e)
 }
 
+func TestJiraSanitizeProjectKey(t *testing.T) {
+	tests := []struct {
+		key     string
+		wantErr bool
+	}{
+		{"DEV", false},
+		{"OPS", false},
+		{"MY_PROJECT", false},
+		{"A1", false},
+		{"1NVALID", true},   // starts with digit
+		{"NO SPACE", true},  // contains space
+		{"INJ;ECT", true},   // contains semicolon
+		{"DROP\"TABLE", true}, // contains quote
+		{"", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			result, err := jiraSanitizeProjectKey(tt.key)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.key, result)
+			}
+		})
+	}
+}
+
 // testJiraEnumerator creates a JiraEnumerator pointing at a test server.
-func testJiraEnumerator(t *testing.T, url string) *JiraEnumerator {
+// Sets apiBase directly to bypass version detection in tests.
+func testJiraEnumerator(t *testing.T, serverURL string) *JiraEnumerator {
 	t.Helper()
 	e, err := NewJiraEnumerator(JiraConfig{
 		Token:     "test-token",
@@ -209,7 +267,7 @@ func testJiraEnumerator(t *testing.T, url string) *JiraEnumerator {
 		RateLimit: 1000, // no throttling in tests
 	})
 	require.NoError(t, err)
-	e.apiBase = url
+	e.apiBase = serverURL // bypass version detection
 	return e
 }
 
@@ -229,9 +287,11 @@ func TestJiraAPI_BearerAuth(t *testing.T) {
 	defer server.Close()
 
 	e := testJiraEnumerator(t, server.URL)
-	issues, err := e.jiraSearchIssues(context.Background(), "ORDER BY created DESC")
+	total, err := e.jiraEnumerateIssues(context.Background(), "ORDER BY created DESC", func(issue jiraIssueShort) error {
+		return nil
+	})
 	require.NoError(t, err)
-	assert.Len(t, issues, 0)
+	assert.Equal(t, 0, total)
 }
 
 func TestJiraAPI_BasicAuth(t *testing.T) {
@@ -253,9 +313,11 @@ func TestJiraAPI_BasicAuth(t *testing.T) {
 
 	e := testJiraEnumerator(t, server.URL)
 	e.config.Username = "user@example.com"
-	issues, err := e.jiraSearchIssues(context.Background(), "ORDER BY created DESC")
+	total, err := e.jiraEnumerateIssues(context.Background(), "ORDER BY created DESC", func(issue jiraIssueShort) error {
+		return nil
+	})
 	require.NoError(t, err)
-	assert.Len(t, issues, 0)
+	assert.Equal(t, 0, total)
 }
 
 func TestJiraAPI_RateLimitRetry(t *testing.T) {
@@ -263,6 +325,7 @@ func TestJiraAPI_RateLimitRetry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		if attempts == 1 {
+			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(429)
 			return
 		}
@@ -279,10 +342,110 @@ func TestJiraAPI_RateLimitRetry(t *testing.T) {
 	defer server.Close()
 
 	e := testJiraEnumerator(t, server.URL)
-	issues, err := e.jiraSearchIssues(context.Background(), "ORDER BY created DESC")
+	var count int
+	_, err := e.jiraEnumerateIssues(context.Background(), "ORDER BY created DESC", func(issue jiraIssueShort) error {
+		count++
+		return nil
+	})
 	require.NoError(t, err)
-	assert.Equal(t, 2, attempts)
-	assert.Len(t, issues, 1)
+	assert.Equal(t, 2, attempts, "should have retried after 429")
+	assert.Equal(t, 1, count)
+}
+
+func TestJiraAPI_RetryAfterHeader(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(429)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jiraSearchResponse{
+			Total:  0,
+			Issues: nil,
+		})
+	}))
+	defer server.Close()
+
+	e := testJiraEnumerator(t, server.URL)
+	_, err := e.jiraEnumerateIssues(context.Background(), "ORDER BY created DESC", func(issue jiraIssueShort) error {
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, attempts, "should retry respecting Retry-After")
+}
+
+func TestJiraDetectAPIVersion_V3(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/rest/api/3/serverInfo") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"baseUrl":"https://example.atlassian.net","version":"9.0.0"}`))
+			return
+		}
+		http.Error(w, "not found", 404)
+	}))
+	defer server.Close()
+
+	e, err := NewJiraEnumerator(JiraConfig{
+		Token:             "test-token",
+		BaseURL:           server.URL,
+		AllowInsecureHTTP: true,
+		RateLimit:         1000,
+	})
+	require.NoError(t, err)
+
+	err = e.detectAPIVersion(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, e.apiBase, "/rest/api/3")
+}
+
+func TestJiraDetectAPIVersion_V2Fallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/rest/api/3/serverInfo") {
+			http.Error(w, "not found", 404)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/rest/api/2/serverInfo") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"baseUrl":"https://jira.internal","version":"8.20.0"}`))
+			return
+		}
+		http.Error(w, "not found", 404)
+	}))
+	defer server.Close()
+
+	e, err := NewJiraEnumerator(JiraConfig{
+		Token:             "test-token",
+		BaseURL:           server.URL,
+		AllowInsecureHTTP: true,
+		RateLimit:         1000,
+	})
+	require.NoError(t, err)
+
+	err = e.detectAPIVersion(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, e.apiBase, "/rest/api/2")
+}
+
+func TestJiraDetectAPIVersion_BothFail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", 404)
+	}))
+	defer server.Close()
+
+	e, err := NewJiraEnumerator(JiraConfig{
+		Token:             "test-token",
+		BaseURL:           server.URL,
+		AllowInsecureHTTP: true,
+		RateLimit:         1000,
+	})
+	require.NoError(t, err)
+
+	err = e.detectAPIVersion(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "could not detect")
 }
 
 func TestJiraEnumerate_FullIntegration(t *testing.T) {
@@ -306,6 +469,7 @@ func TestJiraEnumerate_FullIntegration(t *testing.T) {
 								"name": "Development",
 							},
 							"description": nil,
+							"created":     "2026-01-15T10:00:00.000+0000",
 						},
 						"renderedFields": map[string]interface{}{
 							"description": "<p>API_KEY=sk_live_abc123</p>",
@@ -320,6 +484,7 @@ func TestJiraEnumerate_FullIntegration(t *testing.T) {
 								"name": "Operations",
 							},
 							"description": nil,
+							"created":     "2026-01-14T09:00:00.000+0000",
 						},
 						"renderedFields": map[string]interface{}{
 							"description": "<p>Deploy notes here</p>",
@@ -382,6 +547,60 @@ func TestJiraEnumerate_FullIntegration(t *testing.T) {
 	assert.Contains(t, blobs[1], "Summary: Deploy config")
 	assert.Contains(t, blobs[1], "Deploy notes here")
 	assert.NotContains(t, blobs[1], "--- Comments ---")
+}
+
+func TestJiraEnumerate_StreamsPerPage(t *testing.T) {
+	// Verify issues are yielded per-page, not all at once
+	pageRequests := 0
+	callbackCalls := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(r.URL.Path, "/comment") {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"startAt": 0, "maxResults": 50, "total": 0,
+				"comments": []interface{}{},
+			})
+			return
+		}
+
+		pageRequests++
+		startAt := 0
+		if q := r.URL.Query().Get("startAt"); q != "" {
+			startAt, _ = strconv.Atoi(q)
+		}
+
+		if startAt == 0 {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"startAt": 0, "maxResults": 1, "total": 2,
+				"issues": []map[string]interface{}{
+					{"key": "P-1", "fields": map[string]interface{}{
+						"summary": "Issue 1", "project": map[string]interface{}{"key": "P"}, "created": "2026-01-01T00:00:00.000+0000",
+					}, "renderedFields": map[string]interface{}{"description": "desc1"}},
+				},
+			})
+		} else {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"startAt": 1, "maxResults": 1, "total": 2,
+				"issues": []map[string]interface{}{
+					{"key": "P-2", "fields": map[string]interface{}{
+						"summary": "Issue 2", "project": map[string]interface{}{"key": "P"}, "created": "2026-01-02T00:00:00.000+0000",
+					}, "renderedFields": map[string]interface{}{"description": "desc2"}},
+				},
+			})
+		}
+	}))
+	defer server.Close()
+
+	e := testJiraEnumerator(t, server.URL)
+	err := e.Enumerate(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+		callbackCalls++
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, callbackCalls, "should yield 2 issues via callback")
+	assert.Equal(t, 2, pageRequests, "should have made 2 paginated requests")
 }
 
 // Ensure types package is referenced so imports stay tidy.

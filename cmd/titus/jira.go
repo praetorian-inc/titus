@@ -13,20 +13,23 @@ import (
 )
 
 var (
-	jiraToken        string
-	jiraUsername      string
-	jiraBaseURL      string
-	jiraOutputPath   string
-	jiraOutputFormat string
-	jiraProjects     string
-	jiraRateLimit    float64
+	jiraToken         string
+	jiraUsername       string
+	jiraBaseURL       string
+	jiraOutputPath    string
+	jiraOutputFormat  string
+	jiraProjects      string
+	jiraRateLimit     float64
+	jiraAllowInsecure bool
 )
 
 var jiraCmd = &cobra.Command{
 	Use:   "jira",
 	Short: "Scan a Jira instance for secrets",
 	Long: `Scan an entire Jira instance for secrets via the REST API.
-Enumerates issue descriptions, comments, and custom fields across all projects.
+Enumerates issue descriptions and comments across all projects.
+Supports both Jira Cloud (API v3) and Jira Server/Data Center (API v2),
+with automatic version detection.
 
 Authentication:
   For Jira Cloud: use --username and --token with an API token.
@@ -36,7 +39,8 @@ Authentication:
 Examples:
   titus jira --base-url https://mysite.atlassian.net --username user@example.com --token ATATT...
   JIRA_BASE_URL=https://mysite.atlassian.net JIRA_USERNAME=user@example.com JIRA_TOKEN=ATATT... titus jira
-  titus jira --base-url https://jira.internal --token PAT_TOKEN --projects DEV,OPS`,
+  titus jira --base-url https://jira.internal --token PAT_TOKEN --projects DEV,OPS
+  titus jira --base-url http://jira.local:8080 --token PAT --allow-insecure`,
 	RunE: runJiraScan,
 }
 
@@ -53,6 +57,7 @@ func init() {
 	jiraCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Include noisy rules that may produce more false positives")
 	jiraCmd.Flags().StringVar(&jiraProjects, "projects", "", "Comma-separated project keys to scan (empty = all)")
 	jiraCmd.Flags().Float64Var(&jiraRateLimit, "rate-limit", 5.0, "Requests per second")
+	jiraCmd.Flags().BoolVar(&jiraAllowInsecure, "allow-insecure", false, "Allow plaintext HTTP base URLs (for internal instances)")
 }
 
 func runJiraScan(cmd *cobra.Command, args []string) error {
@@ -83,12 +88,13 @@ func runJiraScan(cmd *cobra.Command, args []string) error {
 	}
 
 	enumerator, err := enum.NewJiraEnumerator(enum.JiraConfig{
-		Token:     token,
-		Username:  username,
-		BaseURL:   baseURL,
-		RateLimit: jiraRateLimit,
-		Projects:  jiraProjects,
-		Verbose:   verboseWriter,
+		Token:             token,
+		Username:          username,
+		BaseURL:           baseURL,
+		RateLimit:         jiraRateLimit,
+		Projects:          jiraProjects,
+		AllowInsecureHTTP: jiraAllowInsecure,
+		Verbose:           verboseWriter,
 	})
 	if err != nil {
 		return fmt.Errorf("creating Jira enumerator: %w", err)
