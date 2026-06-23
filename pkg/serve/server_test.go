@@ -51,7 +51,7 @@ func TestServer_Scan(t *testing.T) {
 	defer core.Close()
 
 	// Input: scan request
-	request := `{"type":"scan","payload":{"content":"AKIAIOSFODNN7EXAMPLE","source":"test"}}` + "\n"
+	request := `{"type":"scan","payload":{"content":"prefix\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY","source":"test"}}` + "\n"
 	in := strings.NewReader(request)
 	out := &bytes.Buffer{}
 
@@ -68,6 +68,14 @@ func TestServer_Scan(t *testing.T) {
 
 	assert.True(t, resp.Success)
 	assert.Equal(t, "scan", resp.Type)
+
+	var result scanner.ScanResult
+	require.NoError(t, json.Unmarshal(resp.Data, &result))
+	require.NotEmpty(t, result.Matches)
+	assert.Equal(t, 2, result.Matches[0].Location.Source.Start.Line)
+	assert.Equal(t, 12, result.Matches[0].Location.Source.Start.Column)
+	assert.Equal(t, 2, result.Matches[0].Location.Source.End.Line)
+	assert.Equal(t, 65, result.Matches[0].Location.Source.End.Column)
 }
 
 func TestServer_GracefulShutdownOnContext(t *testing.T) {
@@ -108,7 +116,7 @@ func TestServer_ScanBatch(t *testing.T) {
 	require.NoError(t, err)
 	defer core.Close()
 
-	request := `{"type":"scan_batch","payload":{"items":[{"source":"s1","content":"test1"},{"source":"s2","content":"AKIAIOSFODNN7EXAMPLE"}]}}` + "\n"
+	request := `{"type":"scan_batch","payload":{"items":[{"source":"s1","content":"test1"},{"source":"s2","content":"prefix\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}]}}` + "\n"
 	in := strings.NewReader(request)
 	out := &bytes.Buffer{}
 
@@ -125,6 +133,15 @@ func TestServer_ScanBatch(t *testing.T) {
 
 	assert.True(t, resp.Success)
 	assert.Equal(t, "scan_batch", resp.Type)
+
+	var result scanner.BatchScanResult
+	require.NoError(t, json.Unmarshal(resp.Data, &result))
+	require.Len(t, result.Results, 2)
+	require.NotEmpty(t, result.Results[1].Matches)
+	assert.Equal(t, 2, result.Results[1].Matches[0].Location.Source.Start.Line)
+	assert.Equal(t, 12, result.Results[1].Matches[0].Location.Source.Start.Column)
+	assert.Equal(t, 2, result.Results[1].Matches[0].Location.Source.End.Line)
+	assert.Equal(t, 65, result.Results[1].Matches[0].Location.Source.End.Column)
 }
 
 func TestServer_CloseCommand(t *testing.T) {
@@ -194,7 +211,7 @@ func TestServer_ScanPath(t *testing.T) {
 	defer core.Close()
 
 	dir := t.TempDir()
-	secret := "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+	secret := "prefix\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.ini"), []byte(secret), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "clean.txt"), []byte("nothing here"), 0644))
 
@@ -231,6 +248,14 @@ func TestServer_ScanPath(t *testing.T) {
 	require.NoError(t, json.Unmarshal(done.Data, &doneData))
 	assert.Equal(t, 2, doneData.TotalBlobs)
 	assert.GreaterOrEqual(t, doneData.TotalMatches, 1)
+
+	var blobResult ScanBlobResult
+	require.NoError(t, json.Unmarshal(results[0].Data, &blobResult))
+	require.NotEmpty(t, blobResult.Matches)
+	assert.Equal(t, 2, blobResult.Matches[0].Location.Source.Start.Line)
+	assert.Equal(t, 12, blobResult.Matches[0].Location.Source.Start.Column)
+	assert.Equal(t, 2, blobResult.Matches[0].Location.Source.End.Line)
+	assert.Equal(t, 65, blobResult.Matches[0].Location.Source.End.Column)
 }
 
 func TestServer_ScanPath_EmptyDir(t *testing.T) {
