@@ -3,6 +3,7 @@ package enum
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,13 +28,49 @@ type CloneEnumerator struct {
 	config Config
 	Git    bool          // false = full clone + filesystem scan, true = full clone + git history (thorough)
 	Depth  int           // override clone depth (0 = automatic: full clone for filesystem mode, unlimited for git mode)
-	Delay  time.Duration // delay between repository clones (0 = no delay)
+	Delay  time.Duration // minimum delay between clones (from --rate-limit)
+	Jitter time.Duration // maximum delay between clones (from --jitter); actual delay is random(Delay, Jitter)
 	Token  string        // API token for authenticated cloning (passed via ephemeral credential helper)
 }
 
 // NewCloneEnumerator creates a new clone-based enumerator.
 func NewCloneEnumerator(repos []RepoInfo, config Config) *CloneEnumerator {
 	return &CloneEnumerator{repos: repos, config: config}
+}
+
+// stealthDelay returns the delay to wait before the next operation.
+// If Jitter is set, returns a random duration between Delay and Jitter.
+// If only Delay is set, returns Delay (fixed).
+// If neither is set, returns 0.
+func (e *CloneEnumerator) stealthDelay() time.Duration {
+	if e.Jitter > 0 {
+		minDelay := e.Delay
+		maxDelay := e.Jitter
+		if maxDelay <= minDelay {
+			return minDelay
+		}
+		rangeMs := (maxDelay - minDelay).Milliseconds()
+		randomMs := rand.Int63n(rangeMs)
+		return minDelay + time.Duration(randomMs)*time.Millisecond
+	}
+	return e.Delay
+}
+
+// EstimateScanTime returns the estimated total scan time based on delay/jitter settings.
+// It calculates the average delay per repo multiplied by the number of repos.
+func (e *CloneEnumerator) EstimateScanTime() time.Duration {
+	if len(e.repos) == 0 {
+		return 0
+	}
+	var avgDelay time.Duration
+	if e.Jitter > 0 {
+		// Average of uniform distribution between Delay and Jitter
+		avgDelay = (e.Delay + e.Jitter) / 2
+	} else {
+		avgDelay = e.Delay
+	}
+	// n-1 delays (no delay before the first repo)
+	return avgDelay * time.Duration(len(e.repos)-1)
 }
 
 // Enumerate clones each repository, scans it, and cleans up.
@@ -45,12 +82,16 @@ func (e *CloneEnumerator) Enumerate(ctx context.Context, callback func(content [
 		default:
 		}
 
-		// Rate limit: delay between repos (skip before first)
-		if e.Delay > 0 && i > 0 {
-			select {
-			case <-time.After(e.Delay):
-			case <-ctx.Done():
-				return ctx.Err()
+		// Stealth/rate-limit: delay between repos (skip before first)
+		if (e.Delay > 0 || e.Jitter > 0) && i > 0 {
+			wait := e.stealthDelay()
+			if wait > 0 {
+				fmt.Fprintf(os.Stderr, "Waiting %s before next repo (%d/%d)...\n", wait.Round(time.Second), i+1, len(e.repos))
+				select {
+				case <-time.After(wait):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 		}
 
