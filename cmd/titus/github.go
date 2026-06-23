@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
@@ -24,6 +25,8 @@ var (
 	githubGit          bool
 	githubSkipForks    bool
 	githubRateLimit    float64
+	githubJitter       float64
+	githubYes          bool
 )
 
 var githubCmd = &cobra.Command{
@@ -44,11 +47,19 @@ Rate limiting:
   Use --rate-limit to add a delay between repository clones (recommended for large, self-hosted orgs).
   Example: --rate-limit 2 adds a 2-second delay between each repo.
 
+Stealth scanning:
+  Use --jitter to add random delays between repository clones.
+  Combined with --rate-limit, it creates a random delay between the
+  rate-limit (minimum) and jitter (maximum) values.
+  Example: --rate-limit 300 --jitter 1200 = random 5-20 minute delays.
+
 Examples:
   titus github praetorian-inc/titus                          # single public repo
   titus github --token ghp_xxx --org praetorian-inc          # all repos in org
   titus github --url https://ghe.corp.com --token ghp_xxx --org myorg --rate-limit 2
-  titus github --token ghp_xxx --user octocat --git          # user repos with full history`,
+  titus github --token ghp_xxx --user octocat --git          # user repos with full history
+  titus github --token ghp_xxx --org myorg --jitter 1200             # 0-20min random delay between clones
+  titus github --token ghp_xxx --org myorg --rate-limit 300 --jitter 1200  # 5-20min random delay (stealth)`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runGitHubScan,
 }
@@ -75,10 +86,12 @@ func init() {
 	githubScanCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
 	githubScanCmd.Flags().BoolVar(&githubSkipForks, "skip-forks", false, "Skip forked repositories when scanning orgs or users")
 	githubScanCmd.Flags().Float64Var(&githubRateLimit, "rate-limit", 0, "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)")
+	githubScanCmd.Flags().Float64Var(&githubJitter, "jitter", 0, "Maximum random delay in seconds between repository clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)")
 	githubScanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
 	githubScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	githubScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	githubScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	githubScanCmd.Flags().BoolVarP(&githubYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	githubCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
 	githubCmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
@@ -90,10 +103,12 @@ func init() {
 	githubCmd.Flags().BoolVar(&githubGit, "git", false, "Scan full git history (slower; default scans only current files)")
 	githubCmd.Flags().BoolVar(&githubSkipForks, "skip-forks", false, "Skip forked repositories when scanning orgs or users")
 	githubCmd.Flags().Float64Var(&githubRateLimit, "rate-limit", 0, "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)")
+	githubCmd.Flags().Float64Var(&githubJitter, "jitter", 0, "Maximum random delay in seconds between repository clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)")
 	githubCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
 	githubCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	githubCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	githubCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	githubCmd.Flags().BoolVarP(&githubYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	githubCmd.AddCommand(githubScanCmd)
 }
@@ -217,6 +232,27 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		if githubRateLimit > 0 {
 			cloneEnum.Delay = time.Duration(githubRateLimit * float64(time.Second))
 		}
+		if githubJitter > 0 {
+			cloneEnum.Jitter = time.Duration(githubJitter * float64(time.Second))
+		}
+
+		// Estimate scan time and prompt for confirmation if delay/jitter is enabled
+		if cloneEnum.Jitter > 0 || cloneEnum.Delay > 0 {
+			estimate := cloneEnum.EstimateScanTime()
+			if estimate > 0 {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Estimated scan time: %s (with %d repos)\n", formatDuration(estimate), len(repos))
+				if !githubYes {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Continue? [Y/n] ")
+					var response string
+					_, _ = fmt.Scanln(&response)
+					response = strings.TrimSpace(strings.ToLower(response))
+					if response == "n" || response == "no" {
+						return fmt.Errorf("scan cancelled by user")
+					}
+				}
+			}
+		}
+
 		enumerator = cloneEnum
 	}
 
@@ -299,6 +335,30 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("retrieving findings: %w", err)
 	}
 	return outputFindings(cmd, findings)
+}
+
+// formatDuration formats a duration in a human-friendly way.
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return d.Round(time.Second).String()
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	hours := int(d.Hours())
+	mins := int(d.Minutes()) % 60
+	if hours >= 24 {
+		days := hours / 24
+		hours = hours % 24
+		if hours > 0 {
+			return fmt.Sprintf("%dd %dh", days, hours)
+		}
+		return fmt.Sprintf("%dd", days)
+	}
+	if mins > 0 {
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	}
+	return fmt.Sprintf("%dh", hours)
 }
 
 // splitOwnerRepo splits "owner/repo" into ["owner", "repo"].

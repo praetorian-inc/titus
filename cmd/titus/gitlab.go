@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
@@ -23,6 +24,8 @@ var (
 	gitlabNoClone      bool
 	gitlabGit          bool
 	gitlabRateLimit    float64
+	gitlabJitter       float64
+	gitlabYes          bool
 )
 
 var gitlabCmd = &cobra.Command{
@@ -31,7 +34,13 @@ var gitlabCmd = &cobra.Command{
 	Long: `Scan GitLab projects by cloning and scanning locally.
 No API token needed for public projects.
 Use --token or GITLAB_TOKEN for private projects and higher rate limits.
-Use --git to scan full git history (slower but finds deleted secrets).`,
+Use --git to scan full git history (slower but finds deleted secrets).
+
+Stealth scanning:
+  Use --jitter to add random delays between project clones.
+  Combined with --rate-limit, it creates a random delay between the
+  rate-limit (minimum) and jitter (maximum) values.
+  Example: --rate-limit 300 --jitter 1200 = random 5-20 minute delays.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runGitLabScan,
 }
@@ -57,10 +66,12 @@ func init() {
 	gitlabScanCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabScanCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
 	gitlabScanCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
+	gitlabScanCmd.Flags().Float64Var(&gitlabJitter, "jitter", 0, "Maximum random delay in seconds between project clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)")
 	gitlabScanCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
 	gitlabScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	gitlabScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	gitlabScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	gitlabScanCmd.Flags().BoolVarP(&gitlabYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	gitlabCmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
 	gitlabCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
@@ -71,10 +82,12 @@ func init() {
 	gitlabCmd.Flags().BoolVar(&gitlabNoClone, "no-clone", false, "Fetch files via API instead of cloning (requires token, no git history)")
 	gitlabCmd.Flags().BoolVar(&gitlabGit, "git", false, "Scan full git history (slower; default scans only current files)")
 	gitlabCmd.Flags().Float64Var(&gitlabRateLimit, "rate-limit", 0, "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)")
+	gitlabCmd.Flags().Float64Var(&gitlabJitter, "jitter", 0, "Maximum random delay in seconds between project clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)")
 	gitlabCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
 	gitlabCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	gitlabCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	gitlabCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	gitlabCmd.Flags().BoolVarP(&gitlabYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	gitlabCmd.AddCommand(gitlabScanCmd)
 }
@@ -185,6 +198,27 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 		if gitlabRateLimit > 0 {
 			cloneEnum.Delay = time.Duration(gitlabRateLimit * float64(time.Second))
 		}
+		if gitlabJitter > 0 {
+			cloneEnum.Jitter = time.Duration(gitlabJitter * float64(time.Second))
+		}
+
+		// Estimate scan time and prompt for confirmation if delay/jitter is enabled
+		if cloneEnum.Jitter > 0 || cloneEnum.Delay > 0 {
+			estimate := cloneEnum.EstimateScanTime()
+			if estimate > 0 {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Estimated scan time: %s (with %d projects)\n", formatDuration(estimate), len(projects))
+				if !gitlabYes {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Continue? [Y/n] ")
+					var response string
+					_, _ = fmt.Scanln(&response)
+					response = strings.TrimSpace(strings.ToLower(response))
+					if response == "n" || response == "no" {
+						return fmt.Errorf("scan cancelled by user")
+					}
+				}
+			}
+		}
+
 		enumerator = cloneEnum
 	}
 
