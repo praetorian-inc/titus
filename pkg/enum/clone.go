@@ -2,8 +2,9 @@ package enum
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +54,11 @@ func (e *CloneEnumerator) stealthDelay() time.Duration {
 		if rangeNs <= 0 {
 			return minDelay
 		}
-		randomNs := rand.Int63n(rangeNs) //nolint:gosec // jitter timing does not need crypto-grade randomness
+		n, err := rand.Int(rand.Reader, big.NewInt(rangeNs))
+		if err != nil {
+			return minDelay
+		}
+		randomNs := n.Int64()
 		return minDelay + time.Duration(randomNs)
 	}
 	return e.Delay
