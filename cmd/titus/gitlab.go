@@ -25,6 +25,7 @@ var (
 	gitlabGit          bool
 	gitlabRateLimit    float64
 	gitlabJitter       float64
+	gitlabYes          bool
 )
 
 var gitlabCmd = &cobra.Command{
@@ -70,6 +71,7 @@ func init() {
 	gitlabScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	gitlabScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	gitlabScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	gitlabScanCmd.Flags().BoolVarP(&gitlabYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	gitlabCmd.Flags().StringVar(&gitlabToken, "token", "", "GitLab token (or GITLAB_TOKEN env; optional for public projects)")
 	gitlabCmd.Flags().StringVar(&gitlabGroup, "group", "", "Scan all projects in group")
@@ -85,6 +87,7 @@ func init() {
 	gitlabCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	gitlabCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	gitlabCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	gitlabCmd.Flags().BoolVarP(&gitlabYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	gitlabCmd.AddCommand(gitlabScanCmd)
 }
@@ -204,12 +207,14 @@ func runGitLabScan(cmd *cobra.Command, args []string) error {
 			estimate := cloneEnum.EstimateScanTime()
 			if estimate > 0 {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Estimated scan time: %s (with %d projects)\n", formatDuration(estimate), len(projects))
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Continue? [Y/n] ")
-				var response string
-				_, _ = fmt.Scanln(&response)
-				response = strings.TrimSpace(strings.ToLower(response))
-				if response == "n" || response == "no" {
-					return fmt.Errorf("scan cancelled by user")
+				if !gitlabYes {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Continue? [Y/n] ")
+					var response string
+					_, _ = fmt.Scanln(&response)
+					response = strings.TrimSpace(strings.ToLower(response))
+					if response == "n" || response == "no" {
+						return fmt.Errorf("scan cancelled by user")
+					}
 				}
 			}
 		}

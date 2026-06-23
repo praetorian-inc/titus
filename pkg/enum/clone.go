@@ -49,9 +49,12 @@ func (e *CloneEnumerator) stealthDelay() time.Duration {
 		if maxDelay <= minDelay {
 			return minDelay
 		}
-		rangeMs := (maxDelay - minDelay).Milliseconds()
-		randomMs := rand.Int63n(rangeMs)
-		return minDelay + time.Duration(randomMs)*time.Millisecond
+		rangeNs := (maxDelay - minDelay).Nanoseconds()
+		if rangeNs <= 0 {
+			return minDelay
+		}
+		randomNs := rand.Int63n(rangeNs) //nolint:gosec // jitter timing does not need crypto-grade randomness
+		return minDelay + time.Duration(randomNs)
 	}
 	return e.Delay
 }

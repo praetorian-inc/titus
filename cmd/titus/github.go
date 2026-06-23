@@ -26,6 +26,7 @@ var (
 	githubSkipForks    bool
 	githubRateLimit    float64
 	githubJitter       float64
+	githubYes          bool
 )
 
 var githubCmd = &cobra.Command{
@@ -90,6 +91,7 @@ func init() {
 	githubScanCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	githubScanCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	githubScanCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	githubScanCmd.Flags().BoolVarP(&githubYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	githubCmd.Flags().StringVar(&githubToken, "token", "", "GitHub API token (or GITHUB_TOKEN env; optional for public repos)")
 	githubCmd.Flags().StringVar(&githubBaseURL, "url", "", "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)")
@@ -106,6 +108,7 @@ func init() {
 	githubCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
 	githubCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	githubCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	githubCmd.Flags().BoolVarP(&githubYes, "yes", "y", false, "Skip confirmation prompt for scan time estimate")
 
 	githubCmd.AddCommand(githubScanCmd)
 }
@@ -238,12 +241,14 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 			estimate := cloneEnum.EstimateScanTime()
 			if estimate > 0 {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Estimated scan time: %s (with %d repos)\n", formatDuration(estimate), len(repos))
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Continue? [Y/n] ")
-				var response string
-				_, _ = fmt.Scanln(&response)
-				response = strings.TrimSpace(strings.ToLower(response))
-				if response == "n" || response == "no" {
-					return fmt.Errorf("scan cancelled by user")
+				if !githubYes {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Continue? [Y/n] ")
+					var response string
+					_, _ = fmt.Scanln(&response)
+					response = strings.TrimSpace(strings.ToLower(response))
+					if response == "n" || response == "no" {
+						return fmt.Errorf("scan cancelled by user")
+					}
 				}
 			}
 		}
