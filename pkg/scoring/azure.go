@@ -45,6 +45,23 @@ func isSubscriptionScope(scope string) bool {
 	return len(parts) == 2 && strings.EqualFold(parts[0], "subscriptions")
 }
 
+// isManagementGroupScope returns true for scopes like
+// /providers/Microsoft.Management/managementGroups/<name>.
+func isManagementGroupScope(scope string) bool {
+	trimmed := strings.TrimPrefix(scope, "/")
+	parts := strings.Split(trimmed, "/")
+	return len(parts) == 4 &&
+		strings.EqualFold(parts[0], "providers") &&
+		strings.EqualFold(parts[1], "Microsoft.Management") &&
+		strings.EqualFold(parts[2], "managementGroups")
+}
+
+// isAtOrAboveSubscriptionScope returns true for subscription-level scope or
+// management group scope (which is above subscription level).
+func isAtOrAboveSubscriptionScope(scope string) bool {
+	return isSubscriptionScope(scope) || isManagementGroupScope(scope)
+}
+
 // hasPrivilegedDirectoryRole returns true if the SP holds Global Administrator
 // or Privileged Role Administrator. Used by negative-delta conditions to avoid
 // incorrectly reducing the score of a highly-privileged SP.
@@ -215,7 +232,7 @@ func (c *azureRBACCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 		}
 		if c.resourceGroupOnly {
 			for _, a := range allAssignments {
-				if isSubscriptionScope(a.Scope) {
+				if isAtOrAboveSubscriptionScope(a.Scope) {
 					return false, nil
 				}
 			}
@@ -225,7 +242,7 @@ func (c *azureRBACCondition) Evaluate(ctx context.Context, m *types.Match) (bool
 
 	for _, a := range allAssignments {
 		if matchSet[a.RoleDefinitionID] {
-			if c.subscriptionLevel && !isSubscriptionScope(a.Scope) {
+			if c.subscriptionLevel && !isAtOrAboveSubscriptionScope(a.Scope) {
 				continue
 			}
 			return true, nil
@@ -287,6 +304,14 @@ func (c *azureGraphReadOnlyCondition) Evaluate(ctx context.Context, m *types.Mat
 	if hasPrivilegedDirectoryRole(ctx, api) {
 		return false, nil
 	}
+
+	// Don't penalize an SP that holds non-Reader ARM RBAC roles; the
+	// graph-read-only discount is only meaningful when the SP has no
+	// significant ARM access either.
+	if hasNonReaderARMRole(ctx, api) {
+		return false, nil
+	}
+
 	assignments, err := api.GetAppRoleAssignments(ctx)
 	if err != nil {
 		return false, nil
@@ -297,6 +322,27 @@ func (c *azureGraphReadOnlyCondition) Evaluate(ctx context.Context, m *types.Mat
 		}
 	}
 	return true, nil
+}
+
+// hasNonReaderARMRole returns true if the SP holds any ARM RBAC role other
+// than Reader across all accessible subscriptions.
+func hasNonReaderARMRole(ctx context.Context, api azureAPI) bool {
+	subs, err := api.ListSubscriptions(ctx)
+	if err != nil {
+		return false
+	}
+	for _, sub := range subs {
+		assignments, err := api.ListRoleAssignments(ctx, sub.ID)
+		if err != nil {
+			continue
+		}
+		for _, a := range assignments {
+			if a.RoleDefinitionID != azureRoleReader {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // azureSingleNonProdSubCondition fires when the SP has access to exactly one

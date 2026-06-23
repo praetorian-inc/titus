@@ -37,7 +37,7 @@ type azureAppRoleAssignment struct {
 	ResourceDisplayName string
 }
 
-const (
+const ( // #nosec G101 -- Azure RBAC role definition GUIDs, not credentials.
 	azureRoleOwner            = "8e3af657-a8ff-443c-a75c-2fe8c4bcb635"
 	azureRoleContributor      = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 	azureRoleReader           = "acdd72a7-3385-48ef-bd42-f606fba81ae7"
@@ -46,7 +46,7 @@ const (
 	azureRoleKVSecretsUser    = "4633458b-17de-408a-b874-0445c86b69e6"
 )
 
-const (
+const ( // #nosec G101 -- Azure directory role template IDs, not credentials.
 	azureDirRoleGlobalAdmin   = "62e90394-69f5-4237-9190-012177145e10"
 	azureDirRolePrivRoleAdmin = "e8611ab8-c189-46e8-94e1-60213ab1f814"
 )
@@ -170,35 +170,91 @@ type azureHTTPAPI struct {
 	objectID   string
 }
 
+// maxPages caps pagination to avoid infinite loops.
+const maxPages = 10
+
+// paginatedResponse holds the raw JSON value array and the next page link.
+type paginatedResponse struct {
+	Value    json.RawMessage `json:"value"`
+	NextLink string          `json:"nextLink"`
+	// Graph API uses @odata.nextLink instead of nextLink.
+	ODataNextLink string `json:"@odata.nextLink"`
+}
+
+func (p *paginatedResponse) nextURL() string {
+	if p.NextLink != "" {
+		return p.NextLink
+	}
+	return p.ODataNextLink
+}
+
+// fetchAllPages fetches the initial URL and follows pagination links, returning
+// the concatenated raw JSON value arrays. The caller is responsible for
+// unmarshaling each element.
+func (a *azureHTTPAPI) fetchAllPages(ctx context.Context, initialURL, token string) ([]json.RawMessage, error) {
+	var allValues []json.RawMessage
+
+	currentURL := initialURL
+	for page := 0; page < maxPages; page++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentURL, nil)
+		if err != nil {
+			return allValues, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := a.client.Do(req)
+		if err != nil {
+			return allValues, err
+		}
+
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return allValues, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return allValues, fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+
+		var pageResp paginatedResponse
+		if err := json.Unmarshal(body, &pageResp); err != nil {
+			return allValues, err
+		}
+
+		// Parse value array into individual raw elements.
+		var items []json.RawMessage
+		if err := json.Unmarshal(pageResp.Value, &items); err != nil {
+			return allValues, err
+		}
+		allValues = append(allValues, items...)
+
+		next := pageResp.nextURL()
+		if next == "" {
+			break
+		}
+		currentURL = next
+	}
+
+	return allValues, nil
+}
+
 func (a *azureHTTPAPI) ListSubscriptions(ctx context.Context) ([]azureSubscription, error) {
 	u := "https://management.azure.com/subscriptions?api-version=2020-01-01"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	items, err := a.fetchAllPages(ctx, u, a.armToken)
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+a.armToken)
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("listSubscriptions: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("listSubscriptions: %w", err)
 	}
 
-	var result struct {
-		Value []azureSubscription `json:"value"`
+	subs := make([]azureSubscription, 0, len(items))
+	for _, raw := range items {
+		var s azureSubscription
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil, err
+		}
+		subs = append(subs, s)
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-	return result.Value, nil
+	return subs, nil
 }
 
 func (a *azureHTTPAPI) ListRoleAssignments(ctx context.Context, subscriptionID string) ([]azureRoleAssignment, error) {
@@ -207,40 +263,22 @@ func (a *azureHTTPAPI) ListRoleAssignments(ctx context.Context, subscriptionID s
 		"https://management.azure.com/subscriptions/%s/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=%s",
 		subscriptionID, filter)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	items, err := a.fetchAllPages(ctx, u, a.armToken)
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+a.armToken)
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("listRoleAssignments: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("listRoleAssignments: %w", err)
 	}
 
-	var result struct {
-		Value []struct {
+	assignments := make([]azureRoleAssignment, 0, len(items))
+	for _, raw := range items {
+		var v struct {
 			Properties struct {
 				RoleDefinitionID string `json:"roleDefinitionId"`
 				Scope            string `json:"scope"`
 			} `json:"properties"`
-		} `json:"value"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	assignments := make([]azureRoleAssignment, 0, len(result.Value))
-	for _, v := range result.Value {
+		}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return nil, err
+		}
 		roleID := v.Properties.RoleDefinitionID
 		if idx := strings.LastIndex(roleID, "/"); idx >= 0 {
 			roleID = roleID[idx+1:]
@@ -262,37 +300,19 @@ func (a *azureHTTPAPI) GetDirectoryRoleMemberships(ctx context.Context) ([]strin
 		"https://graph.microsoft.com/v1.0/servicePrincipals/%s/memberOf/microsoft.graph.directoryRole",
 		a.objectID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	items, err := a.fetchAllPages(ctx, u, a.graphToken)
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+a.graphToken)
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("getDirectoryRoles: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("getDirectoryRoles: %w", err)
 	}
 
-	var result struct {
-		Value []struct {
+	roles := make([]string, 0, len(items))
+	for _, raw := range items {
+		var v struct {
 			RoleTemplateID string `json:"roleTemplateId"`
-		} `json:"value"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	roles := make([]string, 0, len(result.Value))
-	for _, v := range result.Value {
+		}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return nil, err
+		}
 		if v.RoleTemplateID != "" {
 			roles = append(roles, v.RoleTemplateID)
 		}
@@ -309,38 +329,20 @@ func (a *azureHTTPAPI) GetAppRoleAssignments(ctx context.Context) ([]azureAppRol
 		"https://graph.microsoft.com/v1.0/servicePrincipals/%s/appRoleAssignments",
 		a.objectID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	items, err := a.fetchAllPages(ctx, u, a.graphToken)
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+a.graphToken)
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("getAppRoleAssignments: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("getAppRoleAssignments: %w", err)
 	}
 
-	var result struct {
-		Value []struct {
+	assignments := make([]azureAppRoleAssignment, 0, len(items))
+	for _, raw := range items {
+		var v struct {
 			AppRoleID           string `json:"appRoleId"`
 			ResourceDisplayName string `json:"resourceDisplayName"`
-		} `json:"value"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	assignments := make([]azureAppRoleAssignment, 0, len(result.Value))
-	for _, v := range result.Value {
+		}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return nil, err
+		}
 		assignments = append(assignments, azureAppRoleAssignment{
 			AppRoleID:           v.AppRoleID,
 			ResourceDisplayName: v.ResourceDisplayName,

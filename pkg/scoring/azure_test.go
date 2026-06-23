@@ -214,6 +214,33 @@ func TestIsSubscriptionScope(t *testing.T) {
 	}
 }
 
+func TestIsAtOrAboveSubscriptionScope(t *testing.T) {
+	tests := []struct {
+		scope string
+		want  bool
+	}{
+		// Subscription scope
+		{"/subscriptions/12345678-1234-1234-1234-123456789abc", true},
+		// Management group scopes
+		{"/providers/Microsoft.Management/managementGroups/my-mg", true},
+		{"/providers/Microsoft.Management/managementGroups/root-mg-group", true},
+		// Resource group (below subscription)
+		{"/subscriptions/sub1/resourceGroups/rg1", false},
+		// Deep resource scope
+		{"/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/virtualMachines/vm1", false},
+		// Edge cases
+		{"/", false},
+		{"", false},
+		// Not a management group even though it has providers prefix
+		{"/providers/Microsoft.Compute/virtualMachines/vm1", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.scope, func(t *testing.T) {
+			assert.Equal(t, tc.want, isAtOrAboveSubscriptionScope(tc.scope))
+		})
+	}
+}
+
 // --- Condition unit tests ---
 
 func TestAzureIncompleteCredentials_FiresWhenMissingIDs(t *testing.T) {
@@ -644,6 +671,40 @@ func TestAzureGraphReadOnlyCondition_DoesNotFireOnGraphError(t *testing.T) {
 	assert.False(t, fired)
 }
 
+func TestAzureGraphReadOnlyCondition_DoesNotFireWhenNonReaderARMRole(t *testing.T) {
+	cond := &azureGraphReadOnlyCondition{
+		clientFactory: fakeAzureFactory(&mockAzureAPI{
+			subscriptions: []azureSubscription{{ID: "sub1"}},
+			roleAssignments: map[string][]azureRoleAssignment{
+				"sub1": {{RoleDefinitionID: azureRoleContributor, Scope: "/subscriptions/sub1"}},
+			},
+			appRoleAssignments: []azureAppRoleAssignment{
+				{AppRoleID: "df021288-bdef-4463-88db-98f22de89214", ResourceDisplayName: "Microsoft Graph"},
+			},
+		}),
+	}
+	fired, err := cond.Evaluate(context.Background(), azureTestMatch())
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
+
+func TestAzureGraphReadOnlyCondition_FiresWhenOnlyReaderARMRole(t *testing.T) {
+	cond := &azureGraphReadOnlyCondition{
+		clientFactory: fakeAzureFactory(&mockAzureAPI{
+			subscriptions: []azureSubscription{{ID: "sub1"}},
+			roleAssignments: map[string][]azureRoleAssignment{
+				"sub1": {{RoleDefinitionID: azureRoleReader, Scope: "/subscriptions/sub1"}},
+			},
+			appRoleAssignments: []azureAppRoleAssignment{
+				{AppRoleID: "df021288-bdef-4463-88db-98f22de89214", ResourceDisplayName: "Microsoft Graph"},
+			},
+		}),
+	}
+	fired, err := cond.Evaluate(context.Background(), azureTestMatch())
+	require.NoError(t, err)
+	assert.True(t, fired)
+}
+
 func TestAzureSingleNonProdSubCondition_FiresForDevSub(t *testing.T) {
 	cond := &azureSingleNonProdSubCondition{
 		clientFactory: fakeAzureFactory(&mockAzureAPI{
@@ -977,14 +1038,14 @@ func TestAzureScorer_SeverityScenarios(t *testing.T) {
 			mock: &mockAzureAPI{
 				subscriptions: []azureSubscription{{ID: "sub1", DisplayName: "Production"}},
 				roleAssignments: map[string][]azureRoleAssignment{
-					"sub1": {{RoleDefinitionID: azureRoleContributor, Scope: "/subscriptions/sub1"}},
+					"sub1": {{RoleDefinitionID: azureRoleReader, Scope: "/subscriptions/sub1/resourceGroups/rg1"}},
 				},
 				appRoleAssignments: []azureAppRoleAssignment{
 					{AppRoleID: "df021288-bdef-4463-88db-98f22de89214", ResourceDisplayName: "Microsoft Graph"},
 				},
 			},
-			expectedScore: 65,
-			appliedNames:  []string{"contributor-sub-level", "graph-read-only"},
+			expectedScore: 25,
+			appliedNames:  []string{"reader-only-rg-level", "graph-read-only"},
 		},
 		{
 			name:      "contributor-single-non-prod",
