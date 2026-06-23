@@ -240,7 +240,7 @@ func runGitHubScan(cmd *cobra.Command, args []string) error {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Estimated scan time: %s (with %d repos)\n", formatDuration(estimate), len(repos))
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Continue? [Y/n] ")
 				var response string
-				fmt.Scanln(&response)
+				_, _ = fmt.Scanln(&response)
 				response = strings.TrimSpace(strings.ToLower(response))
 				if response == "n" || response == "no" {
 					return fmt.Errorf("scan cancelled by user")
