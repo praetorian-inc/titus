@@ -540,7 +540,7 @@ func (e *GDriveEnumerator) withRetry(ctx context.Context, fn func() error) error
 			return err
 		}
 
-		delay := retryDelay(err, attempt, e.cfg.MaxBackoff)
+		delay := gdriveRetryDelay(err, attempt, e.cfg.MaxBackoff)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -575,8 +575,8 @@ func isRetryableGDriveError(err error) bool {
 	return false
 }
 
-// retryDelay computes the sleep duration for attempt n, honoring Retry-After.
-func retryDelay(err error, attempt int, maxBackoff time.Duration) time.Duration {
+// gdriveRetryDelay computes the sleep duration for attempt n, honoring Retry-After.
+func gdriveRetryDelay(err error, attempt int, maxBackoff time.Duration) time.Duration {
 	// Honor Retry-After header if present
 	var gErr *googleapi.Error
 	if errors.As(err, &gErr) {

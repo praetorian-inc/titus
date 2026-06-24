@@ -75,14 +75,15 @@ var (
 	scanScoreTimeout time.Duration
 	scanScoreBudget  time.Duration
 
-	// Google Drive flags.
-	scanGDriveRateLimit       float64
-	scanGDriveConcurrency     int
 	// Asana scan flags.
 	scanAsanaIncludeAttachments bool
 	scanAsanaAttachmentMaxSize  int64
 	scanAsanaRateLimit          float64
 	scanAsanaConcurrency        int
+
+	// Google Drive flags.
+	scanGDriveRateLimit       float64
+	scanGDriveConcurrency     int
 )
 
 var scanCmd = &cobra.Command{
@@ -126,15 +127,15 @@ func init() {
 		"per-modifier HTTP timeout for dynamic scoring (default 10s)")
 	scanCmd.Flags().DurationVar(&scanScoreBudget, "score-budget", 60*time.Second,
 		"per-finding overall scoring budget across all modifiers (default 60s; 0 = unlimited)")
-	scanCmd.Flags().Float64Var(&scanGDriveRateLimit, "gdrive-rate-limit", 0,
-		"Google Drive API requests per second (default 16; 0 = use default). Per-user cap is ~325k quota units/min")
-	scanCmd.Flags().IntVar(&scanGDriveConcurrency, "gdrive-concurrency", 0,
-		"Google Drive parallel file workers (default 5; 0 = use default; clamped to [1, 100])")
 
 	scanCmd.Flags().BoolVar(&scanAsanaIncludeAttachments, "asana-include-attachments", false, "Download and scan Asana-hosted file attachments")
 	scanCmd.Flags().Int64Var(&scanAsanaAttachmentMaxSize, "asana-attachment-max-size", 50*1024*1024, "Maximum Asana attachment size in bytes to download")
 	scanCmd.Flags().Float64Var(&scanAsanaRateLimit, "asana-rate-limit", 10.0, "Asana API requests per second (free tier ≈ 2.5/sec; paid tier ≈ 25/sec)")
 	scanCmd.Flags().IntVar(&scanAsanaConcurrency, "asana-concurrency", 0, "Number of workers processing tasks within a project (0 = use default of 5)")
+	scanCmd.Flags().Float64Var(&scanGDriveRateLimit, "gdrive-rate-limit", 0,
+		"Google Drive API requests per second (default 16; 0 = use default). Per-user cap is ~325k quota units/min")
+	scanCmd.Flags().IntVar(&scanGDriveConcurrency, "gdrive-concurrency", 0,
+		"Google Drive parallel file workers (default 5; 0 = use default; clamped to [1, 100])")
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -172,12 +173,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 			return runS3Scan(cmd, bucket, prefix)
 		}
 
-		// Check if target is a Google Drive URL
-		if scope, driveID, ok := enum.ParseGDriveURL(target); ok {
-			return runGDriveScan(cmd, scope, driveID)
 		// Check if target is an Asana URL
 		if scope, gid, ok := enum.ParseAsanaURL(target); ok {
 			return runAsanaScan(cmd, scope, gid)
+		}
+
+		// Check if target is a Google Drive URL
+		if scope, driveID, ok := enum.ParseGDriveURL(target); ok {
+			return runGDriveScan(cmd, scope, driveID)
 		}
 
 		// Validate target exists (filesystem path)
@@ -1332,6 +1335,285 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 	return outputScanResults(cmd, s, rules, ruleMap)
 }
 
+// runAsanaScan handles scanning of Asana workspaces detected from asana:// URLs.
+func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
+	token := os.Getenv("ASANA_TOKEN")
+	if token == "" {
+		return fmt.Errorf("asana token is required: set ASANA_TOKEN")
+	}
+
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+
+	ruleMap := make(map[string]*types.Rule)
+	for _, r := range rules {
+		ruleMap[r.ID] = r
+	}
+
+	m, err := matcher.New(matcher.Config{
+		Rules:        rules,
+		ContextLines: scanContextLines,
+		WarnFunc: func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format, args...)
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("creating matcher: %w", err)
+	}
+	defer m.Close()
+
+	s, ds, err := openScanStore(scanOutputPath, scanStoreBlobs)
+	if err != nil {
+		return err
+	}
+	if ds != nil {
+		defer ds.Close()
+	} else {
+		defer s.Close()
+	}
+
+	for _, r := range rules {
+		if err := s.AddRule(r); err != nil {
+			return fmt.Errorf("storing rule: %w", err)
+		}
+	}
+
+	validationEngine := initValidationEngine()
+	if validationEngine != nil {
+		matcher.SetCanValidate(m, validationEngine.CanValidate)
+	}
+
+	asanaEngine, err := buildScoringEngine()
+	if err != nil {
+		return fmt.Errorf("initializing scoring engine: %w", err)
+	}
+
+	// Asana content has no git remote; resolve accessibility from the flag only
+	// (auto falls back to private, which is the conservative default).
+	asanaAccessibility := ResolveAccessibility(scanAccessibility, "", "")
+
+	// Parse extraction limits
+	limits := enum.DefaultExtractionLimits()
+	if extractMaxSize != "" {
+		size, err := parseSize(extractMaxSize)
+		if err != nil {
+			return fmt.Errorf("parsing extract-max-size: %w", err)
+		}
+		limits.MaxSize = size
+	}
+	if extractMaxTotal != "" {
+		size, err := parseSize(extractMaxTotal)
+		if err != nil {
+			return fmt.Errorf("parsing extract-max-total: %w", err)
+		}
+		limits.MaxTotal = size
+	}
+	limits.MaxDepth = extractMaxDepth
+	limits.SQLiteRowLimit = scanSQLiteRowLimit
+
+	var verboseWriter io.Writer
+	if verbose {
+		verboseWriter = cmd.ErrOrStderr()
+	}
+
+	cfg := enum.AsanaConfig{
+		Token:              token,
+		IncludeAttachments: scanAsanaIncludeAttachments,
+		AttachmentMaxBytes: scanAsanaAttachmentMaxSize,
+		RatePerSec:         scanAsanaRateLimit,
+		Concurrency:        scanAsanaConcurrency,
+		Verbose:            verboseWriter,
+		Config: enum.Config{
+			MaxFileSize:     scanMaxFileSize,
+			ExtractArchives: string(scanExtractArchivesFlag),
+			ExtractLimits:   limits,
+		},
+	}
+	switch scope {
+	case enum.AsanaScopeWorkspace:
+		cfg.Workspace = gid
+	case enum.AsanaScopeTeam:
+		cfg.Team = gid
+	case enum.AsanaScopeProject:
+		cfg.Project = gid
+	}
+
+	asanaEnum, err := enum.NewAsanaEnumerator(cfg)
+	if err != nil {
+		return fmt.Errorf("creating Asana enumerator: %w", err)
+	}
+
+	ctx := context.Background()
+	var matchCount atomic.Int64
+	var findingCount atomic.Int64
+	var skippedCount atomic.Int64
+	var totalBytes atomic.Int64
+	var blobCount atomic.Int64
+	startTime := time.Now()
+
+	numWorkers := scanWorkers
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[scan] Starting Asana scan with %d workers and %d rules\n", numWorkers, len(rules))
+	}
+
+	jobs := make(chan blobJob, 2*numWorkers)
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Producer
+	g.Go(func() error {
+		defer close(jobs)
+		return asanaEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			totalBytes.Add(int64(len(content)))
+			count := blobCount.Add(1)
+			if verbose && count%1000 == 0 {
+				fmt.Fprintf(os.Stderr, "[enumerate] %d blobs processed (%d bytes)\n", count, totalBytes.Load())
+			}
+
+			if scanIncremental {
+				exists, err := s.BlobExists(blobID)
+				if err != nil {
+					return fmt.Errorf("checking blob: %w", err)
+				}
+				if exists {
+					skippedCount.Add(1)
+					return nil
+				}
+			}
+
+			select {
+			case jobs <- blobJob{content: content, blobID: blobID, prov: prov}:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	})
+
+	// Consumer workers
+	const batchSize = 64
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			type batchItem struct {
+				blobID  types.BlobID
+				prov    types.Provenance
+				size    int64
+				matches []*types.Match
+			}
+			var batch []batchItem
+
+			flush := func() error {
+				if len(batch) == 0 {
+					return nil
+				}
+				err := s.ExecBatch(func(tx store.Store) error {
+					for _, item := range batch {
+						if err := tx.AddBlob(item.blobID, item.size); err != nil {
+							return fmt.Errorf("storing blob: %w", err)
+						}
+						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
+							return fmt.Errorf("storing provenance: %w", err)
+						}
+						for _, match := range item.matches {
+							if err := tx.AddMatch(match); err != nil {
+								return fmt.Errorf("storing match: %w", err)
+							}
+							rule, ok := ruleMap[match.RuleID]
+							if !ok {
+								return fmt.Errorf("rule not found: %s", match.RuleID)
+							}
+							findingID := types.ComputeFindingID(rule.StructuralID, match.Groups)
+							exists, err := tx.FindingExists(findingID)
+							if err != nil {
+								return fmt.Errorf("checking finding: %w", err)
+							}
+							if !exists {
+								findingCount.Add(1)
+								f := &types.Finding{
+									ID:     findingID,
+									RuleID: match.RuleID,
+									Groups: match.Groups,
+								}
+								f.Score = asanaEngine.Score(ctx, f, []*types.Match{match}, rule)
+								if asanaAccessibility == AccessibilityPrivate {
+									ApplyAccessibilityModifier(f.Score)
+								}
+								if err := tx.AddFinding(f); err != nil {
+									return fmt.Errorf("storing finding: %w", err)
+								}
+							}
+						}
+					}
+					return nil
+				})
+				batch = batch[:0]
+				return err
+			}
+
+			for job := range jobs {
+				matches, err := m.MatchWithBlobID(job.content, job.blobID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "[warn] match error (skipping blob %s): %v\n", job.blobID.Hex(), err)
+					continue
+				}
+
+				for _, match := range matches {
+					startLine, startCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.Start))
+					endLine, endCol := types.ComputeLineColumn(job.content, int(match.Location.Offset.End))
+					match.Location.Source.Start.Line = startLine
+					match.Location.Source.Start.Column = startCol
+					match.Location.Source.End.Line = endLine
+					match.Location.Source.End.Column = endCol
+				}
+
+				validateMatches(ctx, validationEngine, matches, verbose)
+				matchCount.Add(int64(len(matches)))
+
+				batch = append(batch, batchItem{
+					blobID:  job.blobID,
+					prov:    job.prov,
+					size:    int64(len(job.content)),
+					matches: matches,
+				})
+				if len(batch) >= batchSize {
+					if err := flush(); err != nil {
+						return err
+					}
+				}
+			}
+			return flush()
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			// Normal shutdown via Ctrl+C, not an error
+		} else {
+			return fmt.Errorf("scanning: %w", err)
+		}
+	}
+
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, asanaEngine, &findingCount, &matchCount, asanaAccessibility); err != nil {
+		return fmt.Errorf("retrying timed-out blobs: %w", err)
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[scan] Asana scan complete: %d blobs, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
+	}
+
+	duration := time.Since(startTime)
+	printScanStats(cmd, scanOutputFormat, scanOutputPath,
+		totalBytes.Load(), blobCount.Load(), matchCount.Load(), skippedCount.Load(), duration)
+
+	return outputScanResults(cmd, s, rules, ruleMap)
+}
+
 // runGDriveScan handles scanning of Google Drive targets detected from gdrive:// URLs.
 func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) error {
 	token := os.Getenv("GOOGLE_DRIVE_TOKEN")
@@ -1344,13 +1626,6 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 	}
 
 	// Load rules
-// runAsanaScan handles scanning of Asana workspaces detected from asana:// URLs.
-func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
-	token := os.Getenv("ASANA_TOKEN")
-	if token == "" {
-		return fmt.Errorf("asana token is required: set ASANA_TOKEN")
-	}
-
 	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
@@ -1398,16 +1673,12 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 	}
 
 	gdriveEngine, err := buildScoringEngine()
-	asanaEngine, err := buildScoringEngine()
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
 	}
 
 	// Drive content has no git remote; resolve from flag only.
 	gdriveAccessibility := ResolveAccessibility(scanAccessibility, "", "")
-	// Asana content has no git remote; resolve accessibility from the flag only
-	// (auto falls back to private, which is the conservative default).
-	asanaAccessibility := ResolveAccessibility(scanAccessibility, "", "")
 
 	// Parse extraction limits
 	limits := enum.DefaultExtractionLimits()
@@ -1443,13 +1714,6 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 		Verbose:      verboseWriter,
 		RateLimit:    scanGDriveRateLimit,
 		Concurrency:  scanGDriveConcurrency,
-	cfg := enum.AsanaConfig{
-		Token:              token,
-		IncludeAttachments: scanAsanaIncludeAttachments,
-		AttachmentMaxBytes: scanAsanaAttachmentMaxSize,
-		RatePerSec:         scanAsanaRateLimit,
-		Concurrency:        scanAsanaConcurrency,
-		Verbose:            verboseWriter,
 		Config: enum.Config{
 			MaxFileSize:     scanMaxFileSize,
 			ExtractArchives: string(scanExtractArchivesFlag),
@@ -1458,19 +1722,6 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("creating Google Drive enumerator: %w", err)
-	}
-	switch scope {
-	case enum.AsanaScopeWorkspace:
-		cfg.Workspace = gid
-	case enum.AsanaScopeTeam:
-		cfg.Team = gid
-	case enum.AsanaScopeProject:
-		cfg.Project = gid
-	}
-
-	asanaEnum, err := enum.NewAsanaEnumerator(cfg)
-	if err != nil {
-		return fmt.Errorf("creating Asana enumerator: %w", err)
 	}
 
 	ctx := context.Background()
@@ -1488,7 +1739,6 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[scan] Starting Google Drive scan (scope=%d driveID=%q) with %d workers and %d rules\n", scope, driveID, numWorkers, len(rules))
-		fmt.Fprintf(os.Stderr, "[scan] Starting Asana scan with %d workers and %d rules\n", numWorkers, len(rules))
 	}
 
 	jobs := make(chan blobJob, 2*numWorkers)
@@ -1503,11 +1753,6 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 			count := blobCount.Add(1)
 			if verbose && count%1000 == 0 {
 				fmt.Fprintf(os.Stderr, "[enumerate] %d objects processed (%d bytes)\n", count, totalBytes.Load())
-		return asanaEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-			totalBytes.Add(int64(len(content)))
-			count := blobCount.Add(1)
-			if verbose && count%1000 == 0 {
-				fmt.Fprintf(os.Stderr, "[enumerate] %d blobs processed (%d bytes)\n", count, totalBytes.Load())
 			}
 
 			if scanIncremental {
@@ -1532,7 +1777,6 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 
 	// Consumer workers
 	const gdriveBatchSize = 64
-	const batchSize = 64
 	for i := 0; i < numWorkers; i++ {
 		g.Go(func() error {
 			type batchItem struct {
@@ -1577,8 +1821,6 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 								}
 								f.Score = gdriveEngine.Score(ctx, f, []*types.Match{match}, rule)
 								if gdriveAccessibility == AccessibilityPrivate {
-								f.Score = asanaEngine.Score(ctx, f, []*types.Match{match}, rule)
-								if asanaAccessibility == AccessibilityPrivate {
 									ApplyAccessibilityModifier(f.Score)
 								}
 								if err := tx.AddFinding(f); err != nil {
@@ -1619,7 +1861,6 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 					matches: matches,
 				})
 				if len(batch) >= gdriveBatchSize {
-				if len(batch) >= batchSize {
 					if err := flush(); err != nil {
 						return err
 					}
@@ -1638,13 +1879,11 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 	}
 
 	if err := drainTimedOutMatches(ctx, m, s, ruleMap, gdriveEngine, &findingCount, &matchCount, gdriveAccessibility); err != nil {
-	if err := drainTimedOutMatches(ctx, m, s, ruleMap, asanaEngine, &findingCount, &matchCount, asanaAccessibility); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[scan] Google Drive scan complete: %d objects, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
-		fmt.Fprintf(os.Stderr, "[scan] Asana scan complete: %d blobs, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
 	}
 
 	duration := time.Since(startTime)
