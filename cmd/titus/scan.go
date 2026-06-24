@@ -78,6 +78,11 @@ var (
 	// Google Drive flags.
 	scanGDriveRateLimit       float64
 	scanGDriveConcurrency     int
+	// Asana scan flags.
+	scanAsanaIncludeAttachments bool
+	scanAsanaAttachmentMaxSize  int64
+	scanAsanaRateLimit          float64
+	scanAsanaConcurrency        int
 )
 
 var scanCmd = &cobra.Command{
@@ -125,6 +130,11 @@ func init() {
 		"Google Drive API requests per second (default 16; 0 = use default). Per-user cap is ~325k quota units/min")
 	scanCmd.Flags().IntVar(&scanGDriveConcurrency, "gdrive-concurrency", 0,
 		"Google Drive parallel file workers (default 5; 0 = use default; clamped to [1, 100])")
+
+	scanCmd.Flags().BoolVar(&scanAsanaIncludeAttachments, "asana-include-attachments", false, "Download and scan Asana-hosted file attachments")
+	scanCmd.Flags().Int64Var(&scanAsanaAttachmentMaxSize, "asana-attachment-max-size", 50*1024*1024, "Maximum Asana attachment size in bytes to download")
+	scanCmd.Flags().Float64Var(&scanAsanaRateLimit, "asana-rate-limit", 10.0, "Asana API requests per second (free tier ≈ 2.5/sec; paid tier ≈ 25/sec)")
+	scanCmd.Flags().IntVar(&scanAsanaConcurrency, "asana-concurrency", 0, "Number of workers processing tasks within a project (0 = use default of 5)")
 }
 
 // blobJob represents a unit of work for the worker pool.
@@ -165,6 +175,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		// Check if target is a Google Drive URL
 		if scope, driveID, ok := enum.ParseGDriveURL(target); ok {
 			return runGDriveScan(cmd, scope, driveID)
+		// Check if target is an Asana URL
+		if scope, gid, ok := enum.ParseAsanaURL(target); ok {
+			return runAsanaScan(cmd, scope, gid)
 		}
 
 		// Validate target exists (filesystem path)
@@ -1331,6 +1344,13 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 	}
 
 	// Load rules
+// runAsanaScan handles scanning of Asana workspaces detected from asana:// URLs.
+func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
+	token := os.Getenv("ASANA_TOKEN")
+	if token == "" {
+		return fmt.Errorf("asana token is required: set ASANA_TOKEN")
+	}
+
 	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
@@ -1378,12 +1398,16 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 	}
 
 	gdriveEngine, err := buildScoringEngine()
+	asanaEngine, err := buildScoringEngine()
 	if err != nil {
 		return fmt.Errorf("initializing scoring engine: %w", err)
 	}
 
 	// Drive content has no git remote; resolve from flag only.
 	gdriveAccessibility := ResolveAccessibility(scanAccessibility, "", "")
+	// Asana content has no git remote; resolve accessibility from the flag only
+	// (auto falls back to private, which is the conservative default).
+	asanaAccessibility := ResolveAccessibility(scanAccessibility, "", "")
 
 	// Parse extraction limits
 	limits := enum.DefaultExtractionLimits()
@@ -1419,6 +1443,13 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 		Verbose:      verboseWriter,
 		RateLimit:    scanGDriveRateLimit,
 		Concurrency:  scanGDriveConcurrency,
+	cfg := enum.AsanaConfig{
+		Token:              token,
+		IncludeAttachments: scanAsanaIncludeAttachments,
+		AttachmentMaxBytes: scanAsanaAttachmentMaxSize,
+		RatePerSec:         scanAsanaRateLimit,
+		Concurrency:        scanAsanaConcurrency,
+		Verbose:            verboseWriter,
 		Config: enum.Config{
 			MaxFileSize:     scanMaxFileSize,
 			ExtractArchives: string(scanExtractArchivesFlag),
@@ -1427,6 +1458,19 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 	})
 	if err != nil {
 		return fmt.Errorf("creating Google Drive enumerator: %w", err)
+	}
+	switch scope {
+	case enum.AsanaScopeWorkspace:
+		cfg.Workspace = gid
+	case enum.AsanaScopeTeam:
+		cfg.Team = gid
+	case enum.AsanaScopeProject:
+		cfg.Project = gid
+	}
+
+	asanaEnum, err := enum.NewAsanaEnumerator(cfg)
+	if err != nil {
+		return fmt.Errorf("creating Asana enumerator: %w", err)
 	}
 
 	ctx := context.Background()
@@ -1444,6 +1488,7 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[scan] Starting Google Drive scan (scope=%d driveID=%q) with %d workers and %d rules\n", scope, driveID, numWorkers, len(rules))
+		fmt.Fprintf(os.Stderr, "[scan] Starting Asana scan with %d workers and %d rules\n", numWorkers, len(rules))
 	}
 
 	jobs := make(chan blobJob, 2*numWorkers)
@@ -1458,6 +1503,11 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 			count := blobCount.Add(1)
 			if verbose && count%1000 == 0 {
 				fmt.Fprintf(os.Stderr, "[enumerate] %d objects processed (%d bytes)\n", count, totalBytes.Load())
+		return asanaEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
+			totalBytes.Add(int64(len(content)))
+			count := blobCount.Add(1)
+			if verbose && count%1000 == 0 {
+				fmt.Fprintf(os.Stderr, "[enumerate] %d blobs processed (%d bytes)\n", count, totalBytes.Load())
 			}
 
 			if scanIncremental {
@@ -1482,6 +1532,7 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 
 	// Consumer workers
 	const gdriveBatchSize = 64
+	const batchSize = 64
 	for i := 0; i < numWorkers; i++ {
 		g.Go(func() error {
 			type batchItem struct {
@@ -1526,6 +1577,8 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 								}
 								f.Score = gdriveEngine.Score(ctx, f, []*types.Match{match}, rule)
 								if gdriveAccessibility == AccessibilityPrivate {
+								f.Score = asanaEngine.Score(ctx, f, []*types.Match{match}, rule)
+								if asanaAccessibility == AccessibilityPrivate {
 									ApplyAccessibilityModifier(f.Score)
 								}
 								if err := tx.AddFinding(f); err != nil {
@@ -1566,6 +1619,7 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 					matches: matches,
 				})
 				if len(batch) >= gdriveBatchSize {
+				if len(batch) >= batchSize {
 					if err := flush(); err != nil {
 						return err
 					}
@@ -1584,11 +1638,13 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 	}
 
 	if err := drainTimedOutMatches(ctx, m, s, ruleMap, gdriveEngine, &findingCount, &matchCount, gdriveAccessibility); err != nil {
+	if err := drainTimedOutMatches(ctx, m, s, ruleMap, asanaEngine, &findingCount, &matchCount, asanaAccessibility); err != nil {
 		return fmt.Errorf("retrying timed-out blobs: %w", err)
 	}
 
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[scan] Google Drive scan complete: %d objects, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
+		fmt.Fprintf(os.Stderr, "[scan] Asana scan complete: %d blobs, %d matches, %d findings\n", blobCount.Load(), matchCount.Load(), findingCount.Load())
 	}
 
 	duration := time.Since(startTime)
