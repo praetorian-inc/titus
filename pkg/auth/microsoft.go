@@ -353,7 +353,7 @@ func LoadCachedToken() (*CachedToken, error) {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(cachePath) //nolint:gosec // path is constructed from UserHomeDir + hardcoded filename
+	data, err := os.ReadFile(cachePath) // #nosec G304 -- path is constructed from UserHomeDir + hardcoded filename, not user input
 	if err != nil {
 		return nil, fmt.Errorf("reading cached token: %w", err)
 	}
