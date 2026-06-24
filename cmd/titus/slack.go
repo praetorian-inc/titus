@@ -14,6 +14,7 @@ import (
 
 var (
 	slackToken        string
+	slackCookie       string
 	slackOutputPath   string
 	slackOutputFormat string
 	slackChannels     string
@@ -27,19 +28,25 @@ var slackCmd = &cobra.Command{
 Enumerates channels, messages, and thread replies.
 
 Authentication:
-  Use --token or SLACK_TOKEN env var with a Slack Bot or User token.
-  Bot tokens start with xoxb-, user tokens with xoxp-.
+  Use --token or SLACK_TOKEN env var with a Slack token.
+  Supported token types: xoxb- (bot), xoxp- (user), xoxc- (browser session).
+  Browser session tokens (xoxc-) also require --cookie with the xoxd- session cookie.
+  To get xoxc/xoxd: open Slack in browser → DevTools → Application →
+    token: Local Storage → search for xoxc-
+    cookie: Cookies → cookie named "d" (starts with xoxd-)
 
 Examples:
   titus slack --token xoxb-xxx
   SLACK_TOKEN=xoxb-xxx titus slack
   titus slack --token xoxb-xxx --channels general,engineering
-  titus slack --token xoxb-xxx --output slack-scan.db --format json`,
+  titus slack --token xoxb-xxx --output slack-scan.db --format json
+  titus slack --token xoxc-xxx --cookie xoxd-xxx -v          # browser session token`,
 	RunE: runSlackScan,
 }
 
 func init() {
 	slackCmd.Flags().StringVar(&slackToken, "token", "", "Slack API token (or SLACK_TOKEN env)")
+	slackCmd.Flags().StringVar(&slackCookie, "cookie", "", "Slack session cookie (xoxd-...) — required for xoxc- tokens (or SLACK_COOKIE env)")
 	slackCmd.Flags().StringVar(&slackOutputPath, "output", "titus.db", "Output database path")
 	slackCmd.Flags().StringVar(&slackOutputFormat, "format", "human", "Output format: json, human")
 	slackCmd.Flags().StringVar(&slackChannels, "channels", "", "Comma-separated channel names to scan (default: all)")
@@ -48,7 +55,7 @@ func init() {
 	slackCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	slackCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all")
 	slackCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Include noisy rules that may produce more false positives")
-	slackCmd.Flags().Float64Var(&slackRateLimit, "rate-limit", 1.0, "API requests per second (default 1.0)")
+	slackCmd.Flags().Float64Var(&slackRateLimit, "rate-limit", 0.75, "API requests per second (default 0.75, Slack Tier 3 = 50 req/min)")
 }
 
 func runSlackScan(cmd *cobra.Command, args []string) error {
@@ -60,6 +67,11 @@ func runSlackScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("slack API token is required: use --token or SLACK_TOKEN env var")
 	}
 
+	cookie := slackCookie
+	if cookie == "" {
+		cookie = os.Getenv("SLACK_COOKIE")
+	}
+
 	var verboseWriter io.Writer
 	if verbose {
 		verboseWriter = cmd.ErrOrStderr()
@@ -67,6 +79,7 @@ func runSlackScan(cmd *cobra.Command, args []string) error {
 
 	enumerator, err := enum.NewSlackEnumerator(enum.SlackConfig{
 		Token:     token,
+		Cookie:    cookie,
 		RateLimit: slackRateLimit,
 		Channels:  slackChannels,
 		Verbose:   verboseWriter,
