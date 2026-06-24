@@ -7,7 +7,7 @@ import (
 	"html"
 	"io"
 	"net/http"
-	"path/filepath"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,29 +18,9 @@ import (
 
 const spGraphBase = "https://graph.microsoft.com/v1.0"
 
-// spTextExtensions defines file extensions that should be downloaded and scanned.
-var spTextExtensions = map[string]bool{
-	".txt": true, ".md": true, ".csv": true, ".json": true,
-	".yaml": true, ".yml": true, ".xml": true, ".env": true,
-	".config": true, ".cfg": true, ".ini": true, ".properties": true,
-	".toml": true, ".sh": true, ".bash": true, ".ps1": true,
-	".py": true, ".rb": true, ".js": true, ".ts": true,
-	".go": true, ".java": true, ".cs": true, ".tf": true,
-	".tfvars": true, ".sql": true, ".log": true, ".conf": true,
-	".htaccess": true, ".gitconfig": true, ".npmrc": true,
-	".dockerenv": true, ".pem": true, ".key": true, ".crt": true,
-	".pub": true,
-}
-
 var (
 	spHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
 )
-
-// spIsTextFile returns true if the filename has a text-scannable extension.
-func spIsTextFile(name string) bool {
-	ext := strings.ToLower(filepath.Ext(name))
-	return spTextExtensions[ext]
-}
 
 // spStripHTML removes HTML tags and unescapes HTML entities.
 func spStripHTML(s string) string {
@@ -75,7 +55,7 @@ func NewSharePointEnumerator(cfg SharePointConfig) (*SharePointEnumerator, error
 // logf writes a progress message when verbose output is enabled.
 func (e *SharePointEnumerator) logf(format string, args ...interface{}) {
 	if e.config.Verbose != nil {
-		_, _ = fmt.Fprintf(e.config.Verbose, format+"\n", args...)
+		_, _ = fmt.Fprintf(e.config.Verbose, "\r%-80s\n", fmt.Sprintf(format, args...))
 	}
 }
 
@@ -265,8 +245,8 @@ func (e *SharePointEnumerator) discoverSites(ctx context.Context) ([]map[string]
 
 // searchSites searches for sites matching a query.
 func (e *SharePointEnumerator) searchSites(ctx context.Context, query string) ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/sites?search=%s", spGraphBase, query)
-	return e.spGetPaginated(ctx, url)
+	searchURL := fmt.Sprintf("%s/sites?search=%s", spGraphBase, url.QueryEscape(query))
+	return e.spGetPaginated(ctx, searchURL)
 }
 
 // scanDrives scans document libraries for text-scannable files.
@@ -275,12 +255,15 @@ func (e *SharePointEnumerator) scanDrives(ctx context.Context, siteID, siteName,
 	if err != nil {
 		return err
 	}
+	e.logf("  Found %d drives", len(drives))
 
 	for _, drive := range drives {
 		driveID, _ := drive["id"].(string)
 		if driveID == "" {
 			continue
 		}
+		driveName, _ := drive["name"].(string)
+		e.logf("  Drive: %s", driveName)
 
 		err := e.walkDriveFolder(ctx, driveID, "", siteName, siteURL, callback)
 		if err != nil {
@@ -305,6 +288,19 @@ func (e *SharePointEnumerator) walkDriveFolder(ctx context.Context, driveID, fol
 		return err
 	}
 
+	if folderID == "" {
+		fileCount := 0
+		folderCount := 0
+		for _, it := range items {
+			if _, isFolder := it["folder"]; isFolder {
+				folderCount++
+			} else {
+				fileCount++
+			}
+		}
+		e.logf("    Root: %d files, %d folders", fileCount, folderCount)
+	}
+
 	for _, item := range items {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -321,13 +317,8 @@ func (e *SharePointEnumerator) walkDriveFolder(ctx context.Context, driveID, fol
 			continue
 		}
 
-		// Check if it's a text-scannable file.
-		if !spIsTextFile(name) {
-			continue
-		}
-
-		// Check file size (skip over 10MB).
-		if size, ok := item["size"].(float64); ok && size > 10*1024*1024 {
+		// Check file size (skip over 100MB — extraction limits handle per-file caps).
+		if size, ok := item["size"].(float64); ok && size > 100*1024*1024 {
 			continue
 		}
 
@@ -352,11 +343,29 @@ func (e *SharePointEnumerator) walkDriveFolder(ctx context.Context, driveID, fol
 			fileURL = webURL
 		}
 
-		blobID := types.ComputeBlobID(content)
-		prov := spProvenance(siteName, filePath, name, fileURL)
-
-		if err := callback(content, blobID, prov); err != nil {
-			return err
+		if isBinary(content) {
+			// Extract text from binary files (Office docs, PDFs, archives, etc.)
+			extracted, err := ExtractText(filePath, content, DefaultExtractionLimits())
+			if err != nil || len(extracted) == 0 {
+				continue
+			}
+			for _, ec := range extracted {
+				blobID := types.ComputeBlobID(ec.Content)
+				extractPath := filePath
+				if ec.Name != "" {
+					extractPath = filePath + "/" + ec.Name
+				}
+				prov := spProvenance(siteName, extractPath, name, fileURL)
+				if err := callback(ec.Content, blobID, prov); err != nil {
+					return err
+				}
+			}
+		} else {
+			blobID := types.ComputeBlobID(content)
+			prov := spProvenance(siteName, filePath, name, fileURL)
+			if err := callback(content, blobID, prov); err != nil {
+				return err
+			}
 		}
 
 		e.progressf("Scanning files: %s", name)
@@ -371,6 +380,7 @@ func (e *SharePointEnumerator) scanPages(ctx context.Context, siteID, siteName, 
 	if err != nil {
 		return err
 	}
+	e.logf("  Found %d pages", len(pages))
 
 	for _, page := range pages {
 		if ctx.Err() != nil {
@@ -470,6 +480,7 @@ func (e *SharePointEnumerator) scanLists(ctx context.Context, siteID, siteName, 
 	if err != nil {
 		return err
 	}
+	e.logf("  Found %d lists", len(lists))
 
 	for _, list := range lists {
 		if ctx.Err() != nil {

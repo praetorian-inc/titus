@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/auth"
 	"github.com/praetorian-inc/titus/pkg/enum"
@@ -15,6 +16,7 @@ import (
 
 var (
 	sharepointToken      string
+	spRefreshToken       string
 	sharepointSite       string
 	sharepointOutputPath string
 	sharepointFormat     string
@@ -31,11 +33,17 @@ Authentication:
   Use --token with an OAuth bearer token that has Sites.Read.All permission,
   or omit --token to use the interactive device code flow.
 
+  Use --refresh-token with a Microsoft refresh token to skip the device code flow.
+  Get a refresh token from GraphRunner, TokenTacticsV2, roadtx, or a previous
+  Titus authentication cached at ~/.titus/microsoft_token.json.
+
 Examples:
   titus sharepoint -v                                          # device code flow (interactive)
   titus sharepoint --token <bearer_token> -v                   # direct token
   titus sharepoint --token <bearer_token> --site https://company.sharepoint.com/sites/Engineering
-  titus sharepoint --client-id 14d82eec-204b-4c2f-b7e8-296a70dab67e -v  # alternate client ID`,
+  titus sharepoint --client-id 14d82eec-204b-4c2f-b7e8-296a70dab67e -v  # alternate client ID
+  titus sharepoint --refresh-token <refresh_token> -v              # use refresh token (no browser needed)
+  SHAREPOINT_REFRESH_TOKEN=<token> titus sharepoint -v             # via env var`,
 	RunE: runSharePointScan,
 }
 
@@ -46,6 +54,12 @@ func init() {
 	sharepointCmd.Flags().StringVar(&sharepointFormat, "format", "human", "Output format: json, human")
 	sharepointCmd.Flags().StringVar(&spClientID, "client-id", auth.AzurePowerShellClientID, "Azure AD application (client) ID for device code auth")
 	sharepointCmd.Flags().StringVar(&spTenantID, "tenant-id", auth.DefaultTenantID, "Azure AD tenant ID (or 'organizations' for multi-tenant)")
+	sharepointCmd.Flags().StringVar(&spRefreshToken, "refresh-token", "", "Microsoft refresh token to exchange for access token (or SHAREPOINT_REFRESH_TOKEN env)")
+	sharepointCmd.Flags().StringVar(&scanRulesPath, "rules", "", "Path to custom rules file or directory (merged with builtins)")
+	sharepointCmd.Flags().StringVar(&scanRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
+	sharepointCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
+	sharepointCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all")
+	sharepointCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Include noisy rules that may produce more false positives")
 }
 
 func runSharePointScan(cmd *cobra.Command, args []string) error {
@@ -55,12 +69,60 @@ func runSharePointScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if token == "" {
-		scopes := []string{"https://graph.microsoft.com/Sites.Read.All", "https://graph.microsoft.com/Files.Read.All", "offline_access"}
-		result, err := auth.DeviceCodeAuth(cmd.Context(), spClientID, spTenantID, scopes, cmd.ErrOrStderr())
-		if err != nil {
-			return fmt.Errorf("device code authentication failed: %w", err)
+		refreshToken := spRefreshToken
+		if refreshToken == "" {
+			refreshToken = os.Getenv("SHAREPOINT_REFRESH_TOKEN")
 		}
-		token = result.AccessToken
+
+		scopes := []string{"https://graph.microsoft.com/Sites.Read.All", "https://graph.microsoft.com/Files.Read.All", "offline_access"}
+
+		if refreshToken != "" {
+			// Option 1: Explicit refresh token provided.
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Exchanging refresh token for access token...")
+			result, err := auth.RefreshToken(cmd.Context(), spClientID, spTenantID, refreshToken, scopes)
+			if err != nil {
+				return fmt.Errorf("refresh token exchange failed: %w", err)
+			}
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Authentication successful.")
+			token = result.AccessToken
+			// Save for future runs.
+			_ = auth.SaveCachedToken(result, spClientID, spTenantID)
+		} else {
+			// Option 2: Try cached token first.
+			cached, err := auth.LoadCachedToken()
+			if err == nil && cached.ClientID == spClientID && cached.TenantID == spTenantID {
+				if time.Now().Add(5 * time.Minute).Before(cached.ExpiresAt) {
+					// Cached token still valid.
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Using cached token (expires %s)\n", cached.ExpiresAt.Format("15:04:05"))
+					token = cached.AccessToken
+				} else if cached.RefreshToken != "" {
+					// Cached token expired, refresh it.
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Refreshing cached token...")
+					result, err := auth.RefreshToken(cmd.Context(), spClientID, spTenantID, cached.RefreshToken, scopes)
+					if err == nil {
+						token = result.AccessToken
+						_ = auth.SaveCachedToken(result, spClientID, spTenantID)
+						_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Token refreshed successfully.")
+					} else {
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cached token refresh failed (%v); falling back to device code flow.\n", err)
+					}
+				}
+			}
+
+			if token == "" {
+				// Option 3: Interactive device code flow.
+				result, err := auth.DeviceCodeAuth(cmd.Context(), spClientID, spTenantID, scopes, cmd.ErrOrStderr())
+				if err != nil {
+					return fmt.Errorf("device code authentication failed: %w", err)
+				}
+				token = result.AccessToken
+				// Save for future runs.
+				_ = auth.SaveCachedToken(result, spClientID, spTenantID)
+				if result.RefreshToken != "" {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Token cached at ~/.titus/microsoft_token.json")
+				}
+			}
+		}
 	}
 
 	var verboseWriter io.Writer
@@ -77,7 +139,7 @@ func runSharePointScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating SharePoint enumerator: %w", err)
 	}
 
-	rules, err := loadRules("", "", "", scanRuleset, false)
+	rules, err := loadRules(scanRulesPath, scanRulesInclude, scanRulesExclude, scanRuleset, scanIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)
 	}
@@ -174,8 +236,8 @@ func runSharePointScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning SharePoint: %w", err)
 	}
 
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "SharePoint scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Results stored in: %s\n", sharepointOutputPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "SharePoint scan complete: %d matches, %d findings\n", matchCount, findingCount)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", sharepointOutputPath)
 
 	if sharepointFormat == "json" {
 		matches, err := s.GetAllMatches()

@@ -35,34 +35,6 @@ func TestSharePointEnumerator_RequiresAuth(t *testing.T) {
 }
 
 
-// TestSharePointIsTextFile tests the spIsTextFile extension checker.
-func TestSharePointIsTextFile(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-		want     bool
-	}{
-		{"json file", "config.json", true},
-		{"python file", "script.py", true},
-		{"yaml file", "values.yaml", true},
-		{"env file", ".env", true},
-		{"pem file", "cert.pem", true},
-		{"tfvars file", "prod.tfvars", true},
-		{"docx file", "document.docx", false},
-		{"xlsx file", "spreadsheet.xlsx", false},
-		{"pdf file", "report.pdf", false},
-		{"png file", "image.png", false},
-		{"no extension", "Makefile", false},
-		{"uppercase extension", "CONFIG.JSON", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, spIsTextFile(tt.filename))
-		})
-	}
-}
-
 // TestSharePointStripHTML tests the spStripHTML helper.
 func TestSharePointStripHTML(t *testing.T) {
 	tests := []struct {

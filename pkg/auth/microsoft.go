@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -215,10 +217,7 @@ func pollForToken(ctx context.Context, client *http.Client, clientID, tenantID, 
 	case "authorization_pending":
 		return nil, nil
 	case "slow_down":
-		// The caller should increase the polling interval, but since we return
-		// nil, nil the caller will continue at its existing interval. The 5s
-		// increase is handled by the spec, but most callers just wait an extra
-		// interval which is acceptable.
+		time.Sleep(5 * time.Second)
 		return nil, nil
 	case "expired_token":
 		return nil, fmt.Errorf("device code expired: %s", tokenResp.ErrorDesc)
@@ -274,4 +273,91 @@ func RefreshToken(ctx context.Context, clientID, tenantID, refreshToken string, 
 		Scope:        tokenResp.Scope,
 		TokenType:    tokenResp.TokenType,
 	}, nil
+}
+
+// CachedToken is the on-disk representation of a cached Microsoft OAuth token.
+type CachedToken struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	ClientID     string    `json:"client_id"`
+	TenantID     string    `json:"tenant_id"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+// TokenCachePath returns the path to the Microsoft token cache file (~/.titus/microsoft_token.json).
+func TokenCachePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("determining home directory: %w", err)
+	}
+	return filepath.Join(home, ".titus", "microsoft_token.json"), nil
+}
+
+// SaveCachedToken writes the token result to the cache file at ~/.titus/microsoft_token.json.
+func SaveCachedToken(result *DeviceCodeResult, clientID, tenantID string) error {
+	cachePath, err := TokenCachePath()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err != nil {
+		return fmt.Errorf("creating cache directory: %w", err)
+	}
+
+	cached := CachedToken{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		ClientID:     clientID,
+		TenantID:     tenantID,
+		ExpiresAt:    time.Now().Add(time.Duration(result.ExpiresIn) * time.Second),
+	}
+
+	data, err := json.MarshalIndent(cached, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling cached token: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(cachePath), ".microsoft_token_*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("writing temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("setting permissions: %w", err)
+	}
+	if err := os.Rename(tmpName, cachePath); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("renaming cache file: %w", err)
+	}
+	return nil
+}
+
+// LoadCachedToken reads the cached token from ~/.titus/microsoft_token.json.
+func LoadCachedToken() (*CachedToken, error) {
+	cachePath, err := TokenCachePath()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, fmt.Errorf("reading cached token: %w", err)
+	}
+
+	var cached CachedToken
+	if err := json.Unmarshal(data, &cached); err != nil {
+		return nil, fmt.Errorf("parsing cached token: %w", err)
+	}
+
+	return &cached, nil
 }
