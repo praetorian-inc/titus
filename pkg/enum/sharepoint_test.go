@@ -45,7 +45,7 @@ func TestSharePointStripHTML(t *testing.T) {
 		{
 			name:     "basic HTML",
 			input:    "<p>Hello <b>world</b></p>",
-			expected: "Hello world",
+			expected: "Hello world\n",
 		},
 		{
 			name:     "HTML entities",
@@ -55,7 +55,7 @@ func TestSharePointStripHTML(t *testing.T) {
 		{
 			name:     "self-closing tags",
 			input:    "line1<br/>line2",
-			expected: "line1line2",
+			expected: "line1\nline2",
 		},
 		{
 			name:     "empty string",

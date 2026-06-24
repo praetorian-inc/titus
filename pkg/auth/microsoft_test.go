@@ -41,7 +41,7 @@ func TestConstants_Values(t *testing.T) {
 	assert.Equal(t, "organizations", DefaultTenantID)
 }
 
-func TestRefreshToken_InvalidToken(t *testing.T) {
+func TestRefreshToken_CancelledContext(t *testing.T) {
 	// Use a cancelled context so the request fails immediately without hitting
 	// the real Microsoft endpoint.
 	ctx, cancel := context.WithCancel(context.Background())

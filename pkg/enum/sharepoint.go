@@ -21,7 +21,8 @@ import (
 const spGraphBase = "https://graph.microsoft.com/v1.0"
 
 var (
-	spHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
+	spHTMLTagRe  = regexp.MustCompile(`<[^>]*>`)
+	spBlockTagRe = regexp.MustCompile(`(?i)<\s*(?:br|/p|/div|/li|/tr|/h[1-6])\s*/?>`)
 
 	// spSkipExtensions are file types that can't produce useful text for secrets scanning.
 	spSkipExtensions = map[string]bool{
@@ -37,8 +38,11 @@ var (
 
 // spStripHTML removes HTML tags and unescapes HTML entities.
 func spStripHTML(s string) string {
-	stripped := spHTMLTagRe.ReplaceAllString(s, "")
-	return html.UnescapeString(stripped)
+	// Replace block-level closing tags and <br> with newlines.
+	s = spBlockTagRe.ReplaceAllString(s, "\n")
+	// Strip remaining tags.
+	s = spHTMLTagRe.ReplaceAllString(s, "")
+	return html.UnescapeString(s)
 }
 
 // spSkipFile returns true if the file extension indicates a binary type
@@ -245,18 +249,39 @@ func (e *SharePointEnumerator) discoverSites(ctx context.Context) ([]map[string]
 				body, err := e.spGet(ctx, url)
 				if err != nil {
 					// Fall back to search.
-					return e.searchSites(ctx, e.config.Site)
+					sites, err := e.searchSites(ctx, e.config.Site)
+					if err != nil {
+						return nil, err
+					}
+					if len(sites) == 0 {
+						return nil, fmt.Errorf("site %q not found or not accessible", e.config.Site)
+					}
+					return sites, nil
 				}
 				var result map[string]interface{}
 				if err := json.Unmarshal(body, &result); err != nil {
-					return e.searchSites(ctx, e.config.Site)
+					sites, err := e.searchSites(ctx, e.config.Site)
+					if err != nil {
+						return nil, err
+					}
+					if len(sites) == 0 {
+						return nil, fmt.Errorf("site %q not found or not accessible", e.config.Site)
+					}
+					return sites, nil
 				}
 				return []map[string]interface{}{result}, nil
 			}
 		}
 
 		// Search for the site by name.
-		return e.searchSites(ctx, site)
+		sites, err := e.searchSites(ctx, site)
+		if err != nil {
+			return nil, err
+		}
+		if len(sites) == 0 {
+			return nil, fmt.Errorf("site %q not found or not accessible", e.config.Site)
+		}
+		return sites, nil
 	}
 
 	// Enumerate all sites.
@@ -450,7 +475,7 @@ func (e *SharePointEnumerator) scanPages(ctx context.Context, siteID, siteName, 
 		blob := []byte(sb.String())
 
 		blobID := types.ComputeBlobID(blob)
-		prov := spProvenance(siteName, "", pageTitle, pageURL)
+		prov := spProvenance(siteName, pageURL, pageTitle, pageURL)
 
 		if err := callback(blob, blobID, prov); err != nil {
 			return err
@@ -572,7 +597,7 @@ func (e *SharePointEnumerator) scanLists(ctx context.Context, siteID, siteName, 
 				itemURL = webURL
 			}
 
-			prov := spProvenance(siteName, "", itemTitle, itemURL)
+			prov := spProvenance(siteName, itemURL, itemTitle, itemURL)
 
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
