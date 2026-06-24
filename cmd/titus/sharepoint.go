@@ -236,9 +236,6 @@ func runSharePointScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("scanning SharePoint: %w", err)
 	}
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "SharePoint scan complete: %d matches, %d findings\n", matchCount, findingCount)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", sharepointOutputPath)
-
 	if sharepointFormat == "json" {
 		matches, err := s.GetAllMatches()
 		if err != nil {
@@ -246,6 +243,9 @@ func runSharePointScan(cmd *cobra.Command, args []string) error {
 		}
 		return outputMatches(cmd, matches)
 	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "SharePoint scan complete: %d matches, %d findings\n", matchCount, findingCount)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Results stored in: %s\n", sharepointOutputPath)
 
 	findings, err := s.GetFindings()
 	if err != nil {

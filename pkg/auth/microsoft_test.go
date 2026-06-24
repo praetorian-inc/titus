@@ -41,15 +41,14 @@ func TestConstants_Values(t *testing.T) {
 	assert.Equal(t, "organizations", DefaultTenantID)
 }
 
-func TestRefreshToken_MalformedURL(t *testing.T) {
-	// A tenant ID with invalid characters that would produce a bad URL cannot
-	// be tested via the HTTP layer because url.Parse is lenient. Instead, we
-	// verify that calling RefreshToken against a server that returns an error
-	// body propagates the error correctly.
-	ctx := context.Background()
+func TestRefreshToken_InvalidToken(t *testing.T) {
+	// Use a cancelled context so the request fails immediately without hitting
+	// the real Microsoft endpoint.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
 
-	_, err := RefreshToken(ctx, "client-id", "tenant-id", "bad-refresh-token", []string{"openid"})
-	require.Error(t, err, "RefreshToken against real Azure should fail with a bad refresh token")
+	_, err := RefreshToken(ctx, "test-client", "test-tenant", "bad-token", []string{"scope"})
+	require.Error(t, err)
 }
 
 func TestRefreshToken_ErrorResponse(t *testing.T) {

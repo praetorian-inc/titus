@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,12 +22,30 @@ const spGraphBase = "https://graph.microsoft.com/v1.0"
 
 var (
 	spHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
+
+	// spSkipExtensions are file types that can't produce useful text for secrets scanning.
+	spSkipExtensions = map[string]bool{
+		".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".bmp": true,
+		".ico": true, ".svg": true, ".webp": true, ".tiff": true, ".tif": true,
+		".mp4": true, ".avi": true, ".mov": true, ".wmv": true, ".mkv": true,
+		".mp3": true, ".wav": true, ".flac": true, ".aac": true, ".ogg": true,
+		".iso": true, ".dmg": true, ".exe": true, ".dll": true, ".so": true,
+		".dylib": true, ".msi": true, ".deb": true, ".rpm": true,
+		".woff": true, ".woff2": true, ".ttf": true, ".otf": true, ".eot": true,
+	}
 )
 
 // spStripHTML removes HTML tags and unescapes HTML entities.
 func spStripHTML(s string) string {
 	stripped := spHTMLTagRe.ReplaceAllString(s, "")
 	return html.UnescapeString(stripped)
+}
+
+// spSkipFile returns true if the file extension indicates a binary type
+// that cannot produce useful text for secrets scanning.
+func spSkipFile(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return spSkipExtensions[ext]
 }
 
 // SharePointConfig configures the SharePoint enumerator.
@@ -317,6 +337,11 @@ func (e *SharePointEnumerator) walkDriveFolder(ctx context.Context, driveID, fol
 			continue
 		}
 
+		// Skip files we can't extract useful text from.
+		if spSkipFile(name) {
+			continue
+		}
+
 		// Check file size (skip over 100MB — extraction limits handle per-file caps).
 		if size, ok := item["size"].(float64); ok && size > 100*1024*1024 {
 			continue
@@ -518,14 +543,20 @@ func (e *SharePointEnumerator) scanLists(ctx context.Context, siteID, siteName, 
 				continue
 			}
 
-			// Render fields as key: value lines.
+			// Render fields as key: value lines (sorted for deterministic blob IDs).
 			var sb strings.Builder
 			sb.WriteString("List: " + listName + "\n")
 			sb.WriteString("Site: " + siteName + "\n")
 			sb.WriteString("---\n")
 
-			for k, v := range fields {
-				sb.WriteString(fmt.Sprintf("%s: %v\n", k, v))
+			keys := make([]string, 0, len(fields))
+			for k := range fields {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				v := fields[k]
+				fmt.Fprintf(&sb, "%s: %v\n", k, v)
 			}
 
 			blob := []byte(sb.String())
