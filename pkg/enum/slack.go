@@ -56,13 +56,14 @@ func NewSlackEnumerator(cfg SlackConfig) (*SlackEnumerator, error) {
 }
 
 // slackProvenance builds an ExtendedProvenance for a Slack message.
-func slackProvenance(channel, channelID, messageURL, author string) types.ExtendedProvenance {
+func slackProvenance(channel, messageURL, author string) types.ExtendedProvenance {
 	return types.ExtendedProvenance{
 		Payload: map[string]interface{}{
 			"source":  "slack",
 			"channel": channel,
 			"author":  author,
 			"url":     messageURL,
+			"path":    messageURL,
 		},
 	}
 }
@@ -157,7 +158,7 @@ func (e *SlackEnumerator) slGet(ctx context.Context, endpoint string) ([]byte, e
 			return nil, fmt.Errorf("build request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+e.config.Token)
-		if e.config.Cookie != "" {
+		if e.config.Cookie != "" && strings.HasPrefix(e.config.Token, "xoxc-") {
 			cookie := e.config.Cookie
 			if !strings.HasPrefix(cookie, "d=") {
 				cookie = "d=" + cookie
@@ -425,7 +426,11 @@ func (e *SlackEnumerator) slFetchUserNames(ctx context.Context) map[string]strin
 			}
 			names[m.ID] = name
 		}
-		cursor = resp.ResponseMetadata.NextCursor
+		newCursor := resp.ResponseMetadata.NextCursor
+		if newCursor == cursor {
+			break // stale cursor, prevent infinite loop
+		}
+		cursor = newCursor
 		if cursor == "" {
 			break
 		}
@@ -568,13 +573,14 @@ func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content [
 
 			blob := slBuildMessageBlob(channelName, messageURL, conv.ID, msg, replies, userNames)
 			blobID := types.ComputeBlobID(blob)
-			prov := slackProvenance(channelName, conv.ID, messageURL, authorName)
+			prov := slackProvenance(channelName, messageURL, authorName)
 
 			if err := callback(blob, blobID, prov); err != nil {
 				return err
 			}
 		}
 
+		e.progressf("")
 		n := channelCount.Add(1)
 		if total > 0 {
 			e.progressf("Scanning channels: %d/%d (%d%%)", n, total, n*100/int64(total))

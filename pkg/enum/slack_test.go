@@ -128,15 +128,14 @@ func TestSlackEnumerator_Interface(t *testing.T) {
 }
 
 func TestSlackProvenance(t *testing.T) {
-	prov := slackProvenance("general", "C12345", "https://myteam.slack.com/archives/C12345/p10000001", "Alice")
+	prov := slackProvenance("general", "https://myteam.slack.com/archives/C12345/p10000001", "Alice")
 	assert.Equal(t, "extended", prov.Kind())
 	assert.Equal(t, "slack", prov.Payload["source"])
 	assert.Equal(t, "general", prov.Payload["channel"])
 	assert.Equal(t, "Alice", prov.Payload["author"])
 	assert.Equal(t, "https://myteam.slack.com/archives/C12345/p10000001", prov.Payload["url"])
-	// channelID and path should no longer be present
+	assert.Equal(t, "https://myteam.slack.com/archives/C12345/p10000001", prov.Payload["path"])
 	assert.Nil(t, prov.Payload["channelID"])
-	assert.Nil(t, prov.Payload["path"])
 }
 
 func TestSlackMessagePermalink(t *testing.T) {
