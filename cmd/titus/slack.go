@@ -55,7 +55,7 @@ func init() {
 	slackCmd.Flags().StringVar(&scanRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
 	slackCmd.Flags().StringVar(&scanRuleset, "ruleset", "default", "Ruleset to use: default, np.assets, np.hashes, all")
 	slackCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Include noisy rules that may produce more false positives")
-	slackCmd.Flags().Float64Var(&slackRateLimit, "rate-limit", 1.0, "API requests per second (default 1.0)")
+	slackCmd.Flags().Float64Var(&slackRateLimit, "rate-limit", 0.75, "API requests per second (default 0.75, Slack Tier 3 = 50 req/min)")
 }
 
 func runSlackScan(cmd *cobra.Command, args []string) error {

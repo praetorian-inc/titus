@@ -23,7 +23,7 @@ const slackAPIBase = "https://slack.com/api/"
 type SlackConfig struct {
 	Token     string    // Slack API token (xoxb-..., xoxp-..., or xoxc-...)
 	Cookie    string    // Session cookie (xoxd-...) — required when using xoxc- tokens
-	RateLimit float64   // requests per second (default 1.0)
+	RateLimit float64   // requests per second (default 0.75)
 	Channels  string    // comma-separated channel name filter (empty = all)
 	Verbose   io.Writer // progress output (nil = silent)
 }
@@ -45,7 +45,7 @@ func NewSlackEnumerator(cfg SlackConfig) (*SlackEnumerator, error) {
 		return nil, fmt.Errorf("xoxc- tokens require a session cookie (--cookie with xoxd-... value)")
 	}
 	if cfg.RateLimit <= 0 {
-		cfg.RateLimit = 1.0
+		cfg.RateLimit = 0.75
 	}
 	return &SlackEnumerator{
 		config:  cfg,
@@ -70,7 +70,7 @@ func slackProvenance(channel, channelID, messageURL, author string) types.Extend
 // logf writes a progress message when verbose output is enabled.
 func (e *SlackEnumerator) logf(format string, args ...interface{}) {
 	if e.config.Verbose != nil {
-		_, _ = fmt.Fprintf(e.config.Verbose, format+"\n", args...)
+		_, _ = fmt.Fprintf(e.config.Verbose, "\r%-80s\n", fmt.Sprintf(format, args...))
 	}
 }
 
@@ -193,11 +193,13 @@ func (e *SlackEnumerator) slGet(ctx context.Context, endpoint string) ([]byte, e
 				}
 			}
 			if attempt < maxAttempts-1 {
+				e.progressf("Rate limited — waiting %ds...", int(backoff.Seconds()))
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				case <-time.After(backoff):
 				}
+				e.progressf("")
 				continue
 			}
 			return nil, fmt.Errorf("slack API %s rate limited after %d attempts", endpoint, maxAttempts)
@@ -517,10 +519,23 @@ func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content [
 			return fmt.Errorf("fetching history for %s: %w", channelName, err)
 		}
 
+		// Count threads for progress reporting
+		threadCount := 0
+		totalThreads := 0
+		for _, m := range messages {
+			if m.ReplyCount > 0 {
+				totalThreads++
+			}
+		}
+
 		// Emit one blob per message (with thread replies inline)
 		for _, msg := range messages {
 			var replies []slMessage
 			if msg.ReplyCount > 0 {
+				threadCount++
+				if totalThreads > 10 {
+					e.progressf("Scanning %s: thread %d/%d", channelName, threadCount, totalThreads)
+				}
 				threadReplies, err := e.slFetchReplies(ctx, conv.ID, msg.TS)
 				if err != nil {
 					if slIsAccessError(err.Error()) {
@@ -569,7 +584,7 @@ func (e *SlackEnumerator) Enumerate(ctx context.Context, callback func(content [
 	}
 
 	if total > 0 {
-		e.progressf("Scanning channels: %d/%d (100%%)\n", channelCount.Load(), total)
+		e.logf("Scanning channels: %d/%d (100%%)", channelCount.Load(), total)
 	}
 
 	e.logf("Scanned %d channels", channelCount.Load())

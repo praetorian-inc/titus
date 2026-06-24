@@ -271,6 +271,16 @@ func renderMatchDetails(m *matchRow, maxWidth int) []string {
 						fieldLabelStyle.Render("Space:"),
 						fieldValueStyle.Render(space)))
 				}
+				if channel, _ := p.Payload["channel"].(string); channel != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("Channel:"),
+						fieldValueStyle.Render(channel)))
+				}
+				if author, _ := p.Payload["author"].(string); author != "" {
+					lines = append(lines, fmt.Sprintf("  %s %s",
+						fieldLabelStyle.Render("Author:"),
+						fieldValueStyle.Render(author)))
+				}
 			}
 		}
 	}
