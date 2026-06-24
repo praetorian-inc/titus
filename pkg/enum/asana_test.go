@@ -229,9 +229,10 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	type collected struct {
-		content string
-		kind    string
-		field   string
+		content   string
+		kind      string
+		field     string
+		permalink string
 	}
 	var blobs []collected
 
@@ -241,7 +242,8 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 		require.True(t, ok, "expected ExtendedProvenance, got %T", prov)
 		kind, _ := ep.Payload["resource"].(string)
 		field, _ := ep.Payload["field"].(string)
-		blobs = append(blobs, collected{content: string(content), kind: kind, field: field})
+		permalink, _ := ep.Payload["permalink"].(string)
+		blobs = append(blobs, collected{content: string(content), kind: kind, field: field, permalink: permalink})
 		return nil
 	})
 	require.NoError(t, err)
@@ -262,6 +264,16 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 	assert.Contains(t, seen[kindField{"task", "notes"}], "task notes here")
 	assert.Contains(t, seen[kindField{"story", "text"}], "secret-comment-text")
 	assert.Contains(t, seen[kindField{"attachment", "content"}], "secret-bytes")
+
+	// Find the attachment-content emit and verify its permalink is the parent task's URL.
+	var foundAttachmentPermalink string
+	for _, b := range blobs {
+		if b.kind == "attachment" && b.field == "content" && b.content == "secret-bytes" {
+			foundAttachmentPermalink = b.permalink
+			break
+		}
+	}
+	assert.Equal(t, "https://app.asana.com/T1", foundAttachmentPermalink, "attachment provenance must include parent task permalink for click-through")
 
 	// Project brief: only text emitted (title dropped)
 	assert.Contains(t, seen[kindField{"project_brief", "text"}], "Alpha brief rich text",

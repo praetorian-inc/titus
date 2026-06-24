@@ -645,7 +645,7 @@ func (e *AsanaEnumerator) enumerateTask(ctx context.Context, workspaceGID string
 	}
 
 	if e.cfg.IncludeAttachments {
-		if err := e.enumerateAttachments(ctx, workspaceGID, t.GID, cb); err != nil {
+		if err := e.enumerateAttachments(ctx, workspaceGID, t.GID, t.PermalinkURL, cb); err != nil {
 			return err
 		}
 	}
@@ -717,7 +717,7 @@ type asanaAttachment struct {
 	DownloadURL string `json:"download_url"`
 }
 
-func (e *AsanaEnumerator) enumerateAttachments(ctx context.Context, workspaceGID, taskGID string, cb func([]byte, types.BlobID, types.Provenance) error) error {
+func (e *AsanaEnumerator) enumerateAttachments(ctx context.Context, workspaceGID, taskGID, taskPermalink string, cb func([]byte, types.BlobID, types.Provenance) error) error {
 	params := url.Values{"opt_fields": []string{"name,host,download_url"}}
 	return e.client.paginate(ctx, "/tasks/"+taskGID+"/attachments", params, func(raw json.RawMessage) error {
 		var page []asanaAttachment
@@ -775,6 +775,7 @@ func (e *AsanaEnumerator) enumerateAttachments(ctx context.Context, workspaceGID
 						"parent_gid":      taskGID,
 						"attachment":      att.Name,
 						"extracted_entry": ec.Name,
+						"permalink":       taskPermalink,
 						"path":            fmt.Sprintf("asana://attachment/%s/%s", taskGID, att.GID),
 					}}
 					if err := emitWithProv(string(ec.Content), extProv, cb); err != nil {
@@ -793,6 +794,7 @@ func (e *AsanaEnumerator) enumerateAttachments(ctx context.Context, workspaceGID
 				"field":      "content",
 				"parent_gid": taskGID,
 				"attachment": att.Name,
+				"permalink":  taskPermalink,
 				"path":       fmt.Sprintf("asana://attachment/%s/%s", taskGID, att.GID),
 			}}
 			if err := emitWithProv(string(content), rawProv, cb); err != nil {
