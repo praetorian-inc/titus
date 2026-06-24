@@ -217,7 +217,11 @@ func pollForToken(ctx context.Context, client *http.Client, clientID, tenantID, 
 	case "authorization_pending":
 		return nil, nil
 	case "slow_down":
-		time.Sleep(5 * time.Second)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
 		return nil, nil
 	case "expired_token":
 		return nil, fmt.Errorf("device code expired: %s", tokenResp.ErrorDesc)

@@ -51,27 +51,6 @@ func TestRefreshToken_CancelledContext(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestRefreshToken_ErrorResponse(t *testing.T) {
-	// Simulate an Azure AD error response for an invalid refresh token.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":             "invalid_grant",
-			"error_description": "The refresh token has expired",
-		})
-	}))
-	defer srv.Close()
-
-	// We cannot easily override the endpoint URL in RefreshToken without
-	// refactoring, so we test the request construction by verifying that
-	// the exported function returns an error for a context-cancelled request.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // immediately cancel
-
-	_, err := RefreshToken(ctx, "client-id", "tenant-id", "refresh-token", []string{"openid"})
-	require.Error(t, err)
-}
-
 func TestDeviceCodeAuth_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // immediately cancel
