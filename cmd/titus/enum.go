@@ -50,6 +50,12 @@ func init() {
 // The JSON branch runs BEFORE any human-readable summary lines so that --format json
 // produces clean stdout.
 func runEnumScan(cmd *cobra.Command, enumerator enum.Enumerator, service string) error {
+	switch enumFormat {
+	case "human", "json":
+	default:
+		return fmt.Errorf("unsupported output format %q (expected human or json)", enumFormat)
+	}
+
 	rules, err := loadRules(enumRulesPath, enumRulesInclude, enumRulesExclude, enumRuleset, enumIncludeNoisy)
 	if err != nil {
 		return fmt.Errorf("loading rules: %w", err)

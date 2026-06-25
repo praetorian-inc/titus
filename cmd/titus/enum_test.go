@@ -1,8 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
 	"testing"
 
+	"github.com/praetorian-inc/titus/pkg/enum"
+	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +35,7 @@ func TestEnumCmd_NotHidden(t *testing.T) {
 }
 
 // TestEnumCmd_SubcommandCount verifies that enumCmd has exactly the expected
-// 8 service subcommands plus the microsoft parent.
+// 7 service subcommands + the microsoft parent (8 children total).
 func TestEnumCmd_SubcommandCount(t *testing.T) {
 	cmd, _, err := rootCmd.Find([]string{"enum"})
 	require.NoError(t, err)
@@ -39,7 +46,7 @@ func TestEnumCmd_SubcommandCount(t *testing.T) {
 	}
 
 	expected := []string{"confluence", "github", "gitlab", "jira", "linear", "microsoft", "notion", "slack"}
-	assert.ElementsMatch(t, expected, names, "enum should have exactly 8 service subcommands + microsoft parent")
+	assert.ElementsMatch(t, expected, names, "enum should have exactly 7 service subcommands + microsoft parent (8 children total)")
 }
 
 // TestEnumCmd_HasMicrosoftSubcommand verifies the microsoft parent is a child
@@ -58,7 +65,7 @@ func TestMicrosoftCmd_HasSharepointSubcommand(t *testing.T) {
 	assert.Equal(t, "sharepoint", cmd.Name())
 }
 
-// TestRootCmd_DoesNotListEnumCommandsDirectly verifies that the 8 old commands
+// TestRootCmd_OldCommandsAreHidden verifies that the 8 old commands
 // are NOT visible top-level commands. rootCmd.Find still resolves them (they
 // exist as hidden aliases), but this test confirms they are marked Hidden so
 // they don't appear in help output.
@@ -308,4 +315,82 @@ func TestGitLabAlias_ScanSubcmdIsHiddenAndDeprecated(t *testing.T) {
 
 	assert.True(t, cmd.Hidden, "gitlab alias scan subcommand should be hidden")
 	assert.NotEmpty(t, cmd.Deprecated, "gitlab alias scan subcommand should have deprecation message")
+}
+
+// ---------------------------------------------------------------------------
+// runEnumScan: format validation and JSON output
+// ---------------------------------------------------------------------------
+
+// TestRunEnumScan_InvalidFormatReturnsError asserts that runEnumScan returns an
+// error immediately when --format is set to an unsupported value.  The
+// validation fires before any enumerator is constructed, so a nil enumerator
+// is safe to pass here.
+func TestRunEnumScan_InvalidFormatReturnsError(t *testing.T) {
+	// Save and restore the global so parallel test runs are not affected.
+	orig := enumFormat
+	defer func() { enumFormat = orig }()
+
+	enumFormat = "jsn"
+
+	cmd := &cobra.Command{}
+	err := runEnumScan(cmd, nil, "test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "jsn")
+	assert.Contains(t, err.Error(), "unsupported output format")
+}
+
+// TestRunEnumScan_JSONFormatNoSummaryLine locks in the fix that prevents
+// human-readable summary lines from appearing when --format json is set.
+// A real FilesystemEnumerator over a temp directory with a single innocuous
+// text file is used so the test exercises the full pipeline without mocking.
+func TestRunEnumScan_JSONFormatNoSummaryLine(t *testing.T) {
+	// --- globals: save and restore ---
+	origFormat := enumFormat
+	origOutput := enumOutput
+	origRulesPath := enumRulesPath
+	origRulesInclude := enumRulesInclude
+	origRulesExclude := enumRulesExclude
+	origRuleset := enumRuleset
+	origIncludeNoisy := enumIncludeNoisy
+	defer func() {
+		enumFormat = origFormat
+		enumOutput = origOutput
+		enumRulesPath = origRulesPath
+		enumRulesInclude = origRulesInclude
+		enumRulesExclude = origRulesExclude
+		enumRuleset = origRuleset
+		enumIncludeNoisy = origIncludeNoisy
+	}()
+
+	enumFormat = "json"
+	enumOutput = ":memory:"
+	enumRulesPath = ""
+	enumRulesInclude = ""
+	enumRulesExclude = ""
+	enumRuleset = "default"
+	enumIncludeNoisy = false
+
+	// Create a temp directory with one innocuous text file (no secrets).
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(tmpDir+"/hello.txt", []byte("hello world\n"), 0644))
+
+	enumerator := enum.NewFilesystemEnumerator(enum.Config{Root: tmpDir})
+
+	// Capture stdout via cobra's output writer.
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+	cmd.SetContext(context.Background())
+
+	err := runEnumScan(cmd, enumerator, "filesystem")
+	require.NoError(t, err)
+
+	out := buf.String()
+
+	// The JSON branch must NOT emit the human-readable summary line.
+	assert.NotContains(t, out, "scan complete", "json format must not emit human summary line")
+
+	// The output must be valid JSON (an array, possibly empty).
+	var result []types.Match
+	require.NoError(t, json.Unmarshal([]byte(out), &result), "stdout must be valid JSON array")
 }
