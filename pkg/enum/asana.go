@@ -14,10 +14,19 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
+
+// asanaTaskFullFields is the opt_fields set used for per-task GETs that
+// hydrate a full asanaTask (notes, custom fields, external data). Shared
+// between enumerateTasks and enumerateSubtasks so they cannot silently
+// diverge. Read-only — do not mutate at runtime.
+var asanaTaskFullFields = url.Values{
+	"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"},
+}
 
 // Asana does not expose X-RateLimit-Remaining / X-RateLimit-Reset headers.
 // The only quota signal is 429 Too Many Requests with Retry-After. We retry
@@ -121,6 +130,16 @@ func (e *AsanaEnumerator) markSeen(gid string) bool {
 	}
 	e.seen[gid] = struct{}{}
 	return true
+}
+
+// alreadySeen reports whether a GID has been recorded by markSeen on this
+// run. Used to skip wasted per-item fetches when the same task is reachable
+// through multiple projects or subtask trees. Safe for concurrent use.
+func (e *AsanaEnumerator) alreadySeen(gid string) bool {
+	e.seenMu.Lock()
+	defer e.seenMu.Unlock()
+	_, ok := e.seen[gid]
+	return ok
 }
 
 // Enumerate walks Asana resources and yields content blobs.
@@ -373,6 +392,9 @@ func (e *AsanaEnumerator) fetchAndEnumerateProjects(ctx context.Context, workspa
 		}
 		var p asanaProject
 		if err := e.client.get(ctx, "/projects/"+gid, fullParams, &p); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return count, ctxErr
+			}
 			e.logf("Warning: fetching project %s: %v", gid, err)
 			continue
 		}
@@ -536,56 +558,40 @@ func (e *AsanaEnumerator) enumerateTasks(ctx context.Context, workspaceGID, proj
 		concurrency = 5
 	}
 
-	fullParams := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
-
-	gidCh := make(chan string, 2*concurrency)
-
-	var firstErr error
-	var errOnce sync.Once
-	setErr := func(err error) { errOnce.Do(func() { firstErr = err }) }
-
-	var producerWg sync.WaitGroup
-	producerWg.Add(1)
-	go func() {
-		defer producerWg.Done()
-		defer close(gidCh)
-		for _, gid := range gids {
-			if ctx.Err() != nil || firstErr != nil {
-				return
-			}
-			gidCh <- gid
-		}
-	}()
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
 
 	var taskCount int64
-	var workerWg sync.WaitGroup
-	for i := 0; i < concurrency; i++ {
-		workerWg.Add(1)
-		go func() {
-			defer workerWg.Done()
-			for gid := range gidCh {
-				if ctx.Err() != nil || firstErr != nil {
-					return
-				}
-				var t asanaTask
-				if err := e.client.get(ctx, "/tasks/"+gid, fullParams, &t); err != nil {
-					e.logf("Warning: fetching task %s: %v", gid, err)
-					continue
-				}
-				e.logf("Processing task %q (gid=%s)", truncateForLog(t.Name, 80), t.GID)
-				if err := e.enumerateTask(ctx, workspaceGID, t, 0, cb); err != nil {
-					setErr(err)
-					return
-				}
-				atomic.AddInt64(&taskCount, 1)
+	for _, gid := range gids {
+		gid := gid // shadow for closure
+		g.Go(func() error {
+			if gctx.Err() != nil {
+				return gctx.Err()
 			}
-		}()
+			if e.alreadySeen(gid) {
+				return nil
+			}
+			var t asanaTask
+			if err := e.client.get(gctx, "/tasks/"+gid, asanaTaskFullFields, &t); err != nil {
+				if ctxErr := gctx.Err(); ctxErr != nil {
+					return ctxErr
+				}
+				e.logf("Warning: fetching task %s: %v", gid, err)
+				return nil
+			}
+			e.logf("Processing task %q (gid=%s)", truncateForLog(t.Name, 80), t.GID)
+			if err := e.enumerateTask(gctx, workspaceGID, t, 0, cb); err != nil {
+				return err
+			}
+			atomic.AddInt64(&taskCount, 1)
+			return nil
+		})
 	}
 
-	producerWg.Wait()
-	workerWg.Wait()
-
-	return int(atomic.LoadInt64(&taskCount)), firstErr
+	if err := g.Wait(); err != nil {
+		return int(atomic.LoadInt64(&taskCount)), err
+	}
+	return int(atomic.LoadInt64(&taskCount)), nil
 }
 
 func (e *AsanaEnumerator) enumerateTask(ctx context.Context, workspaceGID string, t asanaTask, depth int, cb func([]byte, types.BlobID, types.Provenance) error) error {
@@ -686,13 +692,18 @@ func (e *AsanaEnumerator) enumerateSubtasks(ctx context.Context, workspaceGID, t
 		return err
 	}
 
-	fullParams := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
 	for _, gid := range gids {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if e.alreadySeen(gid) {
+			continue
+		}
 		var st asanaTask
-		if err := e.client.get(ctx, "/tasks/"+gid, fullParams, &st); err != nil {
+		if err := e.client.get(ctx, "/tasks/"+gid, asanaTaskFullFields, &st); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			e.logf("Warning: fetching subtask %s: %v", gid, err)
 			continue
 		}

@@ -5,12 +5,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -105,6 +108,7 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 			_, _ = w.Write(asanaListResponse(goals, ""))
 
 		case path == "/workspaces/W1/projects" && offset == "":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			w.Header().Set("Content-Type", "application/json")
 			projects := []map[string]interface{}{
 				{"gid": "P1"},
@@ -112,6 +116,7 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 			_, _ = w.Write(asanaListResponse(projects, "page2"))
 
 		case path == "/workspaces/W1/projects" && offset == "page2":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			w.Header().Set("Content-Type", "application/json")
 			projects := []map[string]string{{"gid": "P2"}}
 			_, _ = w.Write(asanaListResponse(projects, ""))
@@ -154,6 +159,7 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 			http.NotFound(w, r)
 
 		case path == "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 
@@ -173,6 +179,7 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 			http.NotFound(w, r)
 
 		case path == "/projects/P2/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 
@@ -198,6 +205,7 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 			_, _ = w.Write(asanaListResponse(stories, ""))
 
 		case path == "/tasks/T1/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 
@@ -412,6 +420,7 @@ func TestAsanaEnumerator_ResourceKinds(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "G1", "name": "A goal", "notes": "goal notes"}}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}}, ""))
 		case r.URL.Path == "/projects/P1":
 			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Proj", "notes": "notes", "permalink_url": ""}))
@@ -420,12 +429,14 @@ func TestAsanaEnumerator_ResourceKinds(t *testing.T) {
 		case r.URL.Path == "/task_templates":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case r.URL.Path == "/tasks/T1":
 			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task", "notes": "tnotes", "permalink_url": ""}))
 		case r.URL.Path == "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "S1", "type": "comment", "text": "comment"}}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		default:
 			http.NotFound(w, r)
@@ -539,6 +550,7 @@ func TestAsanaEnumerator_DedupsTaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			projects := []map[string]string{{"gid": "P1"}, {"gid": "P2"}}
 			_, _ = w.Write(asanaListResponse(projects, ""))
 		case r.URL.Path == "/projects/P1":
@@ -554,14 +566,17 @@ func TestAsanaEnumerator_DedupsTaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/task_templates" && r.URL.Query().Get("project") == "P2":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case r.URL.Path == "/projects/P2/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case r.URL.Path == "/tasks/T1":
 			_, _ = w.Write(asanaResponse(sharedTask))
 		case r.URL.Path == "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		default:
 			http.NotFound(w, r)
@@ -628,6 +643,7 @@ func TestAsanaEnumerator_DedupsSubtaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			projects := []map[string]string{{"gid": "P1"}, {"gid": "P2"}}
 			_, _ = w.Write(asanaListResponse(projects, ""))
 		case r.URL.Path == "/projects/P1":
@@ -643,8 +659,10 @@ func TestAsanaEnumerator_DedupsSubtaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/task_templates" && r.URL.Query().Get("project") == "P2":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case r.URL.Path == "/projects/P2/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T2"}}, ""))
 		case r.URL.Path == "/tasks/T1":
 			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task One", "notes": "t1-notes", "permalink_url": ""}))
@@ -657,13 +675,16 @@ func TestAsanaEnumerator_DedupsSubtaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/tasks/T2/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "TSHARED"}}, ""))
 		case r.URL.Path == "/tasks/T2/subtasks":
 			// TSHARED is also a subtask of T2 — Asana many-to-many
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "TSHARED"}}, ""))
 		case r.URL.Path == "/tasks/TSHARED/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/TSHARED/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		default:
 			http.NotFound(w, r)
@@ -718,6 +739,7 @@ func TestAsanaEnumerator_SeenResetsBetweenRuns(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}}, ""))
 		case r.URL.Path == "/projects/P1":
 			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Proj", "notes": "", "permalink_url": ""}))
@@ -726,12 +748,14 @@ func TestAsanaEnumerator_SeenResetsBetweenRuns(t *testing.T) {
 		case r.URL.Path == "/task_templates" && r.URL.Query().Get("project") == "P1":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case r.URL.Path == "/tasks/T1":
 			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task One", "notes": "single-task-notes", "permalink_url": ""}))
 		case r.URL.Path == "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		default:
 			http.NotFound(w, r)
@@ -807,12 +831,14 @@ func asanaBinaryAttachmentServer(t *testing.T, attachmentContent []byte) *httpte
 		case "/task_templates":
 			http.NotFound(w, r)
 		case "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case "/tasks/T1":
 			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task", "notes": "", "permalink_url": ""}))
 		case "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case "/tasks/T1/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case "/tasks/T1/attachments":
 			attachments := []map[string]string{
@@ -904,4 +930,254 @@ func TestAsanaEnumerator_BinaryAttachment_ExtractedWithExtract(t *testing.T) {
 
 	assert.Contains(t, extractedTexts, "extracted-secret",
 		"extracted zip member text must be emitted with resource=attachment_extracted")
+}
+
+// TestAsanaEnumerator_TaskFetchCtxCancelPropagates verifies that when the
+// caller cancels the context during the per-task GET phase, enumerateTasks
+// returns a context error rather than soft-failing and reporting success.
+// Prior to PR #302's review fixes, the soft-fail path masked Ctrl+C as a
+// completed scan with silently-dropped items.
+func TestAsanaEnumerator_TaskFetchCtxCancelPropagates(t *testing.T) {
+	// handlerReached is closed by the blocking handler once it starts
+	// waiting, giving the test a reliable signal to call cancel().
+	handlerReached := make(chan struct{})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/workspaces/W1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "W1", "name": "Acme"}))
+		case "/workspaces/W1/teams":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/goals":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/workspaces/W1/projects":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}}, ""))
+		case "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Proj", "notes": "", "permalink_url": ""}))
+		case "/projects/P1/project_statuses":
+			http.NotFound(w, r)
+		case "/task_templates":
+			http.NotFound(w, r)
+		case "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T_BLOCK"}}, ""))
+		case "/tasks/T_BLOCK":
+			// Signal that the handler is reached, then block until the client
+			// cancels the request context (simulating Ctrl+C mid-fetch).
+			select {
+			case <-handlerReached:
+				// already closed; another worker arrived — just block on ctx
+			default:
+				close(handlerReached)
+			}
+			<-r.Context().Done()
+			// Return an error response so the HTTP layer sees a proper response
+			// rather than an abrupt close — either way the client-side context
+			// cancellation wins.
+			http.Error(w, "canceled", http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cfg := AsanaConfig{
+		Token:      "test-token",
+		BaseURL:    ts.URL,
+		Workspace:  "W1",
+		RatePerSec: 1000,
+		HTTPClient: ts.Client(),
+	}
+	e, err := NewAsanaEnumerator(cfg)
+	require.NoError(t, err)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- e.Enumerate(ctx, func(_ []byte, _ types.BlobID, _ types.Provenance) error {
+			return nil
+		})
+	}()
+
+	// Wait for the blocking handler to be reached, then cancel.
+	select {
+	case <-handlerReached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for handler to be reached")
+	}
+	cancel()
+
+	select {
+	case enumerateErr := <-errCh:
+		require.Error(t, enumerateErr, "Enumerate must return an error when context is canceled")
+		assert.True(t, errors.Is(enumerateErr, context.Canceled),
+			"error must be context.Canceled, got: %v", enumerateErr)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for Enumerate to return after context cancel")
+	}
+}
+
+// TestAsanaEnumerator_TaskFetchSoftFailsOnNonCtxError verifies that a non-
+// context error from a per-task GET (e.g., 404 because the task was deleted
+// between listing and fetch) is logged and skipped, NOT propagated. Other
+// tasks in the same project continue to be enumerated.
+func TestAsanaEnumerator_TaskFetchSoftFailsOnNonCtxError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/workspaces/W1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "W1", "name": "Acme"}))
+		case "/workspaces/W1/teams":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/goals":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/workspaces/W1/projects":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}}, ""))
+		case "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Proj", "notes": "", "permalink_url": ""}))
+		case "/projects/P1/project_statuses":
+			http.NotFound(w, r)
+		case "/task_templates":
+			http.NotFound(w, r)
+		case "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			tasks := []map[string]string{{"gid": "T_OK"}, {"gid": "T_404"}}
+			_, _ = w.Write(asanaListResponse(tasks, ""))
+		case "/tasks/T_OK":
+			_, _ = w.Write(asanaResponse(map[string]string{
+				"gid": "T_OK", "name": "Good Task", "notes": "good-task-secret", "permalink_url": "",
+			}))
+		case "/tasks/T_404":
+			// Simulate a task deleted between listing and fetch.
+			http.NotFound(w, r)
+		case "/tasks/T_OK/stories":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/tasks/T_OK/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	cfg := AsanaConfig{
+		Token:      "test-token",
+		BaseURL:    ts.URL,
+		Workspace:  "W1",
+		RatePerSec: 1000,
+		HTTPClient: ts.Client(),
+	}
+	e, err := NewAsanaEnumerator(cfg)
+	require.NoError(t, err)
+
+	var notes []string
+	enumerateErr := e.Enumerate(context.Background(), func(content []byte, _ types.BlobID, prov types.Provenance) error {
+		ep, ok := prov.(types.ExtendedProvenance)
+		require.True(t, ok)
+		if resource, _ := ep.Payload["resource"].(string); resource == "task" {
+			if field, _ := ep.Payload["field"].(string); field == "notes" {
+				notes = append(notes, string(content))
+			}
+		}
+		return nil
+	})
+
+	require.NoError(t, enumerateErr, "Enumerate must not return an error when a per-task GET 404s")
+	assert.Contains(t, notes, "good-task-secret",
+		"T_OK notes must be emitted despite T_404 failing")
+}
+
+// TestAsanaEnumerator_DedupSkipsRedundantFetch verifies that when the same
+// task GID is listed under multiple projects, the per-task GET is issued
+// only once. Prevents the regression where alreadySeen check is removed
+// and shared tasks get re-fetched per project.
+func TestAsanaEnumerator_DedupSkipsRedundantFetch(t *testing.T) {
+	var fetchCount atomic.Int32
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/workspaces/W1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "W1", "name": "Acme"}))
+		case "/workspaces/W1/teams":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/goals":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/workspaces/W1/projects":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}, {"gid": "P2"}}, ""))
+		case "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Project One", "notes": "", "permalink_url": ""}))
+		case "/projects/P2":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P2", "name": "Project Two", "notes": "", "permalink_url": ""}))
+		case "/projects/P1/project_statuses":
+			http.NotFound(w, r)
+		case "/projects/P2/project_statuses":
+			http.NotFound(w, r)
+		case "/task_templates":
+			http.NotFound(w, r)
+		case "/projects/P1/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T_SHARED"}}, ""))
+		case "/projects/P2/tasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T_SHARED"}}, ""))
+		case "/tasks/T_SHARED":
+			fetchCount.Add(1)
+			_, _ = w.Write(asanaResponse(map[string]string{
+				"gid": "T_SHARED", "name": "Shared Task", "notes": "shared-task-secret", "permalink_url": "",
+			}))
+		case "/tasks/T_SHARED/stories":
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		case "/tasks/T_SHARED/subtasks":
+			assert.Equal(t, "gid", r.URL.Query().Get("opt_fields"))
+			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	cfg := AsanaConfig{
+		Token:      "test-token",
+		BaseURL:    ts.URL,
+		Workspace:  "W1",
+		RatePerSec: 1000,
+		HTTPClient: ts.Client(),
+	}
+	e, err := NewAsanaEnumerator(cfg)
+	require.NoError(t, err)
+
+	var taskNotes []string
+	enumerateErr := e.Enumerate(context.Background(), func(content []byte, _ types.BlobID, prov types.Provenance) error {
+		ep, ok := prov.(types.ExtendedProvenance)
+		require.True(t, ok)
+		if resource, _ := ep.Payload["resource"].(string); resource == "task" {
+			if field, _ := ep.Payload["field"].(string); field == "notes" {
+				taskNotes = append(taskNotes, string(content))
+			}
+		}
+		return nil
+	})
+
+	require.NoError(t, enumerateErr)
+
+	// Dedup contract: notes emitted exactly once (existing behavior).
+	var sharedCount int
+	for _, n := range taskNotes {
+		if n == "shared-task-secret" {
+			sharedCount++
+		}
+	}
+	assert.Equal(t, 1, sharedCount, "shared task notes must be emitted exactly once (dedup)")
+
+	// New dedup-before-fetch contract: detail GET issued exactly once.
+	assert.Equal(t, int32(1), fetchCount.Load(),
+		"/tasks/T_SHARED detail GET must be called exactly once (alreadySeen pre-check)")
 }
