@@ -27,18 +27,11 @@ func init() {
 
 	// Add subcommands
 	rootCmd.AddCommand(scanCmd)
-	rootCmd.AddCommand(githubCmd)
+	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(rulesCmd)
 	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(gitlabCmd)
 	rootCmd.AddCommand(exploreCmd)
-	rootCmd.AddCommand(linearCmd)
-	rootCmd.AddCommand(notionCmd)
-	rootCmd.AddCommand(slackCmd)
-	rootCmd.AddCommand(confluenceCmd)
-	rootCmd.AddCommand(jiraCmd)
-	rootCmd.AddCommand(sharepointCmd)
 }
 
 // Execute runs the root command.
