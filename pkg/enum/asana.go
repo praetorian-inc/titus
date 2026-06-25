@@ -329,12 +329,12 @@ type asanaTask struct {
 }
 
 func (e *AsanaEnumerator) enumerateProjects(ctx context.Context, workspaceGID string, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
-	params := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,brief.gid"}}
+	fullParams := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,brief.gid"}}
 
 	switch {
 	case e.cfg.Project != "":
 		var p asanaProject
-		if err := e.client.get(ctx, "/projects/"+e.cfg.Project, params, &p); err != nil {
+		if err := e.client.get(ctx, "/projects/"+e.cfg.Project, fullParams, &p); err != nil {
 			return 0, fmt.Errorf("fetching project: %w", err)
 		}
 		e.logf("Entering project %q (gid=%s)", p.Name, p.GID)
@@ -346,46 +346,45 @@ func (e *AsanaEnumerator) enumerateProjects(ctx context.Context, workspaceGID st
 		return 1, nil
 
 	case e.cfg.Team != "":
-		var count int
-		if err := e.client.paginate(ctx, "/teams/"+e.cfg.Team+"/projects", params, func(raw json.RawMessage) error {
-			return e.processProjectsPage(ctx, workspaceGID, raw, &count, cb)
-		}); err != nil {
+		gids, err := e.listGIDs(ctx, "/teams/"+e.cfg.Team+"/projects")
+		if err != nil {
 			return 0, fmt.Errorf("listing team projects: %w", err)
 		}
-		return count, nil
+		e.logf("Discovered %d projects in team %s", len(gids), e.cfg.Team)
+		return e.fetchAndEnumerateProjects(ctx, workspaceGID, gids, fullParams, cb)
 
 	default:
-		var count int
-		if err := e.client.paginate(ctx, "/workspaces/"+workspaceGID+"/projects", params, func(raw json.RawMessage) error {
-			return e.processProjectsPage(ctx, workspaceGID, raw, &count, cb)
-		}); err != nil {
+		gids, err := e.listGIDs(ctx, "/workspaces/"+workspaceGID+"/projects")
+		if err != nil {
 			return 0, fmt.Errorf("listing workspace projects: %w", err)
 		}
-		return count, nil
+		e.logf("Discovered %d projects in workspace %s", len(gids), workspaceGID)
+		return e.fetchAndEnumerateProjects(ctx, workspaceGID, gids, fullParams, cb)
 	}
 }
 
-// processProjectsPage handles one page of project listings — counts, logs,
-// and recurses into each project. Used by both team-mode and workspace-mode
-// enumeration paths.
-func (e *AsanaEnumerator) processProjectsPage(ctx context.Context, workspaceGID string, raw json.RawMessage, count *int, cb func([]byte, types.BlobID, types.Provenance) error) error {
-	var page []asanaProject
-	if err := json.Unmarshal(raw, &page); err != nil {
-		return err
-	}
-	for _, p := range page {
+// fetchAndEnumerateProjects fetches each project by GID with full opt_fields
+// and dispatches to enumerateProject. Soft-fails individual fetches.
+func (e *AsanaEnumerator) fetchAndEnumerateProjects(ctx context.Context, workspaceGID string, gids []string, fullParams url.Values, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
+	var count int
+	for _, gid := range gids {
 		if err := ctx.Err(); err != nil {
-			return err
+			return count, err
 		}
-		*count++
+		var p asanaProject
+		if err := e.client.get(ctx, "/projects/"+gid, fullParams, &p); err != nil {
+			e.logf("Warning: fetching project %s: %v", gid, err)
+			continue
+		}
+		count++
 		e.logf("Entering project %q (gid=%s)", p.Name, p.GID)
 		tasksScanned, err := e.enumerateProject(ctx, workspaceGID, p, cb)
 		if err != nil {
-			return err
+			return count, err
 		}
 		e.logf("Project %q: %d tasks", p.Name, tasksScanned)
 	}
-	return nil
+	return count, nil
 }
 
 func (e *AsanaEnumerator) enumerateProject(ctx context.Context, workspaceGID string, p asanaProject, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
@@ -526,61 +525,52 @@ func (e *AsanaEnumerator) enumerateProjectStatuses(ctx context.Context, workspac
 }
 
 func (e *AsanaEnumerator) enumerateTasks(ctx context.Context, workspaceGID, projectGID string, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
-	params := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
+	gids, err := e.listGIDs(ctx, "/projects/"+projectGID+"/tasks")
+	if err != nil {
+		return 0, fmt.Errorf("listing tasks for project %s: %w", projectGID, err)
+	}
+	e.logf("Listed %d tasks in project %s", len(gids), projectGID)
 
 	concurrency := e.cfg.Concurrency
 	if concurrency <= 0 {
 		concurrency = 5
 	}
 
-	taskCh := make(chan asanaTask, 2*concurrency)
+	fullParams := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
+
+	gidCh := make(chan string, 2*concurrency)
 
 	var firstErr error
 	var errOnce sync.Once
 	setErr := func(err error) { errOnce.Do(func() { firstErr = err }) }
 
-	// Producer: paginate tasks into taskCh.
 	var producerWg sync.WaitGroup
 	producerWg.Add(1)
 	go func() {
 		defer producerWg.Done()
-		defer close(taskCh)
-		if err := e.client.paginate(ctx, "/projects/"+projectGID+"/tasks", params, func(raw json.RawMessage) error {
-			if firstErr != nil {
-				return firstErr
+		defer close(gidCh)
+		for _, gid := range gids {
+			if ctx.Err() != nil || firstErr != nil {
+				return
 			}
-			var page []asanaTask
-			if err := json.Unmarshal(raw, &page); err != nil {
-				return err
-			}
-			for _, t := range page {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				if firstErr != nil {
-					return firstErr
-				}
-				taskCh <- t
-			}
-			return nil
-		}); err != nil {
-			setErr(fmt.Errorf("listing tasks for project %s: %w", projectGID, err))
+			gidCh <- gid
 		}
 	}()
 
-	// Workers: consume tasks from taskCh.
 	var taskCount int64
 	var workerWg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
-			for t := range taskCh {
-				if ctx.Err() != nil {
+			for gid := range gidCh {
+				if ctx.Err() != nil || firstErr != nil {
 					return
 				}
-				if firstErr != nil {
-					return
+				var t asanaTask
+				if err := e.client.get(ctx, "/tasks/"+gid, fullParams, &t); err != nil {
+					e.logf("Warning: fetching task %s: %v", gid, err)
+					continue
 				}
 				e.logf("Processing task %q (gid=%s)", truncateForLog(t.Name, 80), t.GID)
 				if err := e.enumerateTask(ctx, workspaceGID, t, 0, cb); err != nil {
@@ -691,22 +681,26 @@ func (e *AsanaEnumerator) listAndEmitStories(ctx context.Context, workspaceGID s
 }
 
 func (e *AsanaEnumerator) enumerateSubtasks(ctx context.Context, workspaceGID, taskGID string, depth int, cb func([]byte, types.BlobID, types.Provenance) error) error {
-	params := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
-	return e.client.paginate(ctx, "/tasks/"+taskGID+"/subtasks", params, func(raw json.RawMessage) error {
-		var page []asanaTask
-		if err := json.Unmarshal(raw, &page); err != nil {
+	gids, err := e.listGIDs(ctx, "/tasks/"+taskGID+"/subtasks")
+	if err != nil {
+		return err
+	}
+
+	fullParams := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
+	for _, gid := range gids {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		for _, st := range page {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := e.enumerateTask(ctx, workspaceGID, st, depth+1, cb); err != nil {
-				return err
-			}
+		var st asanaTask
+		if err := e.client.get(ctx, "/tasks/"+gid, fullParams, &st); err != nil {
+			e.logf("Warning: fetching subtask %s: %v", gid, err)
+			continue
 		}
-		return nil
-	})
+		if err := e.enumerateTask(ctx, workspaceGID, st, depth+1, cb); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // asanaAttachment holds the minimal attachment fields we need.
@@ -803,6 +797,31 @@ func (e *AsanaEnumerator) enumerateAttachments(ctx context.Context, workspaceGID
 		}
 		return nil
 	})
+}
+
+// listGIDs paginates path with opt_fields=gid and returns the collected GIDs.
+// Used as Phase 1 of the two-phase list-then-fetch pattern that avoids holding
+// pagination tokens open while we enumerate items deeply. Skips entries with
+// empty GIDs defensively.
+func (e *AsanaEnumerator) listGIDs(ctx context.Context, path string) ([]string, error) {
+	params := url.Values{"opt_fields": []string{"gid"}}
+	var gids []string
+	err := e.client.paginate(ctx, path, params, func(raw json.RawMessage) error {
+		var page []struct {
+			GID string `json:"gid"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return err
+		}
+		for _, item := range page {
+			if item.GID == "" {
+				continue
+			}
+			gids = append(gids, item.GID)
+		}
+		return nil
+	})
+	return gids, err
 }
 
 // emitText yields a non-empty text field as a blob with standard Asana provenance.

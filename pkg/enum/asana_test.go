@@ -107,18 +107,28 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 		case path == "/workspaces/W1/projects" && offset == "":
 			w.Header().Set("Content-Type", "application/json")
 			projects := []map[string]interface{}{
-				{
-					"gid": "P1", "name": "Project Alpha", "notes": "Alpha notes",
-					"permalink_url": "https://app.asana.com/P1",
-					"brief":         map[string]string{"gid": "B1"},
-				},
+				{"gid": "P1"},
 			}
 			_, _ = w.Write(asanaListResponse(projects, "page2"))
 
 		case path == "/workspaces/W1/projects" && offset == "page2":
 			w.Header().Set("Content-Type", "application/json")
-			projects := []map[string]string{{"gid": "P2", "name": "Project Beta", "notes": "", "permalink_url": "https://app.asana.com/P2"}}
+			projects := []map[string]string{{"gid": "P2"}}
 			_, _ = w.Write(asanaListResponse(projects, ""))
+
+		case path == "/projects/P1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(asanaResponse(map[string]interface{}{
+				"gid": "P1", "name": "Project Alpha", "notes": "Alpha notes",
+				"permalink_url": "https://app.asana.com/P1",
+				"brief":         map[string]string{"gid": "B1"},
+			}))
+
+		case path == "/projects/P2":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(asanaResponse(map[string]string{
+				"gid": "P2", "name": "Project Beta", "notes": "", "permalink_url": "https://app.asana.com/P2",
+			}))
 
 		case path == "/project_briefs/B1":
 			w.Header().Set("Content-Type", "application/json")
@@ -145,18 +155,19 @@ func TestAsanaEnumerator_EndToEnd(t *testing.T) {
 
 		case path == "/projects/P1/tasks":
 			w.Header().Set("Content-Type", "application/json")
-			tasks := []map[string]interface{}{
-				{
-					"gid": "T1", "name": "Task One", "notes": "task notes here",
-					"permalink_url": "https://app.asana.com/T1",
-					"custom_fields": []map[string]string{
-						{"gid": "CF1", "name": "Connection String", "type": "text", "text_value": "postgres://user:pass@host/db"},
-						{"gid": "CF2", "name": "Priority", "type": "enum", "text_value": ""},
-					},
-					"external": map[string]string{"data": "secret-external-blob"},
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
+
+		case path == "/tasks/T1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(asanaResponse(map[string]interface{}{
+				"gid": "T1", "name": "Task One", "notes": "task notes here",
+				"permalink_url": "https://app.asana.com/T1",
+				"custom_fields": []map[string]string{
+					{"gid": "CF1", "name": "Connection String", "type": "text", "text_value": "postgres://user:pass@host/db"},
+					{"gid": "CF2", "name": "Priority", "type": "enum", "text_value": ""},
 				},
-			}
-			_, _ = w.Write(asanaListResponse(tasks, ""))
+				"external": map[string]string{"data": "secret-external-blob"},
+			}))
 
 		case path == "/projects/P2/project_statuses":
 			http.NotFound(w, r)
@@ -401,13 +412,17 @@ func TestAsanaEnumerator_ResourceKinds(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "G1", "name": "A goal", "notes": "goal notes"}}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
-			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1", "name": "Proj", "notes": "notes", "permalink_url": ""}}, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}}, ""))
+		case r.URL.Path == "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Proj", "notes": "notes", "permalink_url": ""}))
 		case r.URL.Path == "/projects/P1/project_statuses":
 			http.NotFound(w, r)
 		case r.URL.Path == "/task_templates":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
-			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1", "name": "Task", "notes": "tnotes", "permalink_url": ""}}, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
+		case r.URL.Path == "/tasks/T1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task", "notes": "tnotes", "permalink_url": ""}))
 		case r.URL.Path == "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "S1", "type": "comment", "text": "comment"}}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
@@ -524,11 +539,12 @@ func TestAsanaEnumerator_DedupsTaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
-			projects := []map[string]string{
-				{"gid": "P1", "name": "Project One", "notes": "alpha notes", "permalink_url": ""},
-				{"gid": "P2", "name": "Project Two", "notes": "beta notes", "permalink_url": ""},
-			}
+			projects := []map[string]string{{"gid": "P1"}, {"gid": "P2"}}
 			_, _ = w.Write(asanaListResponse(projects, ""))
+		case r.URL.Path == "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Project One", "notes": "alpha notes", "permalink_url": ""}))
+		case r.URL.Path == "/projects/P2":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P2", "name": "Project Two", "notes": "beta notes", "permalink_url": ""}))
 		case r.URL.Path == "/projects/P1/project_statuses":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P2/project_statuses":
@@ -538,9 +554,11 @@ func TestAsanaEnumerator_DedupsTaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/task_templates" && r.URL.Query().Get("project") == "P2":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
-			_, _ = w.Write(asanaListResponse([]map[string]string{sharedTask}, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case r.URL.Path == "/projects/P2/tasks":
-			_, _ = w.Write(asanaListResponse([]map[string]string{sharedTask}, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
+		case r.URL.Path == "/tasks/T1":
+			_, _ = w.Write(asanaResponse(sharedTask))
 		case r.URL.Path == "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
@@ -610,11 +628,12 @@ func TestAsanaEnumerator_DedupsSubtaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
-			projects := []map[string]string{
-				{"gid": "P1", "name": "Project One", "notes": "", "permalink_url": ""},
-				{"gid": "P2", "name": "Project Two", "notes": "", "permalink_url": ""},
-			}
+			projects := []map[string]string{{"gid": "P1"}, {"gid": "P2"}}
 			_, _ = w.Write(asanaListResponse(projects, ""))
+		case r.URL.Path == "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Project One", "notes": "", "permalink_url": ""}))
+		case r.URL.Path == "/projects/P2":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P2", "name": "Project Two", "notes": "", "permalink_url": ""}))
 		case r.URL.Path == "/projects/P1/project_statuses":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P2/project_statuses":
@@ -624,20 +643,24 @@ func TestAsanaEnumerator_DedupsSubtaskAcrossProjects(t *testing.T) {
 		case r.URL.Path == "/task_templates" && r.URL.Query().Get("project") == "P2":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
-			tasks := []map[string]string{{"gid": "T1", "name": "Task One", "notes": "t1-notes", "permalink_url": ""}}
-			_, _ = w.Write(asanaListResponse(tasks, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
 		case r.URL.Path == "/projects/P2/tasks":
-			tasks := []map[string]string{{"gid": "T2", "name": "Task Two", "notes": "t2-notes", "permalink_url": ""}}
-			_, _ = w.Write(asanaListResponse(tasks, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T2"}}, ""))
+		case r.URL.Path == "/tasks/T1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task One", "notes": "t1-notes", "permalink_url": ""}))
+		case r.URL.Path == "/tasks/T2":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T2", "name": "Task Two", "notes": "t2-notes", "permalink_url": ""}))
+		case r.URL.Path == "/tasks/TSHARED":
+			_, _ = w.Write(asanaResponse(sharedSubtask))
 		case r.URL.Path == "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/T2/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
-			_, _ = w.Write(asanaListResponse([]map[string]string{sharedSubtask}, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "TSHARED"}}, ""))
 		case r.URL.Path == "/tasks/T2/subtasks":
 			// TSHARED is also a subtask of T2 — Asana many-to-many
-			_, _ = w.Write(asanaListResponse([]map[string]string{sharedSubtask}, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "TSHARED"}}, ""))
 		case r.URL.Path == "/tasks/TSHARED/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/TSHARED/subtasks":
@@ -695,15 +718,17 @@ func TestAsanaEnumerator_SeenResetsBetweenRuns(t *testing.T) {
 		case r.URL.Path == "/goals" && r.URL.Query().Get("workspace") == "W1":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/workspaces/W1/projects":
-			projects := []map[string]string{{"gid": "P1", "name": "Proj", "notes": "", "permalink_url": ""}}
-			_, _ = w.Write(asanaListResponse(projects, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}}, ""))
+		case r.URL.Path == "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Proj", "notes": "", "permalink_url": ""}))
 		case r.URL.Path == "/projects/P1/project_statuses":
 			http.NotFound(w, r)
 		case r.URL.Path == "/task_templates" && r.URL.Query().Get("project") == "P1":
 			http.NotFound(w, r)
 		case r.URL.Path == "/projects/P1/tasks":
-			tasks := []map[string]string{{"gid": "T1", "name": "Task One", "notes": "single-task-notes", "permalink_url": ""}}
-			_, _ = w.Write(asanaListResponse(tasks, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
+		case r.URL.Path == "/tasks/T1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task One", "notes": "single-task-notes", "permalink_url": ""}))
 		case r.URL.Path == "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case r.URL.Path == "/tasks/T1/subtasks":
@@ -774,15 +799,17 @@ func asanaBinaryAttachmentServer(t *testing.T, attachmentContent []byte) *httpte
 		case "/goals":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case "/workspaces/W1/projects":
-			projects := []map[string]string{{"gid": "P1", "name": "Proj", "notes": "", "permalink_url": ""}}
-			_, _ = w.Write(asanaListResponse(projects, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "P1"}}, ""))
+		case "/projects/P1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "P1", "name": "Proj", "notes": "", "permalink_url": ""}))
 		case "/projects/P1/project_statuses":
 			http.NotFound(w, r)
 		case "/task_templates":
 			http.NotFound(w, r)
 		case "/projects/P1/tasks":
-			tasks := []map[string]string{{"gid": "T1", "name": "Task", "notes": "", "permalink_url": ""}}
-			_, _ = w.Write(asanaListResponse(tasks, ""))
+			_, _ = w.Write(asanaListResponse([]map[string]string{{"gid": "T1"}}, ""))
+		case "/tasks/T1":
+			_, _ = w.Write(asanaResponse(map[string]string{"gid": "T1", "name": "Task", "notes": "", "permalink_url": ""}))
 		case "/tasks/T1/stories":
 			_, _ = w.Write(asanaListResponse([]interface{}{}, ""))
 		case "/tasks/T1/subtasks":
