@@ -14,10 +14,19 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
+
+// asanaTaskFullFields is the opt_fields set used for per-task GETs that
+// hydrate a full asanaTask (notes, custom fields, external data). Shared
+// between enumerateTasks and enumerateSubtasks so they cannot silently
+// diverge. Read-only — do not mutate at runtime.
+var asanaTaskFullFields = url.Values{
+	"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"},
+}
 
 // Asana does not expose X-RateLimit-Remaining / X-RateLimit-Reset headers.
 // The only quota signal is 429 Too Many Requests with Retry-After. We retry
@@ -121,6 +130,16 @@ func (e *AsanaEnumerator) markSeen(gid string) bool {
 	}
 	e.seen[gid] = struct{}{}
 	return true
+}
+
+// alreadySeen reports whether a GID has been recorded by markSeen on this
+// run. Used to skip wasted per-item fetches when the same task is reachable
+// through multiple projects or subtask trees. Safe for concurrent use.
+func (e *AsanaEnumerator) alreadySeen(gid string) bool {
+	e.seenMu.Lock()
+	defer e.seenMu.Unlock()
+	_, ok := e.seen[gid]
+	return ok
 }
 
 // Enumerate walks Asana resources and yields content blobs.
@@ -329,12 +348,12 @@ type asanaTask struct {
 }
 
 func (e *AsanaEnumerator) enumerateProjects(ctx context.Context, workspaceGID string, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
-	params := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,brief.gid"}}
+	fullParams := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,brief.gid"}}
 
 	switch {
 	case e.cfg.Project != "":
 		var p asanaProject
-		if err := e.client.get(ctx, "/projects/"+e.cfg.Project, params, &p); err != nil {
+		if err := e.client.get(ctx, "/projects/"+e.cfg.Project, fullParams, &p); err != nil {
 			return 0, fmt.Errorf("fetching project: %w", err)
 		}
 		e.logf("Entering project %q (gid=%s)", p.Name, p.GID)
@@ -346,46 +365,48 @@ func (e *AsanaEnumerator) enumerateProjects(ctx context.Context, workspaceGID st
 		return 1, nil
 
 	case e.cfg.Team != "":
-		var count int
-		if err := e.client.paginate(ctx, "/teams/"+e.cfg.Team+"/projects", params, func(raw json.RawMessage) error {
-			return e.processProjectsPage(ctx, workspaceGID, raw, &count, cb)
-		}); err != nil {
+		gids, err := e.listGIDs(ctx, "/teams/"+e.cfg.Team+"/projects")
+		if err != nil {
 			return 0, fmt.Errorf("listing team projects: %w", err)
 		}
-		return count, nil
+		e.logf("Discovered %d projects in team %s", len(gids), e.cfg.Team)
+		return e.fetchAndEnumerateProjects(ctx, workspaceGID, gids, fullParams, cb)
 
 	default:
-		var count int
-		if err := e.client.paginate(ctx, "/workspaces/"+workspaceGID+"/projects", params, func(raw json.RawMessage) error {
-			return e.processProjectsPage(ctx, workspaceGID, raw, &count, cb)
-		}); err != nil {
+		gids, err := e.listGIDs(ctx, "/workspaces/"+workspaceGID+"/projects")
+		if err != nil {
 			return 0, fmt.Errorf("listing workspace projects: %w", err)
 		}
-		return count, nil
+		e.logf("Discovered %d projects in workspace %s", len(gids), workspaceGID)
+		return e.fetchAndEnumerateProjects(ctx, workspaceGID, gids, fullParams, cb)
 	}
 }
 
-// processProjectsPage handles one page of project listings — counts, logs,
-// and recurses into each project. Used by both team-mode and workspace-mode
-// enumeration paths.
-func (e *AsanaEnumerator) processProjectsPage(ctx context.Context, workspaceGID string, raw json.RawMessage, count *int, cb func([]byte, types.BlobID, types.Provenance) error) error {
-	var page []asanaProject
-	if err := json.Unmarshal(raw, &page); err != nil {
-		return err
-	}
-	for _, p := range page {
+// fetchAndEnumerateProjects fetches each project by GID with full opt_fields
+// and dispatches to enumerateProject. Soft-fails individual fetches.
+func (e *AsanaEnumerator) fetchAndEnumerateProjects(ctx context.Context, workspaceGID string, gids []string, fullParams url.Values, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
+	var count int
+	for _, gid := range gids {
 		if err := ctx.Err(); err != nil {
-			return err
+			return count, err
 		}
-		*count++
+		var p asanaProject
+		if err := e.client.get(ctx, "/projects/"+gid, fullParams, &p); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return count, ctxErr
+			}
+			e.logf("Warning: fetching project %s: %v", gid, err)
+			continue
+		}
+		count++
 		e.logf("Entering project %q (gid=%s)", p.Name, p.GID)
 		tasksScanned, err := e.enumerateProject(ctx, workspaceGID, p, cb)
 		if err != nil {
-			return err
+			return count, err
 		}
 		e.logf("Project %q: %d tasks", p.Name, tasksScanned)
 	}
-	return nil
+	return count, nil
 }
 
 func (e *AsanaEnumerator) enumerateProject(ctx context.Context, workspaceGID string, p asanaProject, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
@@ -526,76 +547,51 @@ func (e *AsanaEnumerator) enumerateProjectStatuses(ctx context.Context, workspac
 }
 
 func (e *AsanaEnumerator) enumerateTasks(ctx context.Context, workspaceGID, projectGID string, cb func([]byte, types.BlobID, types.Provenance) error) (int, error) {
-	params := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
+	gids, err := e.listGIDs(ctx, "/projects/"+projectGID+"/tasks")
+	if err != nil {
+		return 0, fmt.Errorf("listing tasks for project %s: %w", projectGID, err)
+	}
+	e.logf("Listed %d tasks in project %s", len(gids), projectGID)
 
 	concurrency := e.cfg.Concurrency
 	if concurrency <= 0 {
 		concurrency = 5
 	}
 
-	taskCh := make(chan asanaTask, 2*concurrency)
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
 
-	var firstErr error
-	var errOnce sync.Once
-	setErr := func(err error) { errOnce.Do(func() { firstErr = err }) }
-
-	// Producer: paginate tasks into taskCh.
-	var producerWg sync.WaitGroup
-	producerWg.Add(1)
-	go func() {
-		defer producerWg.Done()
-		defer close(taskCh)
-		if err := e.client.paginate(ctx, "/projects/"+projectGID+"/tasks", params, func(raw json.RawMessage) error {
-			if firstErr != nil {
-				return firstErr
+	var taskCount int64
+	for _, gid := range gids {
+		gid := gid // shadow for closure
+		g.Go(func() error {
+			if gctx.Err() != nil {
+				return gctx.Err()
 			}
-			var page []asanaTask
-			if err := json.Unmarshal(raw, &page); err != nil {
+			if e.alreadySeen(gid) {
+				return nil
+			}
+			var t asanaTask
+			if err := e.client.get(gctx, "/tasks/"+gid, asanaTaskFullFields, &t); err != nil {
+				if ctxErr := gctx.Err(); ctxErr != nil {
+					return ctxErr
+				}
+				e.logf("Warning: fetching task %s: %v", gid, err)
+				return nil
+			}
+			e.logf("Processing task %q (gid=%s)", truncateForLog(t.Name, 80), t.GID)
+			if err := e.enumerateTask(gctx, workspaceGID, t, 0, cb); err != nil {
 				return err
 			}
-			for _, t := range page {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				if firstErr != nil {
-					return firstErr
-				}
-				taskCh <- t
-			}
+			atomic.AddInt64(&taskCount, 1)
 			return nil
-		}); err != nil {
-			setErr(fmt.Errorf("listing tasks for project %s: %w", projectGID, err))
-		}
-	}()
-
-	// Workers: consume tasks from taskCh.
-	var taskCount int64
-	var workerWg sync.WaitGroup
-	for i := 0; i < concurrency; i++ {
-		workerWg.Add(1)
-		go func() {
-			defer workerWg.Done()
-			for t := range taskCh {
-				if ctx.Err() != nil {
-					return
-				}
-				if firstErr != nil {
-					return
-				}
-				e.logf("Processing task %q (gid=%s)", truncateForLog(t.Name, 80), t.GID)
-				if err := e.enumerateTask(ctx, workspaceGID, t, 0, cb); err != nil {
-					setErr(err)
-					return
-				}
-				atomic.AddInt64(&taskCount, 1)
-			}
-		}()
+		})
 	}
 
-	producerWg.Wait()
-	workerWg.Wait()
-
-	return int(atomic.LoadInt64(&taskCount)), firstErr
+	if err := g.Wait(); err != nil {
+		return int(atomic.LoadInt64(&taskCount)), err
+	}
+	return int(atomic.LoadInt64(&taskCount)), nil
 }
 
 func (e *AsanaEnumerator) enumerateTask(ctx context.Context, workspaceGID string, t asanaTask, depth int, cb func([]byte, types.BlobID, types.Provenance) error) error {
@@ -691,22 +687,31 @@ func (e *AsanaEnumerator) listAndEmitStories(ctx context.Context, workspaceGID s
 }
 
 func (e *AsanaEnumerator) enumerateSubtasks(ctx context.Context, workspaceGID, taskGID string, depth int, cb func([]byte, types.BlobID, types.Provenance) error) error {
-	params := url.Values{"opt_fields": []string{"name,notes,html_notes,permalink_url,custom_fields.name,custom_fields.text_value,custom_fields.type,custom_fields.gid,external.data"}}
-	return e.client.paginate(ctx, "/tasks/"+taskGID+"/subtasks", params, func(raw json.RawMessage) error {
-		var page []asanaTask
-		if err := json.Unmarshal(raw, &page); err != nil {
+	gids, err := e.listGIDs(ctx, "/tasks/"+taskGID+"/subtasks")
+	if err != nil {
+		return err
+	}
+
+	for _, gid := range gids {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		for _, st := range page {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := e.enumerateTask(ctx, workspaceGID, st, depth+1, cb); err != nil {
-				return err
-			}
+		if e.alreadySeen(gid) {
+			continue
 		}
-		return nil
-	})
+		var st asanaTask
+		if err := e.client.get(ctx, "/tasks/"+gid, asanaTaskFullFields, &st); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			e.logf("Warning: fetching subtask %s: %v", gid, err)
+			continue
+		}
+		if err := e.enumerateTask(ctx, workspaceGID, st, depth+1, cb); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // asanaAttachment holds the minimal attachment fields we need.
@@ -803,6 +808,31 @@ func (e *AsanaEnumerator) enumerateAttachments(ctx context.Context, workspaceGID
 		}
 		return nil
 	})
+}
+
+// listGIDs paginates path with opt_fields=gid and returns the collected GIDs.
+// Used as Phase 1 of the two-phase list-then-fetch pattern that avoids holding
+// pagination tokens open while we enumerate items deeply. Skips entries with
+// empty GIDs defensively.
+func (e *AsanaEnumerator) listGIDs(ctx context.Context, path string) ([]string, error) {
+	params := url.Values{"opt_fields": []string{"gid"}}
+	var gids []string
+	err := e.client.paginate(ctx, path, params, func(raw json.RawMessage) error {
+		var page []struct {
+			GID string `json:"gid"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return err
+		}
+		for _, item := range page {
+			if item.GID == "" {
+				continue
+			}
+			gids = append(gids, item.GID)
+		}
+		return nil
+	})
+	return gids, err
 }
 
 // emitText yields a non-empty text field as a blob with standard Asana provenance.
