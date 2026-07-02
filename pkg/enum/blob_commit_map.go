@@ -78,6 +78,10 @@ func collectBlobCommitMap(ctx context.Context, repoPath string) (map[string]*typ
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		return result, fmt.Errorf("git log: scan: %w", err)
+	}
+
 	if err := cmd.Wait(); err != nil {
 		return result, fmt.Errorf("git log: wait: %w", err)
 	}

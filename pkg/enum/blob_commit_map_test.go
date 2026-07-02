@@ -101,7 +101,9 @@ func TestBlobCommitMap_DeletedAndReadded(t *testing.T) {
 	writeFile(t, filepath.Join(tmpDir, "creds.txt"), content)
 	gitAddCommit(t, tmpDir, "Add creds")
 
-	os.Remove(filepath.Join(tmpDir, "creds.txt"))
+	if err := os.Remove(filepath.Join(tmpDir, "creds.txt")); err != nil {
+		t.Fatalf("remove creds.txt: %v", err)
+	}
 	gitAddCommit(t, tmpDir, "Delete creds")
 
 	writeFile(t, filepath.Join(tmpDir, "creds.txt"), content)
