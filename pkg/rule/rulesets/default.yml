@@ -146,6 +146,7 @@ rulesets:
   - np.mattermost.1   # Mattermost Personal Access Token
   - np.mapbox.2       # Mapbox Secret Access Token
   - np.mapbox.3       # Mapbox Temporary Access Token
+  - np.maven.1        # Maven Settings XML Credentials
   - np.msteams.1      # Microsoft Teams Webhook
   - np.mongodb.1      # Credentials in MongoDB Connection String
   - np.nasa.1         # NASA API Key

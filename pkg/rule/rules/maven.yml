@@ -6,7 +6,7 @@ rules:
       (?xi)
       <username>\s*[^<]{1,100}\s*</username>
       \s{1,200}
-      <password>\s*(?P<token>(?!\$\{)[^<]{3,100})\s*</password>
+      <password>\s*(?P<token>[^<]{3,100})\s*</password>
     categories: [secret, configuration, xml]
     pattern_requirements:
       ignore_if_contains:
