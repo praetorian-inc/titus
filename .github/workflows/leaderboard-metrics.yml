@@ -1,0 +1,16 @@
+name: Leaderboard Metrics
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  id-token: write
+
+jobs:
+  metrics:
+    uses: praetorian-inc/.github/.github/workflows/leaderboard-metrics.yml@main
+    with:
+      capability_map: '[{"path": ".", "name": "titus"}]'
