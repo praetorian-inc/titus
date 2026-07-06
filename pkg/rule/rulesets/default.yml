@@ -19,6 +19,7 @@ rulesets:
   - np.anthropic.1    # Anthropic API Key
   - np.artifactory.1  # Artifactory API Key
   - np.amplitude.1    # Amplitude API Key
+  - np.ansible.1      # Ansible Vault Encrypted Secret
   - np.appcenter.1    # Visual Studio App Center API Token
   - np.appsync.1      # AWS AppSync API Key
   - np.auth0.1        # Auth0 Application Credentials

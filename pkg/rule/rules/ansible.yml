@@ -1,6 +1,6 @@
 rules:
   - name: Ansible Vault Encrypted Secret
-    id: custom.ansible.1
+    id: np.ansible.1
     base_score: 45
     pattern: |
       (?xi)
@@ -8,7 +8,7 @@ rules:
       \d+\.\d+;
       [a-z0-9]+
       (?:;[^\s]*)?
-      (?:\s+[0-9a-f]{16,})+
+      (?P<token>(?:\s+[0-9a-f]{16,})+)
     categories: [secret, encrypted, configuration]
     references:
       - https://docs.ansible.com/ansible/latest/vault_guide/index.html
