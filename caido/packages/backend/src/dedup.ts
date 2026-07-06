@@ -32,7 +32,9 @@ export class DedupCache {
 
     const existing = this.cache.get(key);
     if (existing) {
-      existing.urls.add(normalizedUrl);
+      if (!existing.urls.includes(normalizedUrl)) {
+        existing.urls.push(normalizedUrl);
+      }
       existing.occurrenceCount++;
       return false;
     }
@@ -44,7 +46,7 @@ export class DedupCache {
       secretContent,
       url: normalizedUrl,
       host,
-      urls: new Set([normalizedUrl]),
+      urls: [normalizedUrl],
       occurrenceCount: 1,
       firstSeen: new Date().toISOString(),
     };
@@ -65,7 +67,7 @@ export class DedupCache {
    */
   getFindingsForUrl(url: string): FindingRecord[] {
     const normalized = this.normalizeUrl(url);
-    return this.getAllFindings().filter((f) => f.urls.has(normalized));
+    return this.getAllFindings().filter((f) => f.urls.includes(normalized));
   }
 
   /**
@@ -83,15 +85,7 @@ export class DedupCache {
   }
 
   private computeKey(secretContent: string, ruleId: string): string {
-    // Simple hash - in production you'd use SHA-256
-    let hash = 0;
-    const combined = `${ruleId}:${secretContent}`;
-    for (let i = 0; i < combined.length; i++) {
-      const chr = combined.charCodeAt(i);
-      hash = (hash << 5) - hash + chr;
-      hash |= 0;
-    }
-    return hash.toString(36);
+    return `${ruleId}:${secretContent}`;
   }
 
   private normalizeUrl(url: string): string {

@@ -105,7 +105,7 @@ export interface FindingRecord {
   secretContent: string;
   url: string;
   host: string;
-  urls: Set<string>;
+  urls: string[];
   occurrenceCount: number;
   firstSeen: string;
 }

@@ -45,7 +45,7 @@ let scopeOnly = false;
  */
 function decodeBase64(b64: string): string {
   try {
-    return atob(b64);
+    return Buffer.from(b64, "base64").toString("utf-8");
   } catch {
     return b64;
   }
@@ -56,7 +56,15 @@ function decodeBase64(b64: string): string {
  * Mirrors TitusProcessScanner.java's parseMatch logic.
  */
 function extractMatchContent(match: TitusMatch): string {
-  // Try Groups first (array of base64-encoded capture groups)
+  // Prefer NamedGroups (current Titus convention)
+  if (match.NamedGroups) {
+    const values = Object.values(match.NamedGroups);
+    if (values.length > 0 && values[0]) {
+      return decodeBase64(values[0]);
+    }
+  }
+
+  // Fall back to positional Groups
   if (match.Groups && match.Groups.length > 0) {
     return decodeBase64(match.Groups[0]!);
   }
@@ -250,7 +258,12 @@ export async function init(sdk: SDK<API>) {
             typeof requestBody === "string"
               ? requestBody
               : new TextDecoder().decode(requestBody as ArrayBuffer);
-          if (reqStr.length > 10) {
+          const reqContentType =
+            request.getHeader("content-type") ?? undefined;
+          if (
+            filter.shouldScan(reqContentType, reqStr.length) &&
+            reqStr.length > 10
+          ) {
             requestMatches = await scanner.scan(reqStr, `${url} [request]`);
           }
         }

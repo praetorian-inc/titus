@@ -2,6 +2,8 @@
   "name": "titus-backend",
   "private": true,
   "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",

@@ -21,6 +21,13 @@ import type {
 } from "./types.js";
 
 const READY_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+interface PendingRequest {
+  resolve: (resp: TitusResponse) => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
 
 export class TitusScanner {
   private process: ChildProcess | null = null;
@@ -28,8 +35,12 @@ export class TitusScanner {
   private closed = false;
   private version = "unknown";
   private buffer = "";
-  private pendingResolve: ((resp: TitusResponse) => void) | null = null;
-  private pendingReject: ((err: Error) => void) | null = null;
+  private pending: PendingRequest | null = null;
+  private queue: Array<{
+    request: TitusRequest;
+    resolve: (resp: TitusResponse) => void;
+    reject: (err: Error) => void;
+  }> = [];
 
   /**
    * Find the titus binary on the system.
@@ -96,14 +107,21 @@ export class TitusScanner {
 
       this.process.on("error", (err) => {
         clearTimeout(timeout);
+        this.rejectPending(new Error(`Titus process error: ${err.message}`));
         reject(new Error(`Titus process error: ${err.message}`));
       });
 
       this.process.on("exit", (code) => {
         if (!this.closed) {
           this.initialized = false;
+          this.rejectPending(
+            new Error(`Titus process exited unexpectedly (code ${code})`)
+          );
         }
       });
+
+      // Drain stderr to prevent backpressure stalls
+      this.process.stderr?.on("data", () => {});
 
       // Read the ready signal from stdout
       const onData = (chunk: Buffer) => {
@@ -154,27 +172,56 @@ export class TitusScanner {
 
     for (const line of lines) {
       if (!line.trim()) continue;
+      if (!this.pending) continue;
+
+      const { resolve, reject, timer } = this.pending;
+      this.pending = null;
+      clearTimeout(timer);
+
       try {
         const resp: TitusResponse = JSON.parse(line);
-        if (this.pendingResolve) {
-          const resolve = this.pendingResolve;
-          this.pendingResolve = null;
-          this.pendingReject = null;
-          resolve(resp);
-        }
+        resolve(resp);
       } catch {
-        if (this.pendingReject) {
-          const reject = this.pendingReject;
-          this.pendingResolve = null;
-          this.pendingReject = null;
-          reject(new Error(`Malformed response: ${line}`));
-        }
+        reject(new Error(`Malformed response: ${line}`));
       }
+
+      // Process next queued request
+      this.processQueue();
     }
   }
 
   /**
+   * Reject the currently pending request (e.g., on process death).
+   */
+  private rejectPending(err: Error): void {
+    if (this.pending) {
+      clearTimeout(this.pending.timer);
+      this.pending.reject(err);
+      this.pending = null;
+    }
+    // Reject all queued requests too
+    for (const queued of this.queue) {
+      queued.reject(err);
+    }
+    this.queue = [];
+  }
+
+  /**
+   * Process the next request in the queue if no request is in flight.
+   */
+  private processQueue(): void {
+    if (this.pending || this.queue.length === 0) return;
+
+    const next = this.queue.shift()!;
+    this.dispatchRequest(next.request, next.resolve, next.reject);
+  }
+
+  /**
    * Send a request and wait for the response.
+   */
+  /**
+   * Send a request, queuing it if another request is already in flight.
+   * Enforces serial communication matching the Java synchronized behavior.
    */
   private async sendRequest(request: TitusRequest): Promise<TitusResponse> {
     if (!this.initialized || !this.process?.stdin) {
@@ -182,17 +229,43 @@ export class TitusScanner {
     }
 
     return new Promise<TitusResponse>((resolve, reject) => {
-      this.pendingResolve = resolve;
-      this.pendingReject = reject;
+      if (this.pending) {
+        // Queue behind the in-flight request
+        this.queue.push({ request, resolve, reject });
+      } else {
+        this.dispatchRequest(request, resolve, reject);
+      }
+    });
+  }
 
-      const json = JSON.stringify(request) + "\n";
-      this.process!.stdin!.write(json, "utf-8", (err) => {
-        if (err) {
-          this.pendingResolve = null;
-          this.pendingReject = null;
-          reject(new Error(`Failed to write to titus: ${err.message}`));
+  /**
+   * Actually write a request to stdin and set up the pending handler.
+   */
+  private dispatchRequest(
+    request: TitusRequest,
+    resolve: (resp: TitusResponse) => void,
+    reject: (err: Error) => void
+  ): void {
+    const timer = setTimeout(() => {
+      if (this.pending?.timer === timer) {
+        this.pending = null;
+        reject(new Error("Titus request timed out"));
+        this.processQueue();
+      }
+    }, REQUEST_TIMEOUT_MS);
+
+    this.pending = { resolve, reject, timer };
+
+    const json = JSON.stringify(request) + "\n";
+    this.process!.stdin!.write(json, "utf-8", (err) => {
+      if (err) {
+        if (this.pending?.timer === timer) {
+          clearTimeout(timer);
+          this.pending = null;
         }
-      });
+        reject(new Error(`Failed to write to titus: ${err.message}`));
+        this.processQueue();
+      }
     });
   }
 
@@ -286,6 +359,7 @@ export class TitusScanner {
     if (this.closed) return;
     this.closed = true;
     this.initialized = false;
+    this.rejectPending(new Error("Scanner closed"));
 
     if (this.process?.stdin) {
       try {

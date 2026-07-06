@@ -96,6 +96,7 @@ function createPluginPage(sdk: SDK): HTMLElement {
   clearBtn.textContent = "Clear Findings";
   clearBtn.addEventListener("click", async () => {
     await sdk.backend.clearFindings();
+    refreshStats(sdk);
     refreshFindings(sdk);
   });
   controls.appendChild(clearBtn);
@@ -201,11 +202,13 @@ async function refreshFindings(sdk: SDK): Promise<void> {
       return;
     }
 
-    // Sort by first seen (newest first)
-    const sorted = [...findings].sort(
-      (a, b) =>
-        new Date(b.firstSeen).getTime() - new Date(a.firstSeen).getTime()
-    );
+    // Sort by first seen (newest first), limit to 100 rows for performance
+    const sorted = [...findings]
+      .sort(
+        (a, b) =>
+          new Date(b.firstSeen).getTime() - new Date(a.firstSeen).getTime()
+      )
+      .slice(0, 100);
 
     tbody.innerHTML = sorted
       .map((f) => {
