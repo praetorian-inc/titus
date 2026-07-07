@@ -10,8 +10,8 @@ rules:
       \s{1,200}
       <password>\s*(?P<token>[^<]{4,100})\s*</password>
     categories: [secret, configuration, xml]
+    min_entropy: 3
     pattern_requirements:
-      min_entropy: 3
       ignore_if_contains:
         - "****"
         - "xxxx"
