@@ -1,28 +1,32 @@
 rules:
   - name: Maven Settings XML Credentials
     id: np.maven.1
-    base_score: 75
+    base_score: 50
     pattern: |
       (?xi)
+      <(?:server|proxy)>
+      [\s\S]{0,500}?
       <username>\s*[^<]{1,100}\s*</username>
       \s{1,200}
-      <password>\s*(?P<token>[^<]{3,100})\s*</password>
+      <password>\s*(?P<token>[^<]{4,100})\s*</password>
     categories: [secret, configuration, xml]
     pattern_requirements:
+      min_entropy: 3
       ignore_if_contains:
         - "****"
         - "xxxx"
         - "YOUR_PASSWORD"
+        - "${"
+        - "{{"
+        - "changeit"
+        - "changeme"
+        - "example"
+        - "test"
+        - "dummy"
     references:
       - https://maven.apache.org/settings.html#proxies
       - https://maven.apache.org/settings.html#servers
     examples:
-      - |
-        <username>dummy_user</username>
-        <password>dummy_password_123!</password>
-      - |
-        <username>admin</username>
-        <password>s3cr3t_p@ssw0rd!</password>
       - |
         <server>
           <id>releases</id>
