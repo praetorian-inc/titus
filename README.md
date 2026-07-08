@@ -430,12 +430,12 @@ The browser extension removes Content Security Policy and CORS headers from visi
 
 ## Building from Source
 
-### Standard Build (Pure Go)
+### Standard Build (Vectorscan-accelerated)
 
-The default build uses a pure-Go regex engine — no C dependencies required:
+By default Titus compiles with [Vectorscan](https://github.com/VectorCamp/vectorscan) (ARM) / [Hyperscan](https://github.com/intel/hyperscan) (x86) for SIMD-accelerated regex matching. This needs CGO, the C library, and `pkg-config` (which cgo uses to locate the library). `make build` checks for these and attempts to install anything missing via Homebrew / apt / dnf:
 
 ```bash
-# Build the CLI binary (outputs to dist/titus)
+# Build the CLI binary with vectorscan acceleration (outputs to dist/titus)
 make build
 
 # Build the Burp Suite extension JAR
@@ -451,28 +451,26 @@ make test
 make integration-test
 ```
 
-### Vectorscan/Hyperscan Build (Recommended for Performance)
+You'll see `[vectorscan] N/N rules compiled for Hyperscan` on startup when the accelerated engine is active.
 
-For significantly faster regex matching, build with [Vectorscan](https://github.com/VectorCamp/vectorscan) (ARM) or [Hyperscan](https://github.com/intel/hyperscan) (x86). This requires the C library installed and CGO enabled.
-
-**Install Vectorscan:**
+To install the C library yourself instead of relying on auto-install:
 
 ```bash
 # macOS (Homebrew)
-brew install vectorscan
+brew install pkg-config vectorscan
 
 # Ubuntu/Debian
-sudo apt-get install libhyperscan-dev
+sudo apt-get install pkg-config libhyperscan-dev
 
 # Fedora/RHEL
-sudo dnf install hyperscan-devel
+sudo dnf install pkgconf-pkg-config vectorscan-devel
 
-# Or build from source:
+# Or build vectorscan from source:
 git clone --depth 1 --branch vectorscan/5.4.11 https://github.com/VectorCamp/vectorscan.git
 cd vectorscan && cmake -B build -DCMAKE_INSTALL_PREFIX=/usr/local && cmake --build build && sudo cmake --install build
 ```
 
-**Build with Vectorscan:**
+If you invoke `go build` directly (for example, when embedding Titus), pass the tag and enable CGO:
 
 ```bash
 # macOS (Homebrew) — adjust PKG_CONFIG_PATH to your installed version
@@ -483,7 +481,17 @@ CGO_ENABLED=1 PKG_CONFIG_PATH="$(brew --prefix vectorscan)/lib/pkgconfig" \
 CGO_ENABLED=1 go build -tags vectorscan -o dist/titus ./cmd/titus
 ```
 
-You'll see `[vectorscan] N/N rules compiled for Hyperscan` on startup when the accelerated engine is active. Without vectorscan, Titus falls back to the pure-Go regex engine automatically.
+### Pure-Go Build (no C dependencies)
+
+If you can't install the C library — or want a fully portable, static binary — build the pure-Go engine instead. Titus automatically falls back to it at runtime whenever vectorscan isn't compiled in:
+
+```bash
+# Portable pure-Go binary (no CGO, no vectorscan)
+make build-pure
+
+# Fully static binary
+make build-static
+```
 
 ## Contributing
 
