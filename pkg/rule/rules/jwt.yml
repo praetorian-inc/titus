@@ -19,7 +19,7 @@ rules:
     )
     (?:[^a-zA-Z0-9_-]|$)   (?# this instead of a \b anchor because that doesn't play nicely with `-` )
 
-  categories: [api]
+  categories: [api, generic]
 
   references:
   - https://en.wikipedia.org/wiki/JSON_Web_Token
