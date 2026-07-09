@@ -45,6 +45,10 @@ func (d *dedupMatcher) DrainTimedOut() ([]*types.Match, error) {
 	return d.dedup.Deduplicate(matches), nil
 }
 
+func (d *dedupMatcher) Reset() {
+	d.inner.Reset()
+}
+
 func (d *dedupMatcher) Close() error {
 	return d.inner.Close()
 }

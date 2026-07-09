@@ -494,6 +494,18 @@ func (m *PortableRegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
 }
 
 // Close releases resources (no-op for regexp).
+// Reset clears the retry queue and timeout blacklist, keeping compiled regexes.
+func (m *PortableRegexpMatcher) Reset() {
+	m.retryMu.Lock()
+	m.retryJobs = nil
+	m.retryDropped = 0
+	m.retryMu.Unlock()
+
+	m.blacklistMu.Lock()
+	m.blacklist = make(map[string]int)
+	m.blacklistMu.Unlock()
+}
+
 func (m *PortableRegexpMatcher) Close() error {
 	return nil
 }

@@ -1021,6 +1021,19 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 }
 
 // Close releases all resources associated with the matcher.
+// Reset clears the retry queue and timeout blacklist, keeping the compiled
+// Hyperscan database and scratch pool (both reusable across scans).
+func (m *VectorscanMatcher) Reset() {
+	m.retryMu.Lock()
+	m.retryJobs = nil
+	m.retryDropped = 0
+	m.retryMu.Unlock()
+
+	m.blacklistMu.Lock()
+	m.blacklist = make(map[string]int)
+	m.blacklistMu.Unlock()
+}
+
 func (m *VectorscanMatcher) Close() error {
 	// Note: We don't drain scratchPool - sync.Pool automatically GCs unused items
 	// Attempting to drain would cause infinite loop since Pool.New() clones scratches

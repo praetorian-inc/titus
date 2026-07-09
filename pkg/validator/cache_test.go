@@ -8,6 +8,7 @@ import (
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidationCache_GetSet(t *testing.T) {
@@ -89,4 +90,16 @@ func TestValidationCache_Concurrent(t *testing.T) {
 
 	// No race condition errors = pass
 	assert.True(t, true)
+}
+
+func TestValidationCache_Clear_DropsSecretResults(t *testing.T) {
+	c := NewValidationCache()
+	c.Set([]byte("AKIAEXAMPLE"), types.NewValidationResult(types.StatusValid, 0, "ok"))
+	require.Equal(t, 1, c.Len())
+	require.NotNil(t, c.Get([]byte("AKIAEXAMPLE")))
+
+	c.Clear()
+
+	require.Equal(t, 0, c.Len(), "cache must be empty after Clear")
+	require.Nil(t, c.Get([]byte("AKIAEXAMPLE")), "no secret-derived result may survive Clear")
 }

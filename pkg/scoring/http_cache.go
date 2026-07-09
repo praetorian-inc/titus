@@ -43,3 +43,9 @@ func (c *httpResponseCache) put(key string, resp *cachedHTTPResponse) {
 	defer c.mu.Unlock()
 	c.entries[key] = resp
 }
+
+func (c *httpResponseCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = make(map[string]*cachedHTTPResponse)
+}

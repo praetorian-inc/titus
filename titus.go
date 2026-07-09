@@ -126,7 +126,7 @@ const (
 type Scanner struct {
 	matcher          matcher.Matcher
 	validationEngine *validator.Engine
-	scoringEngine    *scoring.Engine    // nil when scoring disabled
+	scoringEngine    *scoring.Engine             // nil when scoring disabled
 	resolvedAccess   accessibility.Accessibility // resolved once in NewScanner
 	config           *scannerConfig
 	mu               sync.RWMutex
@@ -442,6 +442,22 @@ func (s *Scanner) Close() error {
 		_ = s.matcher.Close()
 	}
 	return nil
+}
+
+// Reset clears all per-scan mutable state while keeping the compiled rules.
+func (s *Scanner) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.matcher != nil {
+		s.matcher.Reset()
+	}
+	if s.validationEngine != nil {
+		s.validationEngine.Reset()
+	}
+	if s.scoringEngine != nil {
+		s.scoringEngine.Reset()
+	}
 }
 
 // RuleCount returns the number of detection rules loaded.

@@ -42,6 +42,10 @@ func (f *filteringMatcher) DrainTimedOut() ([]*types.Match, error) {
 	return filterMatches(matches, f.rules), nil
 }
 
+func (f *filteringMatcher) Reset() {
+	f.inner.Reset()
+}
+
 func (f *filteringMatcher) Close() error {
 	return f.inner.Close()
 }

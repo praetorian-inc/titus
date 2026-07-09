@@ -81,9 +81,9 @@ func TestMatchParallel_vs_Sequential_Equivalence(t *testing.T) {
 		name        string
 		contentSize int // in iterations
 	}{
-		{"small", 10},     // <10KB - sequential path
-		{"medium", 100},   // ~10KB - boundary
-		{"large", 1000},   // >10KB - parallel path
+		{"small", 10},   // <10KB - sequential path
+		{"medium", 100}, // ~10KB - boundary
+		{"large", 1000}, // >10KB - parallel path
 	}
 
 	for _, tc := range testCases {
@@ -741,4 +741,22 @@ func TestPortableRegexp_QueueCapDropsExcess(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, capWarnings, "exactly one cap-reached warning must be emitted")
+}
+
+func TestPortableRegexpMatcher_Reset_ClearsPerScanState(t *testing.T) {
+	rules := []*types.Rule{{ID: "r1", Pattern: `AKIA[0-9A-Z]{16}`}}
+	m, err := NewPortableRegexp(rules, 0, nil)
+	require.NoError(t, err)
+
+	// Simulate a scan that timed out: content queued for retry + rule blacklisted.
+	m.retryJobs = []retryJob{{content: []byte("sensitive blob"), rule: rules[0]}}
+	m.retryDropped = 3
+	m.blacklist["r1"] = retryBlacklistThreshold
+
+	m.Reset()
+
+	require.Empty(t, m.retryJobs, "retry queue (holds scanned content) must be cleared")
+	require.Zero(t, m.retryDropped)
+	require.Empty(t, m.blacklist, "timeout blacklist must be cleared")
+	require.NotEmpty(t, m.regexCache, "compiled patterns must survive Reset")
 }

@@ -96,6 +96,12 @@ func (e *Engine) ValidateMatch(ctx context.Context, match *types.Match) (*types.
 	return types.NewValidationResult(types.StatusUndetermined, 0, "no validator available for this secret type"), nil
 }
 
+// Reset clears the validation-result cache so a reused engine never serves one
+// scan's secret validation to another.
+func (e *Engine) Reset() {
+	e.cache.Clear()
+}
+
 // CanValidate reports whether any registered validator can handle the given rule ID.
 func (e *Engine) CanValidate(ruleID string) bool {
 	for _, v := range e.validators {

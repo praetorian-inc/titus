@@ -178,6 +178,10 @@ func (m *RegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
 }
 
 // Close releases resources (no-op for regexp).
+// Reset is a no-op: RegexpMatcher holds no per-scan mutable state (single-
+// threaded, no retry queue or blacklist).
+func (m *RegexpMatcher) Reset() {}
+
 func (m *RegexpMatcher) Close() error {
 	return nil
 }

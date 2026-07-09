@@ -190,6 +190,15 @@ func (e *Engine) Stats() HTTPModifierStats {
 	return e.stats
 }
 
+// Reset clears the per-scan HTTP response cache and stats so a reused engine
+// never carries one scan's fetched responses or counters into another.
+func (e *Engine) Reset() {
+	e.cache.clear()
+	e.statsMu.Lock()
+	e.stats = HTTPModifierStats{}
+	e.statsMu.Unlock()
+}
+
 // findScorer returns the first scorer targeting the given ruleID, or nil.
 func (e *Engine) findScorer(ruleID string) *Scorer {
 	for _, s := range e.scorers {

@@ -40,6 +40,21 @@ func (c *ValidationCache) Set(secret []byte, result *types.ValidationResult) {
 	c.results[key] = result
 }
 
+// Clear drops all cached results. Used to isolate reused scanners between scans
+// so secret-derived validation results never carry over.
+func (c *ValidationCache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.results = make(map[string]*types.ValidationResult)
+}
+
+// Len returns the number of cached results (for tests/metrics).
+func (c *ValidationCache) Len() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.results)
+}
+
 // computeCacheKey returns SHA256 hash of secret as hex string.
 func computeCacheKey(secret []byte) string {
 	h := sha256.Sum256(secret)

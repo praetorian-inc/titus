@@ -20,6 +20,9 @@ type Matcher interface {
 
 	// Close releases resources (e.g., Hyperscan scratch space).
 	Close() error
+
+	// Reset clears per-scan mutable state while keeping the compiled patterns.
+	Reset()
 }
 
 // Config for matcher initialization.
