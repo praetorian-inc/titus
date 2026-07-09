@@ -55,6 +55,28 @@ build: $(BUILD_DEPS)
 
 # Check vectorscan/hyperscan availability and attempt auto-install if missing
 check-vectorscan:
+	@if ! command -v pkg-config >/dev/null 2>&1; then \
+		if [ "$$(uname)" = "Darwin" ]; then \
+			brew install pkg-config; \
+		elif command -v apt-get >/dev/null 2>&1; then \
+			sudo apt-get install -y pkg-config; \
+		elif command -v dnf >/dev/null 2>&1; then \
+			sudo dnf install -y pkgconf-pkg-config; \
+		fi; \
+		command -v pkg-config >/dev/null 2>&1 || \
+		(echo "" && \
+		echo "pkg-config is required to locate libhs for the vectorscan build." && \
+		echo "Install it manually:" && \
+		echo "" && \
+		echo "  macOS (Homebrew):  brew install pkg-config" && \
+		echo "  Ubuntu/Debian:     sudo apt-get install pkg-config" && \
+		echo "  Fedora/RHEL:       sudo dnf install pkgconf-pkg-config" && \
+		echo "" && \
+		echo "Or build without vectorscan (slower, but no dependencies):" && \
+		echo "  make build-pure" && \
+		echo "" && \
+		exit 1); \
+	fi
 ifeq ($(VECTORSCAN_AVAILABLE),0)
 	@echo ""
 	@echo "=== Vectorscan/Hyperscan not found ==="
@@ -77,9 +99,9 @@ ifeq ($(VECTORSCAN_AVAILABLE),0)
 		echo "" && \
 		exit 1); \
 	else \
-		if command -v apt-get &>/dev/null; then \
+		if command -v apt-get >/dev/null 2>&1; then \
 			sudo apt-get install -y libhyperscan-dev; \
-		elif command -v dnf &>/dev/null; then \
+		elif command -v dnf >/dev/null 2>&1; then \
 			sudo dnf install -y vectorscan-devel; \
 		else \
 			echo "No supported package manager found (expected apt-get or dnf)"; \
