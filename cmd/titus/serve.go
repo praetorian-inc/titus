@@ -25,13 +25,32 @@ stdin closes or SIGTERM is received.`,
 	RunE: runServe,
 }
 
+var (
+	serveRulesPath    string
+	serveRulesInclude string
+	serveRulesExclude string
+	serveRuleset      string
+	serveIncludeNoisy bool
+)
+
 func init() {
+	serveCmd.Flags().StringVar(&serveRulesPath, "rules", "", "Path to custom rules file or directory")
+	serveCmd.Flags().StringVar(&serveRulesInclude, "rules-include", "", "Include rules matching regex pattern (comma-separated)")
+	serveCmd.Flags().StringVar(&serveRulesExclude, "rules-exclude", "", "Exclude rules matching regex pattern (comma-separated)")
+	serveCmd.Flags().StringVar(&serveRuleset, "ruleset", "all", "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)")
+	serveCmd.Flags().BoolVar(&serveIncludeNoisy, "include-noisy", true, "Enable rules marked noisy: true (high false-positive rate)")
 	rootCmd.AddCommand(serveCmd)
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	// Create scanner core with builtin rules
-	core, err := scanner.NewCore("builtin", nil)
+	rules, err := loadRules(serveRulesPath, serveRulesInclude, serveRulesExclude, serveRuleset, serveIncludeNoisy)
+	if err != nil {
+		return fmt.Errorf("loading rules: %w", err)
+	}
+
+	core, err := scanner.NewCoreWithRules(rules, nil, func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, format, args...)
+	})
 	if err != nil {
 		return err
 	}
