@@ -58,3 +58,36 @@ func TestServeCommand_Integration(t *testing.T) {
 	// Verify ready signal was sent
 	assert.Contains(t, out.String(), `"type":"ready"`)
 }
+
+func TestServeCommand_RulesExcludeDisablesRule(t *testing.T) {
+	scan := func() string {
+		pr, pw := io.Pipe()
+		out := &bytes.Buffer{}
+		cmd := &cobra.Command{Use: "serve", RunE: runServe}
+		cmd.SetIn(pr)
+		cmd.SetOut(out)
+
+		done := make(chan error, 1)
+		go func() { done <- cmd.Execute() }()
+
+		time.Sleep(500 * time.Millisecond)
+		_, err := pw.Write([]byte(`{"type":"scan","payload":{"content":"sk_live_dhhfUUyfrAace5dBAZ10JrAD","source":""}}` + "\n"))
+		require.NoError(t, err)
+		time.Sleep(500 * time.Millisecond)
+		_, _ = pw.Write([]byte(`{"type":"close","payload":{}}` + "\n"))
+		_ = pw.Close()
+		require.NoError(t, <-done)
+		return out.String()
+	}
+
+	original := serveRulesExclude
+	defer func() { serveRulesExclude = original }()
+
+	// Rule enabled: the value matches np.stripe.1.
+	serveRulesExclude = ""
+	assert.Contains(t, scan(), "np.stripe.1")
+
+	// Rule excluded: the value no longer matches.
+	serveRulesExclude = `^np\.stripe\.1$`
+	assert.NotContains(t, scan(), "np.stripe.1")
+}
