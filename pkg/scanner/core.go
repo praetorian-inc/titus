@@ -109,14 +109,14 @@ func (c *Core) Scan(content, source string) (*ScanResult, error) {
 
 // ScanBatch scans multiple content items
 func (c *Core) ScanBatch(items []ContentItem) (*BatchScanResult, error) {
-	var results []ScanResult
+	results := make([]ScanResult, 0, len(items))
 	total := 0
 
 	for _, item := range items {
 		matches, err := c.matcher.Match([]byte(item.Content))
 		if err != nil {
-			// Skip items that fail to scan
-			continue
+			// Retain failed items with an empty result so results stay aligned with items.
+			matches = []*types.Match{}
 		}
 
 		results = append(results, ScanResult{
