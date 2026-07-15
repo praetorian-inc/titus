@@ -239,7 +239,7 @@ rules:
 
 
 - name: Azure Cognitive Services Host
-  id: np.azure.6
+  id: np.azure.9
   base_score: 62
 
   pattern: |

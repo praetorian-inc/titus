@@ -671,3 +671,22 @@ func TestLoadRulesFromFileMulti_InvalidRule(t *testing.T) {
 		t.Fatal("expected error for rule missing base_score")
 	}
 }
+
+// TestBuiltinRules_UniqueIDs guards against two builtin rules sharing an ID.
+// LoadBuiltinRules appends every rule without deduping, so a collision makes
+// ID-keyed lookups (scoring, ruleset selection, downstream mapping) resolve to
+// only one of the colliding rules.
+func TestBuiltinRules_UniqueIDs(t *testing.T) {
+	rules, err := NewLoader().LoadBuiltinRules()
+	if err != nil {
+		t.Fatalf("LoadBuiltinRules failed: %v", err)
+	}
+
+	nameByID := make(map[string]string, len(rules))
+	for _, r := range rules {
+		if prev, dup := nameByID[r.ID]; dup {
+			t.Errorf("duplicate rule ID %q: %q and %q", r.ID, prev, r.Name)
+		}
+		nameByID[r.ID] = r.Name
+	}
+}

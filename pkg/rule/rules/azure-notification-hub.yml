@@ -7,7 +7,7 @@ rules:
   pattern: |
     (?x)
     (?i)
-    (?:["']?(?:hub)?(?:access|api|notification(?:Hub)?)Key|SharedAccessKey)["']?  (?# Key name with optional quotes)
+    (?:["']?(?:hub(?:access|api)|notification(?:hub)?)Key|SharedAccessKey)["']?  (?# Azure-specific key name with optional quotes)
     \s*[:\]=]\s*                                                                    (?# Separator: colon, equals, or bracket-equals)
     ["']?                                                                           (?# Optional opening quote)
     (?P<key>[A-Za-z0-9+/]{32,88}={0,2})                                            (?# Base64-encoded key: 32-88 chars + padding)
