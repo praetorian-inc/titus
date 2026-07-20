@@ -7,7 +7,7 @@ rules:
   pattern: |
     (?xi)
     \b(?:jamf|jss)
-    [\w.\-]{0,20}?
+    (?:.|[\n\r]){0,40}?
     (?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|AUTH)
     (?:.|[\n\r]){0,16}?
     \b
@@ -45,6 +45,10 @@ rules:
   - 'jamf_api_token = "a3B8f29E4d1C6a0578e23D9f41b6C8e2qR7tY4uI5mN6vL2jH"'
   - 'export JSS_TOKEN=9f4B2d7E1a3c8056d2E7f1b94A6c3d80mN5vL2jHpQ8wX1zKr3'
   - 'JAMF_PASSWORD="E7d2A1f849c3B05d6e81F2a794c3D5b0pQ8wX1zKlM4nR9tYu"'
+  - 'jamf api token = "F1a3C5e7G9i1K3m5O7q9S1u3W5y7A9c1E3g5I7k9M1o3Q5"'
+  - |
+      jamf:
+        api_token: "b8D2f4H6j8L0n2P4r6T8v0X2z4B6d8F0h2J4l6N8p0R2t4"
   - |
       JAMF_URL=https://myorg.jamfcloud.com
       JAMF_CLIENT_ID=fac3f438-c990-4b6e-965d-f7a42e12b2b2
@@ -56,7 +60,9 @@ rules:
   - 'JAMF_CLIENT_SECRET=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
   - 'JAMF_CLIENT_SECRET='
   - 'JAMF_API_KEY="JSSResource/osxconfigurationprofiles"'
-  # "jss"/"jamf" must be a whole-word keyword, not a substring inside a longer
-  # identifier in minified/bundled web assets (e.g. camelCase map config keys).
+  # The leading \b makes "jss"/"jamf" match only as a whole-word keyword, not as
+  # a substring inside a longer identifier in minified/bundled web assets (e.g.
+  # camelCase map config keys). The keyword-to-credential gap stays permissive so
+  # spaced/nested config forms above still match.
   - 'loadJsScript: "bundle.min.js", apiKey: "aB3dEf5hIj7kLm9nOp1qRs3tUv5wXy7zAb9"'
   - 'renderJamfaceKey = "cD4eFg6iJk8lMn0oPq2rSt4uVw6xYz8aBc0dEf2gHi4"'
