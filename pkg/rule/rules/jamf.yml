@@ -6,8 +6,8 @@ rules:
 
   pattern: |
     (?xi)
-    (?:jamf|jss|jamfcloud)
-    (?:.|[\n\r]){0,40}?
+    \b(?:jamf|jss)
+    [\w.\-]{0,20}?
     (?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|AUTH)
     (?:.|[\n\r]){0,16}?
     \b
@@ -56,3 +56,7 @@ rules:
   - 'JAMF_CLIENT_SECRET=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
   - 'JAMF_CLIENT_SECRET='
   - 'JAMF_API_KEY="JSSResource/osxconfigurationprofiles"'
+  # "jss"/"jamf" must be a whole-word keyword, not a substring inside a longer
+  # identifier in minified/bundled web assets (e.g. camelCase map config keys).
+  - 'loadJsScript: "bundle.min.js", apiKey: "aB3dEf5hIj7kLm9nOp1qRs3tUv5wXy7zAb9"'
+  - 'renderJamfaceKey = "cD4eFg6iJk8lMn0oPq2rSt4uVw6xYz8aBc0dEf2gHi4"'
