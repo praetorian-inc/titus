@@ -64,5 +64,5 @@ rules:
   # a substring inside a longer identifier in minified/bundled web assets (e.g.
   # camelCase map config keys). The keyword-to-credential gap stays permissive so
   # spaced/nested config forms above still match.
-  - 'loadJsScript: "bundle.min.js", mapToken: "aB3dEf5hIj7kLm9nOp1qRs3tUv5wXy7zAb9"'
-  - 'renderJamfaceKey = "cD4eFg6iJk8lMn0oPq2rSt4uVw6xYz8aBc0dEf2gHi4"'
+  - 'loadJsScript: "bundle.min.js", mapToken: "your-token-here-placeholder-value"'
+  - 'renderJamfaceKey = "your-key-here-placeholder-value"'
