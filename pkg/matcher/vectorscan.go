@@ -100,6 +100,9 @@ func NewVectorscanWithTimeout(rules []*types.Rule, contextLines int, warnf func(
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
 	}
+	if matchTimeout <= 0 {
+		matchTimeout = 500 * time.Millisecond
+	}
 
 	m := &VectorscanMatcher{
 		rules:          rules,

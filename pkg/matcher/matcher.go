@@ -3,8 +3,16 @@ package matcher
 import (
 	"time"
 
+	"github.com/dlclark/regexp2"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
+
+func init() {
+	// regexp2's internal "fast clock" only ticks every 100ms by default,
+	// making any MatchTimeout shorter than ~200ms effectively meaningless.
+	// Must be called before any regexp2.Compile with MatchTimeout set.
+	regexp2.SetTimeoutCheckPeriod(10 * time.Millisecond)
+}
 
 // Matcher scans content for rule matches.
 type Matcher interface {

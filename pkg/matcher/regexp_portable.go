@@ -17,13 +17,6 @@ import (
 
 const parallelThreshold = 10000 // bytes
 
-func init() {
-	// regexp2's internal "fast clock" only ticks every 100ms by default,
-	// making any MatchTimeout shorter than ~200ms effectively meaningless.
-	// Setting the check period to 10ms lets sub-100ms timeouts fire reliably.
-	regexp2.SetTimeoutCheckPeriod(10 * time.Millisecond)
-}
-
 const (
 	retryBlacklistThreshold = 3   // timeout count before a rule is blacklisted per scan
 	retryQueueCap           = 500 // max queued retry jobs per scan
@@ -94,6 +87,9 @@ func NewPortableRegexp(rules []*types.Rule, contextLines int, warnf func(string,
 func NewPortableRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf func(string, ...any), matchTimeout time.Duration) (*PortableRegexpMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
+	}
+	if matchTimeout <= 0 {
+		matchTimeout = 500 * time.Millisecond
 	}
 
 	m := &PortableRegexpMatcher{

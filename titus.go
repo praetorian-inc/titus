@@ -249,9 +249,15 @@ func WithSCMToken(token string) Option {
 // The default is 500ms, which is generous enough for legitimate matches but
 // limits memory growth during catastrophic backtracking. Memory-constrained
 // environments may want a lower value (e.g., 10ms). A value of zero uses the
-// default. The retry pass (DrainTimedOut) uses 10x this value, capped at 30s.
+// default. Negative values are rejected. The retry pass (DrainTimedOut) uses
+// 10x this value, capped at 30s.
 func WithMatchTimeout(d time.Duration) Option {
-	return func(c *scannerConfig) { c.matchTimeout = d }
+	return func(c *scannerConfig) {
+		if d < 0 {
+			return
+		}
+		c.matchTimeout = d
+	}
 }
 
 // NewScanner creates a new Scanner with the given options.

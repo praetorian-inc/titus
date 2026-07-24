@@ -35,6 +35,9 @@ func NewRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf func(stri
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
 	}
+	if matchTimeout <= 0 {
+		matchTimeout = 500 * time.Millisecond
+	}
 
 	m := &RegexpMatcher{
 		rules:        rules,
