@@ -238,17 +238,12 @@ func extractPPTX(content []byte) ([]ExtractedContent, error) {
 	return results, nil
 }
 
-// pdfMaxInputSize is the maximum raw PDF file size we attempt to parse.
-// Large PDFs (>5MB) are almost always documents/presentations with complex
-// internal objects (font tables, cross-reference arrays, embedded images)
-// that cause the ledongthuc/pdf library to allocate unbounded memory.
-// Credential-containing PDFs (config exports, receipts) are small.
-const pdfMaxInputSize = 5 * 1024 * 1024 // 5MB
-
 // extractPDF extracts text from PDF files using ledongthuc/pdf.
 func extractPDF(content []byte, limits ExtractionLimits) ([]ExtractedContent, error) {
-	// Guard: skip large PDFs that blow up the parser's internal allocations
-	if len(content) > pdfMaxInputSize {
+	// Guard: skip PDFs larger than the configured per-file size limit.
+	// The ledongthuc/pdf parser allocates memory proportional to internal
+	// structures (font tables, xref arrays), so large PDFs can OOM.
+	if limits.MaxSize > 0 && int64(len(content)) > limits.MaxSize {
 		return nil, nil
 	}
 
@@ -301,13 +296,19 @@ func extractPDF(content []byte, limits ExtractionLimits) ([]ExtractedContent, er
 			continue
 		}
 
+		if maxTextBytes > 0 {
+			remaining := maxTextBytes - int64(text.Len())
+			if remaining <= 0 {
+				break
+			}
+			if int64(len(pageText)) > remaining {
+				text.WriteString(pageText[:remaining])
+				break
+			}
+		}
+
 		text.WriteString(pageText)
 		text.WriteString("\n")
-
-		// Stop if extracted text exceeds the size cap
-		if maxTextBytes > 0 && int64(text.Len()) > maxTextBytes {
-			break
-		}
 	}
 
 	extracted := text.String()

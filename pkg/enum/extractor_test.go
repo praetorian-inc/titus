@@ -242,14 +242,13 @@ func TestExtractText_PDF(t *testing.T) {
 	}
 }
 
-// TestExtractPDF_LargeFileSkipped verifies that PDFs exceeding pdfMaxInputSize are skipped.
+// TestExtractPDF_LargeFileSkipped verifies that PDFs exceeding MaxSize are skipped.
 func TestExtractPDF_LargeFileSkipped(t *testing.T) {
-	// Create content larger than the 5MB guard
-	large := make([]byte, pdfMaxInputSize+1)
-	// Fill with a valid-ish PDF header so it's not just zeros
+	limits := DefaultExtractionLimits()
+	// Create content larger than the default MaxSize
+	large := make([]byte, limits.MaxSize+1)
 	copy(large, []byte("%PDF-1.4 "))
 
-	limits := DefaultExtractionLimits()
 	results, err := extractPDF(large, limits)
 	if err != nil {
 		t.Fatalf("expected nil error for oversized PDF, got: %v", err)
@@ -267,30 +266,32 @@ func TestExtractPDF_PageCapRespected(t *testing.T) {
 		t.Fatalf("failed to read test file: %v", err)
 	}
 
-	// Set MaxPages to 1 — the test PDF should still extract successfully
-	// (it has at least 1 page). This verifies the limit plumbing works
-	// without causing errors on valid PDFs.
+	// Extract with MaxPages=1
 	limits := DefaultExtractionLimits()
 	limits.MaxPages = 1
-
-	results, err := extractPDF(content, limits)
+	capped, err := extractPDF(content, limits)
 	if err != nil {
 		t.Fatalf("extractPDF() with MaxPages=1 error = %v", err)
 	}
-
-	if len(results) == 0 {
+	if len(capped) == 0 {
 		t.Fatal("extractPDF() with MaxPages=1 returned no results")
 	}
 
-	// With MaxPages=0 (unlimited), extraction should also work
+	// Extract with MaxPages=0 (unlimited)
 	limits.MaxPages = 0
-	results, err = extractPDF(content, limits)
+	unlimited, err := extractPDF(content, limits)
 	if err != nil {
 		t.Fatalf("extractPDF() with MaxPages=0 error = %v", err)
 	}
-
-	if len(results) == 0 {
+	if len(unlimited) == 0 {
 		t.Fatal("extractPDF() with MaxPages=0 returned no results")
+	}
+
+	// Capped output should be no larger than unlimited output
+	cappedLen := len(capped[0].Content)
+	unlimitedLen := len(unlimited[0].Content)
+	if cappedLen > unlimitedLen {
+		t.Errorf("MaxPages=1 output (%d bytes) should not exceed unlimited output (%d bytes)", cappedLen, unlimitedLen)
 	}
 }
 
@@ -302,20 +303,20 @@ func TestExtractPDF_TextSizeCap(t *testing.T) {
 		t.Fatalf("failed to read test file: %v", err)
 	}
 
-	// Set MaxSize to 1 byte — extraction should still not error,
-	// but should cap the output early.
-	limits := DefaultExtractionLimits()
-	limits.MaxSize = 1
+	for _, cap := range []int64{1, 64, 512} {
+		limits := DefaultExtractionLimits()
+		limits.MaxSize = cap
 
-	results, err := extractPDF(content, limits)
-	if err != nil {
-		t.Fatalf("extractPDF() with MaxSize=1 error = %v", err)
-	}
+		results, err := extractPDF(content, limits)
+		if err != nil {
+			t.Fatalf("extractPDF() with MaxSize=%d error = %v", cap, err)
+		}
 
-	// Either no results (if first page produced empty text) or capped results
-	// The important thing is no error and no unbounded allocation
-	for _, result := range results {
-		t.Logf("Result with MaxSize=1: name=%s len=%d", result.Name, len(result.Content))
+		for _, result := range results {
+			if int64(len(result.Content)) > cap {
+				t.Errorf("MaxSize=%d: result content length %d exceeds cap", cap, len(result.Content))
+			}
+		}
 	}
 }
 
