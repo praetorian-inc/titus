@@ -17,6 +17,13 @@ import (
 
 const parallelThreshold = 10000 // bytes
 
+func init() {
+	// regexp2's internal "fast clock" only ticks every 100ms by default,
+	// making any MatchTimeout shorter than ~200ms effectively meaningless.
+	// Setting the check period to 10ms lets sub-100ms timeouts fire reliably.
+	regexp2.SetTimeoutCheckPeriod(10 * time.Millisecond)
+}
+
 const (
 	retryBlacklistThreshold = 3   // timeout count before a rule is blacklisted per scan
 	retryQueueCap           = 500 // max queued retry jobs per scan
@@ -54,7 +61,7 @@ type PortableRegexpMatcher struct {
 	dedup          *Deduplicator
 	contextLines   int
 	warnf          func(string, ...any)
-	matchTimeout   time.Duration // initial per-match timeout; 5s by default
+	matchTimeout   time.Duration // initial per-match timeout; 500ms by default
 
 	// retryMu protects retryJobs, retryDropped, and (together with blacklistMu)
 	// co-ordinates the cap check. retryJobs is written by parallel workers and
@@ -77,13 +84,13 @@ type PortableRegexpMatcher struct {
 // - Cross-compilation without CGO dependencies
 // - Benchmarking CGO vs non-CGO performance
 func NewPortableRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*PortableRegexpMatcher, error) {
-	return NewPortableRegexpWithTimeout(rules, contextLines, warnf, 5*time.Second)
+	return NewPortableRegexpWithTimeout(rules, contextLines, warnf, 500*time.Millisecond)
 }
 
 // NewPortableRegexpWithTimeout creates a portable regexp-based matcher with a configurable
 // initial match timeout. Exposed primarily for testing: pass a very short timeout (e.g. 1ms)
 // to reliably trigger the retry queue without requiring catastrophic backtracking patterns.
-// Production callers should use NewPortableRegexp, which applies the standard 5-second timeout.
+// Production callers should use NewPortableRegexp, which applies the default 500ms timeout.
 func NewPortableRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf func(string, ...any), matchTimeout time.Duration) (*PortableRegexpMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
@@ -422,7 +429,10 @@ func (m *PortableRegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
 	}
 	jobs = deduped
 
-	const retryTimeout = 30 * time.Second
+	retryTimeout := 10 * m.matchTimeout
+	if retryTimeout > 30*time.Second {
+		retryTimeout = 30 * time.Second
+	}
 
 	var all []*types.Match
 	for _, j := range jobs {

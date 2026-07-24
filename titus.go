@@ -144,6 +144,8 @@ type scannerConfig struct {
 	scopeEnabled bool
 	scopeTimeout time.Duration
 	scopeBudget  time.Duration
+	// Match timeout for regexp2 pattern execution
+	matchTimeout time.Duration
 	// Accessibility fields
 	accessibility       string // "public", "private", "auto"
 	accessibilityTarget string // for auto-detection: git repo root path
@@ -243,6 +245,15 @@ func WithSCMToken(token string) Option {
 	return func(c *scannerConfig) { c.scmToken = token }
 }
 
+// WithMatchTimeout sets the per-match timeout for regexp2 pattern execution.
+// The default is 500ms, which is generous enough for legitimate matches but
+// limits memory growth during catastrophic backtracking. Memory-constrained
+// environments may want a lower value (e.g., 10ms). A value of zero uses the
+// default. The retry pass (DrainTimedOut) uses 10x this value, capped at 30s.
+func WithMatchTimeout(d time.Duration) Option {
+	return func(c *scannerConfig) { c.matchTimeout = d }
+}
+
 // NewScanner creates a new Scanner with the given options.
 //
 // By default, the scanner:
@@ -291,6 +302,7 @@ func NewScanner(opts ...Option) (*Scanner, error) {
 	m, err := matcher.New(matcher.Config{
 		Rules:        config.rules,
 		ContextLines: config.contextLines,
+		MatchTimeout: config.matchTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating matcher: %w", err)

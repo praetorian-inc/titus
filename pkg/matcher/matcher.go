@@ -1,6 +1,10 @@
 package matcher
 
-import "github.com/praetorian-inc/titus/pkg/types"
+import (
+	"time"
+
+	"github.com/praetorian-inc/titus/pkg/types"
+)
 
 // Matcher scans content for rule matches.
 type Matcher interface {
@@ -36,4 +40,9 @@ type Config struct {
 	// WarnFunc, if non-nil, is called for non-fatal regex warnings
 	// (timeouts, pattern errors). If nil, warnings are silently discarded.
 	WarnFunc func(format string, args ...any)
+
+	// MatchTimeout is the per-match timeout for regexp2 pattern execution.
+	// If zero, the default of 500ms is used. The retry pass uses a longer
+	// timeout derived from this value (10x, capped at 30s).
+	MatchTimeout time.Duration
 }
