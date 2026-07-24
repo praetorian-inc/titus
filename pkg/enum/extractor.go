@@ -83,7 +83,7 @@ func extractWithState(path string, content []byte, state *extractState) (result 
 	case ".pptx":
 		return extractPPTX(content)
 	case ".pdf":
-		return extractPDF(content)
+		return extractPDF(content, state.limits)
 	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".crx":
 		return extractZIPWithState(content, state)
 	case ".gz":
@@ -238,8 +238,20 @@ func extractPPTX(content []byte) ([]ExtractedContent, error) {
 	return results, nil
 }
 
+// pdfMaxInputSize is the maximum raw PDF file size we attempt to parse.
+// Large PDFs (>5MB) are almost always documents/presentations with complex
+// internal objects (font tables, cross-reference arrays, embedded images)
+// that cause the ledongthuc/pdf library to allocate unbounded memory.
+// Credential-containing PDFs (config exports, receipts) are small.
+const pdfMaxInputSize = 5 * 1024 * 1024 // 5MB
+
 // extractPDF extracts text from PDF files using ledongthuc/pdf.
-func extractPDF(content []byte) ([]ExtractedContent, error) {
+func extractPDF(content []byte, limits ExtractionLimits) ([]ExtractedContent, error) {
+	// Guard: skip large PDFs that blow up the parser's internal allocations
+	if len(content) > pdfMaxInputSize {
+		return nil, nil
+	}
+
 	// Create a temporary file since ledongthuc/pdf requires a file or ReaderAt with size
 	tmpFile, err := os.CreateTemp("", "pdf-*.pdf")
 	if err != nil {
@@ -263,11 +275,20 @@ func extractPDF(content []byte) ([]ExtractedContent, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	// Extract text from all pages
+	// Extract text from pages, respecting limits
 	var text strings.Builder
 	totalPages := r.NumPage()
 
-	for pageNum := 1; pageNum <= totalPages; pageNum++ {
+	// Cap page count if limit is set
+	pagesToExtract := totalPages
+	if limits.MaxPages > 0 && totalPages > limits.MaxPages {
+		pagesToExtract = limits.MaxPages
+	}
+
+	// Use MaxSize as the per-PDF text cap (consistent with per-file limits elsewhere)
+	maxTextBytes := limits.MaxSize
+
+	for pageNum := 1; pageNum <= pagesToExtract; pageNum++ {
 		page := r.Page(pageNum)
 		if page.V.IsNull() {
 			continue
@@ -282,6 +303,11 @@ func extractPDF(content []byte) ([]ExtractedContent, error) {
 
 		text.WriteString(pageText)
 		text.WriteString("\n")
+
+		// Stop if extracted text exceeds the size cap
+		if maxTextBytes > 0 && int64(text.Len()) > maxTextBytes {
+			break
+		}
 	}
 
 	extracted := text.String()
