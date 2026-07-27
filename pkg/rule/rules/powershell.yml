@@ -5,8 +5,7 @@ rules:
   base_score: 65
 
   pattern: |
-    (?x)(?m)
-    ^\s*[^#]*
+    (?x)
     (?P<token>
       ConvertTo-SecureString
       \s+
@@ -41,8 +40,7 @@ rules:
   base_score: 68
 
   pattern: |
-    (?x)(?m)
-    ^\s*[^#]*
+    (?x)
     (?P<token>
       \[(?:System\.)?Net\.NetworkCredential\]::new\(
       \s*

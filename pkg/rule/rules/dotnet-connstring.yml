@@ -8,7 +8,7 @@ rules:
     (?x)(?i)
     (?P<token>
       (?:Data\s+Source|Server)\s*=\s*[^;"'\s]+
-      .{0,200}
+      [^"'\n]{0,200}?
       (?:Password|Pwd)\s*=\s*[^;"'\s$%*{]{4,128}
     )
 
@@ -54,11 +54,16 @@ rules:
     (?x)(?i)
     (?P<token>
       (?:Data\s+Source|Server)\s*=\s*[^;"'\s]{4,128}
-      .{0,200}
+      [^"'\n]{0,200}?
       Integrated\s+Security\s*=\s*(?:SSPI|true)
     )
 
   categories: [identifier]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "Password="
+      - "Pwd="
 
   description: |
     A .NET connection string using Windows Integrated Security (SSPI)

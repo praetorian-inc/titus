@@ -7,7 +7,7 @@ rules:
   pattern: |
     (?x)(?i)
     <AdministratorPassword>
-    [\s\S]{0,100}
+    [^<]{0,100}?
     <Value>
     \s*
     (?P<token>[^<\s%$]{4,512})
@@ -23,6 +23,7 @@ rules:
       - "EXAMPLE"
       - "YOUR_"
       - "ADMIN_PASSWORD"
+      - "*SENSITIVE*DATA*DELETED*"
 
   description: |
     A Windows unattend.xml file contains a local administrator password.
@@ -53,14 +54,23 @@ rules:
   pattern: |
     (?x)(?i)
     <AutoLogon>
-    [\s\S]{0,200}
+    [^<]{0,200}?
+    <Password>
+    [^<]{0,50}?
     <Value>
     \s*
-    (?P<token>[^<\s]{4,512})
+    (?P<token>[^<\s%$]{4,512})
     \s*
     </Value>
 
   categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+      - "*SENSITIVE*DATA*DELETED*"
 
   description: |
     A Windows unattend.xml file contains an AutoLogon password.

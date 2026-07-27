@@ -10,7 +10,7 @@ rules:
       CREATE\s+
       (?:USER|LOGIN)\s+
       \S+
-      .{0,100}
+      .{0,100}?
       (?:IDENTIFIED\s+BY|WITH\s+PASSWORD)
       \s*=?\s*
       ['"]?
@@ -46,4 +46,3 @@ rules:
   negative_examples:
   - 'CREATE USER admin'
   - 'CREATE LOGIN [svc] WITH DEFAULT_DATABASE = master'
-  - '-- CREATE USER admin IDENTIFIED BY secret'
