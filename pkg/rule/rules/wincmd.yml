@@ -6,11 +6,12 @@ rules:
   noisy: true
 
   pattern: |
-    (?x)(?i)
+    (?x)(?i)(?m)
+    ^\s*
     (?P<token>
-      schtasks
-      .{1,300}
-      (?:/rp\s+|/p\s+)
+      schtasks\s+
+      [^\n]*
+      /(?:rp|p)\s+
       \S+
     )
 
@@ -31,6 +32,7 @@ rules:
   negative_examples:
   - 'schtasks /query /tn "Backup"'
   - 'schtasks /delete /tn "Backup" /f'
+  - 'REM schtasks /create /rp fakepassword'
 
 
 - name: Windows Net Use with Credentials
@@ -39,19 +41,22 @@ rules:
   noisy: true
 
   pattern: |
-    (?x)(?i)
+    (?x)(?i)(?m)
+    ^\s*
     (?P<token>
       net\s+use\s+
-      [^\n]{1,200}
+      \S+\s+
+      [^\n]*
       /user:\S+
+      \s+
+      \S+
     )
 
   categories: [fuzzy, generic, secret]
 
   description: |
-    A Windows net use command with /user: flag was found.
-    This maps a network drive with explicit credentials, exposing
-    the username and potentially the password in the command line.
+    A Windows net use command with /user: flag and a password was found.
+    This maps a network drive with explicit credentials.
 
   references:
   - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/net-use
@@ -63,6 +68,8 @@ rules:
   negative_examples:
   - 'net use Z: \\server\share'
   - 'net use * /delete'
+  - 'net use Z: \\server\share /user:DOMAIN\admin'
+  - 'REM net use Z: \\server\share /user:admin pass'
 
 
 - name: Windows Credential Manager Command
@@ -71,20 +78,21 @@ rules:
   noisy: true
 
   pattern: |
-    (?x)(?i)
+    (?x)(?i)(?m)
+    ^\s*
     (?P<token>
       cmdkey\s+
       /(?:add|generic):\S+
-      [^\n]{0,200}
-      /(?:user|pass):\S+
+      [^\n]*
+      /pass:\S+
     )
 
   categories: [fuzzy, generic, secret]
 
   description: |
-    A Windows cmdkey command was found adding stored credentials.
-    cmdkey manages the Windows Credential Manager; /add with /user
-    and /pass stores plaintext credentials.
+    A Windows cmdkey command was found storing credentials.
+    cmdkey manages the Windows Credential Manager; /add with /pass
+    stores plaintext credentials.
 
   references:
   - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmdkey
@@ -96,3 +104,5 @@ rules:
   negative_examples:
   - 'cmdkey /list'
   - 'cmdkey /delete:server01'
+  - 'cmdkey /add:server01 /user:admin'
+  - 'REM cmdkey /add:server /pass:fake'

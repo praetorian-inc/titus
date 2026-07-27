@@ -508,8 +508,9 @@ rulesets:
   - kingfisher.dotnet.connstring.1      # .NET Connection String with Password
   - kingfisher.dotnet.connstring.2      # .NET Connection String with Integrated Security
   - kingfisher.sqlddl.1                 # SQL Account Creation with Password
-  - kingfisher.s3uri.1                  # S3 Bucket URI
-  - kingfisher.dbconn.php.1             # PHP Database Connection with Credentials
+  # kingfisher.s3uri.1 intentionally excluded — identifier-only rule, use --ruleset all
+  - kingfisher.dbconn.php.1             # PHP MySQL Connection with Credentials
+  - kingfisher.dbconn.php.2             # PHP PostgreSQL Connection with Credentials
   - kingfisher.dbconn.python.1          # Python Database Connection with Credentials
   - kingfisher.dbconn.python.2          # Python Database Connection with DSN String
   - kingfisher.dbconn.perl.1            # Perl DBI Connection with Credentials

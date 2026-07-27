@@ -7,7 +7,7 @@ rules:
   pattern: |
     (?x)
     (?P<token>
-      (?:mysql_connect|mysql_pconnect|mysqli_connect|pg_connect|pg_pconnect)
+      (?:mysql_connect|mysql_pconnect|mysqli_connect)
       \s*\(\s*
       ["'][^"']+["']
       \s*,\s*
@@ -19,22 +19,61 @@ rules:
   categories: [fuzzy, generic, secret]
 
   description: |
-    A PHP database connection function call with hardcoded string
+    A PHP MySQL database connection function call with hardcoded string
     arguments was found. These typically contain host, username,
     and password parameters as literal strings.
 
   references:
   - https://www.php.net/manual/en/function.mysqli-connect.php
-  - https://www.php.net/manual/en/function.pg-connect.php
 
   examples:
   - 'mysql_connect("localhost", "root", "password123")'
   - "mysqli_connect('db.internal', 'admin', 'P@ssw0rd', 'mydb')"
-  - 'pg_connect("host=dbserver user=admin password=s3cret dbname=mydb")'
 
   negative_examples:
   - 'mysql_connect($host, $user, $pass)'
   - 'mysqli_connect($db_host, $db_user, $db_pass, $db_name)'
+
+
+- name: PHP PostgreSQL Connection with Credentials
+  id: kingfisher.dbconn.php.2
+  base_score: 62
+
+  pattern: |
+    (?x)
+    (?P<token>
+      (?:pg_connect|pg_pconnect)
+      \s*\(\s*
+      ["']
+      [^"']*password=[^"'\s$]{4,128}
+      [^"']*
+      ["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "$pg"
+      - "$db"
+      - "$DB"
+      - "${PG"
+      - "${DB"
+
+  description: |
+    A PHP PostgreSQL connection using a DSN string with an embedded
+    password was found.
+
+  references:
+  - https://www.php.net/manual/en/function.pg-connect.php
+
+  examples:
+  - 'pg_connect("host=dbserver user=admin password=s3cret dbname=mydb")'
+  - "pg_pconnect('host=prod user=app password=P@ssw0rd dbname=analytics')"
+
+  negative_examples:
+  - 'pg_connect("host=$pghost user=$pguser password=$pgpass")'
+  - 'pg_connect($dsn)'
 
 
 - name: Python Database Connection with Credentials
@@ -109,7 +148,8 @@ rules:
   base_score: 58
 
   pattern: |
-    (?x)
+    (?x)(?m)
+    ^\s*[^#]*
     (?P<token>
       DBI->connect\(
       \s*
@@ -136,6 +176,7 @@ rules:
   negative_examples:
   - 'DBI->connect($dsn, $user, $pass)'
   - 'DBI->connect($ENV{DSN}, $ENV{USER}, $ENV{PASS})'
+  - '# DBI->connect("dbi:mysql:test", "root", "secret")'
 
 
 - name: Ruby DBI Connection with Credentials
@@ -143,7 +184,8 @@ rules:
   base_score: 58
 
   pattern: |
-    (?x)
+    (?x)(?m)
+    ^\s*[^#]*
     (?P<token>
       DBI\.connect\(
       \s*
@@ -166,6 +208,7 @@ rules:
   negative_examples:
   - 'DBI.connect(ENV["DATABASE_URL"])'
   - 'DBI.connect(dsn, user, pass)'
+  - '# DBI.connect("DBI:Mysql:test", "root", "password")'
 
 
 - name: C# Database Connection Object with Password
@@ -182,6 +225,14 @@ rules:
     \s*\)
 
   categories: [fuzzy, generic, secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "****"
+      - "xxxx"
+      - "PLACEHOLDER"
+      - "${DB_"
+      - "%PASSWORD"
 
   description: |
     A C# database connection object constructed with an inline connection

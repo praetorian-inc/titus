@@ -5,7 +5,8 @@ rules:
   base_score: 65
 
   pattern: |
-    (?x)
+    (?x)(?m)
+    ^\s*[^#]*
     (?P<token>
       ConvertTo-SecureString
       \s+
@@ -40,7 +41,8 @@ rules:
   base_score: 68
 
   pattern: |
-    (?x)
+    (?x)(?m)
+    ^\s*[^#]*
     (?P<token>
       \[(?:System\.)?Net\.NetworkCredential\]::new\(
       \s*
@@ -66,3 +68,4 @@ rules:
   negative_examples:
   - '[Net.NetworkCredential]::new($user, $pass)'
   - '[Net.NetworkCredential]::new($env:USERNAME, $env:PASSWORD)'
+  - '# [Net.NetworkCredential]::new("user", "pass")'
