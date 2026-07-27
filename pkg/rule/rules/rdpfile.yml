@@ -1,0 +1,29 @@
+rules:
+
+- name: RDP File Saved Password
+  id: kingfisher.rdp.1
+  base_score: 75
+
+  pattern: |
+    (?x)(?i)
+    password\s+51:b:
+    (?P<token>[0-9A-Fa-f]{16,1024})
+
+  categories: [secret]
+
+  description: |
+    An RDP file contains a saved credential blob.
+    The "password 51:b:" field stores a DPAPI-encrypted password hash
+    that can be decrypted with the user's credentials on the originating host.
+
+  references:
+  - https://learn.microsoft.com/en-us/windows-server/remote/remote-desktop-services/clients/rdp-files
+
+  examples:
+  - 'password 51:b:01000000D08C9DDF0115D1118C7A00C04FC297EB01000000'
+  - 'password 51:b:AABBCCDD00112233445566778899AABB'
+
+  negative_examples:
+  - 'password 51:b:'
+  - 'password:s:mypassword'
+  - 'username:s:admin'

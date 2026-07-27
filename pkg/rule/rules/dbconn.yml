@@ -1,0 +1,260 @@
+rules:
+
+- name: PHP Database Connection with Credentials
+  id: kingfisher.dbconn.php.1
+  base_score: 62
+
+  pattern: |
+    (?x)
+    (?P<token>
+      (?:mysql_connect|mysql_pconnect|mysqli_connect)
+      \s*\(\s*
+      ["'][^"']+["']
+      \s*,\s*
+      ["'][^"']+["']
+      \s*,\s*
+      ["'][^"']+["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  min_entropy: 2.5
+
+  description: |
+    A PHP MySQL database connection function call with hardcoded string
+    arguments was found. These typically contain host, username,
+    and password parameters as literal strings.
+
+  references:
+  - https://www.php.net/manual/en/function.mysqli-connect.php
+
+  examples:
+  - 'mysql_connect("localhost", "root", "password123")'
+  - "mysqli_connect('db.internal', 'admin', 'P@ssw0rd', 'mydb')"
+
+  negative_examples:
+  - 'mysql_connect($host, $user, $pass)'
+  - 'mysqli_connect($db_host, $db_user, $db_pass, $db_name)'
+
+
+- name: PHP PostgreSQL Connection with Credentials
+  id: kingfisher.dbconn.php.2
+  base_score: 62
+
+  pattern: |
+    (?x)
+    (?P<token>
+      (?:pg_connect|pg_pconnect)
+      \s*\(\s*
+      ["']
+      [^"']*\bpassword=[^"'\s$]{4,128}
+      [^"']*
+      ["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "$pg"
+      - "$db"
+      - "$DB"
+      - "${PG"
+      - "${DB"
+
+  description: |
+    A PHP PostgreSQL connection using a DSN string with an embedded
+    password was found.
+
+  references:
+  - https://www.php.net/manual/en/function.pg-connect.php
+
+  examples:
+  - 'pg_connect("host=dbserver user=admin password=s3cret dbname=mydb")'
+  - "pg_pconnect('host=prod user=app password=P@ssw0rd dbname=analytics')"
+
+  negative_examples:
+  - 'pg_connect("host=$pghost user=$pguser password=$pgpass")'
+  - 'pg_connect($dsn)'
+
+
+- name: Python Database Connection with Credentials
+  id: kingfisher.dbconn.python.1
+  base_score: 60
+
+  pattern: |
+    (?x)
+    (?P<token>
+      (?:psycopg2|mysql\.connector|pymysql|cx_Oracle|sqlite3)
+      \.connect\(
+      [^)]{0,500}?
+      \b(?:password|passwd|pwd)
+      \s*=\s*
+      ["'][^"']{4,128}["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  min_entropy: 2.5
+
+  description: |
+    A Python database connection call with a hardcoded password
+    keyword argument was found.
+
+  references:
+  - https://www.psycopg.org/docs/module.html
+  - https://dev.mysql.com/doc/connector-python/en/connector-python-connectargs.html
+
+  examples:
+  - 'conn = psycopg2.connect(host="prod", dbname="app", user="admin", password="secret")'
+  - "conn = mysql.connector.connect(host='db', user='root', password='p@ssw0rd')"
+  - "conn = pymysql.connect(host='db', user='admin', passwd='s3cret')"
+
+  negative_examples:
+  - 'psycopg2.connect(os.environ["DATABASE_URL"])'
+  - 'mysql.connector.connect(**config)'
+  - 'psycopg2.connect(password=os.getenv("DB_PASSWORD"))'
+
+
+- name: Python Database Connection with DSN String
+  id: kingfisher.dbconn.python.2
+  base_score: 58
+
+  pattern: |
+    (?x)
+    (?P<token>
+      (?:psycopg2|mysql\.connector|pymysql)
+      \.connect\(\s*
+      ["']
+      [^"']*?
+      \bpassword=[^"'\s]{4,128}
+      [^"']*
+      ["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  min_entropy: 2.5
+
+  description: |
+    A Python database connection using a DSN string with an embedded
+    password was found.
+
+  examples:
+  - 'psycopg2.connect("host=prod dbname=app user=admin password=secret")'
+  - "pymysql.connect('host=db user=root password=p@ssw0rd dbname=mydb')"
+
+  negative_examples:
+  - 'psycopg2.connect("host=prod dbname=app")'
+  - 'psycopg2.connect(dsn_string)'
+
+
+- name: Perl DBI Connection with Credentials
+  id: kingfisher.dbconn.perl.1
+  base_score: 58
+
+  pattern: |
+    (?x)
+    (?P<token>
+      DBI->connect\(
+      \s*
+      ["'][^"']+["']
+      \s*,\s*
+      ["'][^"']+["']
+      \s*,\s*
+      ["'][^"']+["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  min_entropy: 2.5
+
+  description: |
+    A Perl DBI database connection with hardcoded credentials was found.
+    DBI->connect() takes a DSN, username, and password as arguments.
+
+  references:
+  - https://metacpan.org/pod/DBI
+
+  examples:
+  - 'my $dbh = DBI->connect("dbi:mysql:database=test", "root", "secret");'
+  - "$dbh = DBI->connect('dbi:Pg:dbname=app;host=db', 'admin', 'P@ssw0rd')"
+
+  negative_examples:
+  - 'DBI->connect($dsn, $user, $pass)'
+  - 'DBI->connect($ENV{DSN}, $ENV{USER}, $ENV{PASS})'
+  - '# DBI->connect("dbi:mysql:test", "root", "secret")'
+
+
+- name: Ruby DBI Connection with Credentials
+  id: kingfisher.dbconn.ruby.1
+  base_score: 58
+
+  pattern: |
+    (?x)
+    (?P<token>
+      DBI\.connect\(
+      \s*
+      ["'][^"']+["']
+      \s*,\s*
+      ["'][^"']+["']
+      \s*,\s*
+      ["'][^"']+["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  min_entropy: 2.5
+
+  description: |
+    A Ruby DBI database connection with hardcoded credentials was found.
+
+  examples:
+  - 'dbh = DBI.connect("DBI:Mysql:mydb:localhost", "root", "password")'
+  - "DBI.connect('DBI:Pg:prod_db', 'admin', 'P@ssw0rd')"
+
+  negative_examples:
+  - 'DBI.connect(ENV["DATABASE_URL"])'
+  - 'DBI.connect(dsn, user, pass)'
+  - '# DBI.connect("DBI:Mysql:test", "root", "password")'
+
+
+- name: C# Database Connection Object with Password
+  id: kingfisher.dbconn.csharp.1
+  base_score: 68
+
+  pattern: |
+    (?x)(?i)
+    (?:SqlConnection|MySqlConnection|NpgsqlConnection|OracleConnection|SqlCeConnection)
+    \s*\(\s*
+    ["']
+    (?P<token>[^"']*(?:Password|Pwd)\s*=[^"']+)
+    ["']
+    \s*\)
+
+  categories: [fuzzy, generic, secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "****"
+      - "xxxx"
+      - "PLACEHOLDER"
+      - "${DB_"
+      - "%PASSWORD"
+
+  description: |
+    A C# database connection object constructed with an inline connection
+    string containing a password was found.
+
+  references:
+  - https://learn.microsoft.com/en-us/dotnet/api/system.data.sqlclient.sqlconnection
+
+  examples:
+  - 'new SqlConnection("Server=prod;Database=app;User Id=sa;Password=s3cret!")'
+  - "new MySqlConnection('Server=db;Uid=root;Pwd=P@ssw0rd;Database=mydb')"
+  - 'new NpgsqlConnection("Host=pg;Username=admin;Password=hunter2;Database=app")'
+
+  negative_examples:
+  - 'new SqlConnection(connectionString)'
+  - 'new SqlConnection(ConfigurationManager.ConnectionStrings["db"].ConnectionString)'
+  - 'new SqlConnection("")'

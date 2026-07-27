@@ -26,6 +26,7 @@ rulesets:
   - np.mapbox.1       # Mapbox Public Access Token
   - np.s3.1           # AWS S3 Bucket (subdomain style)
   - np.s3.2           # AWS S3 Bucket (path style)
+  - kingfisher.s3uri.1 # S3/S3A Bucket URI (s3:// protocol)
   - np.segment.1      # Segment Public API Token
   - np.shopify.1      # Shopify Domain
   - np.twitter.1      # Twitter Client ID

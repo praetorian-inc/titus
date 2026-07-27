@@ -487,3 +487,32 @@ rulesets:
   - kingfisher.zhipu.1                  # Zhipu (BigModel) API Key
   - kingfisher.zohocrm.1               # Zoho CRM API Access Token
   - kingfisher.zuplo.1                  # Zuplo API Key
+  # Snaffler-NG parity rules (Windows post-ex, network infra, DB connections)
+  - kingfisher.gpp.1                    # Group Policy Preferences cpassword (MS14-025)
+  - kingfisher.unattend.1               # Windows Unattend.xml Administrator Password
+  - kingfisher.unattend.2               # Windows Unattend.xml AutoLogon Password
+  - kingfisher.powershell.1             # PowerShell SecureString Conversion
+  - kingfisher.powershell.2             # PowerShell PSCredential Constructor
+  - kingfisher.rdp.1                    # RDP File Saved Password
+  - kingfisher.wincmd.1                 # Windows Scheduled Task with Credentials (noisy)
+  - kingfisher.wincmd.2                 # Windows Net Use with Credentials (noisy)
+  - kingfisher.wincmd.3                 # Windows Credential Manager Command (noisy)
+  - kingfisher.firefox.1                # Firefox Encrypted Password
+  - kingfisher.firefox.2                # Firefox Encrypted Username
+  - kingfisher.cisco.1                  # Cisco Enable Password
+  - kingfisher.cisco.2                  # SNMP Read-Write Community String
+  - kingfisher.cisco.3                  # Cisco PAC Key
+  - kingfisher.cisco.4                  # Network Config NVRAM Indicator
+  - kingfisher.viewstate.1              # ASP.NET MachineKey Validation Key
+  - kingfisher.viewstate.2              # ASP.NET MachineKey Decryption Key
+  - kingfisher.dotnet.connstring.1      # .NET Connection String with Password
+  - kingfisher.dotnet.connstring.2      # .NET Connection String with Integrated Security
+  - kingfisher.sqlddl.1                 # SQL Account Creation with Password
+  # kingfisher.s3uri.1 intentionally excluded — identifier-only rule, use --ruleset all
+  - kingfisher.dbconn.php.1             # PHP MySQL Connection with Credentials
+  - kingfisher.dbconn.php.2             # PHP PostgreSQL Connection with Credentials
+  - kingfisher.dbconn.python.1          # Python Database Connection with Credentials
+  - kingfisher.dbconn.python.2          # Python Database Connection with DSN String
+  - kingfisher.dbconn.perl.1            # Perl DBI Connection with Credentials
+  - kingfisher.dbconn.ruby.1            # Ruby DBI Connection with Credentials
+  - kingfisher.dbconn.csharp.1          # C# Database Connection Object with Password

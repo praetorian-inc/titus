@@ -1,0 +1,66 @@
+rules:
+
+- name: ASP.NET MachineKey Validation Key
+  id: kingfisher.viewstate.1
+  base_score: 88
+
+  pattern: |
+    (?x)(?i)
+    validationKey
+    \s*=\s*
+    ["']
+    (?P<token>[A-Fa-f0-9]{40,256})
+    ["']
+
+  categories: [secret]
+
+  description: |
+    An ASP.NET machineKey validation key was found. This key is used
+    to compute the MAC for ViewState data. If exposed, an attacker
+    can forge ViewState payloads to achieve remote code execution
+    via .NET deserialization (ysoserial.net).
+
+  references:
+  - https://learn.microsoft.com/en-us/previous-versions/aspnet/w8h3skw9(v=vs.100)
+  - https://blog.liquidsec.net/2021/06/01/asp-net-cryptography-for-pentesters/
+
+  examples:
+  - 'validationKey="C50B3C89CB21F4F1422FF158A5B42D0E8DB8CB5CDA1742572A487D9401E3400267682B202B746511891C1BAF47F8D25C07F6C39A104696DB51F17C529AD3CABE"'
+  - "validationKey='A5326FFC9D3B5B7A90C1D205BFEE6757449C684E15E5D3E69C8BAE36C3B16B53FE33E8B5C8E99B12DDA9B1B81CF19CBA7E8D4F5CC3'"
+
+  negative_examples:
+  - 'validationKey="AutoGenerate"'
+  - 'validationKey=""'
+  - 'validationKey="AutoGenerate,IsolateApps"'
+
+
+- name: ASP.NET MachineKey Decryption Key
+  id: kingfisher.viewstate.2
+  base_score: 88
+
+  pattern: |
+    (?x)(?i)
+    decryptionKey
+    \s*=\s*
+    ["']
+    (?P<token>[A-Fa-f0-9]{32,128})
+    ["']
+
+  categories: [secret]
+
+  description: |
+    An ASP.NET machineKey decryption key was found. Combined with the
+    validation key, this enables full ViewState forgery and .NET
+    deserialization attacks for remote code execution.
+
+  references:
+  - https://learn.microsoft.com/en-us/previous-versions/aspnet/w8h3skw9(v=vs.100)
+
+  examples:
+  - 'decryptionKey="8A9BE8FD67AF6979E7D20198CFEA50DD3D987AAAAD7FA14C"'
+  - "decryptionKey='F5A98B2404B23F42A78D21D2A22B4E2A3B91CCC'"
+
+  negative_examples:
+  - 'decryptionKey="AutoGenerate"'
+  - 'decryptionKey=""'
+  - 'decryptionKey="AutoGenerate,IsolateApps"'

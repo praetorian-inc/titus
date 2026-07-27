@@ -1,0 +1,48 @@
+rules:
+
+- name: SQL Account Creation with Password
+  id: kingfisher.sqlddl.1
+  base_score: 85
+
+  pattern: |
+    (?x)(?i)
+    (?P<token>
+      CREATE\s+
+      (?:USER|LOGIN)\s+
+      \S+
+      .{0,100}?
+      (?:IDENTIFIED\s+BY|WITH\s+PASSWORD)
+      \s*=?\s*
+      ['"]?
+      [^'";\s$%]{4,128}
+    )
+
+  categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "CHANGEME"
+      - "CHANGE_ME"
+      - "PLACEHOLDER"
+      - "EXAMPLE"
+      - "YOUR_"
+      - "strongpassword"
+      - "yourpassword"
+
+  description: |
+    A SQL CREATE USER or CREATE LOGIN statement with an inline password
+    was found. This exposes database credentials in source code, scripts,
+    or configuration files.
+
+  references:
+  - https://learn.microsoft.com/en-us/sql/t-sql/statements/create-login-transact-sql
+  - https://dev.mysql.com/doc/refman/8.0/en/create-user.html
+
+  examples:
+  - "CREATE LOGIN sa WITH PASSWORD = 'MyStr0ngP@ss!'"
+  - "CREATE USER 'admin'@'%' IDENTIFIED BY 'secret123'"
+  - "CREATE LOGIN [svc_account] WITH PASSWORD = 'P@ssw0rd'"
+
+  negative_examples:
+  - 'CREATE USER admin'
+  - 'CREATE LOGIN [svc] WITH DEFAULT_DATABASE = master'

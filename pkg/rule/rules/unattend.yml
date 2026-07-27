@@ -1,0 +1,97 @@
+rules:
+
+- name: Windows Unattend.xml Administrator Password
+  id: kingfisher.unattend.1
+  base_score: 82
+
+  pattern: |
+    (?x)(?i)
+    <AdministratorPassword>
+    [^<]{0,100}?
+    <Value>
+    \s*
+    (?P<token>[^<\s%$]{4,512})
+    \s*
+    </Value>
+
+  categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+      - "YOUR_"
+      - "ADMIN_PASSWORD"
+      - "*SENSITIVE*DATA*DELETED*"
+
+  description: |
+    A Windows unattend.xml file contains a local administrator password.
+    These passwords are typically Base64-encoded plaintext and grant
+    full administrative access to the system.
+
+  references:
+  - https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/
+  - https://attack.mitre.org/techniques/T1552/001/
+
+  examples:
+  - |
+      <AdministratorPassword>
+        <Value>UABAAHMAcwB3ADAAcgBkADEAMgAzAEEAZABtAGkAbgBpAHMAdAByAGEAdABvAHIAUABhAHMAcwB3AG8AcgBkAA==</Value>
+        <PlainText>false</PlainText>
+      </AdministratorPassword>
+  - '<AdministratorPassword><Value>MyPlainTextPassword</Value><PlainText>true</PlainText></AdministratorPassword>'
+
+  negative_examples:
+  - '<AdministratorPassword><Value></Value></AdministratorPassword>'
+  - '<UserPassword><Value>notadmin</Value></UserPassword>'
+
+
+- name: Windows Unattend.xml AutoLogon Password
+  id: kingfisher.unattend.2
+  base_score: 80
+
+  pattern: |
+    (?x)(?i)
+    <AutoLogon>
+    [^<]{0,200}?
+    <Password>
+    [^<]{0,50}?
+    <Value>
+    \s*
+    (?P<token>[^<\s%$]{4,512})
+    \s*
+    </Value>
+
+  categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+      - "*SENSITIVE*DATA*DELETED*"
+
+  description: |
+    A Windows unattend.xml file contains an AutoLogon password.
+    Auto-logon credentials are stored in plaintext or Base64 and
+    allow automatic login to the system without user interaction.
+
+  references:
+  - https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/
+  - https://attack.mitre.org/techniques/T1552/001/
+
+  examples:
+  - |
+      <AutoLogon>
+        <Password>
+          <Value>UABAAHMAcwB3ADAAcgBkAA==</Value>
+          <PlainText>false</PlainText>
+        </Password>
+        <Username>Administrator</Username>
+        <Enabled>true</Enabled>
+      </AutoLogon>
+
+  negative_examples:
+  - '<AutoLogon><Password><Value></Value></Password></AutoLogon>'
+  - '<AutoLogon><Enabled>false</Enabled></AutoLogon>'

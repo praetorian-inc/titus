@@ -1,0 +1,134 @@
+rules:
+
+- name: Cisco Enable Password
+  id: kingfisher.cisco.1
+  base_score: 80
+
+  pattern: |
+    (?x)(?m)
+    ^\s*
+    enable\s+(?:password|secret)
+    \s+
+    (?:level\s+\d+\s+)?
+    (?:\d\s+)?
+    (?P<token>\S{4,128})
+
+  categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "<YOUR_"
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+      - "${ENABLE"
+      - "YOUR_PASSWORD"
+
+  description: |
+    A Cisco IOS enable password or enable secret was found in a
+    network device configuration. Enable passwords grant privileged
+    EXEC mode access to the device.
+
+  references:
+  - https://www.cisco.com/c/en/us/td/docs/ios/security/command/reference/sec_book/sec_e1.html
+
+  examples:
+  - 'enable password MyS3cretP@ss'
+  - 'enable secret 5 $1$abc$hashvaluehere'
+  - 'enable secret SuperS3cret!'
+  - 'enable password level 15 MyS3cret'
+
+  negative_examples:
+  - 'no enable password OldPass'
+  - '! enable password example'
+  - '! enable password OldDisabledPassword'
+
+
+- name: SNMP Read-Write Community String
+  id: kingfisher.cisco.2
+  base_score: 78
+
+  pattern: |
+    (?x)(?i)(?m)
+    ^\s*
+    snmp-server\s+community
+    \s+
+    (?P<token>\S{2,64})
+    \s+
+    RW
+
+  categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "<COMMUNITY>"
+      - "<string>"
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+
+  description: |
+    An SNMP read-write community string was found in a network device
+    configuration. RW community strings allow full management access
+    to the device via SNMP, including configuration changes.
+
+  references:
+  - https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/snmp/configuration/xe-16/snmp-xe-16-book.html
+
+  examples:
+  - 'snmp-server community pr1vate RW'
+  - 'snmp-server community S3cretCommunity RW 99'
+
+  negative_examples:
+  - 'snmp-server community public RO'
+  - 'no snmp-server community private RW'
+  - '! snmp-server community example RW'
+
+
+- name: Cisco PAC Key
+  id: kingfisher.cisco.3
+  base_score: 72
+
+  pattern: |
+    (?x)(?m)
+    ^\s*
+    pac\s+key\s+
+    (?P<token>[0-7]\s+\S{4,128})
+
+  categories: [secret]
+
+  description: |
+    A Cisco Protected Access Credential (PAC) key was found.
+    PAC keys are used in 802.1x EAP-FAST authentication and
+    can be used to impersonate the RADIUS server.
+
+  examples:
+  - 'pac key 0 MyPacKeyS3cret'
+  - 'pac key 7 045802150C2E'
+
+  negative_examples:
+  - 'no pac key'
+  - '! pac key 0 example'
+
+
+- name: Network Config NVRAM Indicator
+  id: kingfisher.cisco.4
+  base_score: 40
+
+  pattern: |
+    (?x)
+    (?P<token>NVRAM\s+config\s+last\s+updated)
+
+  categories: [identifier]
+
+  description: |
+    A network device NVRAM configuration dump indicator was found.
+    This line appears at the top of Cisco IOS running-config exports,
+    indicating the file likely contains device credentials and
+    configuration details.
+
+  examples:
+  - '! NVRAM config last updated at 14:32:10 UTC Mon Jan 15 2024'
+
+  negative_examples:
+  - 'NVRAM config example'

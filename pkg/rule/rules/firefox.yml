@@ -1,0 +1,73 @@
+rules:
+
+- name: Firefox Encrypted Password
+  id: kingfisher.firefox.1
+  base_score: 70
+
+  pattern: |
+    (?x)
+    "encryptedPassword"
+    \s*:\s*
+    "(?P<token>[A-Za-z0-9+/=]{8,2048})"
+
+  categories: [secret]
+
+  min_entropy: 3.0
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "EXAMPLE"
+      - "CHANGEME"
+
+  description: |
+    A Firefox or Thunderbird logins.json encrypted password was found.
+    These passwords are encrypted with the user's master password (or
+    a blank password if none is set) and can be decrypted with tools
+    like firefox_decrypt if the key4.db file is also available.
+
+  references:
+  - https://github.com/unode/firefox_decrypt
+  - https://support.mozilla.org/en-US/kb/password-manager-remember-delete-edit-logins
+
+  examples:
+  - '"encryptedPassword":"MDoEEPgAAAAAAAAAAAAAAAAAAAEwFAYIKoZIhvcNAwcECGfkQkRfNhY3BBjw+WOvFAlnDhJ3F9w="'
+  - '"encryptedPassword": "MDIEEPgAAAAAAAAAAAAAAAAAAAEwFAYIKoZIhvcNAwcECLWhS0x/nklCBAi05AkO9sGmeg=="'
+
+  negative_examples:
+  - '"encryptedPassword":""'
+  - '"encryptedPassword": "test"'
+  - '"password": "notencrypted"'
+
+
+- name: Firefox Encrypted Username
+  id: kingfisher.firefox.2
+  base_score: 60
+
+  pattern: |
+    (?x)
+    "encryptedUsername"
+    \s*:\s*
+    "(?P<token>[A-Za-z0-9+/=]{8,2048})"
+
+  categories: [secret]
+
+  min_entropy: 3.0
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "EXAMPLE"
+      - "CHANGEME"
+
+  description: |
+    A Firefox or Thunderbird logins.json encrypted username was found.
+    The presence of encrypted credentials indicates a credential store
+    that may be decryptable if the key database is also accessible.
+
+  examples:
+  - '"encryptedUsername":"MDoEEPgAAAAAAAAAAAAAAAAAAAEwFAYIKoZIhvcNAwcECMfkRkRfNhY3BBjw+WOvFAlnDh=="'
+
+  negative_examples:
+  - '"encryptedUsername":""'
+  - '"username": "plaintext"'
