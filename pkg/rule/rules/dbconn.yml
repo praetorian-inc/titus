@@ -47,7 +47,7 @@ rules:
       (?:pg_connect|pg_pconnect)
       \s*\(\s*
       ["']
-      [^"']*password=[^"'\s$]{4,128}
+      [^"']*\bpassword=[^"'\s$]{4,128}
       [^"']*
       ["']
     )
@@ -88,7 +88,7 @@ rules:
       (?:psycopg2|mysql\.connector|pymysql|cx_Oracle|sqlite3)
       \.connect\(
       [^)]{0,500}?
-      (?:password|passwd|pwd)
+      \b(?:password|passwd|pwd)
       \s*=\s*
       ["'][^"']{4,128}["']
     )
@@ -127,7 +127,7 @@ rules:
       \.connect\(\s*
       ["']
       [^"']*?
-      password=[^"'\s]{4,128}
+      \bpassword=[^"'\s]{4,128}
       [^"']*
       ["']
     )
