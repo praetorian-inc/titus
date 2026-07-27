@@ -1,0 +1,68 @@
+rules:
+
+- name: PowerShell SecureString Conversion
+  id: kingfisher.powershell.1
+  base_score: 65
+
+  pattern: |
+    (?x)
+    (?P<token>
+      ConvertTo-SecureString
+      \s+
+      ["'][^"']{4,200}["']
+      \s+
+      -AsPlainText
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  description: |
+    A PowerShell ConvertTo-SecureString call with -AsPlainText was found.
+    This pattern converts a plaintext string to a SecureString, revealing
+    the credential value in the script source.
+
+  references:
+  - https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/convertto-securestring
+
+  examples:
+  - '$secpasswd = ConvertTo-SecureString "P@ssw0rd123" -AsPlainText -Force'
+  - "ConvertTo-SecureString 'MyS3cret!' -AsPlainText -Force"
+  - '$password = ConvertTo-SecureString "hunter2" -AsPlainText'
+
+  negative_examples:
+  - 'ConvertTo-SecureString $password -AsPlainText'
+  - 'ConvertTo-SecureString (Read-Host) -AsPlainText'
+  - '# ConvertTo-SecureString "example" -AsPlainText'
+
+
+- name: PowerShell PSCredential Constructor
+  id: kingfisher.powershell.2
+  base_score: 68
+
+  pattern: |
+    (?x)
+    (?P<token>
+      \[(?:System\.)?Net\.NetworkCredential\]::new\(
+      \s*
+      ["'][^"']{1,100}["']
+      \s*,\s*
+      ["'][^"']{1,100}["']
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  description: |
+    A PowerShell NetworkCredential constructor with hardcoded credentials
+    was found. This is the PowerShell-native syntax for creating
+    .NET NetworkCredential objects with username and password.
+
+  references:
+  - https://learn.microsoft.com/en-us/dotnet/api/system.net.networkcredential
+
+  examples:
+  - '[Net.NetworkCredential]::new("admin", "P@ssw0rd!")'
+  - '[System.Net.NetworkCredential]::new("svc_account", "s3cretP@ss")'
+
+  negative_examples:
+  - '[Net.NetworkCredential]::new($user, $pass)'
+  - '[Net.NetworkCredential]::new($env:USERNAME, $env:PASSWORD)'

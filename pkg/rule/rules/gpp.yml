@@ -1,0 +1,35 @@
+rules:
+
+- name: Group Policy Preferences cpassword
+  id: kingfisher.gpp.1
+  base_score: 92
+
+  pattern: |
+    (?x)(?i)
+    cpassword
+    \s*=\s*
+    ["']?
+    (?P<token>[A-Za-z0-9+/=]{16,512})
+    ["']?
+
+  categories: [secret]
+
+  description: |
+    A Group Policy Preferences (GPP) cpassword attribute was found.
+    GPP passwords are AES-256 encrypted, but Microsoft published the
+    private key in MSDN (MS14-025), making them trivially decryptable.
+    This is a critical finding on any Active Directory domain.
+
+  references:
+  - https://learn.microsoft.com/en-us/security-updates/securitybulletins/2014/ms14-025
+  - https://adsecurity.org/?p=2288
+
+  examples:
+  - 'cpassword="edBSHOwhZLTjt/QS9FeIcJ83mjWA98gw9guKOhJOdcqh+ZGMeXOsQbCpZ3xUjTLfCuNH8pG5aSVYdYw/NglVmQ"'
+  - "cpassword='j1Uyj3Vx8TY9LtLZil2uAuZkFQA/4latT76ZwgdHdhw'"
+  - '<Properties cpassword="lGJAMEO1yNQ7W0oRk6NiJnHBiLq4e0cMgjcpLXCGTTk" userName="localadmin"'
+
+  negative_examples:
+  - 'cpassword=""'
+  - 'cpassword="YOURGPPPASSWORDHERE"'
+  - 'password="notacpassword"'

@@ -1,0 +1,98 @@
+rules:
+
+- name: Windows Scheduled Task with Credentials
+  id: kingfisher.wincmd.1
+  base_score: 60
+  noisy: true
+
+  pattern: |
+    (?x)(?i)
+    (?P<token>
+      schtasks
+      .{1,300}
+      (?:/rp\s+|/p\s+)
+      \S+
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  description: |
+    A Windows schtasks command with credential flags was found.
+    The /rp (run password) and /p (password) flags pass credentials
+    to scheduled task creation commands.
+
+  references:
+  - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks-create
+
+  examples:
+  - 'schtasks /create /tn "Backup" /tr "backup.bat" /sc daily /ru admin /rp P@ssw0rd'
+  - 'schtasks /create /tn mytask /tr cmd.exe /ru DOMAIN\svc /rp s3cretPass /sc once'
+
+  negative_examples:
+  - 'schtasks /query /tn "Backup"'
+  - 'schtasks /delete /tn "Backup" /f'
+
+
+- name: Windows Net Use with Credentials
+  id: kingfisher.wincmd.2
+  base_score: 58
+  noisy: true
+
+  pattern: |
+    (?x)(?i)
+    (?P<token>
+      net\s+use\s+
+      [^\n]{1,200}
+      /user:\S+
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  description: |
+    A Windows net use command with /user: flag was found.
+    This maps a network drive with explicit credentials, exposing
+    the username and potentially the password in the command line.
+
+  references:
+  - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/net-use
+
+  examples:
+  - 'net use Z: \\server\share /user:DOMAIN\admin P@ssw0rd'
+  - 'net use \\10.0.0.1\c$ /user:administrator secret123'
+
+  negative_examples:
+  - 'net use Z: \\server\share'
+  - 'net use * /delete'
+
+
+- name: Windows Credential Manager Command
+  id: kingfisher.wincmd.3
+  base_score: 55
+  noisy: true
+
+  pattern: |
+    (?x)(?i)
+    (?P<token>
+      cmdkey\s+
+      /(?:add|generic):\S+
+      [^\n]{0,200}
+      /(?:user|pass):\S+
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  description: |
+    A Windows cmdkey command was found adding stored credentials.
+    cmdkey manages the Windows Credential Manager; /add with /user
+    and /pass stores plaintext credentials.
+
+  references:
+  - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmdkey
+
+  examples:
+  - 'cmdkey /add:server01 /user:admin /pass:P@ssw0rd'
+  - 'cmdkey /generic:TERMSRV/dc01 /user:DOMAIN\svcaccount /pass:s3cret!'
+
+  negative_examples:
+  - 'cmdkey /list'
+  - 'cmdkey /delete:server01'

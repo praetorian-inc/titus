@@ -1,0 +1,32 @@
+rules:
+
+- name: S3 Bucket URI
+  id: kingfisher.s3uri.1
+  base_score: 25
+
+  pattern: |
+    (?x)
+    (?P<token>
+      s3a?://
+      [a-zA-Z0-9][-a-zA-Z0-9.]{1,62}
+      (?:/[^\s"'<>)}\]]*)?
+    )
+
+  categories: [identifier]
+
+  description: |
+    An S3 or S3A bucket URI was found. This identifies cloud storage
+    resources that may contain sensitive data. S3A URIs are used by
+    Hadoop/Spark for S3 access.
+
+  references:
+  - https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
+
+  examples:
+  - 's3://my-company-backups/database-dump.sql'
+  - 's3a://data-lake/raw/2024/customers.parquet'
+  - 's3://prod-secrets/credentials.json'
+
+  negative_examples:
+  - 's3://a'
+  - 'https://s3.amazonaws.com/bucket'

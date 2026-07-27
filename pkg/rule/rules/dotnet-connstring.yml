@@ -1,0 +1,64 @@
+rules:
+
+- name: .NET Connection String with Password
+  id: kingfisher.dotnet.connstring.1
+  base_score: 82
+
+  pattern: |
+    (?x)(?i)
+    (?P<token>
+      (?:Data\s+Source|Server)\s*=\s*[^;"'\s]+
+      .{0,200}
+      (?:Password|Pwd)\s*=\s*[^;"'\s]{4,128}
+    )
+
+  categories: [fuzzy, generic, secret]
+
+  description: |
+    A .NET-style database connection string containing an explicit
+    password was found. These connection strings typically connect
+    to SQL Server, MySQL, or PostgreSQL databases.
+
+  references:
+  - https://learn.microsoft.com/en-us/dotnet/framework/data/adonet/connection-strings
+
+  examples:
+  - 'Data Source=myServer;User Id=admin;Password=s3cretP@ss;'
+  - 'Server=prod.db.internal;Database=app;User Id=sa;Password=MyP@ssw0rd!'
+  - '"Data Source=10.0.0.5;Initial Catalog=AppDB;Password=hunter2"'
+
+  negative_examples:
+  - 'Data Source=myServer;Integrated Security=SSPI;'
+  - 'Data Source=myServer;Password=$ENV_PASSWORD;'
+  - 'Data Source=myServer;Password=****;'
+
+
+- name: .NET Connection String with Integrated Security
+  id: kingfisher.dotnet.connstring.2
+  base_score: 35
+
+  pattern: |
+    (?x)(?i)
+    (?P<token>
+      (?:Data\s+Source|Server)\s*=\s*[^;"'\s]{4,128}
+      .{0,200}
+      Integrated\s+Security\s*=\s*(?:SSPI|true)
+    )
+
+  categories: [identifier]
+
+  description: |
+    A .NET connection string using Windows Integrated Security (SSPI)
+    was found. While no password is exposed, this identifies database
+    servers and indicates Windows authentication is in use.
+
+  references:
+  - https://learn.microsoft.com/en-us/dotnet/framework/data/adonet/connection-strings
+
+  examples:
+  - 'Data Source=sqlserver01;Integrated Security=SSPI;Database=HR'
+  - 'Server=10.0.0.5;Integrated Security=true;Initial Catalog=AppDB'
+
+  negative_examples:
+  - 'Integrated Security=SSPI'
+  - 'Data Source=example;Password=test;Integrated Security=SSPI;'
