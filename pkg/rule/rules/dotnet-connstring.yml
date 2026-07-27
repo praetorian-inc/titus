@@ -9,10 +9,23 @@ rules:
     (?P<token>
       (?:Data\s+Source|Server)\s*=\s*[^;"'\s]+
       .{0,200}
-      (?:Password|Pwd)\s*=\s*[^;"'\s]{4,128}
+      (?:Password|Pwd)\s*=\s*[^;"'\s$%*{]{4,128}
     )
 
   categories: [fuzzy, generic, secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "****"
+      - "xxxx"
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+      - "YOUR_"
+      - "yourpassword"
+      - "${DB_"
+      - "%PASSWORD"
+      - "ENV_"
 
   description: |
     A .NET-style database connection string containing an explicit

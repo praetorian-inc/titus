@@ -10,11 +10,19 @@ rules:
     [\s\S]{0,100}
     <Value>
     \s*
-    (?P<token>[^<\s]{4,512})
+    (?P<token>[^<\s%$]{4,512})
     \s*
     </Value>
 
   categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+      - "YOUR_"
+      - "ADMIN_PASSWORD"
 
   description: |
     A Windows unattend.xml file contains a local administrator password.

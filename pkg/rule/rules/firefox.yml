@@ -12,6 +12,14 @@ rules:
 
   categories: [secret]
 
+  min_entropy: 3.0
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "EXAMPLE"
+      - "CHANGEME"
+
   description: |
     A Firefox or Thunderbird logins.json encrypted password was found.
     These passwords are encrypted with the user's master password (or
@@ -43,6 +51,14 @@ rules:
     "(?P<token>[A-Za-z0-9+/=]{8,2048})"
 
   categories: [secret]
+
+  min_entropy: 3.0
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "PLACEHOLDER"
+      - "EXAMPLE"
+      - "CHANGEME"
 
   description: |
     A Firefox or Thunderbird logins.json encrypted username was found.

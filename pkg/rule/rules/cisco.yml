@@ -13,6 +13,15 @@ rules:
 
   categories: [secret]
 
+  pattern_requirements:
+    ignore_if_contains:
+      - "<YOUR_"
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
+      - "${ENABLE"
+      - "YOUR_PASSWORD"
+
   description: |
     A Cisco IOS enable password or enable secret was found in a
     network device configuration. Enable passwords grant privileged
@@ -45,6 +54,14 @@ rules:
     RW
 
   categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "<COMMUNITY>"
+      - "<string>"
+      - "PLACEHOLDER"
+      - "CHANGEME"
+      - "EXAMPLE"
 
   description: |
     An SNMP read-write community string was found in a network device

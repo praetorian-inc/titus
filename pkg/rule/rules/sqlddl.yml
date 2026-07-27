@@ -14,10 +14,20 @@ rules:
       (?:IDENTIFIED\s+BY|WITH\s+PASSWORD)
       \s*=?\s*
       ['"]?
-      [^'";\s]{4,128}
+      [^'";\s$%]{4,128}
     )
 
   categories: [secret]
+
+  pattern_requirements:
+    ignore_if_contains:
+      - "CHANGEME"
+      - "CHANGE_ME"
+      - "PLACEHOLDER"
+      - "EXAMPLE"
+      - "YOUR_"
+      - "strongpassword"
+      - "yourpassword"
 
   description: |
     A SQL CREATE USER or CREATE LOGIN statement with an inline password
