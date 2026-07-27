@@ -90,7 +90,7 @@ var namedGroupRegex = regexp.MustCompile(`\(\?P?<[^>]+>`)
 // - CGO is available and acceptable
 // - Scanning large files or many files
 func NewVectorscan(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*VectorscanMatcher, error) {
-	return NewVectorscanWithTimeout(rules, contextLines, warnf, 500*time.Millisecond)
+	return NewVectorscanWithTimeout(rules, contextLines, warnf, 5*time.Second)
 }
 
 // NewVectorscanWithTimeout creates a Vectorscan matcher with a configurable per-match
@@ -101,7 +101,7 @@ func NewVectorscanWithTimeout(rules []*types.Rule, contextLines int, warnf func(
 		return nil, fmt.Errorf("no rules provided")
 	}
 	if matchTimeout <= 0 {
-		matchTimeout = 500 * time.Millisecond
+		matchTimeout = 5 * time.Second
 	}
 
 	m := &VectorscanMatcher{

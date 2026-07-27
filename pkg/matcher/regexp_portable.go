@@ -77,7 +77,7 @@ type PortableRegexpMatcher struct {
 // - Cross-compilation without CGO dependencies
 // - Benchmarking CGO vs non-CGO performance
 func NewPortableRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*PortableRegexpMatcher, error) {
-	return NewPortableRegexpWithTimeout(rules, contextLines, warnf, 500*time.Millisecond)
+	return NewPortableRegexpWithTimeout(rules, contextLines, warnf, 5*time.Second)
 }
 
 // NewPortableRegexpWithTimeout creates a portable regexp-based matcher with a configurable
@@ -89,7 +89,7 @@ func NewPortableRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf f
 		return nil, fmt.Errorf("no rules provided")
 	}
 	if matchTimeout <= 0 {
-		matchTimeout = 500 * time.Millisecond
+		matchTimeout = 5 * time.Second
 	}
 
 	m := &PortableRegexpMatcher{

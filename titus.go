@@ -246,11 +246,10 @@ func WithSCMToken(token string) Option {
 }
 
 // WithMatchTimeout sets the per-match timeout for regexp2 pattern execution.
-// The default is 500ms, which is generous enough for legitimate matches but
-// limits memory growth during catastrophic backtracking. Memory-constrained
-// environments may want a lower value (e.g., 10ms). A value of zero uses the
-// default. Negative values are rejected. The retry pass (DrainTimedOut) uses
-// 10x this value, capped at 30s.
+// The default is 5s. Memory-constrained environments may want a lower value
+// (e.g., 500ms or 10ms). A value of zero uses the default. Negative values
+// are rejected. The retry pass (DrainTimedOut) uses 10x this value, capped
+// at 30s.
 func WithMatchTimeout(d time.Duration) Option {
 	return func(c *scannerConfig) {
 		if d < 0 {

@@ -50,7 +50,7 @@ type Config struct {
 	WarnFunc func(format string, args ...any)
 
 	// MatchTimeout is the per-match timeout for regexp2 pattern execution.
-	// If zero, the default of 500ms is used. The retry pass uses a longer
+	// If zero, the default of 5s is used. The retry pass uses a longer
 	// timeout derived from this value (10x, capped at 30s).
 	MatchTimeout time.Duration
 }

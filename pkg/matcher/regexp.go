@@ -23,20 +23,20 @@ type RegexpMatcher struct {
 	matchTimeout time.Duration
 }
 
-// NewRegexp creates a new regexp-based matcher with the default 500ms timeout.
+// NewRegexp creates a new regexp-based matcher with the default 5s timeout.
 func NewRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*RegexpMatcher, error) {
-	return NewRegexpWithTimeout(rules, contextLines, warnf, 500*time.Millisecond)
+	return NewRegexpWithTimeout(rules, contextLines, warnf, 5*time.Second)
 }
 
 // NewRegexpWithTimeout creates a new regexp-based matcher with a configurable
 // per-match timeout. Production callers should use NewRegexp, which applies
-// the default 500ms timeout.
+// the default 5s timeout.
 func NewRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf func(string, ...any), matchTimeout time.Duration) (*RegexpMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
 	}
 	if matchTimeout <= 0 {
-		matchTimeout = 500 * time.Millisecond
+		matchTimeout = 5 * time.Second
 	}
 
 	m := &RegexpMatcher{
