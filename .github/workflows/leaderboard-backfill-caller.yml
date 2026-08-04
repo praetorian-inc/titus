@@ -1,0 +1,49 @@
+# Operator-dispatched REPLAY path for leaderboard metrics. The live caller
+# (leaderboard-metrics.yml) fires only on a real `pull_request_target: closed`
+# event and never retries, so PRs that merged before this repo was onboarded
+# have no metrics at all. titus failed 3 runs beginning 2026-07-06,
+# losing 3 merged PRs.
+#
+# ⚠ The `uses:` pin is COUPLED TO PROD IAM: the LeaderboardMetricsRole trust
+# list names the CALLED reusable at this exact SHA, so bumping it alone fails
+# closed at AssumeRole with no local signal. A bump needs the matching
+# guard-core backend/template.yml entry deployed FIRST (ENG-4164 runbook).
+#
+# This repo has NO .github/dependabot.yml, so Dependabot version updates are
+# off and the pin above is not currently at risk of an automated bump. If a
+# dependabot.yml is ever added here with a `github-actions` ecosystem, it MUST
+# carry ignore entries for BOTH leaderboard reusables, or this pin gets bumped
+# and delivery fails closed and silently — the ENG-5687 incident exactly.
+#
+# `capability_map` is omitted DELIBERATELY — unset means "derive it from this
+# repo's own live leaderboard-metrics.yml on the default branch", so a replay
+# attributes capabilities exactly as live runs do; passing a value is what
+# would drift.
+#
+# Replay is idempotent ONLY while author resolution is unchanged: the consumer
+# upserts CodeCommit on `#code_commit#<repo>#<pr_number>#<author>`, so
+# re-running a PR overwrites its own row — a changed ENGINEER_EMAIL_MAP keys a
+# second row and double-counts (ENG-5693).
+#
+# Sole repo prerequisite: the `leaderboard` GitHub environment (present). NEVER
+# apply the Actions OIDC sub-claim customization (see leaderboard-metrics.yml).
+name: Leaderboard Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_numbers:
+        description: "PR numbers to replay (comma- or space-separated)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  id-token: write
+
+jobs:
+  backfill:
+    uses: praetorian-inc/public-workflows/.github/workflows/leaderboard-backfill.yml@6c715ccf351a09bfcb916aede4c542e437e5f31d # v2.17.0
+    with:
+      pr_numbers: ${{ inputs.pr_numbers }}
