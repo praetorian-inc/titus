@@ -260,6 +260,7 @@ jobs:
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
     - name: Set up Go
+      id: setup_go
       uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
       with:
         go-version-file: 'go.mod'
@@ -322,9 +323,17 @@ jobs:
       env:
         CGO_ENABLED: "1"
         PKG_CONFIG_PATH: "/mingw64/lib/pkgconfig"
+        SETUP_GO_VERSION: ${{ steps.setup_go.outputs.go-version }}
+        GOTOOLCHAIN: local
       run: |
-        # Get Go binary from actions/setup-go (Windows native path)
-        export PATH="$(cygpath -u "$GOROOT_1_25_X64/bin"):$PATH"
+        # Get the exact Go binary installed by actions/setup-go
+        go_bin="$(cygpath -u "$RUNNER_TOOL_CACHE/go/$SETUP_GO_VERSION/x64/bin")"
+        if [ ! -x "$go_bin/go.exe" ]; then
+          printf 'Go from actions/setup-go not found: %s\n' "$go_bin/go.exe" >&2
+          exit 1
+        fi
+        export PATH="$go_bin:$PATH"
+        go version
         export GOWORK=off
 
         # Verify pkg-config can find libhs
