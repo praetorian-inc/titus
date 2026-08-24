@@ -77,3 +77,36 @@ func TestBuiltinSendGridScorer_SetScoreOrderingInvariants(t *testing.T) {
 			"revoked-key must evaluate last; %q has lower or equal priority", name)
 	}
 }
+
+// Scope strings are the highest-risk part of this scorer: a modifier keyed on a
+// string SendGrid never emits simply never fires, and nothing else in the test
+// suite would notice. These are the names documented under
+// https://www.twilio.com/docs/sendgrid/api-reference/api-key-permissions
+// -- note marketing.read, NOT marketing.contacts.read, and whitelabel.*, NOT
+// domain_auth.*.
+func TestBuiltinSendGridScorer_UsesDocumentedScopeStrings(t *testing.T) {
+	want := map[string]string{
+		"domain-auth-access": `"whitelabel.read"`,
+		"subuser-management": `"subusers.create"`,
+		"contact-pii-access": `"marketing.read"`,
+		"billing-access":     `"billing.read"`,
+	}
+
+	s := builtinScorerFor(t, "np.sendgrid.1")
+	seen := map[string]bool{}
+	for _, m := range s.Modifiers {
+		expected, ok := want[m.Name]
+		if !ok {
+			continue
+		}
+		cond, ok := m.Condition.(*httpCondition)
+		require.Truef(t, ok, "modifier %q should be http-backed", m.Name)
+		leaf, ok := cond.firesWhen.(*responseBodyContainsLeaf)
+		require.Truef(t, ok, "modifier %q should match on response body", m.Name)
+		assert.Equal(t, expected, leaf.Value, "modifier %q scope string", m.Name)
+		seen[m.Name] = true
+	}
+	for name := range want {
+		assert.Truef(t, seen[name], "modifier %q not found in the shipped scorer", name)
+	}
+}

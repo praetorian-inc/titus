@@ -32,8 +32,24 @@
 # The 100 / 25 thresholds are breadth heuristics and are the intended tuning
 # knobs; they should be calibrated against a real Full Access key's scope count.
 #
+# KNOWN LIMITATION -- EU data residency:
+# This scorer probes only the global host. SendGrid EU regional subusers have
+# their own API keys served from https://api.eu.sendgrid.com, so an EU key is
+# expected to fail against the global host and would then be scored 5 by
+# revoked-key -- a live credential reported as dead.
+#
+# This is not fixable in the current DSL. Distinguishing "revoked" from "wrong
+# region" means firing revoked-key only when BOTH hosts reject the key, and
+# fires_when has no conjunction: each modifier carries exactly one leaf. Adding
+# EU modifiers alongside the global ones does not help, because revoked-key
+# evaluates last and its set_score would still overwrite them.
+#
+# The same gap already exists in pkg/validator/validators/sendgrid.yaml, which
+# also checks only the global host. Tracked separately; see LAB-3371 follow-up.
+#
 # API documentation:
 #   https://www.twilio.com/docs/sendgrid/api-reference/api-key-permissions
+#   https://www.twilio.com/docs/sendgrid/data-residency/faq
 scorers:
   - name: sendgrid-key-scope
     rule_ids:
@@ -72,12 +88,14 @@ scorers:
           response_body_contains: '"subusers.create"'
         delta: 15
 
-      # Marketing contact lists are PII.
+      # Email Marketing access covers contacts, lists and segments -- PII.
+      # The documented scope is `marketing.read`; `marketing.contacts.read`
+      # does not exist, and `marketing_campaigns.read` is the legacy scope.
       - name: contact-pii-access
         priority: 50
         http: *sendgrid_scopes
         fires_when:
-          response_body_contains: '"marketing.contacts.read"'
+          response_body_contains: '"marketing.read"'
         delta: 15
 
       # --- Restricted key: fewer than 25 scopes ---

@@ -466,7 +466,7 @@ scorers:
         priority: 50
         http: *sg
         fires_when:
-          response_body_contains: '"marketing.contacts.read"'
+          response_body_contains: '"marketing.read"'
         delta: 15
       - name: narrow-scope-set
         priority: 40
@@ -610,4 +610,15 @@ func TestSendGridScorer_RevokedKey_SetScore5(t *testing.T) {
 	// The negated array-length check must not fire on an error body: jsonGet
 	// errors on the missing .scopes path rather than returning false.
 	assert.NotContains(t, appliedNames(score), "narrow-scope-set")
+}
+
+// Email Marketing access exposes contact lists (PII). The documented scope is
+// marketing.read; marketing.contacts.read does not exist.
+func TestSendGridScorer_MarketingAccess_AddsPIIDelta(t *testing.T) {
+	srv := sendgridScopesServer(t, []string{"mail.send", "marketing.read"}, http.StatusOK)
+	defer srv.Close()
+
+	score := scoreSendGridKey(t, srv)
+	assert.Contains(t, appliedNames(score), "contact-pii-access")
+	assert.Equal(t, 60, score.Final, "65 base + 15 marketing PII - 20 narrow scope")
 }
