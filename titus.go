@@ -126,7 +126,7 @@ const (
 type Scanner struct {
 	matcher          matcher.Matcher
 	validationEngine *validator.Engine
-	scoringEngine    *scoring.Engine    // nil when scoring disabled
+	scoringEngine    *scoring.Engine             // nil when scoring disabled
 	resolvedAccess   accessibility.Accessibility // resolved once in NewScanner
 	config           *scannerConfig
 	mu               sync.RWMutex
@@ -307,6 +307,7 @@ func NewScanner(opts ...Option) (*Scanner, error) {
 	if config.enableScoring {
 		scorers, err := scoring.AllBuiltinScorers()
 		if err != nil {
+			_ = m.Close()
 			return nil, fmt.Errorf("loading scorers: %w", err)
 		}
 		cfg := scoring.EngineConfig{

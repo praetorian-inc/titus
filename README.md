@@ -485,6 +485,30 @@ CGO_ENABLED=1 go build -tags vectorscan -o dist/titus ./cmd/titus
 
 You'll see `[vectorscan] N/N rules compiled for Hyperscan` on startup when the accelerated engine is active. Without vectorscan, Titus falls back to the pure-Go regex engine automatically.
 
+#### Preparing the Hyperscan database at image build time
+
+Services can move Hyperscan compilation out of request startup by creating a
+serialized database while building their container image:
+
+```bash
+CGO_ENABLED=1 go build -tags vectorscan -o dist/titus ./cmd/titus
+dist/titus --quiet rules compile
+```
+
+The generated file is the byte stream produced by Hyperscan's
+`hs_serialize_database`; Titus loads it with `hs_deserialize_database`. The
+command writes Titus's built-in rules to the standard user cache, and later
+scanner instances load it automatically. `TITUS_CACHE_DIR` can override the
+cache location. The filename identifies the exact ordered pattern set, so
+callers that provide different rules compile them normally. A missing, corrupt,
+or incompatible file also falls back to normal compilation.
+
+Serialized databases are architecture- and Hyperscan-version-specific. Generate
+them in the same container build that supplies the runtime Hyperscan library,
+then copy them into the final image. The compiler targets a generic CPU so the
+result can run across machines of the same architecture without inheriting the
+builder's optional CPU features.
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to Titus.
