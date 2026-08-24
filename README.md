@@ -485,29 +485,22 @@ CGO_ENABLED=1 go build -tags vectorscan -o dist/titus ./cmd/titus
 
 You'll see `[vectorscan] N/N rules compiled for Hyperscan` on startup when the accelerated engine is active. Without vectorscan, Titus falls back to the pure-Go regex engine automatically.
 
-#### Preparing the Hyperscan database at image build time
+#### Automatic Hyperscan database cache
 
-Services can move Hyperscan compilation out of request startup by creating a
-serialized database while building their container image:
+Titus automatically serializes each successfully compiled Hyperscan database
+to the standard user cache. Later scanner instances with the exact same ordered
+rules and flags load that database instead of compiling it again. The cache file
+is the unmodified byte stream produced by Hyperscan's `hs_serialize_database`,
+and Titus loads it with `hs_deserialize_database`.
 
-```bash
-CGO_ENABLED=1 go build -tags vectorscan -o dist/titus ./cmd/titus
-dist/titus --quiet rules compile
-```
+`TITUS_CACHE_DIR` can override the cache location. Cache writes are atomic and
+best-effort: an unavailable or read-only cache does not prevent scanning. A
+missing, corrupt, incompatible, or differently fingerprinted database triggers
+normal compilation and refreshes the cache when possible.
 
-The generated file is the byte stream produced by Hyperscan's
-`hs_serialize_database`; Titus loads it with `hs_deserialize_database`. The
-command writes Titus's built-in rules to the standard user cache, and later
-scanner instances load it automatically. `TITUS_CACHE_DIR` can override the
-cache location. The filename identifies the exact ordered pattern set, so
-callers that provide different rules compile them normally. A missing, corrupt,
-or incompatible file also falls back to normal compilation.
-
-Serialized databases are architecture- and Hyperscan-version-specific. Generate
-them in the same container build that supplies the runtime Hyperscan library,
-then copy them into the final image. The compiler targets a generic CPU so the
-result can run across machines of the same architecture without inheriting the
-builder's optional CPU features.
+Serialized databases are architecture-, CPU-feature-, and Hyperscan-version-
+specific. Titus detects incompatible entries while deserializing and replaces
+them with a database compiled for the current runtime.
 
 ## Contributing
 

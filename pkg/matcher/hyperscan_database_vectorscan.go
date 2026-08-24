@@ -15,61 +15,6 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// HyperscanDatabaseFilename returns the filename for the ordered Hyperscan
-// patterns produced by rules. The file itself is the unmodified byte stream
-// returned by hs_serialize_database.
-func HyperscanDatabaseFilename(rules []*types.Rule) (string, error) {
-	patterns := hyperscanPatterns(rules)
-	if len(patterns) == 0 {
-		return "", errors.New("no Hyperscan-compatible rules provided")
-	}
-	return hyperscanDatabaseFilename(patterns), nil
-}
-
-// CompileHyperscanDatabase compiles rules for a generic CPU and returns the
-// raw byte stream produced by hs_serialize_database.
-func CompileHyperscanDatabase(rules []*types.Rule) ([]byte, error) {
-	patterns := hyperscanPatterns(rules)
-	if len(patterns) == 0 {
-		return nil, errors.New("no Hyperscan-compatible rules provided")
-	}
-
-	database, err := hyperscan.Patterns(patterns).ForPlatform(
-		hyperscan.BlockMode,
-		hyperscan.NewPlatform(hyperscan.Generic, 0),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("compile Hyperscan database: %w", err)
-	}
-	defer database.Close()
-
-	data, err := database.Marshal()
-	if err != nil {
-		return nil, fmt.Errorf("serialize Hyperscan database: %w", err)
-	}
-	return data, nil
-}
-
-// WriteHyperscanDatabase writes a raw serialized database to dir.
-func WriteHyperscanDatabase(dir string, rules []*types.Rule) (string, error) {
-	filename, err := HyperscanDatabaseFilename(rules)
-	if err != nil {
-		return "", err
-	}
-	data, err := CompileHyperscanDatabase(rules)
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return "", fmt.Errorf("create Hyperscan database directory: %w", err)
-	}
-	path := filepath.Join(dir, filename)
-	if err := os.WriteFile(path, data, 0o640); err != nil {
-		return "", fmt.Errorf("write Hyperscan database: %w", err)
-	}
-	return path, nil
-}
-
 func hyperscanPatterns(rules []*types.Rule) []*hyperscan.Pattern {
 	patternInfo, _ := prepareHyperscanPatterns(rules)
 	patterns := make([]*hyperscan.Pattern, len(patternInfo))
@@ -95,24 +40,74 @@ func hyperscanDatabaseFilename(patterns []*hyperscan.Pattern) string {
 }
 
 func loadOrCompileHyperscanDatabase(patterns []*hyperscan.Pattern, warnf func(string, ...any)) (hyperscan.BlockDatabase, error) {
+	var cachePath string
 	if dir, err := RulesCacheDir(); err == nil {
-		path := filepath.Join(dir, hyperscanDatabaseFilename(patterns))
-		data, err := os.ReadFile(path)
+		cachePath = filepath.Join(dir, hyperscanDatabaseFilename(patterns))
+		data, err := os.ReadFile(cachePath)
 		if err == nil {
 			database, deserializeErr := hyperscan.UnmarshalBlockDatabase(data)
 			if deserializeErr == nil {
-				fmt.Fprintf(os.Stderr, "[vectorscan] loaded serialized Hyperscan database %s\n", path)
+				fmt.Fprintf(os.Stderr, "[vectorscan] loaded cached Hyperscan database %s\n", cachePath)
 				return database, nil
 			}
-			warnHyperscanDatabase(warnf, "cannot deserialize Hyperscan database %s; compiling at runtime: %v", path, deserializeErr)
+			warnHyperscanDatabase(warnf, "cannot deserialize Hyperscan database %s; compiling at runtime: %v", cachePath, deserializeErr)
 		} else if !errors.Is(err, os.ErrNotExist) {
-			warnHyperscanDatabase(warnf, "cannot read Hyperscan database %s; compiling at runtime: %v", path, err)
+			warnHyperscanDatabase(warnf, "cannot read Hyperscan database %s; compiling at runtime: %v", cachePath, err)
 		}
 	} else {
 		warnHyperscanDatabase(warnf, "cannot resolve Titus rules cache; compiling at runtime: %v", err)
 	}
 
-	return hyperscan.NewBlockDatabase(patterns...)
+	database, err := hyperscan.NewBlockDatabase(patterns...)
+	if err != nil {
+		return nil, err
+	}
+
+	if cachePath != "" {
+		if err := cacheHyperscanDatabase(cachePath, database); err != nil {
+			warnHyperscanDatabase(warnf, "cannot cache Hyperscan database %s: %v", cachePath, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "[vectorscan] cached Hyperscan database %s\n", cachePath)
+		}
+	}
+
+	return database, nil
+}
+
+func cacheHyperscanDatabase(path string, database hyperscan.BlockDatabase) error {
+	data, err := database.Marshal()
+	if err != nil {
+		return fmt.Errorf("serialize: %w", err)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("create cache directory: %w", err)
+	}
+
+	temporary, err := os.CreateTemp(dir, ".titus-rules-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary cache file: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer func() {
+		_ = temporary.Close()
+		_ = os.Remove(temporaryPath)
+	}()
+
+	if err := temporary.Chmod(0o640); err != nil {
+		return fmt.Errorf("set cache permissions: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		return fmt.Errorf("write cache: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close cache: %w", err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("publish cache: %w", err)
+	}
+	return nil
 }
 
 func warnHyperscanDatabase(warnf func(string, ...any), format string, args ...any) {
