@@ -110,3 +110,20 @@ func TestBuiltinSendGridScorer_UsesDocumentedScopeStrings(t *testing.T) {
 		assert.Truef(t, seen[name], "modifier %q not found in the shipped scorer", name)
 	}
 }
+
+// set_score is a verdict, not a contribution: it overwrites the running score,
+// so using it for a non-terminal signal makes the final value depend on
+// evaluation order rather than on capability. Only genuinely terminal states --
+// a billing-only key and a dead key -- may use it. Breadth is a contributing
+// factor and must be a delta, or a Full Access key can score BELOW a key
+// holding a subset of its scopes.
+func TestBuiltinSendGridScorer_OnlyTerminalStatesUseSetScore(t *testing.T) {
+	s := builtinScorerFor(t, "np.sendgrid.1")
+	terminal := map[string]bool{"billing-access": true, "revoked-key": true}
+	for _, m := range s.Modifiers {
+		if m.Kind == ModifierKindSetScore {
+			assert.Truef(t, terminal[m.Name],
+				"modifier %q uses set_score but is not a terminal state", m.Name)
+		}
+	}
+}

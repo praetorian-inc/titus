@@ -399,3 +399,28 @@ func TestLoadScorers_NegativeWithoutLeaf_Errors(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fires_when")
 }
+
+// The switch in buildFiresWhenLeafInner returns on the first field it finds, so
+// extra leaves were silently discarded -- a scorer could declare two conditions
+// and quietly get only one, with no indication which.
+func TestLoadScorers_MultipleFiresWhenLeaves_Errors(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: ambiguous
+    rule_ids: [np.sendgrid.1]
+    modifiers:
+      - name: two-leaves
+        http:
+          method: GET
+          url: https://api.sendgrid.com/v3/scopes
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          status_code: 401
+          response_body_contains: '"billing.read"'
+        delta: -10
+`)
+	_, err := NewLoader().LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one")
+}

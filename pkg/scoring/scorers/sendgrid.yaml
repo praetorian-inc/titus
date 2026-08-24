@@ -56,6 +56,10 @@ scorers:
       - np.sendgrid.1
     modifiers:
       # --- Breadth: a Full Access key returns the whole scope catalogue ---
+      # A DELTA, not a set_score. set_score is a verdict that overwrites the
+      # running score, so using it here made the result depend on evaluation
+      # order: a Full Access key could score BELOW a key holding a subset of its
+      # scopes. Breadth contributes to the score; it does not decide it.
       - name: full-access-key
         priority: 90
         http: &sendgrid_scopes
@@ -68,7 +72,7 @@ scorers:
           json_array_length_gte:
             path: ".scopes"
             value: 100
-        set_score: 85
+        delta: 30
 
       # --- Individually dangerous scope families ---
 
@@ -122,6 +126,12 @@ scorers:
         set_score: 85
 
       # --- Dead key: evaluated last, wins outright ---
+      # Side effect: on a 401 the two json_array_length_gte modifiers above cannot
+      # find .scopes and return an error, so the engine logs 2 "[warn] ...
+      # (skipping)" lines per revoked finding. Stats counters are NOT affected --
+      # trackError only counts sentinel timeout/rate-limit/server/network errors.
+      # Reducing the noise needs an engine change (skip remaining modifiers after
+      # a terminal set_score, or log evaluation errors below warn level).
       - name: revoked-key
         priority: 10
         http: *sendgrid_scopes

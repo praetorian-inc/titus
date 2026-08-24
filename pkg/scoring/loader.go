@@ -13,6 +13,9 @@ import (
 // ignoring the negative: flag (applied by buildFiresWhenLeaf).
 // Exactly one field must be set; returns an error if zero or multiple are set.
 func buildFiresWhenLeafInner(fw *yamlFiresWhen) (firesWhenLeaf, error) {
+	if n := countFiresWhenLeaves(fw); n != 1 {
+		return nil, fmt.Errorf("fires_when: exactly one condition leaf required (got %d)", n)
+	}
 	switch {
 	case fw.StatusCode != nil:
 		return &statusCodeLeaf{Code: *fw.StatusCode}, nil
@@ -259,4 +262,24 @@ func buildFiresWhenLeaf(fw *yamlFiresWhen) (firesWhenLeaf, error) {
 		return &negatedLeaf{inner: leaf}, nil
 	}
 	return leaf, nil
+}
+
+// countFiresWhenLeaves counts how many condition leaves a fires_when block
+// declares. negative: is a flag on a leaf, not a leaf, so it is not counted.
+func countFiresWhenLeaves(fw *yamlFiresWhen) int {
+	n := 0
+	for _, set := range []bool{
+		fw.StatusCode != nil,
+		len(fw.StatusCodeIn) > 0,
+		fw.ResponseBodyContains != "",
+		fw.HeaderContains != nil,
+		fw.JSONPathEquals != nil,
+		fw.JSONPathMatches != nil,
+		fw.JSONArrayLengthGte != nil,
+	} {
+		if set {
+			n++
+		}
+	}
+	return n
 }

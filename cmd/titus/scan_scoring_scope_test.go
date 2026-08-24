@@ -449,7 +449,7 @@ scorers:
           json_array_length_gte:
             path: ".scopes"
             value: 100
-        set_score: 85
+        delta: 30
       - name: domain-auth-access
         priority: 70
         http: *sg
@@ -552,13 +552,15 @@ func genericScopes(n int) []string {
 	return out
 }
 
-// A Full Access key returns the whole scope catalogue; breadth alone puts it at 85.
-func TestSendGridScorer_FullAccessKey_SetScore85(t *testing.T) {
+// Breadth alone is worth +30 over the 65 base. This fixture is deliberately
+// unrealistic -- a real Full Access key also holds the sensitive scopes, which
+// is covered by TestSendGridScorer_RealisticFullAccess_IsMaximal.
+func TestSendGridScorer_BreadthAlone_AddsDelta(t *testing.T) {
 	srv := sendgridScopesServer(t, append(genericScopes(120), "mail.send"), http.StatusOK)
 	defer srv.Close()
 
 	score := scoreSendGridKey(t, srv)
-	assert.Equal(t, 85, score.Final)
+	assert.Equal(t, 95, score.Final, "65 base + 30 breadth")
 	assert.Contains(t, appliedNames(score), "full-access-key")
 	assert.NotContains(t, appliedNames(score), "narrow-scope-set")
 }
@@ -621,4 +623,29 @@ func TestSendGridScorer_MarketingAccess_AddsPIIDelta(t *testing.T) {
 	score := scoreSendGridKey(t, srv)
 	assert.Contains(t, appliedNames(score), "contact-pii-access")
 	assert.Equal(t, 60, score.Final, "65 base + 15 marketing PII - 20 narrow scope")
+}
+
+// A REAL Full Access key returns the whole catalogue, which necessarily
+// includes the sensitive scopes the deltas look for. Scoring it must be
+// monotonic: a Full Access key can never score below a key holding a subset of
+// its scopes. The earlier fixture omitted those scopes, so it exercised a key
+// that cannot exist and hid the interaction between set_score and the deltas.
+func TestSendGridScorer_RealisticFullAccess_IsMaximal(t *testing.T) {
+	full := append(genericScopes(120),
+		"mail.send", "whitelabel.read", "subusers.create", "marketing.read")
+	srvFull := sendgridScopesServer(t, full, http.StatusOK)
+	defer srvFull.Close()
+	fullScore := scoreSendGridKey(t, srvFull)
+
+	// A mid-breadth key holding the same sensitive scopes but far fewer overall.
+	subset := append(genericScopes(30),
+		"mail.send", "whitelabel.read", "subusers.create", "marketing.read")
+	srvSubset := sendgridScopesServer(t, subset, http.StatusOK)
+	defer srvSubset.Close()
+	subsetScore := scoreSendGridKey(t, srvSubset)
+
+	assert.Contains(t, appliedNames(fullScore), "full-access-key")
+	assert.GreaterOrEqual(t, fullScore.Final, subsetScore.Final,
+		"a Full Access key must never score below a key holding a subset of its scopes")
+	assert.Equal(t, 100, fullScore.Final, "full access plus every sensitive scope family is maximal")
 }
