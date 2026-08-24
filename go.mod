@@ -1,6 +1,6 @@
 module github.com/praetorian-inc/titus
 
-go 1.25.8
+go 1.27.0
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.4

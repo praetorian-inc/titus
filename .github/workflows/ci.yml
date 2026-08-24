@@ -29,6 +29,7 @@ jobs:
     permissions:
       contents: read
     with:
+      golangci-lint-version: "v2.13.1"
       build-cmd-path: ./cmd/titus
       build-binary-name: titus
     secrets: inherit

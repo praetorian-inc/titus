@@ -30,4 +30,7 @@ jobs:
       pull-requests: read     # go-sec.yml preflight reads PR files + repo tree
       security-events: write
       actions: read           # required by codeql-action/upload-sarif for run metadata
+    with:
+      gosec-version: "v2.28.0"
+      govulncheck-version: "v1.7.0"
     secrets: inherit

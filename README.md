@@ -2,7 +2,7 @@
 
 # Titus: High-Performance Secrets Scanner
 
-[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.27.0+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/praetorian-inc/titus/ci.yml?branch=main&label=CI)](https://github.com/praetorian-inc/titus/actions)
 
