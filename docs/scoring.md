@@ -277,7 +277,9 @@ Note the secret itself is normally injected via `auth.secret_group` rather than 
 
 **Response caching:**
 
-Within a single scan, responses are cached on (method, URL, secret). If several modifiers for the same finding issue the same request, only one network call is made -- so a scorer can split its logic across many modifiers without multiplying traffic. The URL is keyed before template substitution, so plaintext secrets never appear in cache keys.
+Within a single scan, responses are cached on (method, URL, secret). If several modifiers for the same finding issue the same request, only one network call is made -- so a scorer can split its logic across many modifiers without multiplying traffic.
+
+The URL is keyed **before** template substitution, so plaintext secrets never appear in cache keys. That has a consequence worth knowing: two requests whose URL templates are identical but which render differently -- because a non-secret variable such as a region or account identifier differs -- currently share a cache entry, and the second silently receives the first response. No built-in scorer triggers this today (the only templated URL substitutes its own secret), but do not rely on a non-secret template variable to distinguish two requests until this is fixed. Tracked as LAB-6051.
 
 ---
 
