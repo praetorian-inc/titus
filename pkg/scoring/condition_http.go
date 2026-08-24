@@ -183,3 +183,26 @@ func (l *jsonArrayLengthGteLeaf) evaluate(resp *cachedHTTPResponse) (bool, error
 	}
 	return len(arr) >= l.Value, nil
 }
+
+// ----------------------------------------------------------------
+// negated leaf (`negative: true`)
+// ----------------------------------------------------------------
+
+// negatedLeaf inverts the result of the leaf it wraps, giving the DSL the
+// absence and upper-bound tests it otherwise lacks (e.g. negative: +
+// json_array_length_gte reads as "fewer than N").
+//
+// Errors are propagated unchanged, never inverted: jsonGet returns an error for
+// a missing path rather than false, so inverting errors would make a negated
+// json_path_* condition fire on any response that lacks the field — including
+// the error body returned by a revoked credential. Prefer response_body_contains
+// for absence checks, as it cannot error.
+type negatedLeaf struct{ inner firesWhenLeaf }
+
+func (l *negatedLeaf) evaluate(resp *cachedHTTPResponse) (bool, error) {
+	fired, err := l.inner.evaluate(resp)
+	if err != nil {
+		return false, err
+	}
+	return !fired, nil
+}

@@ -9,9 +9,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// buildFiresWhenLeaf converts a yamlFiresWhen into a firesWhenLeaf implementation.
+// buildFiresWhenLeafInner converts a yamlFiresWhen into the underlying firesWhenLeaf,
+// ignoring the negative: flag (applied by buildFiresWhenLeaf).
 // Exactly one field must be set; returns an error if zero or multiple are set.
-func buildFiresWhenLeaf(fw *yamlFiresWhen) (firesWhenLeaf, error) {
+func buildFiresWhenLeafInner(fw *yamlFiresWhen) (firesWhenLeaf, error) {
 	switch {
 	case fw.StatusCode != nil:
 		return &statusCodeLeaf{Code: *fw.StatusCode}, nil
@@ -244,4 +245,18 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 		Value:     value,
 		Condition: cond,
 	}, nil
+}
+
+// buildFiresWhenLeaf builds the fires_when leaf and applies the negative: flag.
+// negative: is a modifier ON a leaf rather than a leaf in its own right, so it is
+// deliberately not part of the "exactly one condition leaf" accounting.
+func buildFiresWhenLeaf(fw *yamlFiresWhen) (firesWhenLeaf, error) {
+	leaf, err := buildFiresWhenLeafInner(fw)
+	if err != nil {
+		return nil, err
+	}
+	if fw.Negative {
+		return &negatedLeaf{inner: leaf}, nil
+	}
+	return leaf, nil
 }

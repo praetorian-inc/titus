@@ -227,11 +227,34 @@ Dynamic (`http`) modifiers support the following options:
 
 | Condition | Description |
 |-----------|-------------|
-| `status_code_is` | Fires when the HTTP response status matches the given code |
+| `status_code` | Fires when the HTTP response status equals the given code |
+| `status_code_in` | Fires when the response status is any of the given codes |
+| `response_body_contains` | Fires when the response body contains a substring |
 | `header_contains` | Fires when a specific response header contains a substring |
-| `json_path_equals` | Fires when a JSONPath expression equals a specific value |
-| `json_path_matches` | Fires when a JSONPath expression matches a regex |
-| `json_array_length_gte` | Fires when a JSONPath array has at least N elements |
+| `json_path_equals` | Fires when a dot-notation path equals a specific value |
+| `json_path_matches` | Fires when a dot-notation path matches a regex |
+| `json_array_length_gte` | Fires when a dot-notation path is an array with at least N elements |
+
+Paths are simple dot-notation (`.`, `.field`, `.a.b`); array indexing is not supported.
+
+**Negating a condition (`negative`):**
+
+Set `negative: true` alongside a leaf to invert it. It modifies the leaf rather than
+being a leaf itself, so a `fires_when` block still requires exactly one condition:
+
+```yaml
+fires_when:
+  negative: true
+  json_array_length_gte:
+    path: ".scopes"
+    value: 25          # fires when there are FEWER than 25 scopes
+```
+
+This supplies the absence and upper-bound tests the condition list otherwise lacks.
+
+Errors are propagated, never inverted: a path that does not exist is an error rather
+than a `false`, so a negated `json_path_*` will not fire on a response missing the
+field. For absence checks prefer `response_body_contains`, which cannot error.
 
 **Template variables:**
 

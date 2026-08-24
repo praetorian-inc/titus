@@ -67,6 +67,9 @@ type yamlHeader struct {
 
 // yamlFiresWhen holds exactly one fires_when leaf (validated at load time).
 type yamlFiresWhen struct {
+	// Negative inverts the leaf below it. It is not itself a leaf.
+	Negative bool `yaml:"negative,omitempty"`
+
 	StatusCode           *int                    `yaml:"status_code,omitempty"`
 	StatusCodeIn         []int                   `yaml:"status_code_in,omitempty"`
 	ResponseBodyContains string                  `yaml:"response_body_contains,omitempty"`
