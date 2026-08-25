@@ -54,7 +54,7 @@ type PortableRegexpMatcher struct {
 	dedup          *Deduplicator
 	contextLines   int
 	warnf          func(string, ...any)
-	matchTimeout   time.Duration // initial per-match timeout; 5s by default
+	matchTimeout   time.Duration // initial per-match timeout; 500ms by default
 
 	// retryMu protects retryJobs, retryDropped, and (together with blacklistMu)
 	// co-ordinates the cap check. retryJobs is written by parallel workers and
@@ -83,10 +83,13 @@ func NewPortableRegexp(rules []*types.Rule, contextLines int, warnf func(string,
 // NewPortableRegexpWithTimeout creates a portable regexp-based matcher with a configurable
 // initial match timeout. Exposed primarily for testing: pass a very short timeout (e.g. 1ms)
 // to reliably trigger the retry queue without requiring catastrophic backtracking patterns.
-// Production callers should use NewPortableRegexp, which applies the standard 5-second timeout.
+// Production callers should use NewPortableRegexp, which applies the default 500ms timeout.
 func NewPortableRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf func(string, ...any), matchTimeout time.Duration) (*PortableRegexpMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
+	}
+	if matchTimeout <= 0 {
+		matchTimeout = 5 * time.Second
 	}
 
 	m := &PortableRegexpMatcher{
@@ -422,7 +425,10 @@ func (m *PortableRegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
 	}
 	jobs = deduped
 
-	const retryTimeout = 30 * time.Second
+	retryTimeout := 10 * m.matchTimeout
+	if retryTimeout > 30*time.Second {
+		retryTimeout = 30 * time.Second
+	}
 
 	var all []*types.Match
 	for _, j := range jobs {

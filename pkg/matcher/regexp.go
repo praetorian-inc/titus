@@ -20,12 +20,23 @@ type RegexpMatcher struct {
 	regexCache   map[string]*regexp2.Regexp
 	contextLines int
 	warnf        func(string, ...any)
+	matchTimeout time.Duration
 }
 
-// NewRegexp creates a new regexp-based matcher.
+// NewRegexp creates a new regexp-based matcher with the default 5s timeout.
 func NewRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*RegexpMatcher, error) {
+	return NewRegexpWithTimeout(rules, contextLines, warnf, 5*time.Second)
+}
+
+// NewRegexpWithTimeout creates a new regexp-based matcher with a configurable
+// per-match timeout. Production callers should use NewRegexp, which applies
+// the default 5s timeout.
+func NewRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf func(string, ...any), matchTimeout time.Duration) (*RegexpMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
+	}
+	if matchTimeout <= 0 {
+		matchTimeout = 5 * time.Second
 	}
 
 	m := &RegexpMatcher{
@@ -33,6 +44,7 @@ func NewRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)
 		regexCache:   make(map[string]*regexp2.Regexp),
 		contextLines: contextLines,
 		warnf:        warnf,
+		matchTimeout: matchTimeout,
 	}
 
 	// Pre-compile all patterns to catch errors early
@@ -47,7 +59,7 @@ func NewRegexp(rules []*types.Rule, contextLines int, warnf func(string, ...any)
 			}
 		}
 		// Set timeout to prevent catastrophic backtracking
-		re.MatchTimeout = 5 * time.Second
+		re.MatchTimeout = matchTimeout
 		m.regexCache[rule.Pattern] = re
 	}
 

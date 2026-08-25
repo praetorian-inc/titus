@@ -51,7 +51,8 @@ type VectorscanMatcher struct {
 	hsRules       []*types.Rule // Rules compiled into Hyperscan
 	fallbackRules []*types.Rule // Rules that require regexp2 fallback
 
-	warnf func(string, ...any)
+	warnf        func(string, ...any)
+	matchTimeout time.Duration // initial per-match timeout; 500ms by default
 
 	// retryMu protects retryJobs, retryDropped, and the cap check.
 	// retryJobs is written by matchFallbackRules (and the hot-path regexp2 pass
@@ -131,8 +132,18 @@ func prepareHyperscanPatterns(rules []*types.Rule) ([]hyperscanPatternInfo, []*t
 // - CGO is available and acceptable
 // - Scanning large files or many files
 func NewVectorscan(rules []*types.Rule, contextLines int, warnf func(string, ...any)) (*VectorscanMatcher, error) {
+	return NewVectorscanWithTimeout(rules, contextLines, warnf, 5*time.Second)
+}
+
+// NewVectorscanWithTimeout creates a Vectorscan matcher with a configurable per-match
+// timeout for the regexp2 confirmation/fallback pass. Production callers should use
+// NewVectorscan, which applies the default 500ms timeout.
+func NewVectorscanWithTimeout(rules []*types.Rule, contextLines int, warnf func(string, ...any), matchTimeout time.Duration) (*VectorscanMatcher, error) {
 	if len(rules) == 0 {
 		return nil, fmt.Errorf("no rules provided")
+	}
+	if matchTimeout <= 0 {
+		matchTimeout = 5 * time.Second
 	}
 
 	m := &VectorscanMatcher{
@@ -143,6 +154,7 @@ func NewVectorscan(rules []*types.Rule, contextLines int, warnf func(string, ...
 		groupNameCache: make(map[string][]string),
 		prefilter:      prefilter.New(rules),
 		warnf:          warnf,
+		matchTimeout:   matchTimeout,
 		blacklist:      make(map[string]int),
 	}
 
@@ -248,7 +260,7 @@ func (m *VectorscanMatcher) compilePatterns() error {
 				return fmt.Errorf("failed to compile pattern %q for rule %s: %w", rule.Pattern, rule.ID, err)
 			}
 		}
-		re.MatchTimeout = 5 * time.Second
+		re.MatchTimeout = m.matchTimeout
 		m.regexCache[rule.Pattern] = re
 		m.groupNameCache[rule.Pattern] = re.GetGroupNames()
 	}
@@ -962,7 +974,10 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 	}
 	jobs = deduped
 
-	const retryTimeout = 30 * time.Second
+	retryTimeout := 10 * m.matchTimeout
+	if retryTimeout > 30*time.Second {
+		retryTimeout = 30 * time.Second
+	}
 
 	var all []*types.Match
 	for _, j := range jobs {

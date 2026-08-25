@@ -13,7 +13,13 @@ package matcher
 // - CGO is enabled
 // - The "vectorscan" build tag is specified
 func New(cfg Config) (Matcher, error) {
-	inner, err := NewVectorscan(cfg.Rules, cfg.ContextLines, cfg.WarnFunc)
+	var inner *VectorscanMatcher
+	var err error
+	if cfg.MatchTimeout > 0 {
+		inner, err = NewVectorscanWithTimeout(cfg.Rules, cfg.ContextLines, cfg.WarnFunc, cfg.MatchTimeout)
+	} else {
+		inner, err = NewVectorscan(cfg.Rules, cfg.ContextLines, cfg.WarnFunc)
+	}
 	if err != nil {
 		return nil, err
 	}
