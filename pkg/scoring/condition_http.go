@@ -79,7 +79,13 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		}
 	}
 
-	return c.firesWhen.evaluate(resp)
+	fired, err := c.firesWhen.evaluate(resp)
+	if err != nil && resp.StatusCode >= 400 {
+		// The condition was written for a successful response; an error body
+		// simply does not carry the field. Expected, not a misconfiguration.
+		return false, fmt.Errorf("%w (HTTP %d): %v", ErrConditionNotApplicable, resp.StatusCode, err)
+	}
+	return fired, err
 }
 
 // ----------------------------------------------------------------
