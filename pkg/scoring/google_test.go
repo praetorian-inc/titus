@@ -17,7 +17,10 @@ import (
 // from the day it shipped. Nothing caught it because the dynamic path was never
 // exercised against the built-in file.
 func TestBuiltinGoogleScorer_DynamicModifiersCanIssueTheirRequest(t *testing.T) {
+	var gotAuthHeader, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		gotQuery = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
 		_, _ = w.Write([]byte(`{"models":[{"name":"models/gemini-1.5-pro"}]}`))
@@ -43,8 +46,16 @@ func TestBuiltinGoogleScorer_DynamicModifiersCanIssueTheirRequest(t *testing.T) 
 			firesWhen: cond.firesWhen,
 		}
 		m := &types.Match{NamedGroups: map[string][]byte{"key": []byte("AIzaSyEXAMPLE")}}
+		name := s.Modifiers[dynamic-1].Name
 		_, err := probe.Evaluate(context.Background(), m)
-		require.NoErrorf(t, err, "modifier %q could not issue its request", s.Modifiers[dynamic-1].Name)
+		require.NoErrorf(t, err, "modifier %q could not issue its request", name)
+
+		// The full auth contract for type: none -- the secret must reach the API
+		// through the URL template, and no Authorization header may be set.
+		assert.Containsf(t, gotQuery, "key=AIzaSyEXAMPLE",
+			"modifier %q must pass the secret as a query parameter", name)
+		assert.Emptyf(t, gotAuthHeader,
+			"modifier %q uses auth.type none and must not set an Authorization header", name)
 	}
 	require.Positive(t, dynamic, "expected the Google scorer to have dynamic modifiers")
 }
