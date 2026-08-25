@@ -21,6 +21,7 @@ type ExtractionLimits struct {
 	MaxSize        int64 // Max uncompressed size per file (10MB default)
 	MaxTotal       int64 // Max total bytes extracted from one archive (100MB default)
 	MaxDepth       int   // Max nested archive depth (5 default)
+	MaxPages       int   // Max pages to extract from PDF files (50 default, 0 = unlimited)
 	SQLiteRowLimit int   // Max rows per table for SQLite extraction (0 = unlimited, default 1000)
 }
 
@@ -30,6 +31,7 @@ func DefaultExtractionLimits() ExtractionLimits {
 		MaxSize:        10 * 1024 * 1024,
 		MaxTotal:       100 * 1024 * 1024,
 		MaxDepth:       5,
+		MaxPages:       50,
 		SQLiteRowLimit: 1000,
 	}
 }

@@ -83,7 +83,7 @@ func extractWithState(path string, content []byte, state *extractState) (result 
 	case ".pptx":
 		return extractPPTX(content)
 	case ".pdf":
-		return extractPDF(content)
+		return extractPDF(content, state.limits)
 	case ".zip", ".jar", ".war", ".ear", ".apk", ".ipa", ".xpi", ".crx":
 		return extractZIPWithState(content, state)
 	case ".gz":
@@ -239,7 +239,14 @@ func extractPPTX(content []byte) ([]ExtractedContent, error) {
 }
 
 // extractPDF extracts text from PDF files using ledongthuc/pdf.
-func extractPDF(content []byte) ([]ExtractedContent, error) {
+func extractPDF(content []byte, limits ExtractionLimits) ([]ExtractedContent, error) {
+	// Guard: skip PDFs larger than the configured per-file size limit.
+	// The ledongthuc/pdf parser allocates memory proportional to internal
+	// structures (font tables, xref arrays), so large PDFs can OOM.
+	if limits.MaxSize > 0 && int64(len(content)) > limits.MaxSize {
+		return nil, nil
+	}
+
 	// Create a temporary file since ledongthuc/pdf requires a file or ReaderAt with size
 	tmpFile, err := os.CreateTemp("", "pdf-*.pdf")
 	if err != nil {
@@ -263,11 +270,20 @@ func extractPDF(content []byte) ([]ExtractedContent, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	// Extract text from all pages
+	// Extract text from pages, respecting limits
 	var text strings.Builder
 	totalPages := r.NumPage()
 
-	for pageNum := 1; pageNum <= totalPages; pageNum++ {
+	// Cap page count if limit is set
+	pagesToExtract := totalPages
+	if limits.MaxPages > 0 && totalPages > limits.MaxPages {
+		pagesToExtract = limits.MaxPages
+	}
+
+	// Use MaxSize as the per-PDF text cap (consistent with per-file limits elsewhere)
+	maxTextBytes := limits.MaxSize
+
+	for pageNum := 1; pageNum <= pagesToExtract; pageNum++ {
 		page := r.Page(pageNum)
 		if page.V.IsNull() {
 			continue
@@ -278,6 +294,17 @@ func extractPDF(content []byte) ([]ExtractedContent, error) {
 		if err != nil {
 			// Continue on error to extract what we can
 			continue
+		}
+
+		if maxTextBytes > 0 {
+			remaining := maxTextBytes - int64(text.Len())
+			if remaining <= 0 {
+				break
+			}
+			if int64(len(pageText)) > remaining {
+				text.WriteString(pageText[:remaining])
+				break
+			}
 		}
 
 		text.WriteString(pageText)
