@@ -54,11 +54,29 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		return false, nil
 	}
 
-	// Use the template URL (c.url) not the expanded URL as the cache key so
-	// plaintext secrets don't appear in in-memory cache keys. The secret bytes
-	// already provide per-secret uniqueness in the key hash.
+	// Key on the RENDERED request, not the template. Two requests differing only
+	// in a non-secret template variable render differently but share a template,
+	// so keying on the template made them collide and served the first one's
+	// response to the second. httpCacheKey hashes the whole key, so rendering
+	// here does not put credentials into map keys.
+	//
+	// Substitution is idempotent — no {{...}} placeholders survive the first
+	// pass — so makeHTTPRequest rendering these again below is harmless.
 	secretBytes := m.NamedGroups[c.auth.SecretGroup]
-	key := httpCacheKey(c.method, c.url, secretBytes)
+	renderedHeaders := make([]scorerHeader, len(c.headers))
+	for i, hdr := range c.headers {
+		renderedHeaders[i] = scorerHeader{
+			Name:  hdr.Name,
+			Value: substituteVarsInURL(hdr.Value, m.NamedGroups),
+		}
+	}
+	key := httpCacheKey(
+		c.method,
+		substituteVarsInURL(c.url, m.NamedGroups),
+		renderedHeaders,
+		substituteVarsInURL(c.body, m.NamedGroups),
+		secretBytes,
+	)
 
 	resp, found := cache.get(key)
 	if !found {
