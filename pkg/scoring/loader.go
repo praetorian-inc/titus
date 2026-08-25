@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -203,6 +204,9 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 	}
 	if ym.HTTP != nil && ym.FiresWhen != nil {
 		condCount++
+		if t := strings.ToLower(ym.HTTP.Auth.Type); t != "" && !supportedAuthTypes[t] {
+			return Modifier{}, fmt.Errorf("http.auth.type %q is not supported (want one of: api_key, basic, bearer, header, none, query)", ym.HTTP.Auth.Type)
+		}
 		leaf, err := buildFiresWhenLeaf(ym.FiresWhen)
 		if err != nil {
 			return Modifier{}, fmt.Errorf("modifier %q fires_when: %w", ym.Name, err)

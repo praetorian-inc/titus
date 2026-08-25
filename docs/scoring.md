@@ -235,6 +235,11 @@ group holding the secret:
 | `header` | Sends the secret in `header_name` |
 | `query` | Sends the secret in the `query_param` query parameter |
 | `api_key` | `Authorization: <key_prefix><secret>` (`key_prefix` defaults to `key=`) |
+| `none` | No auth header — for APIs that take the credential in the URL or body via a `{{template}}` variable |
+
+An unsupported `auth.type` is rejected at load time rather than failing per-request.
+Keep `secret_group` set even with `none`: the response cache keys on it, so omitting
+it makes every finding sharing a URL template collide on one cache entry.
 
 **Firing conditions (`fires_when`):**
 
