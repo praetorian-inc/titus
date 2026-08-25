@@ -493,6 +493,23 @@ make build-pure
 make build-static
 ```
 
+#### Automatic Hyperscan database cache
+
+Titus automatically serializes each successfully compiled Hyperscan database
+to the standard user cache. Later scanner instances with the exact same ordered
+rules and flags load that database instead of compiling it again. The cache file
+is the unmodified byte stream produced by Hyperscan's `hs_serialize_database`,
+and Titus loads it with `hs_deserialize_database`.
+
+`TITUS_CACHE_DIR` can override the cache location. Cache writes are atomic and
+best-effort: an unavailable or read-only cache does not prevent scanning. A
+missing, corrupt, incompatible, or differently fingerprinted database triggers
+normal compilation and refreshes the cache when possible.
+
+Serialized databases are architecture-, CPU-feature-, and Hyperscan-version-
+specific. Titus detects incompatible entries while deserializing and replaces
+them with a database compiled for the current runtime.
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to Titus.

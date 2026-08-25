@@ -3,6 +3,7 @@
 package matcher
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -56,8 +57,8 @@ type VectorscanMatcher struct {
 	// retryJobs is written by matchFallbackRules (and the hot-path regexp2 pass
 	// in matchChunk) and drained single-threaded by DrainTimedOut after the main
 	// scan completes.
-	retryMu     sync.Mutex
-	retryJobs   []retryJob
+	retryMu      sync.Mutex
+	retryJobs    []retryJob
 	retryDropped int // count of jobs dropped due to queue cap
 
 	// blacklistMu protects blacklist, which tracks per-rule timeout counts.
@@ -69,7 +70,7 @@ type VectorscanMatcher struct {
 // incompatible with Hyperscan compilation. These patterns are automatically
 // routed to the regexp2 fallback without attempting Hyperscan compilation.
 // This optimization allows the fast path (single batch compilation) to succeed
-// immediately, reducing initialization time from ~24 seconds to ~100-200ms.
+// immediately and avoids repeated failed compilation attempts.
 //
 // Note: np.azure.5, np.redis.1, np.redis.2 were previously incompatible due to
 // lookbehind/lookahead assertions. They have been rewritten to be Hyperscan-
@@ -80,6 +81,47 @@ var knownIncompatiblePatterns = map[string]bool{}
 // and .NET (?<name>) syntax. Used to convert them to non-capturing groups for
 // Hyperscan compatibility.
 var namedGroupRegex = regexp.MustCompile(`\(\?P?<[^>]+>`)
+
+type hyperscanPatternInfo struct {
+	rule    *types.Rule
+	pattern *hyperscan.Pattern
+	index   int
+}
+
+func prepareHyperscanPatterns(rules []*types.Rule) ([]hyperscanPatternInfo, []*types.Rule) {
+	allPatterns := make([]hyperscanPatternInfo, 0, len(rules))
+	knownFallbackRules := make([]*types.Rule, 0)
+
+	for i, currentRule := range rules {
+		if knownIncompatiblePatterns[currentRule.ID] {
+			knownFallbackRules = append(knownFallbackRules, currentRule)
+			continue
+		}
+
+		pattern := preprocessPatternForHyperscan(currentRule.Pattern)
+
+		var flags hyperscan.CompileFlag
+		if hasCaseInsensitive(currentRule.Pattern) {
+			flags |= hyperscan.Caseless
+		}
+		if hasDotAll(currentRule.Pattern) {
+			flags |= hyperscan.DotAll
+		}
+		if hasMultiline(currentRule.Pattern) {
+			flags |= hyperscan.MultiLine
+		}
+
+		compiledPattern := hyperscan.NewPattern(pattern, flags)
+		compiledPattern.Id = i
+		allPatterns = append(allPatterns, hyperscanPatternInfo{
+			rule:    currentRule,
+			pattern: compiledPattern,
+			index:   i,
+		})
+	}
+
+	return allPatterns, knownFallbackRules
+}
 
 // NewVectorscan creates a new Hyperscan/Vectorscan-based matcher.
 // This is the high-performance option requiring CGO and the Hyperscan library.
@@ -113,7 +155,8 @@ func NewVectorscan(rules []*types.Rule, contextLines int, warnf func(string, ...
 	if m.db != nil {
 		scratch, err := hyperscan.NewScratch(m.db)
 		if err != nil {
-			m.db.Close()
+			_ = m.db.Close()
+			m.db = nil
 			return nil, fmt.Errorf("allocate scratch: %w", err)
 		}
 		m.scratch = scratch
@@ -142,43 +185,7 @@ func NewVectorscan(rules []*types.Rule, contextLines int, warnf func(string, ...
 // This optimization reduces compilation time from O(n) to O(1) in the common
 // case where all patterns are compatible, or O(log n) when a few are not.
 func (m *VectorscanMatcher) compilePatterns() error {
-	// Build pattern list with preprocessing
-	type patternInfo struct {
-		rule    *types.Rule
-		pattern *hyperscan.Pattern
-		index   int
-	}
-	allPatterns := make([]patternInfo, 0, len(m.rules))
-
-	// Track known incompatible rules separately
-	var knownFallbackRules []*types.Rule
-
-	for i, rule := range m.rules {
-		// Check if this is a known incompatible pattern
-		if knownIncompatiblePatterns[rule.ID] {
-			knownFallbackRules = append(knownFallbackRules, rule)
-			continue
-		}
-
-		// Preprocess pattern for Hyperscan compatibility
-		pattern := preprocessPatternForHyperscan(rule.Pattern)
-
-		// Determine Hyperscan flags based on pattern content
-		var flags hyperscan.CompileFlag = 0
-		if hasCaseInsensitive(rule.Pattern) {
-			flags |= hyperscan.Caseless
-		}
-		if hasDotAll(rule.Pattern) {
-			flags |= hyperscan.DotAll
-		}
-		if hasMultiline(rule.Pattern) {
-			flags |= hyperscan.MultiLine
-		}
-
-		p := hyperscan.NewPattern(pattern, flags)
-		p.Id = i
-		allPatterns = append(allPatterns, patternInfo{rule: rule, pattern: p, index: i})
-	}
+	allPatterns, knownFallbackRules := prepareHyperscanPatterns(m.rules)
 
 	// Try to compile all patterns at once (fast path)
 	hsPatternList := make([]*hyperscan.Pattern, len(allPatterns))
@@ -198,14 +205,13 @@ func (m *VectorscanMatcher) compilePatterns() error {
 	// Try to compile all patterns at once (fast path)
 	// If successful, we'll reuse this database instead of compiling again
 	var firstCompileDB hyperscan.BlockDatabase
-	firstCompileDB, err := hyperscan.NewBlockDatabase(hsPatternList...)
+	firstCompileDB, err := loadOrCompileHyperscanDatabase(hsPatternList, m.warnf)
 	if err == nil {
 		// All patterns are compatible! Fast path - reuse this compilation
-		for i, pi := range allPatterns {
-			pi.pattern.Id = i
+		for _, pi := range allPatterns {
 			hsPatterns = append(hsPatterns, pi.pattern)
 			hsRules = append(hsRules, pi.rule)
-			hsPatternToRule[uint(i)] = pi.rule
+			hsPatternToRule[uint(pi.pattern.Id)] = pi.rule
 		}
 	} else {
 		// Some patterns are incompatible - use binary search to find them
@@ -236,6 +242,9 @@ func (m *VectorscanMatcher) compilePatterns() error {
 			// Fallback to Perl-compatible mode
 			re, err = regexp2.Compile(rule.Pattern, regexp2.None)
 			if err != nil {
+				if firstCompileDB != nil {
+					_ = firstCompileDB.Close()
+				}
 				return fmt.Errorf("failed to compile pattern %q for rule %s: %w", rule.Pattern, rule.ID, err)
 			}
 		}
@@ -256,7 +265,7 @@ func (m *VectorscanMatcher) compilePatterns() error {
 			m.db = firstCompileDB
 		} else {
 			// Slow path: compile only the compatible patterns after binary search
-			db, err := hyperscan.NewBlockDatabase(hsPatterns...)
+			db, err := loadOrCompileHyperscanDatabase(hsPatterns, m.warnf)
 			if err != nil {
 				return fmt.Errorf("compile database: %w", err)
 			}
@@ -293,8 +302,9 @@ func findIncompatiblePatterns(patterns []*hyperscan.Pattern) []int {
 	}
 
 	// Try to compile all patterns
-	_, err := hyperscan.NewBlockDatabase(patterns...)
+	database, err := hyperscan.NewBlockDatabase(patterns...)
 	if err == nil {
+		_ = database.Close()
 		return nil // All patterns are compatible
 	}
 
@@ -1025,21 +1035,24 @@ func (m *VectorscanMatcher) Close() error {
 	// Note: We don't drain scratchPool - sync.Pool automatically GCs unused items
 	// Attempting to drain would cause infinite loop since Pool.New() clones scratches
 
+	var closeErrors []error
+
 	// Free template scratch
 	if m.scratch != nil {
 		if err := m.scratch.Free(); err != nil {
-			return fmt.Errorf("free scratch: %w", err)
+			closeErrors = append(closeErrors, fmt.Errorf("free scratch: %w", err))
 		}
+		m.scratch = nil
 	}
 
-	// Close database
 	if m.db != nil {
 		if err := m.db.Close(); err != nil {
-			return fmt.Errorf("close database: %w", err)
+			closeErrors = append(closeErrors, fmt.Errorf("close database: %w", err))
 		}
+		m.db = nil
 	}
 
-	return nil
+	return errors.Join(closeErrors...)
 }
 
 // VectorscanAvailable returns true if vectorscan is available.
