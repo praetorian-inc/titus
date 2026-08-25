@@ -60,29 +60,20 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 	// response to the second. httpCacheKey hashes the whole key, so rendering
 	// here does not put credentials into map keys.
 	//
-	// Substitution is idempotent — no {{...}} placeholders survive the first
-	// pass — so makeHTTPRequest rendering these again below is harmless.
+	// The SAME rendered values are sent below. Rendering a second time would not
+	// be reliably identical: substituteVarsInURL iterates NamedGroups in map
+	// order, so a captured value that itself looks like a placeholder could
+	// resolve differently between passes, and the key would then describe a
+	// request that was never sent.
 	secretBytes := m.NamedGroups[c.auth.SecretGroup]
-	renderedHeaders := make([]scorerHeader, len(c.headers))
-	for i, hdr := range c.headers {
-		renderedHeaders[i] = scorerHeader{
-			Name:  hdr.Name,
-			Value: substituteVarsInURL(hdr.Value, m.NamedGroups),
-		}
-	}
-	key := httpCacheKey(
-		c.method,
-		substituteVarsInURL(c.url, m.NamedGroups),
-		renderedHeaders,
-		substituteVarsInURL(c.body, m.NamedGroups),
-		secretBytes,
-	)
+	rendered := renderRequest(c.method, c.url, c.headers, c.body, m.NamedGroups)
+	key := httpCacheKey(rendered, c.auth, secretBytes)
 
 	resp, found := cache.get(key)
 	if !found {
 		var err error
 		resp, err = withRetry(ctx, func() (*cachedHTTPResponse, error) {
-			return makeHTTPRequest(ctx, c.method, c.url, c.headers, c.body, c.auth, m.NamedGroups)
+			return sendRenderedRequest(ctx, rendered, c.auth, string(secretBytes))
 		})
 		if err != nil {
 			return false, fmt.Errorf("http condition request: %w", err)

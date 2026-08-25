@@ -228,11 +228,10 @@ func TestNegatedLeaf_ArrayLengthGte_GivesLessThan(t *testing.T) {
 // cache key must reflect the RENDERED request, not the template (LAB-6051)
 // ----------------------------------------------------------------
 
-// countingServer records every request path/header/body it receives.
+// countingServer records the request paths it receives.
 type countingServer struct {
-	calls   int
-	paths   []string
-	regions []string
+	calls int
+	paths []string
 }
 
 // Two findings sharing a secret but rendering a different non-secret template
@@ -348,4 +347,70 @@ func TestHTTPCondition_DifferentBodies_IssueSeparateRequests(t *testing.T) {
 		require.NoError(t, err)
 	}
 	assert.Equal(t, 2, calls, "different bodies must not share a cache entry")
+}
+
+// Auth is part of what makes a request distinct: the same URL and secret sent
+// as a bearer header, a custom header, or a query parameter are three different
+// requests. Omitting auth from the key let the second reuse the first's response.
+func TestHTTPCondition_DifferentAuthTypes_IssueSeparateRequests(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	cache := newHTTPResponseCache()
+	m := matchWithGroups(map[string][]byte{"token": []byte("secret")})
+	auths := []scorerAuth{
+		{Type: "bearer", SecretGroup: "token"},
+		{Type: "header", SecretGroup: "token", HeaderName: "X-Token"},
+		{Type: "query", SecretGroup: "token", QueryParam: "token"},
+	}
+	for _, a := range auths {
+		c := &httpCondition{
+			method:    "GET",
+			url:       srv.URL + "/x",
+			auth:      a,
+			firesWhen: &statusCodeLeaf{Code: 200},
+		}
+		_, err := c.evaluateWithCache(context.Background(), m, cache)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, len(auths), calls, "each auth scheme is a distinct request")
+}
+
+// The key encoding must be unambiguous. Delimiting fields with a NUL byte
+// collides for values that themselves contain NUL: no headers with a body of
+// "a\x00b\x00" produced the same bytes as one header {a: b} with an empty body.
+func TestHTTPCondition_AmbiguousFieldBoundaries_DoNotCollide(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	cache := newHTTPResponseCache()
+	m := matchWithGroups(map[string][]byte{"token": []byte("secret")})
+	auth := scorerAuth{Type: "bearer", SecretGroup: "token"}
+
+	withBody := &httpCondition{
+		method: "POST", url: srv.URL + "/x", auth: auth,
+		body:      "a\x00b\x00",
+		firesWhen: &statusCodeLeaf{Code: 200},
+	}
+	withHeader := &httpCondition{
+		method: "POST", url: srv.URL + "/x", auth: auth,
+		headers:   []scorerHeader{{Name: "a", Value: "b"}},
+		firesWhen: &statusCodeLeaf{Code: 200},
+	}
+	_, err := withBody.evaluateWithCache(context.Background(), m, cache)
+	require.NoError(t, err)
+	_, err = withHeader.evaluateWithCache(context.Background(), m, cache)
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, calls, "distinct requests must not hash to the same key")
 }

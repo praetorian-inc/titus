@@ -2,7 +2,9 @@ package scoring
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
+	"strconv"
 	"sync"
 )
 
@@ -36,24 +38,48 @@ func newHTTPResponseCache() *httpResponseCache {
 // The whole key is a single hash, so credentials never appear in map keys even
 // though the rendered URL, headers and body may contain them.
 //
+// Auth is part of request identity too: the same URL and secret sent as a
+// bearer header, a custom header, or a query parameter are three different
+// requests.
+//
+// Fields are length-prefixed rather than delimited. A delimiter is ambiguous
+// for values that can contain it — with NUL separators, no headers and a body
+// of "a\x00b\x00" hashes identically to one header {a: b} with an empty body.
+// The header count is written too, so a header pair cannot be confused with the
+// body that follows it.
+//
 // Header order is significant. Headers come from the YAML in declaration order,
 // so this is deterministic for a given modifier; two modifiers declaring the
 // same headers in a different order simply miss the shared entry, costing an
 // extra request rather than returning a wrong one.
-func httpCacheKey(method, url string, headers []scorerHeader, body string, secretBytes []byte) string {
+func httpCacheKey(r renderedRequest, auth scorerAuth, secretBytes []byte) string {
 	h := sha256.New()
-	write := func(s string) {
-		_, _ = h.Write([]byte(s))
-		_, _ = h.Write([]byte{0})
+	write := func(b []byte) {
+		var n [8]byte
+		binary.BigEndian.PutUint64(n[:], uint64(len(b)))
+		_, _ = h.Write(n[:])
+		_, _ = h.Write(b)
 	}
-	write(method)
-	write(url)
-	for _, hdr := range headers {
-		write(hdr.Name)
-		write(hdr.Value)
+	writeStr := func(s string) { write([]byte(s)) }
+
+	writeStr(r.method)
+	writeStr(r.url)
+	writeStr(strconv.Itoa(len(r.headers)))
+	for _, hdr := range r.headers {
+		writeStr(hdr.Name)
+		writeStr(hdr.Value)
 	}
-	write(body)
-	_, _ = h.Write(secretBytes)
+	writeStr(r.body)
+
+	// Effective auth: the scheme and everything that shapes where the secret goes.
+	writeStr(auth.Type)
+	writeStr(auth.SecretGroup)
+	writeStr(auth.HeaderName)
+	writeStr(auth.QueryParam)
+	writeStr(auth.Username)
+	writeStr(auth.KeyPrefix)
+
+	write(secretBytes)
 	return hex.EncodeToString(h.Sum(nil))
 }
 

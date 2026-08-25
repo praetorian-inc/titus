@@ -277,7 +277,7 @@ Note the secret itself is normally injected via `auth.secret_group` rather than 
 
 **Response caching:**
 
-Within a single scan, responses are cached on the **rendered** request: method, URL, headers, body and secret, after template substitution. If several modifiers for the same finding issue the same request, only one network call is made -- so a scorer can split its logic across many modifiers without multiplying traffic.
+Within a single scan, responses are cached on the **rendered** request: method, URL, headers, body, auth scheme and secret, after template substitution. If several modifiers for the same finding issue the same request, only one network call is made -- so a scorer can split its logic across many modifiers without multiplying traffic.
 
 Because the key is a hash of all of those together, credentials never appear in cache keys even though a rendered URL or body may contain them. Requests that differ in any component -- including a non-secret template variable such as a region or account identifier -- get separate entries, so a template variable is a safe way to distinguish two requests.
 
