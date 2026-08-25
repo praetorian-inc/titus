@@ -1,0 +1,140 @@
+# SendGrid API key scorer — permission scope enumeration (LAB-3371).
+#
+# Rule ID covered:
+#   np.sendgrid.1 — SendGrid API key (SG.<id>.<secret>): base_score 65
+#
+# GET /v3/scopes returns the calling key's own permission list and has no side
+# effects, so it is safe to call against a found credential:
+#   {"scopes": ["mail.send", "alerts.create", ...]}
+#
+# All modifiers issue the SAME request. The engine caches HTTP responses on
+# (method, url, secret), so a finding costs one network call, not seven. The
+# YAML anchor below keeps the URL and auth identical by construction — a typo in
+# one copy would silently split the cache and issue duplicate calls.
+#
+# Scope naming, verified against the SendGrid docs (these are easy to get wrong):
+#   - the send scope is `mail.send`, NOT `mail_send`
+#   - domain authentication scopes are `whitelabel.*` (formerly Whitelabel),
+#     NOT `domain_auth.*`
+#
+# A key carries EITHER billing permissions or any other set of permissions, never
+# both, and Full Access covers every endpoint except billing. Billing keys are
+# therefore a narrow-but-valuable class rather than an escalation on top of Full
+# Access, which is why billing-access sets a score instead of adding a delta.
+#
+# PRIORITY IS LOAD-BEARING. Higher priority is evaluated FIRST, and a later
+# set_score replaces the running score:
+#   - billing-access (30) lands after narrow-scope-set (40) so it overrides that
+#     downgrade for a small-but-dangerous billing key.
+#   - revoked-key (10) lands last so a dead key scores 5 regardless of what
+#     scopes it once held.
+#
+# The 100 / 25 thresholds are breadth heuristics and are the intended tuning
+# knobs; they should be calibrated against a real Full Access key's scope count.
+#
+# KNOWN LIMITATION -- EU data residency:
+# This scorer probes only the global host. SendGrid EU regional subusers have
+# their own API keys served from https://api.eu.sendgrid.com, so an EU key is
+# expected to fail against the global host and would then be scored 5 by
+# revoked-key -- a live credential reported as dead.
+#
+# This is not fixable in the current DSL. Distinguishing "revoked" from "wrong
+# region" means firing revoked-key only when BOTH hosts reject the key, and
+# fires_when has no conjunction: each modifier carries exactly one leaf. Adding
+# EU modifiers alongside the global ones does not help, because revoked-key
+# evaluates last and its set_score would still overwrite them.
+#
+# The same gap already exists in pkg/validator/validators/sendgrid.yaml, which
+# also checks only the global host. Tracked separately; see LAB-3371 follow-up.
+#
+# API documentation:
+#   https://www.twilio.com/docs/sendgrid/api-reference/api-key-permissions
+#   https://www.twilio.com/docs/sendgrid/data-residency/faq
+scorers:
+  - name: sendgrid-key-scope
+    rule_ids:
+      - np.sendgrid.1
+    modifiers:
+      # --- Breadth: a Full Access key returns the whole scope catalogue ---
+      # A DELTA, not a set_score. set_score is a verdict that overwrites the
+      # running score, so using it here made the result depend on evaluation
+      # order: a Full Access key could score BELOW a key holding a subset of its
+      # scopes. Breadth contributes to the score; it does not decide it.
+      - name: full-access-key
+        priority: 90
+        http: &sendgrid_scopes
+          method: GET
+          url: https://api.sendgrid.com/v3/scopes
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          json_array_length_gte:
+            path: ".scopes"
+            value: 100
+        delta: 30
+
+      # --- Individually dangerous scope families ---
+
+      # Can modify SPF/DKIM/DMARC and break domain authentication.
+      - name: domain-auth-access
+        priority: 70
+        http: *sendgrid_scopes
+        fires_when:
+          response_body_contains: '"whitelabel.read"'
+        delta: 20
+
+      # Can create subusers, and therefore mint further API keys.
+      - name: subuser-management
+        priority: 60
+        http: *sendgrid_scopes
+        fires_when:
+          response_body_contains: '"subusers.create"'
+        delta: 15
+
+      # Email Marketing access covers contacts, lists and segments -- PII.
+      # The documented scope is `marketing.read`; `marketing.contacts.read`
+      # does not exist, and `marketing_campaigns.read` is the legacy scope.
+      - name: contact-pii-access
+        priority: 50
+        http: *sendgrid_scopes
+        fires_when:
+          response_body_contains: '"marketing.read"'
+        delta: 15
+
+      # --- Restricted key: fewer than 25 scopes ---
+      # negative: + json_array_length_gte is the "fewer than N" test; the DSL has
+      # no lte. json_path errors are not inverted, so this correctly does NOT
+      # fire on an error body that has no .scopes field at all.
+      - name: narrow-scope-set
+        priority: 40
+        http: *sendgrid_scopes
+        fires_when:
+          negative: true
+          json_array_length_gte:
+            path: ".scopes"
+            value: 25
+        delta: -20
+
+      # --- Billing keys: narrow, but financial ---
+      # Deliberately after narrow-scope-set so this overrides that downgrade.
+      - name: billing-access
+        priority: 30
+        http: *sendgrid_scopes
+        fires_when:
+          response_body_contains: '"billing.read"'
+        set_score: 85
+
+      # --- Dead key: evaluated last, wins outright ---
+      # Side effect: on a 401 the two json_array_length_gte modifiers above cannot
+      # find .scopes and return an error, so the engine logs 2 "[warn] ...
+      # (skipping)" lines per revoked finding. Stats counters are NOT affected --
+      # trackError only counts sentinel timeout/rate-limit/server/network errors.
+      # Reducing the noise needs an engine change (skip remaining modifiers after
+      # a terminal set_score, or log evaluation errors below warn level).
+      - name: revoked-key
+        priority: 10
+        http: *sendgrid_scopes
+        fires_when:
+          status_code: 401
+        set_score: 5

@@ -181,3 +181,45 @@ func TestHTTPCondition_JSONArrayLengthGte_DoesNotFire(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, fired)
 }
+
+// ----------------------------------------------------------------
+// negatedLeaf — `negative: true` on a fires_when block (LAB-3371)
+// ----------------------------------------------------------------
+
+func TestNegatedLeaf_InvertsFalseToTrue(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{}`, nil)
+	cond.firesWhen = &negatedLeaf{inner: &statusCodeLeaf{Code: 403}}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired, "inner leaf did not fire, so the negation should")
+}
+
+func TestNegatedLeaf_InvertsTrueToFalse(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{}`, nil)
+	cond.firesWhen = &negatedLeaf{inner: &statusCodeLeaf{Code: 200}}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.False(t, fired, "inner leaf fired, so the negation should not")
+}
+
+// A negated leaf must NOT turn an inner error into a "fires" result. jsonGet
+// errors on a missing path rather than returning false, so inverting errors
+// would make a negated json_path_* fire on any response lacking the field —
+// including error bodies from a revoked key.
+func TestNegatedLeaf_PropagatesErrorWithoutInverting(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{}`, nil)
+	cond.firesWhen = &negatedLeaf{inner: &jsonPathEqualsLeaf{Path: ".missing", Value: true}}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.Error(t, err, "inner error must propagate, not be inverted into a match")
+	assert.False(t, fired)
+}
+
+// negative + json_array_length_gte is the "fewer than N" test the DSL otherwise
+// lacks; it is how a restricted-scope key is detected.
+func TestNegatedLeaf_ArrayLengthGte_GivesLessThan(t *testing.T) {
+	cond, _ := httpConditionFixture(t, 200, `{"scopes":["mail.send","stats.read"]}`, nil)
+	cond.firesWhen = &negatedLeaf{inner: &jsonArrayLengthGteLeaf{Path: ".scopes", Value: 25}}
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired, "2 scopes is fewer than 25, so the negated gte should fire")
+}

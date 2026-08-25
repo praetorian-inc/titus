@@ -335,3 +335,92 @@ func TestLoadBuiltinScorers_WithCustomFS(t *testing.T) {
 	require.Len(t, scorers, 1)
 	assert.Equal(t, "test-scorer", scorers[0].Name)
 }
+
+// ----------------------------------------------------------------
+// `negative: true` on fires_when (LAB-3371)
+// ----------------------------------------------------------------
+
+// negative: is a modifier ON a leaf, not a leaf itself — it must not be counted
+// by the "exactly one condition leaf" check, or every negated modifier fails to load.
+func TestLoadScorers_NegativeFiresWhen_Loads(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: sendgrid-key-scope
+    rule_ids: [np.sendgrid.1]
+    modifiers:
+      - name: narrow-scope-set
+        priority: 40
+        http:
+          method: GET
+          url: https://api.sendgrid.com/v3/scopes
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          negative: true
+          json_array_length_gte:
+            path: ".scopes"
+            value: 25
+        delta: -20
+`)
+	scorers, err := NewLoader().LoadScorers(yamlBytes)
+	require.NoError(t, err)
+	require.Len(t, scorers, 1)
+	require.Len(t, scorers[0].Modifiers, 1)
+
+	m := scorers[0].Modifiers[0]
+	assert.Equal(t, ModifierKindDelta, m.Kind)
+	assert.Equal(t, -20, m.Value)
+	assert.True(t, m.IsDynamic(), "http-backed modifier must still count as dynamic")
+
+	httpCond, ok := m.Condition.(*httpCondition)
+	require.True(t, ok, "expected an httpCondition")
+	_, ok = httpCond.firesWhen.(*negatedLeaf)
+	assert.True(t, ok, "fires_when leaf should be wrapped in negatedLeaf")
+}
+
+// negative: alone is not a condition — it still needs a leaf to negate.
+func TestLoadScorers_NegativeWithoutLeaf_Errors(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: broken
+    rule_ids: [np.sendgrid.1]
+    modifiers:
+      - name: no-leaf
+        http:
+          method: GET
+          url: https://api.sendgrid.com/v3/scopes
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          negative: true
+        delta: -10
+`)
+	_, err := NewLoader().LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fires_when")
+}
+
+// The switch in buildFiresWhenLeafInner returns on the first field it finds, so
+// extra leaves were silently discarded -- a scorer could declare two conditions
+// and quietly get only one, with no indication which.
+func TestLoadScorers_MultipleFiresWhenLeaves_Errors(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: ambiguous
+    rule_ids: [np.sendgrid.1]
+    modifiers:
+      - name: two-leaves
+        http:
+          method: GET
+          url: https://api.sendgrid.com/v3/scopes
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          status_code: 401
+          response_body_contains: '"billing.read"'
+        delta: -10
+`)
+	_, err := NewLoader().LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one")
+}

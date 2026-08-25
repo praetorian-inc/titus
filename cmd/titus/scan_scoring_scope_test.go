@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -414,4 +416,236 @@ scorers:
 	assert.Equal(t, rule.BaseScore, score.Final, "scope disabled: no dynamic modifier should fire")
 	assert.Equal(t, 0, int(calls.Load()), "scope disabled: no HTTP calls should be made")
 	assert.Empty(t, score.Applied, "scope disabled: Applied must be empty")
+}
+
+// ----------------------------------------------------------------
+// SendGrid scope scorer (LAB-3371)
+//
+// Mirrors pkg/scoring/scorers/sendgrid.yaml with the API host swapped for an
+// in-process httptest.Server. Priorities matter here: higher priority is
+// evaluated FIRST, and a later set_score replaces an earlier running score, so
+// billing-access (30) deliberately lands after narrow-scope-set (40) and
+// revoked-key (10) lands last of all.
+// ----------------------------------------------------------------
+
+const sendgridTestKey = "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"
+
+func sendgridTestScorerYAML(mockURL string) []byte {
+	return []byte(`
+scorers:
+  - name: sendgrid-key-scope
+    rule_ids:
+      - np.sendgrid.1
+    modifiers:
+      - name: full-access-key
+        priority: 90
+        http: &sg
+          method: GET
+          url: ` + mockURL + `/v3/scopes
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          json_array_length_gte:
+            path: ".scopes"
+            value: 100
+        delta: 30
+      - name: domain-auth-access
+        priority: 70
+        http: *sg
+        fires_when:
+          response_body_contains: '"whitelabel.read"'
+        delta: 20
+      - name: subuser-management
+        priority: 60
+        http: *sg
+        fires_when:
+          response_body_contains: '"subusers.create"'
+        delta: 15
+      - name: contact-pii-access
+        priority: 50
+        http: *sg
+        fires_when:
+          response_body_contains: '"marketing.read"'
+        delta: 15
+      - name: narrow-scope-set
+        priority: 40
+        http: *sg
+        fires_when:
+          negative: true
+          json_array_length_gte:
+            path: ".scopes"
+            value: 25
+        delta: -20
+      - name: billing-access
+        priority: 30
+        http: *sg
+        fires_when:
+          response_body_contains: '"billing.read"'
+        set_score: 85
+      - name: revoked-key
+        priority: 10
+        http: *sg
+        fires_when:
+          status_code: 401
+        set_score: 5
+`)
+}
+
+// sendgridScopesServer serves a /v3/scopes payload for the given scope list,
+// rejecting any request that does not carry the expected bearer token.
+func sendgridScopesServer(t *testing.T, scopes []string, status int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+sendgridTestKey {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if status != http.StatusOK {
+			_, _ = w.Write([]byte(`{"errors":[{"message":"authorization required"}]}`))
+			return
+		}
+		body, err := json.Marshal(map[string][]string{"scopes": scopes})
+		require.NoError(t, err)
+		_, _ = w.Write(body)
+	}))
+}
+
+func scoreSendGridKey(t *testing.T, srv *httptest.Server) *types.Score {
+	t.Helper()
+	const ruleID = "np.sendgrid.1"
+	scorers, err := scoring.NewLoader().LoadScorers(sendgridTestScorerYAML(srv.URL))
+	require.NoError(t, err)
+
+	engine := scoring.NewEngine(scorers, scoring.EngineConfig{
+		ScopeEnabled: true,
+		Timeout:      5 * time.Second,
+	})
+	rule := &types.Rule{ID: ruleID, BaseScore: 65}
+	finding := &types.Finding{ID: "sendgrid-finding-1", RuleID: ruleID}
+	match := &types.Match{
+		RuleID:      ruleID,
+		NamedGroups: map[string][]byte{"token": []byte(sendgridTestKey)},
+	}
+	score := engine.Score(context.Background(), finding, []*types.Match{match}, rule)
+	require.NotNil(t, score)
+	return score
+}
+
+func appliedNames(score *types.Score) []string {
+	var names []string
+	for _, a := range score.Applied {
+		names = append(names, a.Name)
+	}
+	return names
+}
+
+// genericScopes returns n harmless scope names that match none of the
+// sensitive-scope substrings the scorer looks for.
+func genericScopes(n int) []string {
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, fmt.Sprintf("templates.read.%d", i))
+	}
+	return out
+}
+
+// Breadth alone is worth +30 over the 65 base. This fixture is deliberately
+// unrealistic -- a real Full Access key also holds the sensitive scopes, which
+// is covered by TestSendGridScorer_RealisticFullAccess_IsMaximal.
+func TestSendGridScorer_BreadthAlone_AddsDelta(t *testing.T) {
+	srv := sendgridScopesServer(t, append(genericScopes(120), "mail.send"), http.StatusOK)
+	defer srv.Close()
+
+	score := scoreSendGridKey(t, srv)
+	assert.Equal(t, 95, score.Final, "65 base + 30 breadth")
+	assert.Contains(t, appliedNames(score), "full-access-key")
+	assert.NotContains(t, appliedNames(score), "narrow-scope-set")
+}
+
+// A restricted key with only mail.send is scored DOWN from the 65 base. This is
+// the case the DSL could not express before the negative: flag.
+func TestSendGridScorer_MailSendOnly_ScoredDown(t *testing.T) {
+	srv := sendgridScopesServer(t, []string{"mail.send"}, http.StatusOK)
+	defer srv.Close()
+
+	score := scoreSendGridKey(t, srv)
+	assert.Equal(t, 45, score.Final, "65 base - 20 for a narrow scope set")
+	assert.Contains(t, appliedNames(score), "narrow-scope-set")
+	assert.NotContains(t, appliedNames(score), "full-access-key")
+}
+
+// A billing key is narrow but high value. billing-access is evaluated after
+// narrow-scope-set precisely so its set_score overrides that downgrade.
+func TestSendGridScorer_BillingKey_OverridesNarrowDowngrade(t *testing.T) {
+	srv := sendgridScopesServer(t, []string{"billing.read", "billing.update"}, http.StatusOK)
+	defer srv.Close()
+
+	score := scoreSendGridKey(t, srv)
+	assert.Equal(t, 85, score.Final, "billing set_score must win over the narrow-scope delta")
+	assert.Contains(t, appliedNames(score), "billing-access")
+	assert.Contains(t, appliedNames(score), "narrow-scope-set")
+}
+
+// Sensitive-scope deltas compose with the narrow-scope downgrade.
+func TestSendGridScorer_NarrowKeyWithDomainAuth_NetsToBase(t *testing.T) {
+	srv := sendgridScopesServer(t, []string{"mail.send", "whitelabel.read"}, http.StatusOK)
+	defer srv.Close()
+
+	score := scoreSendGridKey(t, srv)
+	assert.Equal(t, 65, score.Final, "65 base + 20 domain auth - 20 narrow scope")
+	assert.Contains(t, appliedNames(score), "domain-auth-access")
+	assert.Contains(t, appliedNames(score), "narrow-scope-set")
+}
+
+// A revoked key is worthless regardless of what it once could do. revoked-key
+// is the lowest priority so its set_score lands last and wins outright.
+func TestSendGridScorer_RevokedKey_SetScore5(t *testing.T) {
+	srv := sendgridScopesServer(t, nil, http.StatusUnauthorized)
+	defer srv.Close()
+
+	score := scoreSendGridKey(t, srv)
+	assert.Equal(t, 5, score.Final)
+	assert.Contains(t, appliedNames(score), "revoked-key")
+	// The negated array-length check must not fire on an error body: jsonGet
+	// errors on the missing .scopes path rather than returning false.
+	assert.NotContains(t, appliedNames(score), "narrow-scope-set")
+}
+
+// Email Marketing access exposes contact lists (PII). The documented scope is
+// marketing.read; marketing.contacts.read does not exist.
+func TestSendGridScorer_MarketingAccess_AddsPIIDelta(t *testing.T) {
+	srv := sendgridScopesServer(t, []string{"mail.send", "marketing.read"}, http.StatusOK)
+	defer srv.Close()
+
+	score := scoreSendGridKey(t, srv)
+	assert.Contains(t, appliedNames(score), "contact-pii-access")
+	assert.Equal(t, 60, score.Final, "65 base + 15 marketing PII - 20 narrow scope")
+}
+
+// A REAL Full Access key returns the whole catalogue, which necessarily
+// includes the sensitive scopes the deltas look for. Scoring it must be
+// monotonic: a Full Access key can never score below a key holding a subset of
+// its scopes. The earlier fixture omitted those scopes, so it exercised a key
+// that cannot exist and hid the interaction between set_score and the deltas.
+func TestSendGridScorer_RealisticFullAccess_IsMaximal(t *testing.T) {
+	full := append(genericScopes(120),
+		"mail.send", "whitelabel.read", "subusers.create", "marketing.read")
+	srvFull := sendgridScopesServer(t, full, http.StatusOK)
+	defer srvFull.Close()
+	fullScore := scoreSendGridKey(t, srvFull)
+
+	// A mid-breadth key holding the same sensitive scopes but far fewer overall.
+	subset := append(genericScopes(30),
+		"mail.send", "whitelabel.read", "subusers.create", "marketing.read")
+	srvSubset := sendgridScopesServer(t, subset, http.StatusOK)
+	defer srvSubset.Close()
+	subsetScore := scoreSendGridKey(t, srvSubset)
+
+	assert.Contains(t, appliedNames(fullScore), "full-access-key")
+	assert.GreaterOrEqual(t, fullScore.Final, subsetScore.Final,
+		"a Full Access key must never score below a key holding a subset of its scopes")
+	assert.Equal(t, 100, fullScore.Final, "full access plus every sensitive scope family is maximal")
 }

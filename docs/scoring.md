@@ -193,14 +193,16 @@ scorers:
       - name: config-file-context
         priority: 80
         surrounding_context_contains:
-          pattern: 'api_key\s*='
+          value: 'api_key='
+          within: 64
         delta: 5
 
       # Static modifier: fires based on secret length (useful as an entropy proxy)
       - name: long-token
         priority: 70
         match_length:
-          min: 40
+          op: gt          # gt | lt | eq
+          value: 40
         delta: 10
 
       # Dynamic modifier: makes a live HTTP call (only fires with --score-scope)
@@ -210,9 +212,10 @@ scorers:
           method: GET
           url: "https://api.example.com/me"
           auth:
-            bearer: "{{ .Groups.token }}"    # inject named capture group as Bearer token
+            type: bearer
+            secret_group: "token"   # named capture group holding the secret
         fires_when:
-          status_code_is: 200
+          status_code: 200
         delta: 20
 ```
 
@@ -220,26 +223,63 @@ scorers:
 
 Dynamic (`http`) modifiers support the following options:
 
-**Authentication:**
-- `auth.bearer`: injects a named capture group value as a `Bearer` token in the `Authorization` header.
+**Authentication (`auth`):**
+
+`auth.type` selects the scheme and `auth.secret_group` names the rule capture
+group holding the secret:
+
+| Type | Effect |
+|------|--------|
+| `bearer` | `Authorization: Bearer <secret>` |
+| `basic` | `Authorization: Basic base64(<username>:<secret>)` (set `username`) |
+| `header` | Sends the secret in `header_name` |
+| `query` | Sends the secret in the `query_param` query parameter |
+| `api_key` | `Authorization: <key_prefix><secret>` (`key_prefix` defaults to `key=`) |
 
 **Firing conditions (`fires_when`):**
 
 | Condition | Description |
 |-----------|-------------|
-| `status_code_is` | Fires when the HTTP response status matches the given code |
+| `status_code` | Fires when the HTTP response status equals the given code |
+| `status_code_in` | Fires when the response status is any of the given codes |
+| `response_body_contains` | Fires when the response body contains a substring |
 | `header_contains` | Fires when a specific response header contains a substring |
-| `json_path_equals` | Fires when a JSONPath expression equals a specific value |
-| `json_path_matches` | Fires when a JSONPath expression matches a regex |
-| `json_array_length_gte` | Fires when a JSONPath array has at least N elements |
+| `json_path_equals` | Fires when a dot-notation path equals a specific value |
+| `json_path_matches` | Fires when a dot-notation path matches a regex |
+| `json_array_length_gte` | Fires when a dot-notation path is an array with at least N elements |
+
+Paths are simple dot-notation (`.`, `.field`, `.a.b`); array indexing is not supported.
+
+**Negating a condition (`negative`):**
+
+Set `negative: true` alongside a leaf to invert it. It modifies the leaf rather than
+being a leaf itself, so a `fires_when` block still requires exactly one condition:
+
+```yaml
+fires_when:
+  negative: true
+  json_array_length_gte:
+    path: ".scopes"
+    value: 25          # fires when there are FEWER than 25 scopes
+```
+
+This supplies the absence and upper-bound tests the condition list otherwise lacks.
+
+Errors are propagated, never inverted: a path that does not exist is an error rather
+than a `false`, so a negated `json_path_*` will not fire on a response missing the
+field. For absence checks prefer `response_body_contains`, which cannot error.
 
 **Template variables:**
 
-Use `{{ .Groups.<name> }}` in URL strings or header values to inject named capture groups from the rule regex. Example: if your rule captures a token in a group named `token`, use `{{ .Groups.token }}` anywhere in the HTTP modifier.
+Use `{{name}}` (or `{{ name }}` with spaces) in the URL, header values, or request body to inject a named capture group from the rule regex. If your rule captures a token in a group named `token`, write `{{token}}`.
+
+Note the secret itself is normally injected via `auth.secret_group` rather than a template variable; template variables are for the other captures a request needs, such as an account or region identifier.
 
 **Response caching:**
 
-Within a single scan, identical HTTP requests (same URL, method, and headers) are cached. If multiple modifiers for the same finding make the same call, only one network request is sent.
+Within a single scan, responses are cached on (method, URL, secret). If several modifiers for the same finding issue the same request, only one network call is made -- so a scorer can split its logic across many modifiers without multiplying traffic.
+
+The URL is keyed **before** template substitution, so plaintext secrets never appear in cache keys. That has a consequence worth knowing: two requests whose URL templates are identical but which render differently -- because a non-secret variable such as a region or account identifier differs -- currently share a cache entry, and the second silently receives the first response. No built-in scorer triggers this today (the only templated URL substitutes its own secret), but do not rely on a non-secret template variable to distinguish two requests until this is fixed. Tracked as LAB-6051.
 
 ---
 

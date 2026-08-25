@@ -9,9 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// buildFiresWhenLeaf converts a yamlFiresWhen into a firesWhenLeaf implementation.
+// buildFiresWhenLeafInner converts a yamlFiresWhen into the underlying firesWhenLeaf,
+// ignoring the negative: flag (applied by buildFiresWhenLeaf).
 // Exactly one field must be set; returns an error if zero or multiple are set.
-func buildFiresWhenLeaf(fw *yamlFiresWhen) (firesWhenLeaf, error) {
+func buildFiresWhenLeafInner(fw *yamlFiresWhen) (firesWhenLeaf, error) {
+	if n := countFiresWhenLeaves(fw); n != 1 {
+		return nil, fmt.Errorf("fires_when: exactly one condition leaf required (got %d)", n)
+	}
 	switch {
 	case fw.StatusCode != nil:
 		return &statusCodeLeaf{Code: *fw.StatusCode}, nil
@@ -244,4 +248,38 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 		Value:     value,
 		Condition: cond,
 	}, nil
+}
+
+// buildFiresWhenLeaf builds the fires_when leaf and applies the negative: flag.
+// negative: is a modifier ON a leaf rather than a leaf in its own right, so it is
+// deliberately not part of the "exactly one condition leaf" accounting.
+func buildFiresWhenLeaf(fw *yamlFiresWhen) (firesWhenLeaf, error) {
+	leaf, err := buildFiresWhenLeafInner(fw)
+	if err != nil {
+		return nil, err
+	}
+	if fw.Negative {
+		return &negatedLeaf{inner: leaf}, nil
+	}
+	return leaf, nil
+}
+
+// countFiresWhenLeaves counts how many condition leaves a fires_when block
+// declares. negative: is a flag on a leaf, not a leaf, so it is not counted.
+func countFiresWhenLeaves(fw *yamlFiresWhen) int {
+	n := 0
+	for _, set := range []bool{
+		fw.StatusCode != nil,
+		len(fw.StatusCodeIn) > 0,
+		fw.ResponseBodyContains != "",
+		fw.HeaderContains != nil,
+		fw.JSONPathEquals != nil,
+		fw.JSONPathMatches != nil,
+		fw.JSONArrayLengthGte != nil,
+	} {
+		if set {
+			n++
+		}
+	}
+	return n
 }
