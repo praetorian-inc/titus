@@ -45,9 +45,12 @@ func TestBuiltinGoogleScorer_DynamicModifiersCanIssueTheirRequest(t *testing.T) 
 			auth:      cond.auth,
 			firesWhen: cond.firesWhen,
 		}
-		m := &types.Match{NamedGroups: map[string][]byte{"key": []byte("AIzaSyEXAMPLE")}}
-		name := s.Modifiers[dynamic-1].Name
-		_, err := probe.Evaluate(context.Background(), m)
+		// Named `match` rather than `m` so the modifier stays in scope: taking the
+		// name from s.Modifiers[dynamic-1] would misattribute failures, since
+		// dynamic counts only HTTP modifiers while the slice holds all of them.
+		match := &types.Match{NamedGroups: map[string][]byte{"key": []byte("AIzaSyEXAMPLE")}}
+		name := m.Name
+		_, err := probe.Evaluate(context.Background(), match)
 		require.NoErrorf(t, err, "modifier %q could not issue its request", name)
 
 		// The full auth contract for type: none -- the secret must reach the API
