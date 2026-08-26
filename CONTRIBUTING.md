@@ -26,7 +26,7 @@ Feature requests are tracked as [GitHub Issues](https://github.com/praetorian-in
 
 ### Prerequisites
 
-- **Go 1.24+**
+- **Go 1.27.0+**
 - **make**
 - For the Burp extension: JDK and Gradle
 - For the Chrome extension: Node.js and npm
