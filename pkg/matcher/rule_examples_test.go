@@ -83,8 +83,6 @@ var knownExampleFailures = map[string]exampleBaseline{
 	"kingfisher.lob.2":          {regex: nil, filter: []int{0}, total: 2},
 	"kingfisher.mattermost.2":   {regex: nil, filter: []int{0}, total: 3},
 	"kingfisher.messagebird.1":  {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.mongodb.1":      {regex: nil, filter: []int{0}, total: 1},
-	"kingfisher.mongodb.2":      {regex: nil, filter: []int{0}, total: 1},
 	"kingfisher.mysql.1":        {regex: nil, filter: []int{1}, total: 2},
 	"kingfisher.openweather.1":  {regex: nil, filter: []int{2, 3}, total: 4},
 	"kingfisher.planetscale.2":  {regex: nil, filter: []int{0, 1}, total: 2},

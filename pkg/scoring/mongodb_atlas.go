@@ -2,26 +2,61 @@ package scoring
 
 import (
 	"context"
+	"regexp"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
+// atlasPublicKeyPatterns recover an Atlas programmatic public key from the
+// context surrounding a private key match.
+//
+// An Atlas public key is 8 lowercase letters (e.g. "yhltsvan"), paired with a
+// lowercase-UUID private key. Every pattern therefore requires mongodb/atlas or
+// an explicit public-key label: [a-z]{8} on its own matches ordinary prose, and
+// an unanchored version would pair the private key with any nearby word.
+//
+// The third form covers `curl --user "{PUBLIC}:{PRIVATE}" --digest`, which is
+// how the Atlas documentation demonstrates every API call and which places both
+// halves adjacent.
+var atlasPublicKeyPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)(?:mongodb|atlas)[_\-.]?(?:public|pub)(?:[_\-.]?key)?\s*[=:]\s*["']?([a-z]{8})\b`),
+	regexp.MustCompile(`(?i)\bpublic[_\-.]?key\s*[=:]\s*["']?([a-z]{8})\b`),
+	regexp.MustCompile(`--user\s+["']?([a-z]{8}):`),
+}
+
 // extractAtlasDigestCredentials extracts the public and private key pair used
 // for kingfisher.mongodb.1 digest authentication.
 //
-// The private key is the main matched secret (Snippet.Matching).
-// The public key is expected in NamedGroups["PUBKEY"] — populated by the
-// depends_on_rule mechanism declared in the rule YAML.
+// The private key is the main matched secret (Snippet.Matching). The public key
+// is a SEPARATE rule's match (kingfisher.mongodb.2), so it can never appear in
+// this match's NamedGroups: the matcher populates those only from the matching
+// rule's own regex, and mongodb.yml declares no named capture groups.
+//
+// This previously read NamedGroups["PUBKEY"], described in the rule YAML as
+// populated by depends_on_rule. No Go code parses depends_on_rule, so the key
+// was never present and the digest path never produced credentials -- silently,
+// since buildAtlasClient returns nil and the condition then reports (false, nil)
+// with no error, warning or stat (LAB-6095).
+//
+// Pairing from the snippet is how every other split credential in this repo is
+// handled: see pkg/validator/helpscout.go for a client ID, and the AWS session
+// token extraction in pkg/scoring/aws.go.
 func extractAtlasDigestCredentials(m *types.Match) (pubKey, privKey string, ok bool) {
 	if m == nil {
 		return "", "", false
 	}
-	pub, hasPub := m.NamedGroups["PUBKEY"]
 	priv := m.Snippet.Matching
-	if !hasPub || len(pub) == 0 || len(priv) == 0 {
+	if len(priv) == 0 {
 		return "", "", false
 	}
-	return string(pub), string(priv), true
+	for _, part := range [][]byte{m.Snippet.Before, m.Snippet.Matching, m.Snippet.After} {
+		for _, re := range atlasPublicKeyPatterns {
+			if sub := re.FindSubmatch(part); len(sub) >= 2 && len(sub[1]) > 0 {
+				return string(sub[1]), string(priv), true
+			}
+		}
+	}
+	return "", "", false
 }
 
 // extractAtlasServiceAccountToken extracts the bearer token used for
