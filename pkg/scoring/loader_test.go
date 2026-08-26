@@ -424,3 +424,52 @@ func TestLoadScorers_MultipleFiresWhenLeaves_Errors(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exactly one")
 }
+
+// An unsupported auth type used to load fine and fail at request time, where
+// the engine logged it and skipped the modifier -- the scorer ran and silently
+// did nothing (LAB-6049). Reject it at load instead.
+func TestLoadScorers_UnknownAuthType_Errors(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: bad-auth
+    rule_ids: [np.google.1]
+    modifiers:
+      - name: m
+        http:
+          method: GET
+          url: https://example.com/v1/models
+          auth:
+            type: oauth2
+            secret_group: "key"
+        fires_when:
+          status_code: 200
+        delta: 5
+`)
+	_, err := NewLoader().LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "oauth2")
+}
+
+// Every auth type the request layer supports must load.
+func TestLoadScorers_SupportedAuthTypes_Load(t *testing.T) {
+	for _, at := range []string{"bearer", "basic", "header", "query", "api_key", "none"} {
+		yamlBytes := []byte(`scorers:
+  - name: ok-auth
+    rule_ids: [np.google.1]
+    modifiers:
+      - name: m
+        http:
+          method: GET
+          url: https://example.com/v1/models
+          auth:
+            type: ` + at + `
+            secret_group: "key"
+            header_name: "X-Key"
+            query_param: "key"
+        fires_when:
+          status_code: 200
+        delta: 5
+`)
+		_, err := NewLoader().LoadScorers(yamlBytes)
+		require.NoErrorf(t, err, "auth type %q should load", at)
+	}
+}

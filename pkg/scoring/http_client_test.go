@@ -46,3 +46,50 @@ func TestMakeHTTPRequest_CancelsOnContextDone(t *testing.T) {
 	_, err := makeHTTPRequest(ctx, "GET", srv.URL, nil, "", scorerAuth{}, nil)
 	assert.Error(t, err, "expected error from cancelled context")
 }
+
+// ----------------------------------------------------------------
+// auth type "none" (LAB-6049)
+// ----------------------------------------------------------------
+
+// Some APIs take the credential in the URL rather than a header -- Google's
+// Generative Language API uses ?key=<secret>. Those scorers declare
+// auth.type: none, which was not a supported case: the guard in
+// makeHTTPRequest only skips auth when the type is EMPTY, so "none" fell
+// through to applyScorerAuth's default branch and failed the whole request.
+func TestMakeHTTPRequest_AuthTypeNone_SendsRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"models":[{"name":"gemini-1.5-pro"}]}`))
+	}))
+	defer srv.Close()
+
+	auth := scorerAuth{Type: "none", SecretGroup: "key"}
+	groups := map[string][]byte{"key": []byte("AIzaSyEXAMPLE")}
+
+	resp, err := makeHTTPRequest(context.Background(), "GET", srv.URL+"/v1/models?key={{key}}", nil, "", auth, groups)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Contains(t, string(resp.Body), "gemini-1.5-pro")
+}
+
+// The whole point of type: none is that no Authorization header is set.
+func TestMakeHTTPRequest_AuthTypeNone_SetsNoAuthorizationHeader(t *testing.T) {
+	var gotAuth string
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotURL = r.URL.String()
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	auth := scorerAuth{Type: "none", SecretGroup: "key"}
+	groups := map[string][]byte{"key": []byte("AIzaSyEXAMPLE")}
+
+	_, err := makeHTTPRequest(context.Background(), "GET", srv.URL+"/v1/models?key={{key}}", nil, "", auth, groups)
+	require.NoError(t, err)
+	assert.Empty(t, gotAuth, "type: none must not set an Authorization header")
+	assert.Contains(t, gotURL, "key=AIzaSyEXAMPLE", "the secret still reaches the API via the URL template")
+}
