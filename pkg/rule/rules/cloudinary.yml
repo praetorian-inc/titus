@@ -1,0 +1,47 @@
+rules:
+
+- name: Cloudinary URL Credential
+  id: kingfisher.cloudinary.1
+  base_score: 85
+
+  pattern: |
+    (?x)
+    (?P<token>
+      cloudinary://
+      \d{15}
+      :
+      [A-Za-z0-9_-]{27}
+      @
+      [a-zA-Z][a-zA-Z0-9-]{2,49}
+    )
+
+  min_entropy: 3.0
+
+  confidence: high
+
+  categories:
+  - api
+  - secret
+
+  description: |
+    A Cloudinary API environment URL was found. The CLOUDINARY_URL value packs
+    the cloud name, API key, and API secret into a single connection string of
+    the form cloudinary://<api_key>:<api_secret>@<cloud_name>. An attacker with
+    this credential can call the Cloudinary Admin API to list, upload, overwrite,
+    and delete media assets, rotate delivery settings, and run transformations
+    that consume paid quota, giving them full control over the account's media.
+
+  references:
+  - https://cloudinary.com/documentation/finding_your_credentials
+  - https://cloudinary.com/documentation/node_integration#setting_the_cloudinary_url_environment_variable
+
+  examples:
+  - 'CLOUDINARY_URL=cloudinary://874837483274837:abcd1234EFGH5678ijkl9012MNO@demo-media'
+  - 'CLOUDINARY_URL="cloudinary://123456789012345:Xy7Kp2Lm9Qr4Vn1Bc6Dg3Fh8Js0@my-company"'
+  - '{"cloudinary_url":"cloudinary://509182734650918:9zAq2Wsx3Edc4Rfv5Tgb6Yhn7Uj@prod-assets"}'
+
+  negative_examples:
+  - 'CLOUDINARY_URL=cloudinary://874837483274837:tooShortSecret@demo-media'
+  - 'cloudinary://12345:abcd1234EFGH5678ijkl9012MNO@demo-media'
+  - 'https://res.cloudinary.com/demo/image/upload/v1234567890/sample.jpg'
+  - 'CLOUDINARY_URL=cloudinary://<your_api_key>:<your_api_secret>@<cloud_name>'

@@ -277,6 +277,7 @@ rulesets:
   - kingfisher.clojars.2                # Clojars API Token
   - kingfisher.cloudflare.1             # Cloudflare API Token
   - kingfisher.cloudflare.2             # Cloudflare CA Key
+  - kingfisher.cloudinary.1             # Cloudinary URL Credential
   - kingfisher.cloudsight.1             # CloudSight API Key
   - kingfisher.codacy.1                 # Codacy API Key
   - kingfisher.codecov.1                # Codecov Access Token
