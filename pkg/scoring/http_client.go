@@ -150,6 +150,11 @@ func applyScorerAuth(req *http.Request, auth scorerAuth, secret string) error {
 		q := req.URL.Query()
 		q.Set(auth.QueryParam, secret)
 		req.URL.RawQuery = q.Encode()
+	case "none":
+		// The credential travels in the URL or body via a {{template}} variable
+		// rather than a header. secret_group must still be set: the response cache
+		// keys on it, and without it every finding sharing a URL template collides.
+		return nil
 	case "api_key":
 		prefix := auth.KeyPrefix
 		if prefix == "" {
@@ -170,4 +175,18 @@ func substituteVarsInURL(s string, groups map[string][]byte) string {
 		s = strings.ReplaceAll(s, "{{ "+k+" }}", string(v))
 	}
 	return s
+}
+
+// supportedAuthTypes is the set applyScorerAuth accepts, kept next to that
+// switch so the loader's validation cannot drift from what the request layer
+// actually handles. An unsupported type used to load fine and fail at request
+// time, where the engine logged it and skipped the modifier -- the scorer ran
+// and silently did nothing (LAB-6049).
+var supportedAuthTypes = map[string]bool{
+	"bearer":  true,
+	"basic":   true,
+	"header":  true,
+	"query":   true,
+	"api_key": true,
+	"none":    true,
 }

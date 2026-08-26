@@ -29,6 +29,8 @@ scorers:
           url: "https://generativelanguage.googleapis.com/v1/models?key={{key}}"
           auth:
             type: none
+            # Required even with type: none -- the response cache keys on this
+            # group, so dropping it makes every Google finding collide.
             secret_group: key
         fires_when:
           status_code: 200
@@ -44,6 +46,8 @@ scorers:
           url: "https://generativelanguage.googleapis.com/v1/models?key={{key}}"
           auth:
             type: none
+            # Required even with type: none -- the response cache keys on this
+            # group, so dropping it makes every Google finding collide.
             secret_group: key
         fires_when:
           response_body_contains: "gemini-1.5-pro"
