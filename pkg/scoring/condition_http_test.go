@@ -223,3 +223,43 @@ func TestNegatedLeaf_ArrayLengthGte_GivesLessThan(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, fired, "2 scopes is fewer than 25, so the negated gte should fire")
 }
+
+// A 429/5xx must stay classified as a rate-limit/server error even when the
+// response comes from the cache. The classification lived inside the cache-miss
+// branch, so a second modifier sharing the URL and secret skipped it, and its
+// leaf error was then reported as ErrConditionNotApplicable -- which the engine
+// deliberately does not warn about. That turned a throttled or broken API into
+// silence for every modifier after the first (LAB-6050 review).
+func TestHTTPCondition_CachedRateLimit_StaysClassified(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"message":"slow down"}`))
+	}))
+	defer srv.Close()
+
+	cache := newHTTPResponseCache()
+	newCond := func() *httpCondition {
+		return &httpCondition{
+			method:    "GET",
+			url:       srv.URL + "/v3/scopes",
+			auth:      scorerAuth{Type: "bearer", SecretGroup: "token"},
+			firesWhen: &jsonArrayLengthGteLeaf{Path: ".scopes", Value: 25},
+		}
+	}
+	match := matchWithGroups(map[string][]byte{"token": []byte("secret")})
+
+	_, err1 := newCond().evaluateWithCache(context.Background(), match, cache)
+	require.Error(t, err1)
+	assert.ErrorIs(t, err1, ErrModifierRateLimit, "first modifier (cache miss)")
+
+	callsAfterFirst := calls
+	_, err2 := newCond().evaluateWithCache(context.Background(), match, cache)
+	require.Error(t, err2)
+	assert.Equal(t, callsAfterFirst, calls, "second modifier must be served from cache")
+	assert.ErrorIs(t, err2, ErrModifierRateLimit,
+		"a cached 429 must stay a rate-limit error, not become not-applicable")
+	assert.NotErrorIs(t, err2, ErrConditionNotApplicable,
+		"a throttled API must never be silently skipped")
+}

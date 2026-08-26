@@ -71,15 +71,28 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		}
 		// Always cache the response — including 429/5xx — so that subsequent
 		// calls for the same secret/URL fast-fail without hitting the network
-		// again.  Classify persistent 429/5xx as sentinel errors so trackError
-		// can increment the correct stats counter.
+		// again.
 		cache.put(key, resp)
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			return false, classifyHTTPError(resp.StatusCode, nil)
-		}
 	}
 
-	return c.firesWhen.evaluate(resp)
+	// Classify persistent 429/5xx as sentinel errors so trackError increments the
+	// correct stats counter. This runs for cached responses too, not just fresh
+	// ones: a later modifier sharing the URL and secret must see the same
+	// rate-limit/server error. Otherwise it falls through to its leaf, whose
+	// failure is then reported as ErrConditionNotApplicable — which the engine
+	// deliberately does not warn about — turning a throttled or broken API into
+	// silence for every modifier after the first.
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		return false, classifyHTTPError(resp.StatusCode, nil)
+	}
+
+	fired, err := c.firesWhen.evaluate(resp)
+	if err != nil && resp.StatusCode >= 400 {
+		// The condition was written for a successful response; an error body
+		// simply does not carry the field. Expected, not a misconfiguration.
+		return false, fmt.Errorf("%w (HTTP %d): %v", ErrConditionNotApplicable, resp.StatusCode, err)
+	}
+	return fired, err
 }
 
 // ----------------------------------------------------------------

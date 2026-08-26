@@ -127,7 +127,13 @@ func (e *Engine) Score(ctx context.Context, f *types.Finding, matches []*types.M
 		modCancel()
 
 		if err != nil {
-			e.warnf("[warn] scorer %q modifier %q: %v (skipping)\n", scorer.Name, m.Name, err)
+			// A condition that cannot apply to an error response is routine --
+			// every scorer with a revoked-credential case produces one per dead
+			// key. Everything else still warns, including the same failure
+			// against a 2xx response, which usually means a bad field name.
+			if !errors.Is(err, ErrConditionNotApplicable) {
+				e.warnf("[warn] scorer %q modifier %q: %v (skipping)\n", scorer.Name, m.Name, err)
+			}
 			e.trackError(err)
 			continue
 		}

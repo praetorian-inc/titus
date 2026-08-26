@@ -126,12 +126,12 @@ scorers:
         set_score: 85
 
       # --- Dead key: evaluated last, wins outright ---
-      # Side effect: on a 401 the two json_array_length_gte modifiers above cannot
-      # find .scopes and return an error, so the engine logs 2 "[warn] ...
-      # (skipping)" lines per revoked finding. Stats counters are NOT affected --
-      # trackError only counts sentinel timeout/rate-limit/server/network errors.
-      # Reducing the noise needs an engine change (skip remaining modifiers after
-      # a terminal set_score, or log evaluation errors below warn level).
+      # On a 401 the two json_array_length_gte modifiers above cannot find
+      # .scopes and return an error. The engine recognises that as
+      # ErrConditionNotApplicable and does not warn: a dead credential returns an
+      # error body no scope condition was ever going to match (LAB-6050). The
+      # same failure against a 2xx response still warns, since there it usually
+      # means the scorer names a field that does not exist.
       - name: revoked-key
         priority: 10
         http: *sendgrid_scopes

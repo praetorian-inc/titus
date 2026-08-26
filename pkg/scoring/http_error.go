@@ -15,6 +15,16 @@ var (
 	ErrModifierServerError = errors.New("modifier http: server error (5xx)")
 	ErrModifierNetwork     = errors.New("modifier http: network error")
 	ErrModifierParseError  = errors.New("modifier http: response parse error")
+
+	// ErrConditionNotApplicable marks a fires_when condition that could not be
+	// evaluated against the response it received -- typically a json_path leaf
+	// looking for a field that an error body does not carry. It is only used for
+	// non-success responses, where it is expected rather than noteworthy: a dead
+	// credential returns an error body no scope condition was ever going to match.
+	// The engine skips the warning for this error alone. The same failure against
+	// a 2xx response stays a warning, because there it usually means the scorer
+	// names a field that does not exist.
+	ErrConditionNotApplicable = errors.New("modifier condition not applicable to response")
 )
 
 // classifyHTTPError maps an HTTP status code (or nil for network err) to a
