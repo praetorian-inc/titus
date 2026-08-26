@@ -9,7 +9,7 @@ import (
 
 func TestHTTPResponseCache_StoresAndRetrievesResponse(t *testing.T) {
 	c := newHTTPResponseCache()
-	key := httpCacheKey("GET", "https://api.github.com/user", []byte("ghp_secret"))
+	key := httpCacheKey(renderedRequest{method: "GET", url: "https://api.github.com/user"}, scorerAuth{}, []byte("ghp_secret"))
 
 	_, found := c.get(key)
 	assert.False(t, found, "cache should be empty initially")
@@ -25,19 +25,19 @@ func TestHTTPResponseCache_StoresAndRetrievesResponse(t *testing.T) {
 }
 
 func TestHTTPCacheKey_DifferentSecretsGiveDifferentKeys(t *testing.T) {
-	k1 := httpCacheKey("GET", "https://api.github.com/user", []byte("token-A"))
-	k2 := httpCacheKey("GET", "https://api.github.com/user", []byte("token-B"))
+	k1 := httpCacheKey(renderedRequest{method: "GET", url: "https://api.github.com/user"}, scorerAuth{}, []byte("token-A"))
+	k2 := httpCacheKey(renderedRequest{method: "GET", url: "https://api.github.com/user"}, scorerAuth{}, []byte("token-B"))
 	assert.NotEqual(t, k1, k2)
 }
 
 func TestHTTPCacheKey_DifferentURLsGiveDifferentKeys(t *testing.T) {
-	k1 := httpCacheKey("GET", "https://api.github.com/user", []byte("tok"))
-	k2 := httpCacheKey("GET", "https://api.github.com/user/orgs", []byte("tok"))
+	k1 := httpCacheKey(renderedRequest{method: "GET", url: "https://api.github.com/user"}, scorerAuth{}, []byte("tok"))
+	k2 := httpCacheKey(renderedRequest{method: "GET", url: "https://api.github.com/user/orgs"}, scorerAuth{}, []byte("tok"))
 	assert.NotEqual(t, k1, k2)
 }
 
 func TestHTTPResponseCache_MissOnUnknownKey(t *testing.T) {
 	c := newHTTPResponseCache()
-	_, found := c.get(httpCacheKey("GET", "https://example.com", nil))
+	_, found := c.get(httpCacheKey(renderedRequest{method: "GET", url: "https://example.com"}, scorerAuth{}, nil))
 	assert.False(t, found)
 }

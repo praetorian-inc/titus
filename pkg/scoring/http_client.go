@@ -29,8 +29,39 @@ type scorerHeader struct {
 
 var defaultHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
-// makeHTTPRequest performs an HTTP request on behalf of an httpCondition.
-// namedGroups is used to substitute {{group}} template variables in URL and headers.
+// renderedRequest is a request whose {{group}} template variables have already
+// been substituted. Rendering once and using the same values for both the cache
+// key and the outgoing request keeps the two in lockstep.
+//
+// This matters because substituteVarsInURL iterates NamedGroups in Go's
+// unspecified map order. If one captured value happens to contain what looks
+// like another placeholder, substituting twice can produce two different
+// strings — so a key built by a second, independent substitution pass could
+// describe a request that was never sent.
+type renderedRequest struct {
+	method  string
+	url     string
+	headers []scorerHeader
+	body    string
+}
+
+// renderRequest substitutes template variables once, for every part of the request.
+func renderRequest(method, rawURL string, headers []scorerHeader, body string, namedGroups map[string][]byte) renderedRequest {
+	rendered := make([]scorerHeader, len(headers))
+	for i, h := range headers {
+		rendered[i] = scorerHeader{Name: h.Name, Value: substituteVarsInURL(h.Value, namedGroups)}
+	}
+	return renderedRequest{
+		method:  method,
+		url:     substituteVarsInURL(rawURL, namedGroups),
+		headers: rendered,
+		body:    substituteVarsInURL(body, namedGroups),
+	}
+}
+
+// makeHTTPRequest renders the request and sends it. Callers that need the
+// rendered values themselves — to build a cache key that matches what is
+// actually sent — should call renderRequest and sendRenderedRequest instead.
 // The context carries the per-modifier deadline; callers must set it.
 func makeHTTPRequest(
 	ctx context.Context,
@@ -40,26 +71,34 @@ func makeHTTPRequest(
 	auth scorerAuth,
 	namedGroups map[string][]byte,
 ) (*cachedHTTPResponse, error) {
-	url := substituteVarsInURL(rawURL, namedGroups)
+	r := renderRequest(method, rawURL, headers, body, namedGroups)
+	return sendRenderedRequest(ctx, r, auth, string(namedGroups[auth.SecretGroup]))
+}
 
+// sendRenderedRequest performs an already-rendered request. It does no further
+// template substitution.
+func sendRenderedRequest(
+	ctx context.Context,
+	r renderedRequest,
+	auth scorerAuth,
+	secret string,
+) (*cachedHTTPResponse, error) {
 	var bodyReader io.Reader
-	if body != "" {
-		bodyReader = strings.NewReader(substituteVarsInURL(body, namedGroups))
+	if r.body != "" {
+		bodyReader = strings.NewReader(r.body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, r.method, r.url, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("building HTTP request: %w", err)
 	}
 
-	// Static headers (template vars substituted)
-	for _, h := range headers {
-		req.Header.Set(h.Name, substituteVarsInURL(h.Value, namedGroups))
+	for _, h := range r.headers {
+		req.Header.Set(h.Name, h.Value)
 	}
 
 	// Auth
 	if auth.Type != "" && auth.SecretGroup != "" {
-		secret := string(namedGroups[auth.SecretGroup])
 		if err := applyScorerAuth(req, auth, secret); err != nil {
 			return nil, fmt.Errorf("applying auth: %w", err)
 		}

@@ -54,17 +54,26 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		return false, nil
 	}
 
-	// Use the template URL (c.url) not the expanded URL as the cache key so
-	// plaintext secrets don't appear in in-memory cache keys. The secret bytes
-	// already provide per-secret uniqueness in the key hash.
+	// Key on the RENDERED request, not the template. Two requests differing only
+	// in a non-secret template variable render differently but share a template,
+	// so keying on the template made them collide and served the first one's
+	// response to the second. httpCacheKey hashes the whole key, so rendering
+	// here does not put credentials into map keys.
+	//
+	// The SAME rendered values are sent below. Rendering a second time would not
+	// be reliably identical: substituteVarsInURL iterates NamedGroups in map
+	// order, so a captured value that itself looks like a placeholder could
+	// resolve differently between passes, and the key would then describe a
+	// request that was never sent.
 	secretBytes := m.NamedGroups[c.auth.SecretGroup]
-	key := httpCacheKey(c.method, c.url, secretBytes)
+	rendered := renderRequest(c.method, c.url, c.headers, c.body, m.NamedGroups)
+	key := httpCacheKey(rendered, c.auth, secretBytes)
 
 	resp, found := cache.get(key)
 	if !found {
 		var err error
 		resp, err = withRetry(ctx, func() (*cachedHTTPResponse, error) {
-			return makeHTTPRequest(ctx, c.method, c.url, c.headers, c.body, c.auth, m.NamedGroups)
+			return sendRenderedRequest(ctx, rendered, c.auth, string(secretBytes))
 		})
 		if err != nil {
 			return false, fmt.Errorf("http condition request: %w", err)
