@@ -6,14 +6,12 @@ rules:
 
   pattern: |
     (?x)
-    (?P<token>
-      cloudinary://
-      \d{15}
-      :
-      [A-Za-z0-9_-]{27}
-      @
-      [a-zA-Z][a-zA-Z0-9-]{2,49}
-    )
+    cloudinary://
+    (?P<key>\d{15})
+    :
+    (?P<token>[A-Za-z0-9_-]{27})
+    @
+    (?P<cloud>[a-zA-Z][a-zA-Z0-9-]{2,49})
 
   min_entropy: 3.0
 
@@ -32,7 +30,7 @@ rules:
     that consume paid quota, giving them full control over the account's media.
 
   references:
-  - https://cloudinary.com/documentation/finding_your_credentials
+  - https://cloudinary.com/documentation/developer_onboarding_faq
   - https://cloudinary.com/documentation/node_integration#setting_the_cloudinary_url_environment_variable
 
   examples:
