@@ -10,7 +10,7 @@ rules:
     (?: \s* .* \s* ){0,3}
     \$mail->Username \s* = \s* '([^'\n]{5,})'; \s* (?: //.* )?
     (?: \s* .* \s* ){0,3}
-    \$mail->Password \s* = \s* '([^'\n]{5,})';
+    \$mail->Password \s* = \s* '(?P<token>[^'\n]{5,})';
 
   categories: [fuzzy, secret]
 
