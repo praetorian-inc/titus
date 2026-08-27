@@ -21,18 +21,30 @@ import (
 
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// knownExampleFailures lists rules that cannot currently detect their own
-// documented examples. Tracked as LAB-6096.
+// exampleBaseline records exactly which of a rule's examples are known to fail,
+// by index, and at which stage.
 //
-// Entries are rule IDs, deliberately not a count: a count would let a fixed
-// rule be silently traded for a newly broken one.
+// Indices rather than counts, for the same reason the map is keyed by rule ID
+// rather than holding a total: a count lets a fixed example be silently traded
+// for a newly broken one. total is recorded too, so adding or removing an
+// example -- which shifts every index after it -- forces a re-baseline instead
+// of quietly invalidating the entries.
+type exampleBaseline struct {
+	regex  []int // indices whose example the regex never matches
+	filter []int // indices matched by the regex, then dropped by filterMatches
+	total  int   // len(rule.Examples) when this baseline was taken
+}
+
+// knownExampleFailures is the burn-down list for LAB-6096: rules that cannot
+// detect the examples they document. 51 rules of the 533 carrying examples.
 //
-// TO FIX A RULE, DELETE ITS LINE HERE. TestRuleExamples_KnownFailuresStillFail
-// fails if a listed rule starts passing, so the list can only shrink and a
-// fixed rule cannot quietly stop being guarded.
+// TO FIX A RULE, DELETE ITS LINE HERE. TestRuleExamples_KnownFailuresMatchBaseline
+// fails if a listed rule's failures no longer match exactly, so the list cannot
+// rot and a fixed rule cannot quietly stop being guarded.
 //
 // Each failure is one of two things, and they need opposite fixes:
 //   - the example does not represent a real credential -> fix the example
@@ -42,84 +54,84 @@ import (
 // Do NOT bulk-relax pattern_requirements to clear these. Those constraints
 // exist to suppress false positives; loosening them blindly trades a
 // false-negative problem for a false-positive one.
-var knownExampleFailures = map[string]string{
-	"kingfisher.airtable.2":     "1/1 examples fail at regex stage",
-	"kingfisher.contentful.1":   "1/3 examples fail at regex stage",
-	"kingfisher.contentful.2":   "1/4 examples fail at regex stage",
-	"kingfisher.curl.2":         "1/3 examples fail at regex stage",
-	"np.amplitude.1":            "1/2 examples fail at regex stage",
-	"np.cypress.1":              "1/3 examples fail at regex stage",
-	"np.redis.1":                "1/4 examples fail at regex stage",
-	"np.twitter.3":              "1/3 examples fail at regex stage",
-	"kingfisher.ai21studio.1":   "3/3 examples fail at postfilter stage",
-	"kingfisher.anypoint.1":     "1/1 examples fail at postfilter stage",
-	"kingfisher.asana.1":        "2/2 examples fail at postfilter stage",
-	"kingfisher.asana.2":        "1/2 examples fail at postfilter stage",
-	"kingfisher.azure.devops.1": "1/2 examples fail at postfilter stage",
-	"kingfisher.beamer.1":       "2/2 examples fail at postfilter stage",
-	"kingfisher.ciscomeraki.1":  "1/2 examples fail at postfilter stage",
-	"kingfisher.clojars.1":      "1/1 examples fail at postfilter stage",
-	"kingfisher.cloudflare.1":   "2/2 examples fail at postfilter stage",
-	"kingfisher.cloudflare.2":   "2/2 examples fail at postfilter stage",
-	"kingfisher.cloudsight.1":   "1/2 examples fail at postfilter stage",
-	"kingfisher.discord.3":      "2/2 examples fail at postfilter stage",
-	"kingfisher.filezilla.2":    "1/2 examples fail at postfilter stage",
-	"kingfisher.freshbooks.1":   "1/2 examples fail at postfilter stage",
-	"kingfisher.gocardless.1":   "1/2 examples fail at postfilter stage",
-	"kingfisher.imagekit.1":     "1/2 examples fail at postfilter stage",
-	"kingfisher.infracost.1":    "1/2 examples fail at postfilter stage",
-	"kingfisher.ipstack.1":      "1/2 examples fail at postfilter stage",
-	"kingfisher.jdbc.1":         "3/4 examples fail at postfilter stage",
-	"kingfisher.jira.1":         "2/2 examples fail at postfilter stage",
-	"kingfisher.lob.1":          "1/2 examples fail at postfilter stage",
-	"kingfisher.lob.2":          "1/2 examples fail at postfilter stage",
-	"kingfisher.mattermost.2":   "1/3 examples fail at postfilter stage",
-	"kingfisher.messagebird.1":  "1/2 examples fail at postfilter stage",
-	"kingfisher.mongodb.1":      "1/1 examples fail at postfilter stage",
-	"kingfisher.mongodb.2":      "1/1 examples fail at postfilter stage",
-	"kingfisher.mysql.1":        "1/2 examples fail at postfilter stage",
-	"kingfisher.openweather.1":  "2/4 examples fail at postfilter stage",
-	"kingfisher.planetscale.2":  "2/2 examples fail at postfilter stage",
-	"kingfisher.prefect.1":      "1/2 examples fail at postfilter stage",
-	"kingfisher.privkey.1":      "1/1 examples fail at postfilter stage",
-	"kingfisher.privkey.2":      "1/5 examples fail at postfilter stage",
-	"kingfisher.rabbitmq.1":     "2/4 examples fail at postfilter stage",
-	"kingfisher.recaptcha.1":    "3/3 examples fail at postfilter stage",
-	"kingfisher.runway.1":       "4/4 examples fail at postfilter stage",
-	"kingfisher.scalingo.1":     "1/2 examples fail at postfilter stage",
-	"kingfisher.scraperapi.1":   "1/2 examples fail at postfilter stage",
-	"kingfisher.sendbird.2":     "1/1 examples fail at postfilter stage",
-	"kingfisher.sentry.1":       "1/2 examples fail at postfilter stage",
-	"kingfisher.sentry.3":       "1/2 examples fail at postfilter stage",
-	"kingfisher.shippo.1":       "1/2 examples fail at postfilter stage",
-	"kingfisher.supabase.2":     "1/2 examples fail at postfilter stage",
-	"kingfisher.vercel.1":       "3/4 examples fail at postfilter stage",
+var knownExampleFailures = map[string]exampleBaseline{
+	"kingfisher.ai21studio.1":   {regex: nil, filter: []int{0, 1, 2}, total: 3},
+	"kingfisher.airtable.2":     {regex: []int{0}, filter: nil, total: 1},
+	"kingfisher.anypoint.1":     {regex: nil, filter: []int{0}, total: 1},
+	"kingfisher.asana.1":        {regex: nil, filter: []int{0, 1}, total: 2},
+	"kingfisher.asana.2":        {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.azure.devops.1": {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.beamer.1":       {regex: nil, filter: []int{0, 1}, total: 2},
+	"kingfisher.ciscomeraki.1":  {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.clojars.1":      {regex: nil, filter: []int{0}, total: 1},
+	"kingfisher.cloudflare.1":   {regex: nil, filter: []int{0, 1}, total: 2},
+	"kingfisher.cloudflare.2":   {regex: nil, filter: []int{0, 1}, total: 2},
+	"kingfisher.cloudsight.1":   {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.contentful.1":   {regex: []int{1}, filter: nil, total: 3},
+	"kingfisher.contentful.2":   {regex: []int{3}, filter: nil, total: 4},
+	"kingfisher.curl.2":         {regex: []int{0}, filter: nil, total: 3},
+	"kingfisher.discord.3":      {regex: nil, filter: []int{0, 1}, total: 2},
+	"kingfisher.filezilla.2":    {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.freshbooks.1":   {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.gocardless.1":   {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.imagekit.1":     {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.infracost.1":    {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.ipstack.1":      {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.jdbc.1":         {regex: nil, filter: []int{0, 2, 3}, total: 4},
+	"kingfisher.jira.1":         {regex: nil, filter: []int{0, 1}, total: 2},
+	"kingfisher.lob.1":          {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.lob.2":          {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.mattermost.2":   {regex: nil, filter: []int{0}, total: 3},
+	"kingfisher.messagebird.1":  {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.mysql.1":        {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.openweather.1":  {regex: nil, filter: []int{2, 3}, total: 4},
+	"kingfisher.planetscale.2":  {regex: nil, filter: []int{0, 1}, total: 2},
+	"kingfisher.prefect.1":      {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.privkey.1":      {regex: nil, filter: []int{0}, total: 1},
+	"kingfisher.privkey.2":      {regex: nil, filter: []int{4}, total: 5},
+	"kingfisher.rabbitmq.1":     {regex: nil, filter: []int{1, 3}, total: 4},
+	"kingfisher.recaptcha.1":    {regex: nil, filter: []int{0, 1, 2}, total: 3},
+	"kingfisher.runway.1":       {regex: nil, filter: []int{0, 1, 2, 3}, total: 4},
+	"kingfisher.scalingo.1":     {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.scraperapi.1":   {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.sendbird.2":     {regex: nil, filter: []int{0}, total: 1},
+	"kingfisher.sentry.1":       {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.sentry.3":       {regex: nil, filter: []int{0}, total: 2},
+	"kingfisher.shippo.1":       {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.supabase.2":     {regex: nil, filter: []int{1}, total: 2},
+	"kingfisher.vercel.1":       {regex: nil, filter: []int{0, 1, 3}, total: 4},
+	"np.amplitude.1":            {regex: []int{1}, filter: nil, total: 2},
+	"np.cypress.1":              {regex: []int{2}, filter: nil, total: 3},
+	"np.redis.1":                {regex: []int{3}, filter: nil, total: 4},
+	"np.twitter.3":              {regex: []int{1}, filter: nil, total: 3},
 }
 
-// exampleOutcome reports how many of a rule's examples survive the full
-// pipeline, and how many are lost at each stage.
-func exampleOutcome(t *testing.T, r *types.Rule) (lostToRegex, lostToFilter int) {
+// exampleOutcome reports which of a rule's examples fail, and at which stage.
+func exampleOutcome(t *testing.T, r *types.Rule) (regexFails, filterFails []int) {
 	t.Helper()
 	// 5s rather than the 500ms production default. The question here is whether
 	// a rule CAN detect its example, not whether it does so quickly on a loaded
-	// CI runner — a guard that passes on fast machines and fails on slow ones is
+	// CI runner -- a guard that passes on fast machines and fails on slow ones is
 	// worse than no guard. 5s is the matcher's own fallback timeout, so it is a
 	// generous ceiling rather than an arbitrary one.
 	m, err := NewPortableRegexpWithTimeout([]*types.Rule{r}, 0, nil, 5*time.Second)
 	if err != nil {
-		return len(r.Examples), 0
+		for i := range r.Examples {
+			regexFails = append(regexFails, i)
+		}
+		return regexFails, nil
 	}
-	for _, ex := range r.Examples {
+	for i, ex := range r.Examples {
 		ms, err := m.Match([]byte(ex))
 		if err != nil || len(ms) == 0 {
-			lostToRegex++
+			regexFails = append(regexFails, i)
 			continue
 		}
 		if len(filterMatches(ms, map[string]*types.Rule{r.ID: r})) == 0 {
-			lostToFilter++
+			filterFails = append(filterFails, i)
 		}
 	}
-	return lostToRegex, lostToFilter
+	return regexFails, filterFails
 }
 
 func rulesWithExamples(t *testing.T) []*types.Rule {
@@ -136,7 +148,7 @@ func rulesWithExamples(t *testing.T) []*types.Rule {
 	return out
 }
 
-// Every rule must detect the examples it documents.
+// Every rule not on the burn-down list must detect all of its own examples.
 //
 // This runs the FULL pipeline -- regex AND the entropy / pattern_requirements
 // post-filters -- because most failures do not happen at the regex stage. Of
@@ -148,33 +160,46 @@ func TestRuleExamples_AllRulesDetectTheirOwnExamples(t *testing.T) {
 		if _, known := knownExampleFailures[r.ID]; known {
 			continue
 		}
-		lostRegex, lostFilter := exampleOutcome(t, r)
-		if lostRegex > 0 || lostFilter > 0 {
-			t.Errorf("rule %q fails its own examples (%d unmatched by regex, %d dropped by post-filters).\n"+
+		rx, fl := exampleOutcome(t, r)
+		if len(rx) > 0 || len(fl) > 0 {
+			t.Errorf("rule %q fails its own examples (regex-unmatched indices %v, post-filtered indices %v).\n"+
 				"Either the example is not a real credential, or the rule's pattern/requirements exclude it. "+
-				"If this is a pre-existing failure being surfaced, add it to knownExampleFailures with a reason.",
-				r.ID, lostRegex, lostFilter)
+				"If this is a pre-existing failure being surfaced, add a baseline to knownExampleFailures.",
+				r.ID, rx, fl)
 		}
 	}
 }
 
-// A rule on the known-failures list that now passes must be removed from it.
+// A listed rule must fail EXACTLY the examples its baseline records.
 //
-// Without this the list rots: a rule gets fixed, its entry lingers, and that
-// rule silently stops being guarded by the test above.
-func TestRuleExamples_KnownFailuresStillFail(t *testing.T) {
+// Allowlisting a rule ID alone would drop every one of its examples from
+// coverage, including the ones that currently pass -- kingfisher.jdbc.1 fails 3
+// of 4. Comparing exact indices keeps the passing example guarded, and means a
+// fixed failure cannot be exchanged for a new one without the test noticing.
+func TestRuleExamples_KnownFailuresMatchBaseline(t *testing.T) {
 	byID := map[string]*types.Rule{}
 	for _, r := range rulesWithExamples(t) {
 		byID[r.ID] = r
 	}
-	for id := range knownExampleFailures {
+	for id, want := range knownExampleFailures {
 		r, ok := byID[id]
 		if !ok {
 			t.Errorf("knownExampleFailures lists %q, which no longer exists or has no examples — remove the entry", id)
 			continue
 		}
-		lostRegex, lostFilter := exampleOutcome(t, r)
-		if lostRegex == 0 && lostFilter == 0 {
+		if len(r.Examples) != want.total {
+			t.Errorf("rule %q now has %d examples, baseline recorded %d — indices have shifted, re-baseline the entry",
+				id, len(r.Examples), want.total)
+			continue
+		}
+		rx, fl := exampleOutcome(t, r)
+		assert.Equalf(t, want.regex, rx,
+			"rule %q: regex-stage failures changed. If examples were fixed, delete or update the entry; "+
+				"if a passing example regressed, that is a new detection gap.", id)
+		assert.Equalf(t, want.filter, fl,
+			"rule %q: post-filter failures changed. If examples were fixed, delete or update the entry; "+
+				"if a passing example regressed, that is a new detection gap.", id)
+		if len(rx) == 0 && len(fl) == 0 {
 			t.Errorf("rule %q now detects all its examples — delete its line from knownExampleFailures", id)
 		}
 	}

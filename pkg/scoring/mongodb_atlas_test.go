@@ -15,18 +15,22 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestExtractAtlasDigestCredentials_BothPresent(t *testing.T) {
+	// This previously supplied NamedGroups["PUBKEY"], a state the matcher cannot
+	// produce: NamedGroups comes only from the matching rule's own regex, and
+	// mongodb.yml declares no named capture groups. The fixture made a mechanism
+	// that never worked look tested (LAB-6095). The public key now comes from the
+	// snippet, which is where it actually is.
 	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"PUBKEY": []byte("MYPUBKEY"),
-		},
+		NamedGroups: map[string][]byte{},
 		Snippet: types.Snippet{
-			Matching: []byte("privkey-uuid"),
+			Before:   []byte("ATLAS_PUBLIC_KEY=yhltsvan\nATLAS_PRIVATE_KEY="),
+			Matching: []byte("2c130c23-e6b6-4da8-a93f-a8bf33218830"),
 		},
 	}
 	pubKey, privKey, ok := extractAtlasDigestCredentials(m)
 	assert.True(t, ok)
-	assert.Equal(t, "MYPUBKEY", pubKey)
-	assert.Equal(t, "privkey-uuid", privKey)
+	assert.Equal(t, "yhltsvan", pubKey)
+	assert.Equal(t, "2c130c23-e6b6-4da8-a93f-a8bf33218830", privKey)
 }
 
 func TestExtractAtlasDigestCredentials_MissingPubKey(t *testing.T) {
@@ -102,14 +106,21 @@ func fakeAtlasFactory(api atlasAPI) atlasClientFactory {
 	}
 }
 
+// atlasDigestTestMatch builds a kingfisher.mongodb.1 match shaped as the
+// matcher actually produces one: NamedGroups empty (mongodb.yml declares no
+// named capture groups) and the public key present only in the surrounding
+// context.
+//
+// It previously supplied NamedGroups["PUBKEY"], which the matcher can never
+// populate. Every test built on this fixture therefore exercised a code path
+// that could not run in production (LAB-6095).
 func atlasDigestTestMatch() *types.Match {
 	return &types.Match{
-		RuleID: "kingfisher.mongodb.1",
-		NamedGroups: map[string][]byte{
-			"PUBKEY": []byte("MYPUBLICKEY"),
-		},
+		RuleID:      "kingfisher.mongodb.1",
+		NamedGroups: map[string][]byte{},
 		Snippet: types.Snippet{
-			Matching: []byte("4b18315e-6b7d-4337-b449-5d38f5a189ec"),
+			Before:   []byte("ATLAS_PUBLIC_KEY=yhltsvan\nATLAS_PRIVATE_KEY="),
+			Matching: []byte("2c130c23-e6b6-4da8-a93f-a8bf33218830"),
 		},
 	}
 }

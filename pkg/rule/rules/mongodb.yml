@@ -27,9 +27,20 @@ rules:
       \b
     pattern_requirements:
       min_digits: 2
-      min_uppercase: 1
       min_lowercase: 1
-    min_entropy: 3.7
+      # No min_uppercase: Atlas renders private keys as LOWERCASE hex UUIDs
+      # (e.g. 2c130c23-e6b6-4da8-a93f-a8bf33218830), so requiring an uppercase
+      # character matched only the minority containing an uppercase A-F -- this
+      # rule missed the documented format entirely (LAB-6096).
+    # 3.3, not 3.7. Atlas private keys are random lowercase-hex UUIDs, whose
+    # Shannon entropy averages 3.71 -- so a 3.7 floor rejected 43% of all valid
+    # keys (measured over 200k generated UUIDs). 3.3 admits 99.9% of them.
+    #
+    # Entropy adds little here anyway: the pattern already requires mongodb/atlas
+    # context, a private/secret/key keyword, and the full UUID structure, so it
+    # is specific without this. Raising it trades real detections for very
+    # little false-positive reduction (LAB-6096).
+    min_entropy: 3.3
     examples:
       - ATLAS_PRIVATE_KEY=4b18315e-6b7d-4337-b449-5d38f5a189ec
     validation:
@@ -73,7 +84,10 @@ rules:
     confidence: medium
     visible: false
     examples:
-      - 'mongodb-public: qj4Zrh8e6A'
+      # An Atlas public key is 8 lowercase letters. The previous example,
+      # 'qj4Zrh8e6A', was not Atlas-shaped: the capture stops at the first digit,
+      # yielding 'qj', which then fell below min_entropy (LAB-6096).
+      - 'mongodb-public: yhltsvan'
   - name: MongoDB URI Connection String
     id: kingfisher.mongodb.3
     base_score: 85
