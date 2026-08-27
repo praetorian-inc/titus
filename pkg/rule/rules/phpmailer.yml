@@ -4,12 +4,24 @@ rules:
   id: np.phpmailer.1
   base_score: 60
 
+  # The filler between fields is "up to 3 whole lines", written so there is
+  # exactly ONE way to divide any given span.
+  #
+  # It was previously `(?: \s* .* \s* ){0,3}`. \s* and .* overlap, so a bounded
+  # repetition of them gives the engine a combinatorial number of equivalent
+  # ways to split the same text, and two such groups multiply. Matching one
+  # 774-byte example took 2.94s under the production 500ms timeout -- succeeding
+  # only via the retry path -- and exceeded 30s under -race.
+  #
+  # [^\S\n] is horizontal whitespace only and [^\n]*\n consumes exactly one line
+  # per iteration, so no two parses of the same span are possible. Same example:
+  # 5.80s -> 23us across both examples (LAB-6097).
   pattern: |
     (?x)
     \$mail->Host     \s* = \s* '([^'\n]{5,})'; \s* (?: //.* )?
-    (?: \s* .* \s* ){0,3}
+    [^\S\n]* \n? (?: [^\n]*\n ){0,3} [^\S\n]*
     \$mail->Username \s* = \s* '([^'\n]{5,})'; \s* (?: //.* )?
-    (?: \s* .* \s* ){0,3}
+    [^\S\n]* \n? (?: [^\n]*\n ){0,3} [^\S\n]*
     \$mail->Password \s* = \s* '([^'\n]{5,})';
 
   categories: [fuzzy, secret]

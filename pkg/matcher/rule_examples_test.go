@@ -1,17 +1,14 @@
-//go:build !race
-
-// This guard is excluded from -race builds on purpose.
+// This guard deliberately runs under -race as well as normally.
 //
-// It measures rule semantics -- can a rule detect the example it documents --
-// and contains no concurrency, so the race detector has nothing to find here.
-// What it does do is slow execution by roughly an order of magnitude, which
-// pushes patterns that nest quantifiers over .* past any sane match timeout.
-// np.phpmailer.1 exceeds even 30s under -race while passing comfortably in a
-// normal run. Left in, this guard would fail the Race Detector job for reasons
-// unrelated to correctness.
+// It carried //go:build !race until LAB-6097. np.phpmailer.1 nested quantifiers
+// over .*, which cost ~3s per match normally and exceeded 30s under -race,
+// where instrumentation is roughly an order of magnitude slower. Excluding the
+// guard was the wrong way round: the slowness was the bug, not the test.
 //
-// np.phpmailer.1's backtracking cost deserves attention in its own right; it is
-// not something this test should paper over, nor be blocked by.
+// Running under -race now earns something specific. A pattern that reintroduces
+// catastrophic backtracking will blow the match timeout there long before it
+// does in a normal run, so the Race Detector job doubles as a cheap budget
+// check on rule patterns -- no brittle timing assertion required.
 
 package matcher
 
