@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"bytes"
 	"context"
 	"regexp"
 
@@ -24,13 +25,43 @@ var atlasPublicKeyPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`--user\s+["']?([a-z]{8}):`),
 }
 
+// atlasPrivateKeyPattern is the UUID an Atlas private key consists of.
+var atlasPrivateKeyPattern = regexp.MustCompile(`(?i)\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b`)
+
+// atlasPrivateKey returns the private key UUID from a kingfisher.mongodb.1 match.
+//
+// It is NOT Snippet.Matching. That field holds the whole matched span, and the
+// rule's pattern deliberately spans from the mongodb/atlas keyword through the
+// private-key label to the UUID, so Matching looks like
+//
+//	ATLAS_PUBLIC_KEY=yhltsvan\nATLAS_PRIVATE_KEY=2c130c23-...-a8bf33218830
+//
+// Using it directly would authenticate with that entire blob as the password.
+//
+// Groups holds the positional captures with the full match already stripped
+// (extractCaptureGroups starts at index 1), so the rule's single capture lands
+// at Groups[0]. The UUID shape is verified rather than assumed, and the matched
+// span is searched as a fallback, so this cannot silently pick up the wrong
+// value if capture indexing differs between matcher backends.
+func atlasPrivateKey(m *types.Match) string {
+	for _, g := range m.Groups {
+		if v := atlasPrivateKeyPattern.Find(g); v != nil {
+			return string(v)
+		}
+	}
+	if v := atlasPrivateKeyPattern.Find(m.Snippet.Matching); v != nil {
+		return string(v)
+	}
+	return ""
+}
+
 // extractAtlasDigestCredentials extracts the public and private key pair used
 // for kingfisher.mongodb.1 digest authentication.
 //
-// The private key is the main matched secret (Snippet.Matching). The public key
-// is a SEPARATE rule's match (kingfisher.mongodb.2), so it can never appear in
-// this match's NamedGroups: the matcher populates those only from the matching
-// rule's own regex, and mongodb.yml declares no named capture groups.
+// The public key is a SEPARATE rule's match (kingfisher.mongodb.2), so it can
+// never appear in this match's NamedGroups: the matcher populates those only
+// from the matching rule's own regex, and mongodb.yml declares no named capture
+// groups.
 //
 // This previously read NamedGroups["PUBKEY"], described in the rule YAML as
 // populated by depends_on_rule. No Go code parses depends_on_rule, so the key
@@ -41,22 +72,53 @@ var atlasPublicKeyPatterns = []*regexp.Regexp{
 // Pairing from the snippet is how every other split credential in this repo is
 // handled: see pkg/validator/helpscout.go for a client ID, and the AWS session
 // token extraction in pkg/scoring/aws.go.
+//
+// When several credential pairs sit within the same snippet, the public key
+// NEAREST the private key wins, preferring one that precedes it. Taking the
+// first match in the context would pair a private key with an earlier,
+// unrelated public key and authenticate with a mismatched pair.
 func extractAtlasDigestCredentials(m *types.Match) (pubKey, privKey string, ok bool) {
 	if m == nil {
 		return "", "", false
 	}
-	priv := m.Snippet.Matching
-	if len(priv) == 0 {
+	priv := atlasPrivateKey(m)
+	if priv == "" {
 		return "", "", false
 	}
-	for _, part := range [][]byte{m.Snippet.Before, m.Snippet.Matching, m.Snippet.After} {
-		for _, re := range atlasPublicKeyPatterns {
-			if sub := re.FindSubmatch(part); len(sub) >= 2 && len(sub[1]) > 0 {
-				return string(sub[1]), string(priv), true
+
+	// Reassemble the contiguous context so candidate positions are comparable.
+	ctx := make([]byte, 0, len(m.Snippet.Before)+len(m.Snippet.Matching)+len(m.Snippet.After))
+	ctx = append(ctx, m.Snippet.Before...)
+	ctx = append(ctx, m.Snippet.Matching...)
+	ctx = append(ctx, m.Snippet.After...)
+
+	privPos := bytes.Index(ctx, []byte(priv))
+	if privPos < 0 {
+		privPos = len(m.Snippet.Before)
+	}
+
+	best, bestDist := "", -1
+	for _, re := range atlasPublicKeyPatterns {
+		for _, loc := range re.FindAllSubmatchIndex(ctx, -1) {
+			if len(loc) < 4 || loc[2] < 0 {
+				continue
+			}
+			cand := string(ctx[loc[2]:loc[3]])
+			dist := privPos - loc[3]
+			if dist < 0 {
+				// Candidate follows the private key: same distance measure, but
+				// preferred only when nothing precedes it.
+				dist = (loc[2] - privPos) + 1
+			}
+			if bestDist < 0 || dist < bestDist {
+				best, bestDist = cand, dist
 			}
 		}
 	}
-	return "", "", false
+	if best == "" {
+		return "", "", false
+	}
+	return best, priv, true
 }
 
 // extractAtlasServiceAccountToken extracts the bearer token used for
