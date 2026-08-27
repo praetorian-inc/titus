@@ -14,9 +14,14 @@ const defaultSpecialChars = "!@#$%^&*()_+-=[]{}|;:'\",.<>?/\\`~"
 // findSecretCapture selects which capture group represents the secret value.
 // Priority (matching Kingfisher):
 //  1. Named capture called "TOKEN" (case-insensitive)
-//  2. First named capture in NamedGroups
-//  3. Groups[1] (first positional capture)
-//  4. Groups[0] (full match)
+//  2. Highest-entropy named capture in NamedGroups
+//  3. Groups[1] (second positional capture — index 0 is the first capture,
+//     NOT the full match; both backends strip the full match at index 0)
+//  4. Groups[0] (first positional capture)
+//
+// For rules with 3+ captures that lack named groups, step 3 picks the SECOND
+// capture, which is often a username or context field rather than the secret.
+// Fix: name the secret capture "token" so step 1 selects it. See LAB-6101.
 func findSecretCapture(m *types.Match) []byte {
 	// 1. Named capture called "TOKEN" (case-insensitive)
 	for k, v := range m.NamedGroups {

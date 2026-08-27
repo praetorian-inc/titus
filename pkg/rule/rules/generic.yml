@@ -343,7 +343,7 @@ rules:
       \s* , \s*
       " ( [^"\n]{3,50} ) "                (?# username )
       \s* , \s*
-      " ( [^"\n]{3,50} ) "                (?# password )
+      " (?P<token>[^"\n]{3,50}) "          (?# password )
       (?: \s* , \s* [^)]{3,50} )?         (?# authentication type )
     \s* \)
 
