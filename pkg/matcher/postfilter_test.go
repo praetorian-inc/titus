@@ -2,9 +2,12 @@ package matcher
 
 import (
 	"testing"
+	"time"
 
+	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- findSecretCapture tests ---
@@ -358,5 +361,63 @@ func TestFilterMatches_PatternRequirementsFiltering(t *testing.T) {
 	}
 	if string(result[0].NamedGroups["token"]) != "sk_live_realkey12345" {
 		t.Errorf("unexpected match content: %q", result[0].NamedGroups["token"])
+	}
+}
+
+// TestFindSecretCapture_MultiCaptureRulesSelectPassword verifies that rules
+// with 3+ captures select the password (via the named "token" group), not a
+// middle field like the login or username.
+//
+// Before LAB-6101, these rules had no named groups, so findSecretCapture fell
+// through to Groups[1] — the second capture — which was a username or path.
+// Entropy and pattern_requirements checks ran against that field instead of
+// the actual credential.
+func TestFindSecretCapture_MultiCaptureRulesSelectPassword(t *testing.T) {
+	allRules, err := rule.NewLoader().LoadBuiltinRules()
+	require.NoError(t, err)
+
+	byID := map[string]*types.Rule{}
+	for _, r := range allRules {
+		byID[r.ID] = r
+	}
+
+	tests := []struct {
+		ruleID   string
+		input    string
+		wantSecret string
+	}{
+		{
+			ruleID:     "np.netrc.1",
+			input:      "machine api.github.com login ziggy^stardust password 012345abcdef",
+			wantSecret: "012345abcdef",
+		},
+		{
+			ruleID:     "np.phpmailer.1",
+			input:      "$mail->Host = 'smtp.example.com';\n$mail->Username = 'user@example.com';\n$mail->Password = 'un!techwhooah';",
+			wantSecret: "un!techwhooah",
+		},
+		{
+			ruleID:     "np.generic.8",
+			input:      `$domain = New-Object DirectoryServices.DirectoryEntry("LDAP://10.10.10.1","domain\user", "secret")`,
+			wantSecret: "secret",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.ruleID, func(t *testing.T) {
+			r, ok := byID[tt.ruleID]
+			require.True(t, ok, "rule %s not found", tt.ruleID)
+
+			m, err := NewPortableRegexpWithTimeout([]*types.Rule{r}, 0, nil, 5*time.Second)
+			require.NoError(t, err)
+
+			matches, err := m.Match([]byte(tt.input))
+			require.NoError(t, err)
+			require.NotEmpty(t, matches, "rule %s did not match its input", tt.ruleID)
+
+			secret := findSecretCapture(matches[0])
+			assert.Equal(t, tt.wantSecret, string(secret),
+				"findSecretCapture should select the password, not another capture")
+		})
 	}
 }

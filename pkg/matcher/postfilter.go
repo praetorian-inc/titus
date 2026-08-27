@@ -48,12 +48,12 @@ func findSecretCapture(m *types.Match) []byte {
 		}
 	}
 
-	// 3. Groups[1] (first positional capture)
+	// 3. Groups[1] (second positional capture)
 	if len(m.Groups) > 1 {
 		return m.Groups[1]
 	}
 
-	// 4. Groups[0] (full match)
+	// 4. Groups[0] (first positional capture)
 	if len(m.Groups) > 0 {
 		return m.Groups[0]
 	}
