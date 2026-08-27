@@ -43,7 +43,7 @@ rules:
     confidence: medium
     examples:
       - "asana :'20c2F0d03201af478ca1aBE9515A1A4FEfb'"
-      - ASANA_PAT = 1234567890abcdef1234567890abcdef12
+      - ASANA_PAT = 1234567890aBcdef1234567890abcDef12
 
   - name: Asana OAuth / Personal Access Token
     id: kingfisher.asana.3

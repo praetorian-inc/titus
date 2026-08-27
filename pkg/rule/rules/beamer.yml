@@ -18,8 +18,8 @@ rules:
     min_entropy: 3.0
     confidence: medium
     examples:
-      - beamer = b_ByDfulghxvvmHbArJSFfQhxemJPQHOwplxuydlKEEbfe
-      - "BEAMER_key = 'b_ByDfulghxvvmHbArJSFfQhxemJPQHOwplxuydlKEEbfe'"
+      - beamer = b_By3fulghxvvmHbAr7SFfQhxemJPQHOwplxuydlKEEbfe
+      - "BEAMER_key = 'b_By3fulghxvvmHbAr7SFfQhxemJPQHOwplxuydlKEEbfe'"
     references:
       - https://getbeamer-api.pages.dev/
     validation:

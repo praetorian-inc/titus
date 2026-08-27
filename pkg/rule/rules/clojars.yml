@@ -20,7 +20,7 @@ rules:
     min_entropy: 1.5
     visible: false
     examples:
-      - "clojars_user = my-username"
+      - "clojars_user = dev-user42"
 
   - name: Clojars API Token
     id: kingfisher.clojars.2

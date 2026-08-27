@@ -21,7 +21,7 @@ rules:
   examples:
   - "CYPRESS_RECORD_KEY=a1b2c3d4-e5f6-7890-abcd-ef1234567890"
   - 'cypress_record_key: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"'
-  - '--record --key a9b8c7d6-e5f4-3210-abcd-ef9876543210'
+  - 'cypress --key a9b8c7d6-e5f4-3210-abcd-ef9876543210'
 
   negative_examples:
   - "CYPRESS_RECORD_KEY=not-a-uuid"

@@ -42,6 +42,6 @@ rules:
     confidence: medium
     examples:
       - CONNECTION_URI="mysql://nimda:m42p!o@2wd@google.com:3306/elephant"
-      - mysql://user:pass@example.com:4406/app_db?ssl-mode=REQUIRED
+      - mysql://user:pass@db.acme.io:4406/app_db?ssl-mode=REQUIRED
     validation:
       type: MySQL

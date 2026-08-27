@@ -19,7 +19,7 @@ rules:
     min_entropy: 3.2
     confidence: medium
     examples:
-      - IMAGEKIT_PRIVATE_KEY=private_rGAPQJbhBx
+      - IMAGEKIT_PRIVATE_KEY=private_rG4PQJbh7x
       - imagekit token private_AbCdEf0123456789GhIjKlMn
     references:
       - https://imagekit.io/docs/api-keys

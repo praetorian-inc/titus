@@ -15,7 +15,7 @@ rules:
     confidence: medium
     examples:
       - PREFECT_API_TOKEN=pnu_1234567890abcdef1234567890abcdef1234
-      - '"prefectToken": "pnu_abcdefabcdefabcdefabcdefabcdefabcdef"'
+      - '"prefectToken": "pnu_a1cdefabcdef2bcdefabcdefabcdefabcdef"'
     references:
       - https://docs.prefect.io/latest/concepts/api_keys/
     validation:

@@ -17,7 +17,7 @@ rules:
     min_entropy: 3.4
     confidence: medium
     examples:
-      - MESSAGEBIRD_API_KEY=abcdefghijklmnopqrstuvwxy
+      - MESSAGEBIRD_API_KEY=a1cdefgh2jklmnopqrstuvwxy
       - "messagebird_token: 'abcde12345fghij67890klmno'"
     references:
       - https://developers.messagebird.com/api/#authentication

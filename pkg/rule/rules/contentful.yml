@@ -43,7 +43,7 @@ rules:
       - "CFPAT-Cq3AarsJCDvdG9PYAJ3Y00crCG5nEPAAfVZ2LAldCsQ"
       - "CFPAT-WFWEK_dWYIW0-uamOjhUBAJJ9NqQisr1x_ylb4z1vcQ"
       - "CFPAT-lkITY2pqeiE0_p9TxUZrGAhfHJIiwYtbtr769y4_AYY"
-      - "export CONTENTFUL_PAT=CFPAT-0JsT8FnP_qGlX2kRxYZabcDEFghijKLMNopqRSTuvW"
+      - "export CONTENTFUL_PAT=CFPAT-0JsT8FnP_qGlX2kRxYZabcDEFghijKLMNopqRSTuvWx"
 
     negative_examples:
       - "CFPAT-short"

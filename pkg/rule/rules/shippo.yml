@@ -15,7 +15,7 @@ rules:
     confidence: medium
     examples:
       - SHIPPO_TOKEN=shippo_test_1234567890abcdef1234567890abcdef12345678
-      - 'Authorization: "ShippoToken shippo_live_abcdefabcdefabcdefabcdefabcdefabcdefabcd"'
+      - 'Authorization: "ShippoToken shippo_live_a1cdefabcdef2bcdefabcdefabcdefabcdefabcd"'
     references:
       - https://goshippo.com/docs/reference
     validation:

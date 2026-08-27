@@ -20,7 +20,7 @@ rules:
     confidence: medium
     examples:
       - "ipstack_token=123e4567e89b12d3a456426614174000"
-      - "ipstack_key=abcdefabcdefabcdefabcdefabcdef12"
+      - "ipstack_key=a3b7de1f89c2e6d04a5b8c1d7e3f9a20"
     references:
       - https://ipstack.com/documentation
     validation:
