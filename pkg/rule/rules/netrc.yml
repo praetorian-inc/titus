@@ -10,7 +10,7 @@ rules:
     \s+
     login \s+ ([^\s]+)
     \s+
-    password \s+ ([^\s]+)
+    password \s+ (?P<token>[^\s]+)
 
   categories: [secret]
 

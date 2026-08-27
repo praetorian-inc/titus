@@ -22,7 +22,7 @@ rules:
     [^\S\n]* \n? (?: [^\n]*\n ){0,3} [^\S\n]*
     \$mail->Username \s* = \s* '([^'\n]{5,})'; [^\S\n]* (?: //.* )?
     [^\S\n]* \n? (?: [^\n]*\n ){0,3} [^\S\n]*
-    \$mail->Password \s* = \s* '([^'\n]{5,})';
+    \$mail->Password \s* = \s* '(?P<token>[^'\n]{5,})';
 
   categories: [fuzzy, secret]
 
