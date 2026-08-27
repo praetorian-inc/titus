@@ -18,9 +18,9 @@ rules:
   # 5.80s -> 23us across both examples (LAB-6097).
   pattern: |
     (?x)
-    \$mail->Host     \s* = \s* '([^'\n]{5,})'; \s* (?: //.* )?
+    \$mail->Host     \s* = \s* '([^'\n]{5,})'; [^\S\n]* (?: //.* )?
     [^\S\n]* \n? (?: [^\n]*\n ){0,3} [^\S\n]*
-    \$mail->Username \s* = \s* '([^'\n]{5,})'; \s* (?: //.* )?
+    \$mail->Username \s* = \s* '([^'\n]{5,})'; [^\S\n]* (?: //.* )?
     [^\S\n]* \n? (?: [^\n]*\n ){0,3} [^\S\n]*
     \$mail->Password \s* = \s* '([^'\n]{5,})';
 
