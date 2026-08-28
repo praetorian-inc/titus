@@ -55,9 +55,9 @@ scorers:
 
       # --- Sandbox only: no custom domain present ---
       # negative: true inverts response_body_contains so this fires when
-      # "custom" is absent — meaning only sandbox domains exist. On a 401
-      # this also fires (no body contains "custom"), but revoked-key's
-      # set_score at P10 overwrites the delta.
+      # "custom" is absent — meaning only sandbox domains exist. On a
+      # 401/403 this also fires (no body contains "custom"), but
+      # revoked-key's set_score at P10 overwrites the delta.
       - name: sandbox-only
         priority: 70
         http: *mg_domains
@@ -67,9 +67,10 @@ scorers:
         delta: -20
 
       # --- Dead key: evaluated last, wins outright ---
+      # Mailgun returns 401 or 403 for invalid/disabled keys.
       - name: revoked-key
         priority: 10
         http: *mg_domains
         fires_when:
-          status_code: 401
+          status_code_in: [401, 403]
         set_score: 5
