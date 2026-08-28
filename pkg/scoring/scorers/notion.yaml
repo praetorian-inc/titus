@@ -1,0 +1,72 @@
+# Notion API token scorer — workspace vs user-scoped access (LAB-3404).
+#
+# Rule IDs covered:
+#   kingfisher.notion.1 — Notion Legacy Token (secret_...): base_score 55
+#   kingfisher.notion.2 — Notion Token (ntn_...): base_score 58
+#
+# kingfisher.notion.3 (OAuth refresh token, nrt_...) is excluded because
+# refresh tokens cannot call the API directly — they must be exchanged for
+# an access token first, so no probe is possible.
+#
+# GET /v1/users/me returns the bot info and its owner type:
+#   .bot.owner.type = "workspace" — internal integration with workspace-wide
+#                                    access to all shared content
+#   .bot.owner.type = "user"      — OAuth integration scoped to pages the
+#                                    authorizing user granted access to
+#
+# Workspace integrations are significantly higher risk: they can access any
+# page/database shared with the integration, which in many workspaces means
+# HR docs, customer lists, and credentials.
+#
+# Notion requires a Notion-Version header on all API calls.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes:
+#   notion.1 (base 55): workspace → 70, user-scoped → 35, revoked → 5
+#   notion.2 (base 58): workspace → 73, user-scoped → 38, revoked → 5
+#
+# API documentation:
+#   https://developers.notion.com/reference/get-self
+#   https://developers.notion.com/docs/authorization
+scorers:
+  - name: notion-token-scope
+    rule_ids:
+      - kingfisher.notion.1
+      - kingfisher.notion.2
+    modifiers:
+      # --- Workspace integration: broad access to shared content ---
+      - name: workspace-integration
+        priority: 90
+        http: &notion_me
+          method: GET
+          url: https://api.notion.com/v1/users/me
+          auth:
+            type: bearer
+            secret_group: "token"
+          headers:
+            - name: Notion-Version
+              value: "2022-06-28"
+        fires_when:
+          json_path_equals:
+            path: ".bot.owner.type"
+            value: "workspace"
+        delta: 15
+
+      # --- User-scoped OAuth: limited to granted pages ---
+      - name: user-scoped-token
+        priority: 80
+        http: *notion_me
+        fires_when:
+          json_path_equals:
+            path: ".bot.owner.type"
+            value: "user"
+        delta: -20
+
+      # --- Dead key: evaluated last, wins outright ---
+      - name: revoked-key
+        priority: 10
+        http: *notion_me
+        fires_when:
+          status_code: 401
+        set_score: 5

@@ -7,7 +7,7 @@ rules:
       notion
       (?:.|[\\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         secret_[A-Z0-9]{43}
       )
       \b
@@ -41,7 +41,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         ntn_[0-9]{11}[A-Za-z0-9]{35}
       )
     min_entropy: 4.0
