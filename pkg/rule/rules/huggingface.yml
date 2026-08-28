@@ -4,7 +4,7 @@ rules:
   id: np.huggingface.1
   base_score: 60
 
-  pattern: '\b(hf_[a-zA-Z]{34})\b'
+  pattern: '\b(?P<token>hf_[a-zA-Z]{34})\b'
 
   categories: [api, secret]
 
