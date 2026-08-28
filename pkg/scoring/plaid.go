@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -31,14 +30,14 @@ func extractPlaidSecret(m *types.Match) (string, bool) {
 	return "", false
 }
 
-var plaidClientIDRe = regexp.MustCompile(`(?i)(?:plaid[_-]?)?client[_-]?id\s*[:=]\s*["']?([a-z0-9]{24})\b`)
+var plaidClientIDRe = regexp.MustCompile(`(?i)["']?(?:plaid[_-]?)?client[_-]?id["']?\s*[:=]\s*["']?([a-z0-9]{24})\b`)
 
 // extractPlaidClientID scans surrounding context for a co-located Plaid client ID.
 func extractPlaidClientID(m *types.Match) (string, bool) {
 	if m == nil {
 		return "", false
 	}
-	for _, ctx := range [][]byte{m.Snippet.Before, m.Snippet.After} {
+	for _, ctx := range [][]byte{m.Snippet.Before, m.Snippet.Matching, m.Snippet.After} {
 		if sub := plaidClientIDRe.FindSubmatch(ctx); len(sub) > 1 {
 			return string(sub[1]), true
 		}
@@ -48,7 +47,7 @@ func extractPlaidClientID(m *types.Match) (string, bool) {
 
 type plaidInstitutionsReq struct {
 	ClientID     string   `json:"client_id"`
-	Secret       string   `json:"secret"`
+	Secret       string   `json:"secret"` // #nosec G101 -- API request field, not a hardcoded credential
 	Count        int      `json:"count"`
 	Offset       int      `json:"offset"`
 	CountryCodes []string `json:"country_codes"`
@@ -115,7 +114,10 @@ func (c *plaidEnvCheckCondition) httpClient() plaidHTTPClient {
 }
 
 // plaidRevokedCondition fires when a client_id is available in the surrounding
-// context but the secret is rejected by all three Plaid environments.
+// context and every Plaid environment explicitly rejects the credentials with
+// INVALID_API_KEYS. Transport errors, timeouts, rate limits, and server errors
+// are treated as inconclusive — the condition does NOT fire, leaving the base
+// score intact rather than incorrectly marking a live key as dead.
 type plaidRevokedCondition struct {
 	client plaidHTTPClient
 }
@@ -143,20 +145,22 @@ func (c *plaidRevokedCondition) Evaluate(ctx context.Context, m *types.Match) (b
 		return false, nil
 	}
 
-	for _, env := range []string{
+	rejections := 0
+	envs := []string{
 		"https://production.plaid.com/institutions/get",
 		"https://development.plaid.com/institutions/get",
 		"https://sandbox.plaid.com/institutions/get",
-	} {
+	}
+	for _, env := range envs {
 		req, err := http.NewRequestWithContext(ctx, "POST", env, bytes.NewReader(body))
 		if err != nil {
-			continue
+			return false, nil
 		}
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := c.httpClient().Do(req)
 		if err != nil {
-			continue
+			return false, nil
 		}
 		respBody, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
@@ -164,8 +168,13 @@ func (c *plaidRevokedCondition) Evaluate(ctx context.Context, m *types.Match) (b
 		if resp.StatusCode == http.StatusOK && !bytes.Contains(respBody, []byte("INVALID_API_KEYS")) {
 			return false, nil
 		}
+		if bytes.Contains(respBody, []byte("INVALID_API_KEYS")) {
+			rejections++
+			continue
+		}
+		return false, nil
 	}
-	return true, nil
+	return rejections == len(envs), nil
 }
 
 func (c *plaidRevokedCondition) httpClient() plaidHTTPClient {
@@ -175,18 +184,24 @@ func (c *plaidRevokedCondition) httpClient() plaidHTTPClient {
 	return defaultHTTPClient
 }
 
-// plaidSandboxContextCondition fires when the surrounding context contains
-// "sandbox" (case-insensitive), suggesting the secret belongs to a sandbox
-// environment even when no client_id is available for dynamic verification.
+// plaidSandboxContextCondition fires when the surrounding context or matched
+// text contains "sandbox" (case-insensitive), suggesting the secret belongs to
+// a sandbox environment even when no client_id is available for dynamic
+// verification.
 type plaidSandboxContextCondition struct{}
+
+var sandboxLower = []byte("sandbox")
 
 func (c *plaidSandboxContextCondition) Evaluate(_ context.Context, m *types.Match) (bool, error) {
 	if m == nil {
 		return false, nil
 	}
-	low := func(b []byte) string { return strings.ToLower(string(b)) }
-	return strings.Contains(low(m.Snippet.Before), "sandbox") ||
-		strings.Contains(low(m.Snippet.After), "sandbox"), nil
+	for _, seg := range [][]byte{m.Snippet.Before, m.Snippet.Matching, m.Snippet.After} {
+		if bytes.Contains(bytes.ToLower(seg), sandboxLower) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // PlaidGoScorer returns the environment-aware Plaid secret scorer.
@@ -213,7 +228,7 @@ func PlaidGoScorer() *Scorer {
 				Name:      "sandbox-context",
 				Priority:  90,
 				Kind:      ModifierKindSetScore,
-				Value:     10,
+				Value:     5,
 				Condition: &plaidSandboxContextCondition{},
 			},
 

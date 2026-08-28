@@ -113,6 +113,34 @@ func TestExtractPlaidClientID_CaseInsensitive(t *testing.T) {
 	assert.Equal(t, fakePlaidClientID, id)
 }
 
+func TestExtractPlaidClientID_JSONStyle(t *testing.T) {
+	m := &types.Match{
+		RuleID:      "kingfisher.plaid.2",
+		NamedGroups: map[string][]byte{"token": []byte(fakePlaidSecret)},
+		Snippet: types.Snippet{
+			Before: []byte(`"client_id": "` + fakePlaidClientID + `"` + "\n"),
+		},
+	}
+	id, ok := extractPlaidClientID(m)
+	assert.True(t, ok)
+	assert.Equal(t, fakePlaidClientID, id)
+}
+
+func TestExtractPlaidClientID_InMatching(t *testing.T) {
+	m := &types.Match{
+		RuleID:      "kingfisher.plaid.2",
+		NamedGroups: map[string][]byte{"token": []byte(fakePlaidSecret)},
+		Snippet: types.Snippet{
+			Before:   []byte(""),
+			Matching: []byte(`client_id=` + fakePlaidClientID + ` secret=` + fakePlaidSecret),
+			After:    []byte(""),
+		},
+	}
+	id, ok := extractPlaidClientID(m)
+	assert.True(t, ok)
+	assert.Equal(t, fakePlaidClientID, id)
+}
+
 func TestExtractPlaidClientID_NotFound(t *testing.T) {
 	m := plaidSecretMatchNoClientID("kingfisher.plaid.2")
 	_, ok := extractPlaidClientID(m)
@@ -221,6 +249,30 @@ func TestPlaidRevoked_OneAccepts(t *testing.T) {
 	assert.False(t, fired)
 }
 
+func TestPlaidRevoked_TransportError(t *testing.T) {
+	c := &plaidRevokedCondition{
+		client: &plaidFailingClient{},
+	}
+	fired, err := c.Evaluate(context.Background(), plaidSecretMatch("kingfisher.plaid.2"))
+	assert.NoError(t, err)
+	assert.False(t, fired, "transport errors must not be treated as revoked")
+}
+
+func TestPlaidRevoked_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`internal error`))
+	}))
+	defer server.Close()
+
+	c := &plaidRevokedCondition{
+		client: &plaidRedirectingClient{target: server.URL},
+	}
+	fired, err := c.Evaluate(context.Background(), plaidSecretMatch("kingfisher.plaid.2"))
+	assert.NoError(t, err)
+	assert.False(t, fired, "5xx errors must not be treated as revoked")
+}
+
 func TestPlaidRevoked_NoClientID(t *testing.T) {
 	c := &plaidRevokedCondition{}
 	fired, err := c.Evaluate(context.Background(), plaidSecretMatchNoClientID("kingfisher.plaid.2"))
@@ -250,6 +302,20 @@ func TestPlaidSandboxContext_InAfter(t *testing.T) {
 		NamedGroups: map[string][]byte{"token": []byte(fakePlaidSecret)},
 		Snippet: types.Snippet{
 			After: []byte("environment: Sandbox\n"),
+		},
+	}
+	c := &plaidSandboxContextCondition{}
+	fired, err := c.Evaluate(context.Background(), m)
+	assert.NoError(t, err)
+	assert.True(t, fired)
+}
+
+func TestPlaidSandboxContext_InMatching(t *testing.T) {
+	m := &types.Match{
+		RuleID:      "kingfisher.plaid.2",
+		NamedGroups: map[string][]byte{"token": []byte(fakePlaidSecret)},
+		Snippet: types.Snippet{
+			Matching: []byte("PLAID_SANDBOX_SECRET=" + fakePlaidSecret),
 		},
 	}
 	c := &plaidSandboxContextCondition{}
@@ -326,6 +392,11 @@ func TestPlaidGoScorer_AllDynamic(t *testing.T) {
 	}
 }
 
+func TestPlaidGoScorer_ModifierCount(t *testing.T) {
+	s := PlaidGoScorer()
+	assert.Equal(t, 5, len(s.Modifiers))
+}
+
 func TestPlaidGoScorer_MissingToken(t *testing.T) {
 	s := PlaidGoScorer()
 	m := &types.Match{
@@ -360,7 +431,7 @@ func TestPlaidGoScorer_Scores(t *testing.T) {
 	assert.Equal(t, 5, byName["revoked-key"].Value)
 
 	require.Equal(t, ModifierKindSetScore, byName["sandbox-context"].Kind)
-	assert.Equal(t, 10, byName["sandbox-context"].Value)
+	assert.Equal(t, 5, byName["sandbox-context"].Value)
 }
 
 // plaidRedirectingClient redirects all requests to a test server URL.
@@ -379,4 +450,11 @@ func (c *plaidRedirectingClient) Do(req *http.Request) (*http.Response, error) {
 	}
 	newReq.Header = req.Header
 	return http.DefaultClient.Do(newReq)
+}
+
+// plaidFailingClient always returns a transport error.
+type plaidFailingClient struct{}
+
+func (c *plaidFailingClient) Do(_ *http.Request) (*http.Response, error) {
+	return nil, http.ErrServerClosed
 }
