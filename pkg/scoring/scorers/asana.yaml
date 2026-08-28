@@ -32,7 +32,7 @@ scorers:
         priority: 90
         http: &asana_me
           method: GET
-          url: https://app.asana.com/api/1.0/users/me
+          url: https://app.asana.com/api/1.0/users/me?opt_fields=workspaces
           auth:
             type: bearer
             secret_group: "token"

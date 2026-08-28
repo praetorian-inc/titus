@@ -29,7 +29,7 @@ func TestBuiltinAsanaScorer_AllModifiersShareOneAuthedRequest(t *testing.T) {
 	for _, m := range s.Modifiers {
 		cond, ok := m.Condition.(*httpCondition)
 		require.Truef(t, ok, "modifier %q should be http-backed", m.Name)
-		assert.Equal(t, "https://app.asana.com/api/1.0/users/me", cond.url, "modifier %q", m.Name)
+		assert.Equal(t, "https://app.asana.com/api/1.0/users/me?opt_fields=workspaces", cond.url, "modifier %q", m.Name)
 		assert.Equal(t, "GET", cond.method, "modifier %q", m.Name)
 		assert.Equal(t, "bearer", cond.auth.Type, "modifier %q", m.Name)
 		assert.Equal(t, "token", cond.auth.SecretGroup, "modifier %q", m.Name)
