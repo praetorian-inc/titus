@@ -15,6 +15,7 @@ func BuiltinGoScorers() []*Scorer {
 		GitLabGoScorer(),
 		GCPGoScorer(),
 		AzureGoScorer(),
+		PlaidGoScorer(),
 	}
 }
 

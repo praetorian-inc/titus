@@ -12,7 +12,7 @@ rules:
       (?:\s*[:=]\s*|["']\s*:\s*["']|=\s*["'])
       \s*
       \b
-      (
+      (?P<client_id>
         [a-z0-9]{24}
       )
       \b
@@ -35,7 +35,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN|ACCESS_KEY)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [a-z0-9]{30}
       )
       \b
@@ -96,7 +96,7 @@ rules:
       (?:SECRET|PRIVATE|ACCESS|KEY|TOKEN|ACCESS_KEY)
       (?:.|[\n\r]){0,32}?
       \b
-      (
+      (?P<token>
         [a-z0-9]{30}
       )
       \b
@@ -156,7 +156,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         access-production-
         [0-9a-f]{8}-
         [0-9a-f]{4}-
@@ -215,7 +215,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         access-sandbox-
         [0-9a-f]{8}-
         [0-9a-f]{4}-
