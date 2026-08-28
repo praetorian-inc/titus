@@ -1,0 +1,80 @@
+# Mailchimp API key scorer — plan tier and subscriber scale (LAB-3401).
+#
+# Rule ID covered:
+#   np.mailchimp.1 — Mailchimp API key (...-usNN): base_score 55
+#
+# GET /3.0/ (API root) returns account metadata including pricing_plan_type
+# and total_subscribers. The datacenter is embedded in the key itself and
+# captured as the "dc" named group — the URL template {{dc}} resolves it.
+#
+# Mailchimp uses Basic Auth: any username, API key as password.
+#
+# The key risk is access to subscriber lists (email PII) and the ability to
+# send campaigns. A paid account with thousands of subscribers is high risk;
+# a free account with zero subscribers is negligible.
+#
+# All modifiers issue the SAME request. The engine caches HTTP responses on
+# (method, url, secret), so a finding costs one network call.
+#
+# Score outcomes (base 55):
+#   paid + 1000+ subscribers: 55 + 15      = 70
+#   paid + <1000 subscribers: 55           = 55
+#   free + 1000+ subscribers: 55 - 15 + 15 = 55
+#   paid + no subscribers:    55 - 20      = 35
+#   free + <1000 subscribers: 55 - 15      = 40
+#   free + no subscribers:    55 - 15 - 20 = 20
+#   revoked:                                  5
+#
+# API documentation:
+#   https://mailchimp.com/developer/marketing/api/root/
+#   https://mailchimp.com/developer/marketing/docs/fundamentals/#connecting-to-the-api
+scorers:
+  - name: mailchimp-key-scope
+    rule_ids:
+      - np.mailchimp.1
+    modifiers:
+      # --- Free plan: limited sending, lower risk ---
+      - name: free-plan
+        priority: 80
+        http: &mc_root
+          method: GET
+          url: "https://{{dc}}.api.mailchimp.com/3.0/"
+          auth:
+            type: basic
+            username: anystring
+            secret_group: "token"
+        fires_when:
+          json_path_equals:
+            path: ".pricing_plan_type"
+            value: "forever_free"
+        delta: -15
+
+      # --- Significant subscriber base: PII at scale ---
+      # total_subscribers is a top-level integer in the root response.
+      # Regex matches 4+ digit numbers (>= 1000).
+      - name: significant-subscribers
+        priority: 70
+        http: *mc_root
+        fires_when:
+          json_path_matches:
+            path: ".total_subscribers"
+            regex: "^\\d{4,}$"
+        delta: 15
+
+      # --- Empty account: no subscribers, no PII exposure ---
+      - name: no-subscribers
+        priority: 60
+        http: *mc_root
+        fires_when:
+          json_path_equals:
+            path: ".total_subscribers"
+            value: 0
+        delta: -20
+
+      # --- Dead key: evaluated last, wins outright ---
+      - name: revoked-key
+        priority: 10
+        http: *mc_root
+        fires_when:
+          status_code: 401
+        set_score: 5
