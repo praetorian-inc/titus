@@ -103,6 +103,23 @@ func TestBuiltinMailchimpScorer_SubscriberModifiersCheckCorrectPath(t *testing.T
 	assert.True(t, seen["no-subscribers"], "no-subscribers not found")
 }
 
+func TestBuiltinMailchimpScorer_RevokedKeyCovers403(t *testing.T) {
+	s := builtinScorerFor(t, "np.mailchimp.1")
+	for _, m := range s.Modifiers {
+		if m.Name != "revoked-key" {
+			continue
+		}
+		cond, ok := m.Condition.(*httpCondition)
+		require.True(t, ok)
+		leaf, ok := cond.firesWhen.(*statusCodeInLeaf)
+		require.True(t, ok, "revoked-key should use status_code_in")
+		assert.Contains(t, leaf.Codes, 401)
+		assert.Contains(t, leaf.Codes, 403)
+		return
+	}
+	t.Fatal("revoked-key modifier not found")
+}
+
 func TestBuiltinMailchimpScorer_ModifierCount(t *testing.T) {
 	s := builtinScorerFor(t, "np.mailchimp.1")
 	assert.Len(t, s.Modifiers, 4)

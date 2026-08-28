@@ -76,5 +76,5 @@ scorers:
         priority: 10
         http: *mc_root
         fires_when:
-          status_code: 401
+          status_code_in: [401, 403]
         set_score: 5
