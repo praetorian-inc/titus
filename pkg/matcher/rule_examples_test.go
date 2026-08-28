@@ -37,7 +37,7 @@ type exampleBaseline struct {
 }
 
 // knownExampleFailures is the burn-down list for LAB-6096: rules that cannot
-// detect the examples they document. 51 rules of the 533 carrying examples.
+// detect the examples they document. 19 rules remain of the 533 carrying examples.
 //
 // TO FIX A RULE, DELETE ITS LINE HERE. TestRuleExamples_KnownFailuresMatchBaseline
 // fails if a listed rule's failures no longer match exactly, so the list cannot
@@ -119,7 +119,7 @@ func rulesWithExamples(t *testing.T) []*types.Rule {
 //
 // This runs the FULL pipeline -- regex AND the entropy / pattern_requirements
 // post-filters -- because most failures do not happen at the regex stage. Of
-// the 51 failures found when this test was written, only 8 were regex misses;
+// the 51 original failures found when this test was written, only 8 were regex misses;
 // the other 43 matched and were then dropped by filterMatches. A regex-only
 // test reports 8 and looks reassuring.
 func TestRuleExamples_AllRulesDetectTheirOwnExamples(t *testing.T) {
