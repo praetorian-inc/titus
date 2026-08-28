@@ -53,5 +53,5 @@ rules:
     min_entropy: 3.5
     visible: false
     examples:
-      - pscale_user = abcdefghijkl
-      - 'planetscale_id: hgtmrnzlv1t7'
+      - pscale_user = a3c5fg7h2jkm
+      - 'planetscale_id: hg3mrnz8v1t7'

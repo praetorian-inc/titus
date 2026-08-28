@@ -25,6 +25,6 @@ rules:
     references:
       - https://curl.se/docs/manpage.html#-H
     examples:
-      - 'curl -H ''Authorization: Basic YnJvd3Nlcjo='''
+      - 'curl -H ''Authorization: Basic YWRtaW46UEBzc3cwcmQhMTIzNDU='''
       - 'curl -H "Authorization: Bearer cfcabd11c7ed9a41b1a3e063c32d5114"'
       - 'curl -H "Authorization: Token 22cb987851bc5659229114c62e60c79abd0d2c08"'

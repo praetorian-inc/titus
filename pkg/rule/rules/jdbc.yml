@@ -23,10 +23,10 @@ rules:
     validation:
       type: Jdbc
     examples:
-      - jdbc:postgresql://db.example.com:5432/app?user=admin&password=s3cr3t
+      - jdbc:postgresql://db.internal.io:5432/app?user=admin&password=s3cr3t
       - jdbc:mysql://admin:s3cr3t@prod.internal:3306/inventory
-      - jdbc:oracle:thin:@ora.example.net:1521/ORCLPDB1
-      - jdbc:sqlserver://sql.example.org:1433;databaseName=inventory;user=sa;password=s3cr3t!
+      - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
+      - jdbc:sqlserver://sql.proddb.org:1433;databaseName=inventory;user=sa;password=s3cr3t!
     references:
       - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
       - https://www.postgresql.org/docs/current/jdbc-use.html

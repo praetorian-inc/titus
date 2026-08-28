@@ -33,7 +33,7 @@ rules:
         - changeme
         - ChangeMe
     examples:
-      - "<Pass>ExamplePas123</Pass>"
+      - "<Pass>Pr0dServ3r!</Pass>"
       - "<FileZilla3><Servers><Server><Pass>superS3cret!</Pass></Server></Servers></FileZilla3>"
     references:
       - https://stackoverflow.com/questions/29790136/filezilla-plain-text-password

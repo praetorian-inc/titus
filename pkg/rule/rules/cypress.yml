@@ -6,8 +6,8 @@ rules:
 
   pattern: |
     (?xi)
-    (?:cypress|CYPRESS_RECORD_KEY|record_key|recordKey)
-    (?:.|[\n\r]){0,16}?
+    (?:cypress|CYPRESS_RECORD_KEY|record_key|recordKey|--record)
+    (?:.|[\n\r]){0,32}?
     \b
     (?P<key>
       [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
@@ -21,7 +21,12 @@ rules:
   examples:
   - "CYPRESS_RECORD_KEY=a1b2c3d4-e5f6-7890-abcd-ef1234567890"
   - 'cypress_record_key: "f8e7d6c5-b4a3-2190-fedc-ba0987654321"'
-  - '--record --key a9b8c7d6-e5f4-3210-abcd-ef9876543210'
+  - 'cypress --key a9b8c7d6-e5f4-3210-abcd-ef9876543210'
+  # Canonical CI invocation. `cypress run --record --key ` is 27 characters, so
+  # the keyword-to-key window must exceed 16 for this to be detected at all.
+  - '- run: npx cypress run --record --key a9b8c7d6-e5f4-3210-abcd-ef9876543210'
+  # The bare flag form, where the binary is invoked via a variable.
+  - '$(CYPRESS_BIN) run --record --key a9b8c7d6-e5f4-3210-abcd-ef9876543210'
 
   negative_examples:
   - "CYPRESS_RECORD_KEY=not-a-uuid"

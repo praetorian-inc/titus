@@ -18,8 +18,8 @@ rules:
     examples:
       - pyowm = '3k144a5af729351d0fc58bdrj9a21mkr'
       - owm = '3k144a5af729351d0fc58bdrj9a21mkr'
-      - openweatherapikey=cd2b1d12d01ae2deffecfebafcc3c31d
-      - apikey=openweather:cd2b1d12d01ae2deffecfebafcc3c31d
+      - openweatherapikey=c7b21d49a038e2f651ecfdb0ac9c3e1d
+      - apikey=openweather:c7b21d49a038e2f651ecfdb0ac9c3e1d
     references:
       - https://openweathermap.org/forecast5
       - https://openweathermap.org/appid

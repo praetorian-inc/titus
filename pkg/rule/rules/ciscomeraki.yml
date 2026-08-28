@@ -18,7 +18,7 @@ rules:
       - MERAKI_API_KEY=1234567890abcdef1234567890abcdef12345678
       - |-
           // Meraki configuration
-          const MERAKI_KEY = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+          const MERAKI_KEY = "a3c1e5b9d2f7084e6c3b9d2f0a8e4c6b3d9e2f01";
     references:
       - https://developer.cisco.com/meraki/api-v1/overview/
     validation:

@@ -61,7 +61,7 @@ rules:
       - https://supabase.com/docs/reference/api/v1-get-an-organization
     examples:
       - "sb_secret_9uM4GhB0STF5R4K3HxQtlg_bzWW6DRj"
-      - "sb_secret_szE_jsbktD3pWgnfUjgahw_hcHEIOBH"
+      - "sb_secret_szE_jsbktD3pW7nfUjgahw_hcHEIOBH"
     depends_on_rule:
       - rule_id: "kingfisher.supabase.3"
         variable: SBPROJECTURL

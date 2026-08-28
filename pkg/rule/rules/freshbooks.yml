@@ -18,6 +18,6 @@ rules:
     confidence: medium
     examples:
       - FRESHBOOKS_TOKEN=0f1e2d3c4b5a69788776655443322110ffeeddccbbaa00998877665544332211
-      - '"freshbooksAccess": "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"'
+      - '"freshbooksAccess": "a1c3ef5b7d9f0bcd02468ace13579bd02468ace13579bdf02468ace13579bdf0"'
     references:
       - https://www.freshbooks.com/api/authentication

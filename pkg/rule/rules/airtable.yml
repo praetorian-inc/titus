@@ -36,7 +36,7 @@ rules:
     min_entropy: 3.5
     confidence: medium
     examples:
-      - example.v1.XYZ123_ABC.abcdef123456
+      - EX4MPL3.v1.XYZ123_ABC.abcdef123456
     references:
       - https://airtable.com/developers/web/api/oauth-reference
     validation:

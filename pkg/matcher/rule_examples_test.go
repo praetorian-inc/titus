@@ -37,7 +37,7 @@ type exampleBaseline struct {
 }
 
 // knownExampleFailures is the burn-down list for LAB-6096: rules that cannot
-// detect the examples they document. 51 rules of the 533 carrying examples.
+// detect the examples they document. 19 rules remain of the 533 carrying examples.
 //
 // TO FIX A RULE, DELETE ITS LINE HERE. TestRuleExamples_KnownFailuresMatchBaseline
 // fails if a listed rule's failures no longer match exactly, so the list cannot
@@ -53,54 +53,24 @@ type exampleBaseline struct {
 // false-negative problem for a false-positive one.
 var knownExampleFailures = map[string]exampleBaseline{
 	"kingfisher.ai21studio.1":   {regex: nil, filter: []int{0, 1, 2}, total: 3},
-	"kingfisher.airtable.2":     {regex: []int{0}, filter: nil, total: 1},
 	"kingfisher.anypoint.1":     {regex: nil, filter: []int{0}, total: 1},
 	"kingfisher.asana.1":        {regex: nil, filter: []int{0, 1}, total: 2},
-	"kingfisher.asana.2":        {regex: nil, filter: []int{1}, total: 2},
 	"kingfisher.azure.devops.1": {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.beamer.1":       {regex: nil, filter: []int{0, 1}, total: 2},
-	"kingfisher.ciscomeraki.1":  {regex: nil, filter: []int{1}, total: 2},
-	"kingfisher.clojars.1":      {regex: nil, filter: []int{0}, total: 1},
 	"kingfisher.cloudflare.1":   {regex: nil, filter: []int{0, 1}, total: 2},
 	"kingfisher.cloudflare.2":   {regex: nil, filter: []int{0, 1}, total: 2},
-	"kingfisher.cloudsight.1":   {regex: nil, filter: []int{0}, total: 2},
 	"kingfisher.contentful.1":   {regex: []int{1}, filter: nil, total: 3},
-	"kingfisher.contentful.2":   {regex: []int{3}, filter: nil, total: 4},
-	"kingfisher.curl.2":         {regex: []int{0}, filter: nil, total: 3},
 	"kingfisher.discord.3":      {regex: nil, filter: []int{0, 1}, total: 2},
-	"kingfisher.filezilla.2":    {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.freshbooks.1":   {regex: nil, filter: []int{1}, total: 2},
 	"kingfisher.gocardless.1":   {regex: nil, filter: []int{1}, total: 2},
-	"kingfisher.imagekit.1":     {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.infracost.1":    {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.ipstack.1":      {regex: nil, filter: []int{1}, total: 2},
-	"kingfisher.jdbc.1":         {regex: nil, filter: []int{0, 2, 3}, total: 4},
 	"kingfisher.jira.1":         {regex: nil, filter: []int{0, 1}, total: 2},
-	"kingfisher.lob.1":          {regex: nil, filter: []int{1}, total: 2},
-	"kingfisher.lob.2":          {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.mattermost.2":   {regex: nil, filter: []int{0}, total: 3},
-	"kingfisher.messagebird.1":  {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.mysql.1":        {regex: nil, filter: []int{1}, total: 2},
-	"kingfisher.openweather.1":  {regex: nil, filter: []int{2, 3}, total: 4},
-	"kingfisher.planetscale.2":  {regex: nil, filter: []int{0, 1}, total: 2},
-	"kingfisher.prefect.1":      {regex: nil, filter: []int{1}, total: 2},
 	"kingfisher.privkey.1":      {regex: nil, filter: []int{0}, total: 1},
 	"kingfisher.privkey.2":      {regex: nil, filter: []int{4}, total: 5},
 	"kingfisher.rabbitmq.1":     {regex: nil, filter: []int{1, 3}, total: 4},
 	"kingfisher.recaptcha.1":    {regex: nil, filter: []int{0, 1, 2}, total: 3},
 	"kingfisher.runway.1":       {regex: nil, filter: []int{0, 1, 2, 3}, total: 4},
-	"kingfisher.scalingo.1":     {regex: nil, filter: []int{0}, total: 2},
 	"kingfisher.scraperapi.1":   {regex: nil, filter: []int{1}, total: 2},
 	"kingfisher.sendbird.2":     {regex: nil, filter: []int{0}, total: 1},
-	"kingfisher.sentry.1":       {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.sentry.3":       {regex: nil, filter: []int{0}, total: 2},
-	"kingfisher.shippo.1":       {regex: nil, filter: []int{1}, total: 2},
-	"kingfisher.supabase.2":     {regex: nil, filter: []int{1}, total: 2},
 	"kingfisher.vercel.1":       {regex: nil, filter: []int{0, 1, 3}, total: 4},
-	"np.amplitude.1":            {regex: []int{1}, filter: nil, total: 2},
-	"np.cypress.1":              {regex: []int{2}, filter: nil, total: 3},
 	"np.redis.1":                {regex: []int{3}, filter: nil, total: 4},
-	"np.twitter.3":              {regex: []int{1}, filter: nil, total: 3},
 }
 
 // exampleOutcome reports which of a rule's examples fail, and at which stage.
@@ -149,7 +119,7 @@ func rulesWithExamples(t *testing.T) []*types.Rule {
 //
 // This runs the FULL pipeline -- regex AND the entropy / pattern_requirements
 // post-filters -- because most failures do not happen at the regex stage. Of
-// the 51 failures found when this test was written, only 8 were regex misses;
+// the 51 original failures found when this test was written, only 8 were regex misses;
 // the other 43 matched and were then dropped by filterMatches. A regex-only
 // test reports 8 and looks reassuring.
 func TestRuleExamples_AllRulesDetectTheirOwnExamples(t *testing.T) {
