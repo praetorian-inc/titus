@@ -52,12 +52,15 @@ func TestBuiltinElevenLabsScorer_RevokedKeyIsLowestPriority(t *testing.T) {
 
 func TestBuiltinElevenLabsScorer_OnlyRevokedUsesSetScore(t *testing.T) {
 	s := builtinScorerFor(t, "kingfisher.elevenlabs.1")
+	found := false
 	for _, m := range s.Modifiers {
 		if m.Kind == ModifierKindSetScore {
+			found = true
 			assert.Equal(t, "revoked-key", m.Name,
 				"only revoked-key should use set_score")
 		}
 	}
+	assert.True(t, found, "revoked-key should use set_score")
 }
 
 func TestBuiltinElevenLabsScorer_PaidTierIsNegated(t *testing.T) {
