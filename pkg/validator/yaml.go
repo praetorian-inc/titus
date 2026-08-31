@@ -21,17 +21,15 @@ type ValidatorDef struct {
 
 // HTTPDef defines HTTP request configuration.
 type HTTPDef struct {
-	Method              string            `yaml:"method"`
-	URL                 string            `yaml:"url"`
-	Auth                AuthDef           `yaml:"auth"`
-	Headers             []Header          `yaml:"headers,omitempty"`
-	Body                string            `yaml:"body,omitempty"` // Static request body for POST/PUT
-	SuccessCodes        []int             `yaml:"success_codes"`
-	FailureCodes        []int             `yaml:"failure_codes"`
-	SuccessBodyContains string            `yaml:"success_body_contains,omitempty"` // Response body must contain this string for success
-	FailureBodyContains string            `yaml:"failure_body_contains,omitempty"` // Response body containing this string indicates failure
-	DetailHeaders       map[string]string `yaml:"detail_headers,omitempty"`        // response header name → ValidationResult.Details key
-	DetailJSON          map[string]string `yaml:"detail_json,omitempty"`           // top-level JSON field → ValidationResult.Details key
+	Method              string   `yaml:"method"`
+	URL                 string   `yaml:"url"`
+	Auth                AuthDef  `yaml:"auth"`
+	Headers             []Header `yaml:"headers,omitempty"`
+	Body                string   `yaml:"body,omitempty"` // Static request body for POST/PUT
+	SuccessCodes        []int    `yaml:"success_codes"`
+	FailureCodes        []int    `yaml:"failure_codes"`
+	SuccessBodyContains string   `yaml:"success_body_contains,omitempty"` // Response body must contain this string for success
+	FailureBodyContains string   `yaml:"failure_body_contains,omitempty"` // Response body containing this string indicates failure
 }
 
 // AuthDef defines authentication configuration.

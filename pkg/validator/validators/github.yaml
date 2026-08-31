@@ -16,5 +16,3 @@ validators:
         secret_group: token  # Named capture group from regex pattern
       success_codes: [200]
       failure_codes: [401, 403]
-      detail_headers:
-        X-OAuth-Scopes: scopes

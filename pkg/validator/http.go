@@ -14,8 +14,6 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-const detailBodyLimit = 1 << 20
-
 // HTTPValidator validates secrets via HTTP requests defined in YAML.
 type HTTPValidator struct {
 	def    ValidatorDef
@@ -86,93 +84,42 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	needMatchBody := v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != ""
-	needDetailBody := len(v.def.HTTP.DetailJSON) > 0
 	var respBody []byte
-	if needMatchBody || needDetailBody {
-		reader := io.Reader(resp.Body)
-		if !needMatchBody {
-			reader = io.LimitReader(resp.Body, detailBodyLimit)
-		}
-		respBody, err = io.ReadAll(reader)
-		if err != nil {
-			return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
-		}
+	if v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" {
+		respBody, err = io.ReadAll(resp.Body)
 	} else {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		respBody, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	}
+	if err != nil {
+		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
 	}
 
 	result := v.evaluateResponse(resp.StatusCode, respBody)
-	applyDetails(result, v.def.HTTP, resp.Header, respBody)
+	appendPATScopes(result, resp.Header, respBody)
 	return result, nil
 }
 
-func applyDetails(result *types.ValidationResult, def HTTPDef, header http.Header, body []byte) {
-	if result == nil {
+func appendPATScopes(result *types.ValidationResult, header http.Header, body []byte) {
+	if result == nil || result.Status != types.StatusValid {
 		return
 	}
-	if result.Details == nil {
-		result.Details = make(map[string]string)
-	}
-	for hdr, key := range def.DetailHeaders {
-		if key == "" {
-			continue
+	scopes := strings.TrimSpace(header.Get("X-OAuth-Scopes"))
+	if scopes == "" && len(body) > 0 {
+		var parsed struct {
+			Scopes []string `json:"scopes"`
 		}
-		if val := strings.TrimSpace(header.Get(hdr)); val != "" {
-			result.Details[key] = val
-		}
-	}
-	if len(def.DetailJSON) > 0 && len(body) > 0 {
-		var obj map[string]any
-		if err := json.Unmarshal(body, &obj); err == nil {
-			for field, key := range def.DetailJSON {
-				if key == "" {
-					continue
-				}
-				if val, ok := obj[field]; ok {
-					if s := jsonDetailString(val); s != "" {
-						result.Details[key] = s
-					}
+		if json.Unmarshal(body, &parsed) == nil {
+			parts := make([]string, 0, len(parsed.Scopes))
+			for _, s := range parsed.Scopes {
+				if s = strings.TrimSpace(s); s != "" {
+					parts = append(parts, s)
 				}
 			}
+			scopes = strings.Join(parts, ", ")
 		}
 	}
-	if result.Status == types.StatusValid {
-		if scopes := result.Details["scopes"]; scopes != "" {
-			result.Message = result.Message + " (scopes: " + scopes + ")"
-		}
-	}
-}
-
-func jsonDetailString(v any) string {
-	switch t := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return strings.TrimSpace(t)
-	case []any:
-		parts := make([]string, 0, len(t))
-		for _, e := range t {
-			s, ok := e.(string)
-			if !ok {
-				continue
-			}
-			s = strings.TrimSpace(s)
-			if s != "" {
-				parts = append(parts, s)
-			}
-		}
-		return strings.Join(parts, ", ")
-	case bool:
-		return strconv.FormatBool(t)
-	case float64:
-		return strconv.FormatFloat(t, 'f', -1, 64)
-	default:
-		b, err := json.Marshal(t)
-		if err != nil {
-			return ""
-		}
-		return string(b)
+	if scopes != "" {
+		result.Message += " (scopes: " + scopes + ")"
 	}
 }
 
