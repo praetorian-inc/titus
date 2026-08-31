@@ -1,0 +1,64 @@
+# Netlify API key scorer — site access scope (LAB-3356).
+#
+# Rule IDs covered:
+#   kingfisher.netlify.1 — Netlify API Key (hex, 60-64 chars): base_score 75
+#   kingfisher.netlify.2 — Netlify API Key (base62, 43-45 chars): base_score 75
+#
+# GET /api/v1/sites returns the sites accessible to the token. Netlify
+# personal access tokens grant full account access — deploys, DNS,
+# environment variables (which often contain other secrets).
+#
+# Keys that can manage sites pose a direct supply-chain risk: an
+# attacker can deploy malicious code to production. Keys with no
+# accessible sites are valid but lower risk.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes (base 75):
+#   has sites:  75 + 10 = 85
+#   no sites:   75 - 10 = 65
+#   revoked:                5
+#
+# API documentation:
+#   https://docs.netlify.com/api/get-started/
+scorers:
+  - name: netlify-key-scope
+    rule_ids:
+      - kingfisher.netlify.1
+      - kingfisher.netlify.2
+    modifiers:
+      # --- Has sites: can deploy to production ---
+      # /api/v1/sites returns an array of site objects. At least one
+      # site means the key can manage live deployments.
+      - name: has-sites
+        priority: 90
+        http: &netlify_sites
+          method: GET
+          url: https://api.netlify.com/api/v1/sites
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          json_array_length_gte:
+            path: "."
+            value: 1
+        delta: 10
+
+      # --- No sites: valid key but no deployable targets ---
+      - name: no-sites
+        priority: 70
+        http: *netlify_sites
+        fires_when:
+          negative: true
+          json_array_length_gte:
+            path: "."
+            value: 1
+        delta: -10
+
+      # --- Dead key: evaluated last, wins outright ---
+      - name: revoked-key
+        priority: 10
+        http: *netlify_sites
+        fires_when:
+          status_code_in: [401, 403]
+        set_score: 5
