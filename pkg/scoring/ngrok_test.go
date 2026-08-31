@@ -67,12 +67,15 @@ func TestBuiltinNgrokScorer_RevokedKeyIsLowestPriority(t *testing.T) {
 
 func TestBuiltinNgrokScorer_OnlyRevokedUsesSetScore(t *testing.T) {
 	s := builtinScorerFor(t, "kingfisher.ngrok.1")
+	found := false
 	for _, m := range s.Modifiers {
 		if m.Kind == ModifierKindSetScore {
+			found = true
 			assert.Equal(t, "revoked-key", m.Name,
 				"only revoked-key should use set_score")
 		}
 	}
+	assert.True(t, found, "revoked-key should use set_score")
 }
 
 func TestBuiltinNgrokScorer_NoActiveEndpointsIsNegated(t *testing.T) {
