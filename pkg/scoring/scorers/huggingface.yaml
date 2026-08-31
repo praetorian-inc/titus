@@ -1,0 +1,86 @@
+# HuggingFace token scorer — read vs write, org membership (LAB-3398).
+#
+# Rule ID covered:
+#   np.huggingface.1 — HuggingFace User Access Token (hf_...): base_score 60
+#
+# GET /api/whoami-v2 returns the calling token's role and the user's org
+# memberships. The response includes:
+#   .auth.accessToken.role — "read", "write", or "fineGrained"
+#   .orgs                  — array of org objects (empty if no memberships)
+#
+# Write tokens can publish models and datasets, creating supply-chain risk.
+# Org membership broadens the blast radius. Fine-grained tokens have limited
+# scope but unknown permissions, so they get a smaller downgrade than read-only.
+#
+# All modifiers issue the SAME request. The engine caches HTTP responses on
+# (method, url, secret), so a finding costs one network call, not five.
+#
+# Score outcomes (base 60):
+#   write + org:      60 + 15 + 10 = 85
+#   write, no org:    60 + 15      = 75
+#   fine-grained+org: 60 - 10 + 10 = 60
+#   read-only + org:  60 - 20 + 10 = 50
+#   fine-grained:     60 - 10      = 50
+#   read-only:        60 - 20      = 40
+#   revoked:                         5
+#
+# API documentation:
+#   https://huggingface.co/docs/hub/security-tokens
+#   https://huggingface.co/docs/hub/api#get-apiwhoami-v2
+scorers:
+  - name: huggingface-token-scope
+    rule_ids:
+      - np.huggingface.1
+    modifiers:
+      # --- Write access: can publish models/datasets (supply chain risk) ---
+      - name: write-access
+        priority: 90
+        http: &hf_whoami
+          method: GET
+          url: https://huggingface.co/api/whoami-v2
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          json_path_equals:
+            path: ".auth.accessToken.role"
+            value: "write"
+        delta: 15
+
+      # --- Read-only: limited blast radius ---
+      - name: read-only-access
+        priority: 80
+        http: *hf_whoami
+        fires_when:
+          json_path_equals:
+            path: ".auth.accessToken.role"
+            value: "read"
+        delta: -20
+
+      # --- Fine-grained token: limited scope, smaller downgrade than read ---
+      - name: fine-grained-token
+        priority: 75
+        http: *hf_whoami
+        fires_when:
+          json_path_equals:
+            path: ".auth.accessToken.role"
+            value: "fineGrained"
+        delta: -10
+
+      # --- Org membership: broader blast radius ---
+      - name: org-member
+        priority: 70
+        http: *hf_whoami
+        fires_when:
+          json_array_length_gte:
+            path: ".orgs"
+            value: 1
+        delta: 10
+
+      # --- Dead key: evaluated last, wins outright ---
+      - name: revoked-key
+        priority: 10
+        http: *hf_whoami
+        fires_when:
+          status_code: 401
+        set_score: 5
