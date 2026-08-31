@@ -1,0 +1,62 @@
+# Asana Personal Access Token scorer — workspace access breadth (LAB-3400).
+#
+# Rule IDs covered:
+#   kingfisher.asana.3 — Asana OAuth / Personal Access Token: base_score 62
+#
+# kingfisher.asana.1 (Client ID, base_score 15) and kingfisher.asana.2
+# (Client Secret, base_score 60) are excluded: they cannot authenticate
+# as bearer tokens against the REST API.
+#
+# GET /api/1.0/users/me returns the authenticated user's profile, including
+# the .data.workspaces array listing every workspace the token can access.
+#
+# A token with access to multiple workspaces is significantly higher risk —
+# it can read tasks, projects, attachments, and comments across every
+# workspace, broadening the blast radius of a leak.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes (base 62):
+#   multiple workspaces → 72, single workspace → 47, revoked → 5
+#
+# API documentation:
+#   https://developers.asana.com/reference/getuser
+#   https://developers.asana.com/docs/personal-access-token
+scorers:
+  - name: asana-token-scope
+    rule_ids:
+      - kingfisher.asana.3
+    modifiers:
+      # --- Access to 2+ workspaces: broader blast radius ---
+      - name: multiple-workspaces
+        priority: 90
+        http: &asana_me
+          method: GET
+          url: https://app.asana.com/api/1.0/users/me?opt_fields=workspaces
+          auth:
+            type: bearer
+            secret_group: "token"
+        fires_when:
+          json_array_length_gte:
+            path: ".data.workspaces"
+            value: 2
+        delta: 10
+
+      # --- Single workspace only: limited scope ---
+      - name: single-workspace-only
+        priority: 70
+        http: *asana_me
+        fires_when:
+          negative: true
+          json_array_length_gte:
+            path: ".data.workspaces"
+            value: 2
+        delta: -15
+
+      # --- Dead key: evaluated last, wins outright ---
+      - name: revoked-key
+        priority: 10
+        http: *asana_me
+        fires_when:
+          status_code: 401
+        set_score: 5
