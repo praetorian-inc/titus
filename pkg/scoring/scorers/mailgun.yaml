@@ -43,14 +43,16 @@ scorers:
           response_body_contains: '"custom"'
         delta: 15
 
-      # --- Multiple domains: broader blast radius ---
+      # --- Multiple custom domains: broader blast radius ---
+      # Mailgun auto-provisions a sandbox domain per account, so .items
+      # always has at least 1 entry. Threshold 3 means 2+ custom domains.
       - name: multiple-domains
         priority: 80
         http: *mg_domains
         fires_when:
           json_array_length_gte:
             path: ".items"
-            value: 2
+            value: 3
         delta: 5
 
       # --- Sandbox only: no custom domain present ---

@@ -77,6 +77,23 @@ func TestBuiltinMailgunScorer_SandboxOnlyIsNegated(t *testing.T) {
 	t.Fatal("sandbox-only modifier not found")
 }
 
+func TestBuiltinMailgunScorer_MultipleDomainsAccountsForSandbox(t *testing.T) {
+	s := builtinScorerFor(t, "np.mailgun.1")
+	for _, m := range s.Modifiers {
+		if m.Name != "multiple-domains" {
+			continue
+		}
+		cond, ok := m.Condition.(*httpCondition)
+		require.True(t, ok)
+		leaf, ok := cond.firesWhen.(*jsonArrayLengthGteLeaf)
+		require.True(t, ok, "multiple-domains should use json_array_length_gte")
+		assert.Equal(t, 3, leaf.Value,
+			"threshold must be 3 (not 2) because Mailgun auto-provisions a sandbox domain")
+		return
+	}
+	t.Fatal("multiple-domains modifier not found")
+}
+
 func TestBuiltinMailgunScorer_RevokedKeyCovers403(t *testing.T) {
 	s := builtinScorerFor(t, "np.mailgun.1")
 	for _, m := range s.Modifiers {
