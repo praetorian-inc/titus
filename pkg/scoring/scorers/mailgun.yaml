@@ -1,0 +1,78 @@
+# Mailgun API key scorer — sending domain scope (LAB-3402).
+#
+# Rule ID covered:
+#   np.mailgun.1 — Mailgun API key (key-...): base_score 65
+#
+# GET /v3/domains returns the sending domains accessible to the key. Each
+# domain object has a "type" field: "custom" (production) or "sandbox"
+# (Mailgun's built-in test domain). A key that can send from a verified
+# production domain is a serious phishing risk; sandbox-only keys are low
+# severity.
+#
+# Mailgun uses Basic Auth: username "api", password is the API key.
+#
+# All modifiers issue the SAME request. The engine caches HTTP responses on
+# (method, url, secret), so a finding costs one network call.
+#
+# Score outcomes (base 65):
+#   production + multiple domains: 65 + 15 + 5  = 85
+#   production domain:             65 + 15      = 80
+#   sandbox only:                  65 - 20      = 45
+#   revoked:                                      5
+#
+# API documentation:
+#   https://documentation.mailgun.com/docs/mailgun/api-reference/openapi-final/tag/Domains/
+scorers:
+  - name: mailgun-key-scope
+    rule_ids:
+      - np.mailgun.1
+    modifiers:
+      # --- Production domain: can send from a verified custom domain ---
+      # The Mailgun domains response includes "type" per domain object.
+      # "custom" means a user-added production domain (vs "sandbox").
+      - name: has-production-domain
+        priority: 90
+        http: &mg_domains
+          method: GET
+          url: https://api.mailgun.net/v3/domains
+          auth:
+            type: basic
+            username: api
+            secret_group: "token"
+        fires_when:
+          response_body_contains: '"custom"'
+        delta: 15
+
+      # --- Multiple custom domains: broader blast radius ---
+      # Mailgun auto-provisions a sandbox domain per account, so .items
+      # always has at least 1 entry. Threshold 3 means 2+ custom domains.
+      - name: multiple-domains
+        priority: 80
+        http: *mg_domains
+        fires_when:
+          json_array_length_gte:
+            path: ".items"
+            value: 3
+        delta: 5
+
+      # --- Sandbox only: no custom domain present ---
+      # negative: true inverts response_body_contains so this fires when
+      # "custom" is absent — meaning only sandbox domains exist. On a
+      # 401/403 this also fires (no body contains "custom"), but
+      # revoked-key's set_score at P10 overwrites the delta.
+      - name: sandbox-only
+        priority: 70
+        http: *mg_domains
+        fires_when:
+          negative: true
+          response_body_contains: '"custom"'
+        delta: -20
+
+      # --- Dead key: evaluated last, wins outright ---
+      # Mailgun returns 401 or 403 for invalid/disabled keys.
+      - name: revoked-key
+        priority: 10
+        http: *mg_domains
+        fires_when:
+          status_code_in: [401, 403]
+        set_score: 5
