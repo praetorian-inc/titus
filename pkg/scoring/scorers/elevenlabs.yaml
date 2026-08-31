@@ -1,0 +1,67 @@
+# ElevenLabs API key scorer — subscription tier (LAB-3356).
+#
+# Rule ID covered:
+#   kingfisher.elevenlabs.1 — ElevenLabs API Key (sk_...): base_score 55
+#
+# GET /v1/user/subscription returns the calling key's subscription info.
+# The response includes a "tier" field: "free", "starter", "creator",
+# "pro", "scale", or "enterprise".
+#
+# ElevenLabs uses a custom header (xi-api-key) for authentication.
+#
+# Paid-tier keys can generate large volumes of synthetic voice content,
+# making them a deepfake and social-engineering risk. Free-tier keys
+# have strict character limits and limited voice options.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes (base 55):
+#   paid tier:  55 + 15 = 70
+#   free tier:  55 - 15 = 40
+#   revoked:               5
+#
+# API documentation:
+#   https://elevenlabs.io/docs/api-reference/user/subscription/get
+scorers:
+  - name: elevenlabs-key-scope
+    rule_ids:
+      - kingfisher.elevenlabs.1
+    modifiers:
+      # --- Paid tier: can generate significant voice content ---
+      # A free-tier response contains "free" in the tier field. Paid
+      # tiers (starter/creator/pro/scale/enterprise) do NOT contain
+      # "free", so negative response_body_contains fires on paid keys.
+      - name: paid-tier
+        priority: 90
+        http: &elevenlabs_sub
+          method: GET
+          url: https://api.elevenlabs.io/v1/user/subscription
+          auth:
+            type: header
+            header_name: xi-api-key
+            secret_group: "token"
+        fires_when:
+          negative: true
+          json_path_equals:
+            path: ".tier"
+            value: "free"
+        delta: 15
+
+      # --- Free tier: limited character quota ---
+      - name: free-tier
+        priority: 70
+        http: *elevenlabs_sub
+        fires_when:
+          json_path_equals:
+            path: ".tier"
+            value: "free"
+        delta: -15
+
+      # --- Dead key: evaluated last, wins outright ---
+      # ElevenLabs returns 401 for invalid keys.
+      - name: revoked-key
+        priority: 10
+        http: *elevenlabs_sub
+        fires_when:
+          status_code_in: [401, 403]
+        set_score: 5
