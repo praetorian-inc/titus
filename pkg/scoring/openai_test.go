@@ -16,7 +16,7 @@ func TestBuiltinOpenAIScorer_IsRegisteredForRule(t *testing.T) {
 		got[m.Name] = m
 	}
 	for _, name := range []string{
-		"has-gpt4-access", "no-gpt4-access", "revoked-key",
+		"broad-model-access", "limited-model-access", "revoked-key",
 	} {
 		assert.Contains(t, got, name)
 	}
@@ -59,19 +59,40 @@ func TestBuiltinOpenAIScorer_OnlyRevokedUsesSetScore(t *testing.T) {
 	}
 }
 
-func TestBuiltinOpenAIScorer_NoGPT4IsNegated(t *testing.T) {
+func TestBuiltinOpenAIScorer_ModelAccessModifiersCheckCorrectPath(t *testing.T) {
 	s := builtinScorerFor(t, "np.openai.1")
 	for _, m := range s.Modifiers {
-		if m.Name != "no-gpt4-access" {
+		if m.Name != "broad-model-access" && m.Name != "limited-model-access" {
+			continue
+		}
+		cond, ok := m.Condition.(*httpCondition)
+		require.Truef(t, ok, "modifier %q should be http-backed", m.Name)
+
+		var leaf *jsonArrayLengthGteLeaf
+		if neg, isNeg := cond.firesWhen.(*negatedLeaf); isNeg {
+			leaf, ok = neg.inner.(*jsonArrayLengthGteLeaf)
+		} else {
+			leaf, ok = cond.firesWhen.(*jsonArrayLengthGteLeaf)
+		}
+		require.Truef(t, ok, "modifier %q should use json_array_length_gte", m.Name)
+		assert.Equal(t, ".data", leaf.Path, "modifier %q json path", m.Name)
+		assert.Equal(t, 10, leaf.Value, "modifier %q threshold", m.Name)
+	}
+}
+
+func TestBuiltinOpenAIScorer_LimitedModelAccessIsNegated(t *testing.T) {
+	s := builtinScorerFor(t, "np.openai.1")
+	for _, m := range s.Modifiers {
+		if m.Name != "limited-model-access" {
 			continue
 		}
 		cond, ok := m.Condition.(*httpCondition)
 		require.True(t, ok)
 		_, ok = cond.firesWhen.(*negatedLeaf)
-		assert.True(t, ok, "no-gpt4-access should use negative: true")
+		assert.True(t, ok, "limited-model-access should use negative: true")
 		return
 	}
-	t.Fatal("no-gpt4-access modifier not found")
+	t.Fatal("limited-model-access modifier not found")
 }
 
 func TestBuiltinOpenAIScorer_RevokedKeyCovers403(t *testing.T) {

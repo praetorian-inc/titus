@@ -1,21 +1,25 @@
-# OpenAI API key scorer — model access tier (LAB-3384).
+# OpenAI API key scorer — model access breadth (LAB-3384).
 #
 # Rule ID covered:
 #   np.openai.1 — OpenAI API Key (sk-...): base_score 70
 #
 # GET /v1/models returns the list of models the key can access. Keys with
-# access to GPT-4 class models pose significantly higher risk — they can
-# generate sophisticated content and have higher usage costs. Keys without
-# GPT-4 access are limited to cheaper models.
+# access to many models indicate a paid-tier or org account with broader
+# capabilities and higher spend limits. Keys with few models are likely
+# free-tier or tightly scoped.
+#
+# We check model count rather than specific model names because free-tier
+# keys can access gpt-4o-mini (making substring checks on "gpt-4" useless
+# as a paid-tier signal) and model naming evolves across generations.
 #
 # OpenAI uses Bearer auth with the API key.
 #
 # All modifiers issue the SAME request. One network call per finding.
 #
 # Score outcomes (base 70):
-#   GPT-4 access:    70 + 10 = 80
-#   no GPT-4 access: 70 - 15 = 55
-#   revoked:                    5
+#   broad model access (10+): 70 + 10 = 80
+#   limited models:           70 - 15 = 55
+#   revoked:                             5
 #
 # API documentation:
 #   https://platform.openai.com/docs/api-reference/models/list
@@ -24,10 +28,11 @@ scorers:
     rule_ids:
       - np.openai.1
     modifiers:
-      # --- GPT-4 access: high-capability models available ---
-      # The /v1/models response contains model ID strings. If "gpt-4" appears
-      # anywhere in the body, the key has access to GPT-4 class models.
-      - name: has-gpt4-access
+      # --- Broad model access: paid-tier or org account ---
+      # Free-tier keys typically see a handful of models. Paid accounts
+      # with higher rate limits expose 10+ models including reasoning
+      # and image generation families.
+      - name: broad-model-access
         priority: 90
         http: &oai_models
           method: GET
@@ -36,16 +41,20 @@ scorers:
             type: bearer
             secret_group: "key"
         fires_when:
-          response_body_contains: '"gpt-4'
+          json_array_length_gte:
+            path: ".data"
+            value: 10
         delta: 10
 
-      # --- No GPT-4: limited to lower-tier models ---
-      - name: no-gpt4-access
+      # --- Limited models: free or restricted tier ---
+      - name: limited-model-access
         priority: 70
         http: *oai_models
         fires_when:
           negative: true
-          response_body_contains: '"gpt-4'
+          json_array_length_gte:
+            path: ".data"
+            value: 10
         delta: -15
 
       # --- Dead key: evaluated last, wins outright ---
