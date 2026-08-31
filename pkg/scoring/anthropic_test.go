@@ -27,7 +27,7 @@ func TestBuiltinAnthropicScorer_AllModifiersShareOneAuthedRequest(t *testing.T) 
 	for _, m := range s.Modifiers {
 		cond, ok := m.Condition.(*httpCondition)
 		require.Truef(t, ok, "modifier %q should be http-backed", m.Name)
-		assert.Equal(t, "https://api.anthropic.com/v1/models", cond.url, "modifier %q", m.Name)
+		assert.Equal(t, "https://api.anthropic.com/v1/models?limit=1000", cond.url, "modifier %q", m.Name)
 		assert.Equal(t, "GET", cond.method, "modifier %q", m.Name)
 		assert.Equal(t, "header", cond.auth.Type, "modifier %q", m.Name)
 		assert.Equal(t, "x-api-key", cond.auth.HeaderName, "modifier %q", m.Name)

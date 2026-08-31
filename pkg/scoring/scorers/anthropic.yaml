@@ -26,13 +26,14 @@ scorers:
       - np.anthropic.1
     modifiers:
       # --- Opus access: highest-capability model available ---
-      # The /v1/models response contains model ID strings. If "claude-opus"
-      # appears in the body, the key has access to the most capable tier.
+      # The /v1/models response lists model IDs. Matching "opus" catches both
+      # legacy claude-3-opus-* and current claude-opus-4-* naming conventions.
+      # ?limit=1000 avoids pagination cutting off results.
       - name: has-opus-access
         priority: 90
         http: &anthropic_models
           method: GET
-          url: https://api.anthropic.com/v1/models
+          url: https://api.anthropic.com/v1/models?limit=1000
           auth:
             type: header
             header_name: x-api-key
@@ -41,7 +42,7 @@ scorers:
             - name: anthropic-version
               value: "2023-06-01"
         fires_when:
-          response_body_contains: '"claude-opus'
+          response_body_contains: 'opus'
         delta: 10
 
       # --- No Opus: limited to lower-tier models ---
@@ -50,7 +51,7 @@ scorers:
         http: *anthropic_models
         fires_when:
           negative: true
-          response_body_contains: '"claude-opus'
+          response_body_contains: 'opus'
         delta: -15
 
       # --- Dead key: evaluated last, wins outright ---
