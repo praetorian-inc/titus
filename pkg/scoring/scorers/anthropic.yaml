@@ -1,0 +1,64 @@
+# Anthropic API key scorer — model access tier (LAB-3385).
+#
+# Rule ID covered:
+#   np.anthropic.1 — Anthropic API Key (sk-ant-api...): base_score 70
+#
+# GET /v1/models returns the list of models the key can access. The Anthropic
+# API requires an x-api-key header (not Bearer) and an anthropic-version
+# header.
+#
+# Keys with access to Claude Opus models are highest risk — they have the
+# most capable model and highest per-token cost. Keys without Opus access
+# are limited to cheaper tiers.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes (base 70):
+#   Opus access:    70 + 10 = 80
+#   no Opus access: 70 - 15 = 55
+#   revoked:                   5
+#
+# API documentation:
+#   https://docs.anthropic.com/en/api/models-list
+scorers:
+  - name: anthropic-key-scope
+    rule_ids:
+      - np.anthropic.1
+    modifiers:
+      # --- Opus access: highest-capability model available ---
+      # The /v1/models response lists model IDs. Matching "opus" catches both
+      # legacy claude-3-opus-* and current claude-opus-4-* naming conventions.
+      # ?limit=1000 avoids pagination cutting off results.
+      - name: has-opus-access
+        priority: 90
+        http: &anthropic_models
+          method: GET
+          url: https://api.anthropic.com/v1/models?limit=1000
+          auth:
+            type: header
+            header_name: x-api-key
+            secret_group: "token"
+          headers:
+            - name: anthropic-version
+              value: "2023-06-01"
+        fires_when:
+          response_body_contains: 'opus'
+        delta: 10
+
+      # --- No Opus: limited to lower-tier models ---
+      - name: no-opus-access
+        priority: 70
+        http: *anthropic_models
+        fires_when:
+          negative: true
+          response_body_contains: 'opus'
+        delta: -15
+
+      # --- Dead key: evaluated last, wins outright ---
+      # Anthropic returns 401 for invalid keys, 403 for disabled keys.
+      - name: revoked-key
+        priority: 10
+        http: *anthropic_models
+        fires_when:
+          status_code_in: [401, 403]
+        set_score: 5
