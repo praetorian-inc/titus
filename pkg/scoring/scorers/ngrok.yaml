@@ -1,0 +1,66 @@
+# Ngrok API key scorer — active endpoint exposure (LAB-3356).
+#
+# Rule ID covered:
+#   kingfisher.ngrok.1 — Ngrok API Key: base_score 70
+#
+# GET /endpoints returns the list of active ngrok endpoints (tunnels).
+# The response JSON contains an "endpoints" array.
+#
+# Ngrok requires a bearer token and an ngrok-version header.
+#
+# Keys with active endpoints expose internal services to the internet,
+# making them a direct lateral-movement and data-exfiltration risk.
+# Keys with no active endpoints are valid but currently less dangerous.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes (base 70):
+#   active endpoints:  70 + 10 = 80
+#   no endpoints:      70 - 10 = 60
+#   revoked:                      5
+#
+# API documentation:
+#   https://ngrok.com/docs/api/resources/endpoints/
+scorers:
+  - name: ngrok-key-scope
+    rule_ids:
+      - kingfisher.ngrok.1
+    modifiers:
+      # --- Active endpoints: tunnels currently exposing services ---
+      # json_array_length_gte on .endpoints >= 1 means at least one
+      # active tunnel exists.
+      - name: has-active-endpoints
+        priority: 90
+        http: &ngrok_endpoints
+          method: GET
+          url: https://api.ngrok.com/endpoints
+          auth:
+            type: bearer
+            secret_group: "token"
+          headers:
+            - name: ngrok-version
+              value: "2"
+        fires_when:
+          json_array_length_gte:
+            path: ".endpoints"
+            value: 1
+        delta: 10
+
+      # --- No active endpoints: valid key but nothing exposed ---
+      - name: no-active-endpoints
+        priority: 70
+        http: *ngrok_endpoints
+        fires_when:
+          negative: true
+          json_array_length_gte:
+            path: ".endpoints"
+            value: 1
+        delta: -10
+
+      # --- Dead key: evaluated last, wins outright ---
+      - name: revoked-key
+        priority: 10
+        http: *ngrok_endpoints
+        fires_when:
+          status_code_in: [401, 403]
+        set_score: 5
