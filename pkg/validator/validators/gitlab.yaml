@@ -22,3 +22,4 @@ validators:
 
     # Failure codes indicate invalid or unauthorized token
     failure_codes: [401, 403]
+    message_json: scopes

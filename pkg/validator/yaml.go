@@ -30,6 +30,8 @@ type HTTPDef struct {
 	FailureCodes        []int    `yaml:"failure_codes"`
 	SuccessBodyContains string   `yaml:"success_body_contains,omitempty"` // Response body must contain this string for success
 	FailureBodyContains string   `yaml:"failure_body_contains,omitempty"` // Response body containing this string indicates failure
+	MessageHeader       string   `yaml:"message_header,omitempty"`        // on success, append "(<header>: <value>)" from this response header
+	MessageJSON         string   `yaml:"message_json,omitempty"`          // on success, append "(<field>: <value>)" from this top-level JSON field
 }
 
 // AuthDef defines authentication configuration.

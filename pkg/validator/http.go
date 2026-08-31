@@ -84,42 +84,68 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	needBody := v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" || v.def.HTTP.MessageJSON != ""
 	var respBody []byte
-	if v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" {
-		respBody, err = io.ReadAll(resp.Body)
+	if needBody {
+		reader := io.Reader(resp.Body)
+		if v.def.HTTP.SuccessBodyContains == "" && v.def.HTTP.FailureBodyContains == "" {
+			reader = io.LimitReader(resp.Body, 1<<20)
+		}
+		respBody, err = io.ReadAll(reader)
+		if err != nil {
+			return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
+		}
 	} else {
-		respBody, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	}
-	if err != nil {
-		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
+		_, _ = io.Copy(io.Discard, resp.Body)
 	}
 
 	result := v.evaluateResponse(resp.StatusCode, respBody)
-	appendPATScopes(result, resp.Header, respBody)
+	v.annotateMessage(result, resp.Header, respBody)
 	return result, nil
 }
 
-func appendPATScopes(result *types.ValidationResult, header http.Header, body []byte) {
+func (v *HTTPValidator) annotateMessage(result *types.ValidationResult, header http.Header, body []byte) {
 	if result == nil || result.Status != types.StatusValid {
 		return
 	}
-	scopes := strings.TrimSpace(header.Get("X-OAuth-Scopes"))
-	if scopes == "" && len(body) > 0 {
-		var parsed struct {
-			Scopes []string `json:"scopes"`
-		}
-		if json.Unmarshal(body, &parsed) == nil {
-			parts := make([]string, 0, len(parsed.Scopes))
-			for _, s := range parsed.Scopes {
-				if s = strings.TrimSpace(s); s != "" {
-					parts = append(parts, s)
-				}
-			}
-			scopes = strings.Join(parts, ", ")
+	if name := v.def.HTTP.MessageHeader; name != "" {
+		if val := strings.TrimSpace(header.Get(name)); val != "" {
+			result.Message += " (" + name + ": " + val + ")"
 		}
 	}
-	if scopes != "" {
-		result.Message += " (scopes: " + scopes + ")"
+	if name := v.def.HTTP.MessageJSON; name != "" {
+		if val := jsonFieldString(body, name); val != "" {
+			result.Message += " (" + name + ": " + val + ")"
+		}
+	}
+}
+
+func jsonFieldString(body []byte, field string) string {
+	var obj map[string]any
+	if json.Unmarshal(body, &obj) != nil {
+		return ""
+	}
+	raw, ok := obj[field]
+	if !ok {
+		return ""
+	}
+	switch t := raw.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case []any:
+		parts := make([]string, 0, len(t))
+		for _, e := range t {
+			s, ok := e.(string)
+			if !ok {
+				continue
+			}
+			if s = strings.TrimSpace(s); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, ", ")
+	default:
+		return ""
 	}
 }
 

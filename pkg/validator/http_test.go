@@ -653,164 +653,133 @@ func TestHTTPValidator_Validate_FailureBodyContains(t *testing.T) {
 	assert.Equal(t, types.StatusInvalid, result.Status)
 }
 
-func TestHTTPValidator_Validate_AppendsOAuthScopesOnValid(t *testing.T) {
+func bearerDef(url string) ValidatorDef {
+	return ValidatorDef{
+		Name:    "token",
+		RuleIDs: []string{"np.test.1"},
+		HTTP: HTTPDef{
+			Method: "GET",
+			URL:    url,
+			Auth: AuthDef{
+				Type:        "bearer",
+				SecretGroup: "token",
+			},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401, 403},
+		},
+	}
+}
+
+func TestHTTPValidator_MessageHeader_AppendedOnValid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-OAuth-Scopes", "repo, workflow")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	v := NewHTTPValidator(ValidatorDef{
-		Name:    "github-token",
-		RuleIDs: []string{"np.github.1"},
-		HTTP: HTTPDef{
-			Method: "GET",
-			URL:    server.URL,
-			Auth: AuthDef{
-				Type:        "bearer",
-				SecretGroup: "token",
-			},
-			SuccessCodes: []int{200},
-			FailureCodes: []int{401, 403},
-		},
-	}, nil)
-	result, err := v.Validate(context.Background(), &types.Match{
-		RuleID:      "np.github.1",
-		NamedGroups: map[string][]byte{"token": []byte("ghp_validtoken123456")},
+	def := bearerDef(server.URL)
+	def.HTTP.MessageHeader = "X-OAuth-Scopes"
+	result, err := NewHTTPValidator(def, nil).Validate(context.Background(), &types.Match{
+		NamedGroups: map[string][]byte{"token": []byte("tok")},
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
-	assert.Contains(t, result.Message, "scopes: repo, workflow")
+	assert.Contains(t, result.Message, "(X-OAuth-Scopes: repo, workflow)")
 }
 
-func TestHTTPValidator_Validate_SkipsEmptyOAuthScopes(t *testing.T) {
+func TestHTTPValidator_MessageHeader_SkippedWhenEmptyOrInvalid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-OAuth-Scopes", "repo")
+		if r.Header.Get("Authorization") == "Bearer bad" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
 		w.Header().Set("X-OAuth-Scopes", "  ")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	v := NewHTTPValidator(ValidatorDef{
-		Name:    "github-token",
-		RuleIDs: []string{"np.github.7"},
-		HTTP: HTTPDef{
-			Method: "GET",
-			URL:    server.URL,
-			Auth: AuthDef{
-				Type:        "bearer",
-				SecretGroup: "token",
-			},
-			SuccessCodes: []int{200},
-			FailureCodes: []int{401, 403},
-		},
-	}, nil)
-	result, err := v.Validate(context.Background(), &types.Match{
-		RuleID:      "np.github.7",
-		NamedGroups: map[string][]byte{"token": []byte("github_pat_valid")},
+	def := bearerDef(server.URL)
+	def.HTTP.MessageHeader = "X-OAuth-Scopes"
+	v := NewHTTPValidator(def, nil)
+
+	empty, err := v.Validate(context.Background(), &types.Match{
+		NamedGroups: map[string][]byte{"token": []byte("ok")},
 	})
 	assert.NoError(t, err)
-	assert.Equal(t, types.StatusValid, result.Status)
-	assert.NotContains(t, result.Message, "scopes:")
+	assert.Equal(t, types.StatusValid, empty.Status)
+	assert.NotContains(t, empty.Message, "X-OAuth-Scopes")
+
+	invalid, err := v.Validate(context.Background(), &types.Match{
+		NamedGroups: map[string][]byte{"token": []byte("bad")},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusInvalid, invalid.Status)
+	assert.NotContains(t, invalid.Message, "X-OAuth-Scopes")
 }
 
-func TestHTTPValidator_Validate_DoesNotAppendScopesOnInvalid(t *testing.T) {
+func TestHTTPValidator_MessageHeader_NotImplicit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-OAuth-Scopes", "repo")
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer server.Close()
-
-	v := NewHTTPValidator(ValidatorDef{
-		Name:    "github-token",
-		RuleIDs: []string{"np.github.1"},
-		HTTP: HTTPDef{
-			Method: "GET",
-			URL:    server.URL,
-			Auth: AuthDef{
-				Type:        "bearer",
-				SecretGroup: "token",
-			},
-			SuccessCodes: []int{200},
-			FailureCodes: []int{401, 403},
-		},
-	}, nil)
-	result, err := v.Validate(context.Background(), &types.Match{
-		RuleID:      "np.github.1",
-		NamedGroups: map[string][]byte{"token": []byte("ghp_invalid")},
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, types.StatusInvalid, result.Status)
-	assert.NotContains(t, result.Message, "scopes:")
-}
-
-func TestHTTPValidator_Validate_AppendsJSONScopesOnValid(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":1,"scopes":["api","write_repository"],"revoked":false}`))
 	}))
 	defer server.Close()
 
-	v := NewHTTPValidator(ValidatorDef{
-		Name:    "gitlab-personal-access-token",
-		RuleIDs: []string{"np.gitlab.2"},
-		HTTP: HTTPDef{
-			Method: "GET",
-			URL:    server.URL,
-			Auth: AuthDef{
-				Type:        "header",
-				SecretGroup: "1",
-				HeaderName:  "PRIVATE-TOKEN",
-			},
-			SuccessCodes: []int{200},
-			FailureCodes: []int{401, 403},
-		},
-	}, nil)
-	result, err := v.Validate(context.Background(), &types.Match{
-		RuleID: "np.gitlab.2",
-		Groups: [][]byte{[]byte("glpat-valid")},
+	result, err := NewHTTPValidator(bearerDef(server.URL), nil).Validate(context.Background(), &types.Match{
+		NamedGroups: map[string][]byte{"token": []byte("tok")},
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
-	assert.Contains(t, result.Message, "scopes: api, write_repository")
+	assert.NotContains(t, result.Message, "repo")
 }
 
-func TestHTTPValidator_Validate_JSONScopesIgnoredWhenNotJSON(t *testing.T) {
+func TestHTTPValidator_MessageJSON_AppendedOnValid(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":1,"scopes":["api","write_repository"]}`))
+	}))
+	defer server.Close()
+
+	def := bearerDef(server.URL)
+	def.HTTP.MessageJSON = "scopes"
+	result, err := NewHTTPValidator(def, nil).Validate(context.Background(), &types.Match{
+		NamedGroups: map[string][]byte{"token": []byte("tok")},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Contains(t, result.Message, "(scopes: api, write_repository)")
+}
+
+func TestHTTPValidator_MessageJSON_IgnoredWhenNotJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not-json"))
 	}))
 	defer server.Close()
 
-	v := NewHTTPValidator(ValidatorDef{
-		Name:    "gitlab-personal-access-token",
-		RuleIDs: []string{"np.gitlab.2"},
-		HTTP: HTTPDef{
-			Method: "GET",
-			URL:    server.URL,
-			Auth: AuthDef{
-				Type:        "header",
-				SecretGroup: "1",
-				HeaderName:  "PRIVATE-TOKEN",
-			},
-			SuccessCodes: []int{200},
-			FailureCodes: []int{401, 403},
-		},
-	}, nil)
-	result, err := v.Validate(context.Background(), &types.Match{
-		RuleID: "np.gitlab.2",
-		Groups: [][]byte{[]byte("glpat-valid")},
+	def := bearerDef(server.URL)
+	def.HTTP.MessageJSON = "scopes"
+	result, err := NewHTTPValidator(def, nil).Validate(context.Background(), &types.Match{
+		NamedGroups: map[string][]byte{"token": []byte("tok")},
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
 	assert.NotContains(t, result.Message, "scopes:")
 }
 
-func TestGitLabValidator_UsesPersonalAccessTokenSelf(t *testing.T) {
-	data, err := validatorsFS.ReadFile("validators/gitlab.yaml")
+func TestPATValidators_MessageCaptureConfig(t *testing.T) {
+	githubYAML, err := validatorsFS.ReadFile("validators/github.yaml")
 	assert.NoError(t, err)
-	var cfg ValidatorsConfig
-	assert.NoError(t, yaml.Unmarshal(data, &cfg))
-	require.NotEmpty(t, cfg.Validators)
-	assert.Contains(t, cfg.Validators[0].HTTP.URL, "/personal_access_tokens/self")
+	var githubCfg ValidatorsConfig
+	assert.NoError(t, yaml.Unmarshal(githubYAML, &githubCfg))
+	require.NotEmpty(t, githubCfg.Validators)
+	assert.Equal(t, "X-OAuth-Scopes", githubCfg.Validators[0].HTTP.MessageHeader)
+
+	gitlabYAML, err := validatorsFS.ReadFile("validators/gitlab.yaml")
+	assert.NoError(t, err)
+	var gitlabCfg ValidatorsConfig
+	assert.NoError(t, yaml.Unmarshal(gitlabYAML, &gitlabCfg))
+	require.NotEmpty(t, gitlabCfg.Validators)
+	assert.Equal(t, "scopes", gitlabCfg.Validators[0].HTTP.MessageJSON)
+	assert.Contains(t, gitlabCfg.Validators[0].HTTP.URL, "/personal_access_tokens/self")
 }

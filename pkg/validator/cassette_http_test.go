@@ -78,7 +78,7 @@ func runCassetteCase(t *testing.T, yamlFile, ruleID, cassette string, want types
 	// Body-matching validators (SuccessBodyContains or FailureBodyContains) need the
 	// response body retained in the cassette; status-only validators keep eliding it.
 	var clientOpts []vcrtest.Option
-	if def.HTTP.SuccessBodyContains != "" || def.HTTP.FailureBodyContains != "" {
+	if def.HTTP.SuccessBodyContains != "" || def.HTTP.FailureBodyContains != "" || def.HTTP.MessageJSON != "" {
 		clientOpts = append(clientOpts, vcrtest.WithResponseBody())
 	}
 	client := vcrtest.Client(t, cassette, clientOpts...)
