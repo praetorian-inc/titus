@@ -92,7 +92,7 @@ func TestBuiltinElevenLabsScorer_FreeTierChecksTierField(t *testing.T) {
 	t.Fatal("free-tier modifier not found")
 }
 
-func TestBuiltinElevenLabsScorer_RevokedKeyCovers403(t *testing.T) {
+func TestBuiltinElevenLabsScorer_RevokedKeyIs401Only(t *testing.T) {
 	s := builtinScorerFor(t, "kingfisher.elevenlabs.1")
 	for _, m := range s.Modifiers {
 		if m.Name != "revoked-key" {
@@ -100,10 +100,9 @@ func TestBuiltinElevenLabsScorer_RevokedKeyCovers403(t *testing.T) {
 		}
 		cond, ok := m.Condition.(*httpCondition)
 		require.True(t, ok)
-		leaf, ok := cond.firesWhen.(*statusCodeInLeaf)
-		require.True(t, ok, "revoked-key should use status_code_in")
-		assert.Contains(t, leaf.Codes, 401)
-		assert.Contains(t, leaf.Codes, 403)
+		leaf, ok := cond.firesWhen.(*statusCodeLeaf)
+		require.True(t, ok, "revoked-key should use status_code (not status_code_in)")
+		assert.Equal(t, 401, leaf.Code)
 		return
 	}
 	t.Fatal("revoked-key modifier not found")

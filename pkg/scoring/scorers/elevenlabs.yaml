@@ -28,9 +28,9 @@ scorers:
       - kingfisher.elevenlabs.1
     modifiers:
       # --- Paid tier: can generate significant voice content ---
-      # A free-tier response contains "free" in the tier field. Paid
-      # tiers (starter/creator/pro/scale/enterprise) do NOT contain
-      # "free", so negative response_body_contains fires on paid keys.
+      # A free-tier response has .tier = "free". Paid tiers
+      # (starter/creator/pro/scale/enterprise) have a different value,
+      # so negative json_path_equals fires on paid keys.
       - name: paid-tier
         priority: 90
         http: &elevenlabs_sub
@@ -58,10 +58,12 @@ scorers:
         delta: -15
 
       # --- Dead key: evaluated last, wins outright ---
-      # ElevenLabs returns 401 for invalid keys.
+      # ElevenLabs returns 401 for invalid keys. 403 is NOT included
+      # because scoped keys return 403 with "missing_permissions" when
+      # they lack subscription access — those are still live credentials.
       - name: revoked-key
         priority: 10
         http: *elevenlabs_sub
         fires_when:
-          status_code_in: [401, 403]
+          status_code: 401
         set_score: 5
