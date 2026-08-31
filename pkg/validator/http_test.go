@@ -670,7 +670,7 @@ func bearerDef(url string) ValidatorDef {
 	}
 }
 
-func TestHTTPValidator_MessageHeader_AppendedOnValid(t *testing.T) {
+func TestHTTPValidator_PullHeaders_OnValid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-OAuth-Scopes", "repo, workflow")
 		w.WriteHeader(http.StatusOK)
@@ -678,16 +678,17 @@ func TestHTTPValidator_MessageHeader_AppendedOnValid(t *testing.T) {
 	defer server.Close()
 
 	def := bearerDef(server.URL)
-	def.HTTP.MessageHeader = "X-OAuth-Scopes"
+	def.HTTP.Pull.Headers = []string{"X-OAuth-Scopes"}
 	result, err := NewHTTPValidator(def, nil).Validate(context.Background(), &types.Match{
 		NamedGroups: map[string][]byte{"token": []byte("tok")},
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Equal(t, "repo, workflow", result.Details["X-OAuth-Scopes"])
 	assert.Contains(t, result.Message, "(X-OAuth-Scopes: repo, workflow)")
 }
 
-func TestHTTPValidator_MessageHeader_SkippedWhenEmptyOrInvalid(t *testing.T) {
+func TestHTTPValidator_PullHeaders_SkippedWhenEmptyOrInvalid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-OAuth-Scopes", "repo")
 		if r.Header.Get("Authorization") == "Bearer bad" {
@@ -700,7 +701,7 @@ func TestHTTPValidator_MessageHeader_SkippedWhenEmptyOrInvalid(t *testing.T) {
 	defer server.Close()
 
 	def := bearerDef(server.URL)
-	def.HTTP.MessageHeader = "X-OAuth-Scopes"
+	def.HTTP.Pull.Headers = []string{"X-OAuth-Scopes"}
 	v := NewHTTPValidator(def, nil)
 
 	empty, err := v.Validate(context.Background(), &types.Match{
@@ -708,6 +709,7 @@ func TestHTTPValidator_MessageHeader_SkippedWhenEmptyOrInvalid(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, empty.Status)
+	assert.Empty(t, empty.Details["X-OAuth-Scopes"])
 	assert.NotContains(t, empty.Message, "X-OAuth-Scopes")
 
 	invalid, err := v.Validate(context.Background(), &types.Match{
@@ -715,13 +717,15 @@ func TestHTTPValidator_MessageHeader_SkippedWhenEmptyOrInvalid(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusInvalid, invalid.Status)
+	assert.Empty(t, invalid.Details["X-OAuth-Scopes"])
 	assert.NotContains(t, invalid.Message, "X-OAuth-Scopes")
 }
 
-func TestHTTPValidator_MessageHeader_NotImplicit(t *testing.T) {
+func TestHTTPValidator_Pull_NotImplicit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-OAuth-Scopes", "repo")
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"scopes":["api"]}`))
 	}))
 	defer server.Close()
 
@@ -731,9 +735,10 @@ func TestHTTPValidator_MessageHeader_NotImplicit(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
 	assert.NotContains(t, result.Message, "repo")
+	assert.NotContains(t, result.Message, "api")
 }
 
-func TestHTTPValidator_MessageJSON_AppendedOnValid(t *testing.T) {
+func TestHTTPValidator_PullJSON_OnValid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id":1,"scopes":["api","write_repository"]}`))
@@ -741,16 +746,17 @@ func TestHTTPValidator_MessageJSON_AppendedOnValid(t *testing.T) {
 	defer server.Close()
 
 	def := bearerDef(server.URL)
-	def.HTTP.MessageJSON = "scopes"
+	def.HTTP.Pull.JSON = []string{"scopes"}
 	result, err := NewHTTPValidator(def, nil).Validate(context.Background(), &types.Match{
 		NamedGroups: map[string][]byte{"token": []byte("tok")},
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Equal(t, "api, write_repository", result.Details["scopes"])
 	assert.Contains(t, result.Message, "(scopes: api, write_repository)")
 }
 
-func TestHTTPValidator_MessageJSON_IgnoredWhenNotJSON(t *testing.T) {
+func TestHTTPValidator_PullJSON_IgnoredWhenNotJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not-json"))
@@ -758,28 +764,29 @@ func TestHTTPValidator_MessageJSON_IgnoredWhenNotJSON(t *testing.T) {
 	defer server.Close()
 
 	def := bearerDef(server.URL)
-	def.HTTP.MessageJSON = "scopes"
+	def.HTTP.Pull.JSON = []string{"scopes"}
 	result, err := NewHTTPValidator(def, nil).Validate(context.Background(), &types.Match{
 		NamedGroups: map[string][]byte{"token": []byte("tok")},
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Empty(t, result.Details["scopes"])
 	assert.NotContains(t, result.Message, "scopes:")
 }
 
-func TestPATValidators_MessageCaptureConfig(t *testing.T) {
+func TestEmbeddedValidators_PullConfig(t *testing.T) {
 	githubYAML, err := validatorsFS.ReadFile("validators/github.yaml")
 	assert.NoError(t, err)
 	var githubCfg ValidatorsConfig
 	assert.NoError(t, yaml.Unmarshal(githubYAML, &githubCfg))
 	require.NotEmpty(t, githubCfg.Validators)
-	assert.Equal(t, "X-OAuth-Scopes", githubCfg.Validators[0].HTTP.MessageHeader)
+	assert.Equal(t, []string{"X-OAuth-Scopes"}, githubCfg.Validators[0].HTTP.Pull.Headers)
 
 	gitlabYAML, err := validatorsFS.ReadFile("validators/gitlab.yaml")
 	assert.NoError(t, err)
 	var gitlabCfg ValidatorsConfig
 	assert.NoError(t, yaml.Unmarshal(gitlabYAML, &gitlabCfg))
 	require.NotEmpty(t, gitlabCfg.Validators)
-	assert.Equal(t, "scopes", gitlabCfg.Validators[0].HTTP.MessageJSON)
+	assert.Equal(t, []string{"scopes"}, gitlabCfg.Validators[0].HTTP.Pull.JSON)
 	assert.Contains(t, gitlabCfg.Validators[0].HTTP.URL, "/personal_access_tokens/self")
 }

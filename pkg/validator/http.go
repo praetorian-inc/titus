@@ -84,7 +84,7 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	needBody := v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" || v.def.HTTP.MessageJSON != ""
+	needBody := v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" || len(v.def.HTTP.Pull.JSON) > 0
 	var respBody []byte
 	if needBody {
 		reader := io.Reader(resp.Body)
@@ -100,21 +100,32 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 	}
 
 	result := v.evaluateResponse(resp.StatusCode, respBody)
-	v.annotateMessage(result, resp.Header, respBody)
+	v.pullThrough(result, resp.Header, respBody)
 	return result, nil
 }
 
-func (v *HTTPValidator) annotateMessage(result *types.ValidationResult, header http.Header, body []byte) {
+func (v *HTTPValidator) pullThrough(result *types.ValidationResult, header http.Header, body []byte) {
 	if result == nil || result.Status != types.StatusValid {
 		return
 	}
-	if name := v.def.HTTP.MessageHeader; name != "" {
+	if result.Details == nil {
+		result.Details = make(map[string]string)
+	}
+	for _, name := range v.def.HTTP.Pull.Headers {
+		if name == "" {
+			continue
+		}
 		if val := strings.TrimSpace(header.Get(name)); val != "" {
+			result.Details[name] = val
 			result.Message += " (" + name + ": " + val + ")"
 		}
 	}
-	if name := v.def.HTTP.MessageJSON; name != "" {
+	for _, name := range v.def.HTTP.Pull.JSON {
+		if name == "" {
+			continue
+		}
 		if val := jsonFieldString(body, name); val != "" {
+			result.Details[name] = val
 			result.Message += " (" + name + ": " + val + ")"
 		}
 	}
