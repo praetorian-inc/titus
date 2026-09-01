@@ -1,0 +1,67 @@
+# OpenAI API key scorer — model access breadth (LAB-3384).
+#
+# Rule ID covered:
+#   np.openai.1 — OpenAI API Key (sk-...): base_score 70
+#
+# GET /v1/models returns the list of models the key can access. Keys with
+# access to many models indicate a paid-tier or org account with broader
+# capabilities and higher spend limits. Keys with few models are likely
+# free-tier or tightly scoped.
+#
+# We check model count rather than specific model names because free-tier
+# keys can access gpt-4o-mini (making substring checks on "gpt-4" useless
+# as a paid-tier signal) and model naming evolves across generations.
+#
+# OpenAI uses Bearer auth with the API key.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes (base 70):
+#   broad model access (10+): 70 + 10 = 80
+#   limited models:           70 - 15 = 55
+#   revoked:                             5
+#
+# API documentation:
+#   https://platform.openai.com/docs/api-reference/models/list
+scorers:
+  - name: openai-key-scope
+    rule_ids:
+      - np.openai.1
+    modifiers:
+      # --- Broad model access: paid-tier or org account ---
+      # Free-tier keys typically see a handful of models. Paid accounts
+      # with higher rate limits expose 10+ models including reasoning
+      # and image generation families.
+      - name: broad-model-access
+        priority: 90
+        http: &oai_models
+          method: GET
+          url: https://api.openai.com/v1/models
+          auth:
+            type: bearer
+            secret_group: "key"
+        fires_when:
+          json_array_length_gte:
+            path: ".data"
+            value: 10
+        delta: 10
+
+      # --- Limited models: free or restricted tier ---
+      - name: limited-model-access
+        priority: 70
+        http: *oai_models
+        fires_when:
+          negative: true
+          json_array_length_gte:
+            path: ".data"
+            value: 10
+        delta: -15
+
+      # --- Dead key: evaluated last, wins outright ---
+      # OpenAI returns 401 for invalid keys, 403 for disabled keys.
+      - name: revoked-key
+        priority: 10
+        http: *oai_models
+        fires_when:
+          status_code_in: [401, 403]
+        set_score: 5

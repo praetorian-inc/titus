@@ -4,6 +4,7 @@ package validator
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -96,9 +97,14 @@ func (v *HTTPValidator) tryURL(ctx context.Context, match *types.Match, secret, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	needBody := v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" || len(v.def.HTTP.Pull.JSON) > 0
 	var respBody []byte
-	if v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" {
-		respBody, err = io.ReadAll(resp.Body)
+	if needBody {
+		reader := io.Reader(resp.Body)
+		if v.def.HTTP.SuccessBodyContains == "" && v.def.HTTP.FailureBodyContains == "" {
+			reader = io.LimitReader(resp.Body, 1<<20)
+		}
+		respBody, err = io.ReadAll(reader)
 		if err != nil {
 			return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
 		}
@@ -106,7 +112,65 @@ func (v *HTTPValidator) tryURL(ctx context.Context, match *types.Match, secret, 
 		_, _ = io.Copy(io.Discard, resp.Body)
 	}
 
-	return v.evaluateResponse(resp.StatusCode, respBody), nil
+	result := v.evaluateResponse(resp.StatusCode, respBody)
+	v.pullThrough(result, resp.Header, respBody)
+	return result, nil
+}
+
+func (v *HTTPValidator) pullThrough(result *types.ValidationResult, header http.Header, body []byte) {
+	if result == nil || result.Status != types.StatusValid {
+		return
+	}
+	if result.Details == nil {
+		result.Details = make(map[string]string)
+	}
+	for _, name := range v.def.HTTP.Pull.Headers {
+		if name == "" {
+			continue
+		}
+		if val := strings.TrimSpace(header.Get(name)); val != "" {
+			result.Details[name] = val
+			result.Message += " (" + name + ": " + val + ")"
+		}
+	}
+	for _, name := range v.def.HTTP.Pull.JSON {
+		if name == "" {
+			continue
+		}
+		if val := jsonFieldString(body, name); val != "" {
+			result.Details[name] = val
+			result.Message += " (" + name + ": " + val + ")"
+		}
+	}
+}
+
+func jsonFieldString(body []byte, field string) string {
+	var obj map[string]any
+	if json.Unmarshal(body, &obj) != nil {
+		return ""
+	}
+	raw, ok := obj[field]
+	if !ok {
+		return ""
+	}
+	switch t := raw.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case []any:
+		parts := make([]string, 0, len(t))
+		for _, e := range t {
+			s, ok := e.(string)
+			if !ok {
+				continue
+			}
+			if s = strings.TrimSpace(s); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, ", ")
+	default:
+		return ""
+	}
 }
 
 func (v *HTTPValidator) extractSecret(match *types.Match) (string, error) {

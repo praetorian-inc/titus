@@ -5,9 +5,9 @@ rules:
     pattern: |       
       (?xi)       
       \b    
-      (               
-        sk_           
-        [0-9a-f]{48}  
+      (?P<token>
+        sk_
+        [0-9a-f]{48}
       )
       \b
     pattern_requirements:
