@@ -45,7 +45,7 @@ func TestEnumCmd_SubcommandCount(t *testing.T) {
 		names = append(names, sub.Name())
 	}
 
-	expected := []string{"confluence", "gdrive", "github", "gitlab", "jira", "linear", "microsoft", "notion", "servicenow", "slack", "trello", "zendesk"}
+	expected := []string{"confluence", "discord", "gdrive", "github", "gitlab", "jira", "linear", "microsoft", "notion", "servicenow", "slack", "trello", "zendesk"}
 	assert.ElementsMatch(t, expected, names, "enum subcommands should match")
 }
 
