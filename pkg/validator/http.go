@@ -47,16 +47,32 @@ func (v *HTTPValidator) CanValidate(ruleID string) bool {
 
 // Validate performs HTTP validation against the configured endpoint.
 func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*types.ValidationResult, error) {
-	// Extract secret from match
 	secret, err := v.extractSecret(match)
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, err.Error()), nil
 	}
 
-	// Substitute URL templates with named capture group values
-	url := substituteTemplateVars(v.def.HTTP.URL, match.NamedGroups)
+	urls := append([]string{v.def.HTTP.URL}, v.def.HTTP.FallbackURLs...)
 
-	// Build request with optional body (also substitute template vars)
+	for i, rawURL := range urls {
+		result, err := v.tryURL(ctx, match, secret, rawURL)
+		if err != nil {
+			return result, err
+		}
+		// If the primary URL indicates failure and there are more URLs to try,
+		// fall through to the next one. This handles regional endpoints where a
+		// key valid on one host is rejected by the other.
+		if result.Status != types.StatusInvalid || i == len(urls)-1 {
+			return result, nil
+		}
+	}
+
+	return types.NewValidationResult(types.StatusUndetermined, 0, "no URLs to try"), nil
+}
+
+func (v *HTTPValidator) tryURL(ctx context.Context, match *types.Match, secret, rawURL string) (*types.ValidationResult, error) {
+	url := substituteTemplateVars(rawURL, match.NamedGroups)
+
 	var body io.Reader
 	if v.def.HTTP.Body != "" {
 		body = strings.NewReader(substituteTemplateVars(v.def.HTTP.Body, match.NamedGroups))
@@ -66,24 +82,20 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to create request: %v", err)), nil
 	}
 
-	// Apply auth
 	if err := v.applyAuth(req, secret); err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, err.Error()), nil
 	}
 
-	// Apply custom headers (with template substitution)
 	for _, h := range v.def.HTTP.Headers {
 		req.Header.Set(h.Name, substituteTemplateVars(h.Value, match.NamedGroups))
 	}
 
-	// Execute request
 	resp, err := v.client.Do(req)
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("request failed: %v", err)), nil
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Read response body if needed for body-based validation
 	var respBody []byte
 	if v.def.HTTP.SuccessBodyContains != "" || v.def.HTTP.FailureBodyContains != "" {
 		respBody, err = io.ReadAll(resp.Body)
@@ -94,7 +106,6 @@ func (v *HTTPValidator) Validate(ctx context.Context, match *types.Match) (*type
 		_, _ = io.Copy(io.Discard, resp.Body)
 	}
 
-	// Check response code and body
 	return v.evaluateResponse(resp.StatusCode, respBody), nil
 }
 

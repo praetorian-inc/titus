@@ -650,3 +650,114 @@ func TestHTTPValidator_Validate_FailureBodyContains(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, types.StatusInvalid, result.Status)
 }
+
+// --- Fallback URL tests (LAB-6047) ---
+
+func TestHTTPValidator_FallbackURL_UsedOnFailure(t *testing.T) {
+	// Primary rejects the key, fallback accepts it (regional endpoint).
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer fallback.Close()
+
+	def := ValidatorDef{
+		Name:    "sendgrid-regional",
+		RuleIDs: []string{"np.sendgrid.1"},
+		HTTP: HTTPDef{
+			Method:       "GET",
+			URL:          primary.URL,
+			FallbackURLs: []string{fallback.URL},
+			Auth:         AuthDef{Type: "bearer", SecretGroup: "token"},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401, 403},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID:      "np.sendgrid.1",
+		NamedGroups: map[string][]byte{"token": []byte("SG.test")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status, "should be valid via fallback")
+}
+
+func TestHTTPValidator_FallbackURL_NotUsedOnSuccess(t *testing.T) {
+	var fallbackCalled bool
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallbackCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer fallback.Close()
+
+	def := ValidatorDef{
+		Name:    "sendgrid-regional",
+		RuleIDs: []string{"np.sendgrid.1"},
+		HTTP: HTTPDef{
+			Method:       "GET",
+			URL:          primary.URL,
+			FallbackURLs: []string{fallback.URL},
+			Auth:         AuthDef{Type: "bearer", SecretGroup: "token"},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401, 403},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID:      "np.sendgrid.1",
+		NamedGroups: map[string][]byte{"token": []byte("SG.test")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+	assert.False(t, fallbackCalled, "fallback should not be called when primary succeeds")
+}
+
+func TestHTTPValidator_FallbackURL_BothReject(t *testing.T) {
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer fallback.Close()
+
+	def := ValidatorDef{
+		Name:    "sendgrid-regional",
+		RuleIDs: []string{"np.sendgrid.1"},
+		HTTP: HTTPDef{
+			Method:       "GET",
+			URL:          primary.URL,
+			FallbackURLs: []string{fallback.URL},
+			Auth:         AuthDef{Type: "bearer", SecretGroup: "token"},
+			SuccessCodes: []int{200},
+			FailureCodes: []int{401, 403},
+		},
+	}
+
+	v := NewHTTPValidator(def, nil)
+	match := &types.Match{
+		RuleID:      "np.sendgrid.1",
+		NamedGroups: map[string][]byte{"token": []byte("SG.test")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusInvalid, result.Status, "should be invalid when both reject")
+}
