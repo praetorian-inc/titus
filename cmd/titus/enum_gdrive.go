@@ -19,6 +19,8 @@ var (
 	gdriveDriveID      string
 	gdriveRateLimit    float64
 	gdriveConcurrency  int
+	gdriveMaxFileSize  int64
+	gdriveExtract      string
 )
 
 var gdriveCmd = &cobra.Command{
@@ -60,6 +62,8 @@ func registerGDriveFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&gdriveDriveID, "drive-id", "", "Scan a single shared drive by ID")
 	fs.Float64Var(&gdriveRateLimit, "rate-limit", 16, "Requests per second")
 	fs.IntVar(&gdriveConcurrency, "concurrency", 5, "Number of parallel file download workers")
+	fs.Int64Var(&gdriveMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan in bytes (0 = unlimited)")
+	fs.StringVar(&gdriveExtract, "extract", "xlsx", "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')")
 }
 
 func init() {
@@ -96,6 +100,10 @@ func runGDriveEnumScan(cmd *cobra.Command, args []string) error {
 		Verbose:      verboseWriter,
 		RateLimit:    gdriveRateLimit,
 		Concurrency:  gdriveConcurrency,
+		Config: enum.Config{
+			MaxFileSize:     gdriveMaxFileSize,
+			ExtractArchives: gdriveExtract,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating Google Drive enumerator: %w", err)
