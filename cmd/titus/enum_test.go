@@ -35,7 +35,7 @@ func TestEnumCmd_NotHidden(t *testing.T) {
 }
 
 // TestEnumCmd_SubcommandCount verifies that enumCmd has exactly the expected
-// 7 service subcommands + the microsoft parent (8 children total).
+// 8 service subcommands + the microsoft parent (9 children total).
 func TestEnumCmd_SubcommandCount(t *testing.T) {
 	cmd, _, err := rootCmd.Find([]string{"enum"})
 	require.NoError(t, err)
@@ -45,8 +45,8 @@ func TestEnumCmd_SubcommandCount(t *testing.T) {
 		names = append(names, sub.Name())
 	}
 
-	expected := []string{"confluence", "github", "gitlab", "jira", "linear", "microsoft", "notion", "slack"}
-	assert.ElementsMatch(t, expected, names, "enum should have exactly 7 service subcommands + microsoft parent (8 children total)")
+	expected := []string{"confluence", "github", "gitlab", "jira", "linear", "microsoft", "notion", "servicenow", "slack"}
+	assert.ElementsMatch(t, expected, names, "enum should have exactly 8 service subcommands + microsoft parent (9 children total)")
 }
 
 // TestEnumCmd_HasMicrosoftSubcommand verifies the microsoft parent is a child
