@@ -151,7 +151,7 @@ func (e *ServiceNowEnumerator) snGet(ctx context.Context, reqURL string) ([]byte
 		}
 
 		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if attempt < maxAttempts-1 {
 				select {
 				case <-ctx.Done():
@@ -164,12 +164,12 @@ func (e *ServiceNowEnumerator) snGet(ctx context.Context, reqURL string) ([]byte
 		}
 
 		if resp.StatusCode != 200 {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("servicenow API returned unexpected status %d", resp.StatusCode)
 		}
 
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("read response body: %w", err)
 		}
