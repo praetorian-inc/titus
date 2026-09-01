@@ -24,7 +24,7 @@ var (
 var enumCmd = &cobra.Command{
 	Use:   "enum",
 	Short: "Enumerate remote services for secrets",
-	Long: `Enumerate remote services (GitHub, GitLab, Slack, Notion, Linear, Confluence, Jira, Microsoft 365, ServiceNow, Trello)
+	Long: `Enumerate remote services (GitHub, GitLab, Slack, Notion, Linear, Confluence, Jira, Microsoft 365, ServiceNow, Zendesk, Trello)
 for secrets using detection rules.`,
 }
 
@@ -42,7 +42,7 @@ func registerEnumScanFlags(fs *pflag.FlagSet) {
 
 func init() {
 	registerEnumScanFlags(enumCmd.PersistentFlags())
-	enumCmd.AddCommand(githubCmd, gitlabCmd, slackCmd, notionCmd, linearCmd, confluenceCmd, jiraCmd, microsoftCmd, gdriveCmd, servicenowCmd, trelloCmd)
+	enumCmd.AddCommand(githubCmd, gitlabCmd, slackCmd, notionCmd, linearCmd, confluenceCmd, jiraCmd, microsoftCmd, gdriveCmd, servicenowCmd, zendeskCmd, trelloCmd)
 }
 
 // runEnumScan runs the shared enumeration pipeline: load rules → create matcher/store →
