@@ -189,7 +189,7 @@ func (e *TrelloEnumerator) trelloFetchBoards(ctx context.Context) ([]trelloBoard
 }
 
 func (e *TrelloEnumerator) trelloFetchCards(ctx context.Context, boardID string) ([]trelloCard, error) {
-	path := fmt.Sprintf("/boards/%s/cards?fields=id,name,desc,url", boardID)
+	path := fmt.Sprintf("/boards/%s/cards?fields=id,name,desc,url&filter=all", boardID)
 	body, err := e.trelloGet(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("fetch cards for board %s: %w", boardID, err)
@@ -203,7 +203,7 @@ func (e *TrelloEnumerator) trelloFetchCards(ctx context.Context, boardID string)
 }
 
 func (e *TrelloEnumerator) trelloFetchComments(ctx context.Context, cardID string) ([]trelloAction, error) {
-	path := fmt.Sprintf("/cards/%s/actions?filter=commentCard", cardID)
+	path := fmt.Sprintf("/cards/%s/actions?filter=commentCard&limit=1000", cardID)
 	body, err := e.trelloGet(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("fetch comments for card %s: %w", cardID, err)
@@ -244,7 +244,7 @@ func trelloBuildCardBlob(boardName string, card trelloCard, comments []trelloAct
 	}
 
 	for _, cl := range checklists {
-		sb.WriteString(fmt.Sprintf("\n--- Checklist: %s ---\n", cl.Name))
+		fmt.Fprintf(&sb, "\n--- Checklist: %s ---\n", cl.Name)
 		for _, item := range cl.CheckItems {
 			sb.WriteString("- " + item.Name + "\n")
 		}
