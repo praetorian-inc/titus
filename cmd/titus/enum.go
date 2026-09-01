@@ -24,7 +24,7 @@ var (
 var enumCmd = &cobra.Command{
 	Use:   "enum",
 	Short: "Enumerate remote services for secrets",
-	Long: `Enumerate remote services (GitHub, GitLab, Slack, Notion, Linear, Confluence, Jira, Microsoft 365)
+	Long: `Enumerate remote services (GitHub, GitLab, Slack, Notion, Linear, Confluence, Jira, Microsoft 365, ServiceNow)
 for secrets using detection rules.`,
 }
 
