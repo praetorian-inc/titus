@@ -53,6 +53,18 @@ func TestZendeskEnumerator_RequiresToken(t *testing.T) {
 	assert.Contains(t, err.Error(), "token")
 }
 
+func TestZendeskEnumerator_RejectsInvalidSubdomain(t *testing.T) {
+	for _, bad := range []string{"foo.bar", "foo/bar", "foo@evil", "a:b", "-start", "end-"} {
+		_, err := NewZendeskEnumerator(ZendeskConfig{
+			Subdomain: bad,
+			Email:     "a@b.com",
+			Token:     "tok",
+		})
+		assert.Error(t, err, "subdomain %q should be rejected", bad)
+		assert.Contains(t, err.Error(), "invalid")
+	}
+}
+
 func TestZendeskEnumerator_DefaultRateLimit(t *testing.T) {
 	e, err := NewZendeskEnumerator(ZendeskConfig{
 		Subdomain: "mycompany",

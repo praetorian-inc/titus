@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
+
+var validSubdomain = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$`)
 
 // ZendeskConfig configures the Zendesk enumerator.
 type ZendeskConfig struct {
@@ -36,6 +39,9 @@ type ZendeskEnumerator struct {
 func NewZendeskEnumerator(cfg ZendeskConfig) (*ZendeskEnumerator, error) {
 	if cfg.Subdomain == "" {
 		return nil, fmt.Errorf("zendesk subdomain is required")
+	}
+	if !validSubdomain.MatchString(cfg.Subdomain) {
+		return nil, fmt.Errorf("zendesk subdomain %q is invalid: must be alphanumeric with optional hyphens", cfg.Subdomain)
 	}
 	if cfg.Email == "" {
 		return nil, fmt.Errorf("zendesk email is required")
@@ -178,7 +184,7 @@ type zdArticle struct {
 
 func (e *ZendeskEnumerator) zdFetchTickets(ctx context.Context) ([]zdTicket, error) {
 	var all []zdTicket
-	url := e.apiBase + "/api/v2/tickets.json?page[size]=100"
+	url := e.apiBase + "/api/v2/tickets.json?per_page=100"
 
 	for url != "" {
 		body, err := e.zdGet(ctx, url)
@@ -191,6 +197,9 @@ func (e *ZendeskEnumerator) zdFetchTickets(ctx context.Context) ([]zdTicket, err
 			return nil, fmt.Errorf("decode tickets: %w", err)
 		}
 
+		if len(resp.Tickets) == 0 {
+			break
+		}
 		all = append(all, resp.Tickets...)
 		url = resp.NextPage
 	}
@@ -212,6 +221,9 @@ func (e *ZendeskEnumerator) zdFetchComments(ctx context.Context, ticketID int64)
 			return nil, fmt.Errorf("decode comments for ticket %d: %w", ticketID, err)
 		}
 
+		if len(resp.Comments) == 0 {
+			break
+		}
 		all = append(all, resp.Comments...)
 		url = resp.NextPage
 	}
@@ -220,7 +232,7 @@ func (e *ZendeskEnumerator) zdFetchComments(ctx context.Context, ticketID int64)
 
 func (e *ZendeskEnumerator) zdFetchArticles(ctx context.Context) ([]zdArticle, error) {
 	var all []zdArticle
-	url := e.apiBase + "/api/v2/help_center/articles.json?page[size]=100"
+	url := e.apiBase + "/api/v2/help_center/articles.json?per_page=100"
 
 	for url != "" {
 		body, err := e.zdGet(ctx, url)
@@ -233,6 +245,9 @@ func (e *ZendeskEnumerator) zdFetchArticles(ctx context.Context) ([]zdArticle, e
 			return nil, fmt.Errorf("decode articles: %w", err)
 		}
 
+		if len(resp.Articles) == 0 {
+			break
+		}
 		all = append(all, resp.Articles...)
 		url = resp.NextPage
 	}
@@ -242,7 +257,7 @@ func (e *ZendeskEnumerator) zdFetchArticles(ctx context.Context) ([]zdArticle, e
 func zdBuildTicketBlob(ticket zdTicket, comments []zdComment, subdomain string) []byte {
 	var sb strings.Builder
 	sb.WriteString("Type: ticket\n")
-	sb.WriteString(fmt.Sprintf("ID: %d\n", ticket.ID))
+	fmt.Fprintf(&sb, "ID: %d\n", ticket.ID)
 	if ticket.Subject != "" {
 		sb.WriteString("Subject: " + ticket.Subject + "\n")
 	}
@@ -254,7 +269,7 @@ func zdBuildTicketBlob(ticket zdTicket, comments []zdComment, subdomain string) 
 		sb.WriteString(ticket.Description + "\n")
 	}
 
-	for _, c := range comments {
+	for i, c := range comments {
 		body := c.PlainBody
 		if body == "" {
 			body = c.Body
@@ -262,11 +277,14 @@ func zdBuildTicketBlob(ticket zdTicket, comments []zdComment, subdomain string) 
 		if body == "" {
 			continue
 		}
+		if i == 0 && body == ticket.Description {
+			continue
+		}
 		visibility := "public"
 		if !c.Public {
 			visibility = "internal"
 		}
-		sb.WriteString(fmt.Sprintf("\n--- Comment (%s) ---\n", visibility))
+		fmt.Fprintf(&sb, "\n--- Comment (%s) ---\n", visibility)
 		sb.WriteString(body + "\n")
 	}
 	return []byte(sb.String())
@@ -275,7 +293,7 @@ func zdBuildTicketBlob(ticket zdTicket, comments []zdComment, subdomain string) 
 func zdBuildArticleBlob(article zdArticle) []byte {
 	var sb strings.Builder
 	sb.WriteString("Type: article\n")
-	sb.WriteString(fmt.Sprintf("ID: %d\n", article.ID))
+	fmt.Fprintf(&sb, "ID: %d\n", article.ID)
 	if article.Title != "" {
 		sb.WriteString("Title: " + article.Title + "\n")
 	}
