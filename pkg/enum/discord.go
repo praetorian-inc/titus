@@ -220,9 +220,11 @@ func (e *DiscordEnumerator) discordFetchPins(ctx context.Context, channelID stri
 	return messages, nil
 }
 
-// discordFetchAllMessages paginates through all messages in a channel.
+// discordFetchAllMessages paginates through messages in a channel, capped at
+// 10,000 messages to prevent OOM on very active channels.
 func (e *DiscordEnumerator) discordFetchAllMessages(ctx context.Context, channelID string) ([]discordMessage, error) {
 	const pageSize = 100
+	const maxMessages = 10000
 	var all []discordMessage
 	var before string
 
@@ -236,7 +238,7 @@ func (e *DiscordEnumerator) discordFetchAllMessages(ctx context.Context, channel
 		}
 		all = append(all, batch...)
 		before = batch[len(batch)-1].ID
-		if len(batch) < pageSize {
+		if len(batch) < pageSize || len(all) >= maxMessages {
 			break
 		}
 	}
@@ -253,7 +255,7 @@ func discordBuildChannelBlob(guildName, channelName string, messages []discordMe
 		if m.Content == "" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("\n[%s] %s:\n", m.Timestamp, m.Author.Username))
+		fmt.Fprintf(&sb, "\n[%s] %s:\n", m.Timestamp, m.Author.Username)
 		sb.WriteString(m.Content + "\n")
 	}
 	return []byte(sb.String())
@@ -269,7 +271,7 @@ func discordBuildPinsBlob(guildName, channelName string, pins []discordMessage) 
 		if m.Content == "" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("\n[%s] %s:\n", m.Timestamp, m.Author.Username))
+		fmt.Fprintf(&sb, "\n[%s] %s:\n", m.Timestamp, m.Author.Username)
 		sb.WriteString(m.Content + "\n")
 	}
 	return []byte(sb.String())

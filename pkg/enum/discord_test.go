@@ -193,13 +193,13 @@ func TestDiscordFetchMessages(t *testing.T) {
 func TestDiscordFetchMessages_Pagination(t *testing.T) {
 	e := testDiscordEnumerator(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/channels/ch1/messages") {
-			before := r.URL.Query().Get("before")
-			if before == "" {
+			switch before := r.URL.Query().Get("before"); before {
+			case "":
 				_ = json.NewEncoder(w).Encode([]discordMessage{
 					{ID: "m2", Content: "newer"},
 					{ID: "m1", Content: "older"},
 				})
-			} else if before == "m1" {
+			case "m1":
 				_ = json.NewEncoder(w).Encode([]discordMessage{})
 			}
 			return
