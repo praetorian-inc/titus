@@ -42,7 +42,7 @@ func registerEnumScanFlags(fs *pflag.FlagSet) {
 
 func init() {
 	registerEnumScanFlags(enumCmd.PersistentFlags())
-	enumCmd.AddCommand(githubCmd, gitlabCmd, slackCmd, notionCmd, linearCmd, confluenceCmd, jiraCmd, microsoftCmd)
+	enumCmd.AddCommand(githubCmd, gitlabCmd, slackCmd, notionCmd, linearCmd, confluenceCmd, jiraCmd, microsoftCmd, gdriveCmd)
 }
 
 // runEnumScan runs the shared enumeration pipeline: load rules → create matcher/store →
