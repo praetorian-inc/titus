@@ -127,3 +127,14 @@ func TestBuiltinSendGridScorer_OnlyTerminalStatesUseSetScore(t *testing.T) {
 		}
 	}
 }
+
+func TestBuiltinSendGridScorer_AllModifiersHaveEUFallback(t *testing.T) {
+	s := builtinScorerFor(t, "np.sendgrid.1")
+	for _, m := range s.Modifiers {
+		cond, ok := m.Condition.(*httpCondition)
+		require.Truef(t, ok, "modifier %q should be http-backed", m.Name)
+		require.Lenf(t, cond.fallbackURLs, 1, "modifier %q should have one fallback URL", m.Name)
+		assert.Equal(t, "https://api.eu.sendgrid.com/v3/scopes", cond.fallbackURLs[0],
+			"modifier %q fallback should be the EU endpoint", m.Name)
+	}
+}

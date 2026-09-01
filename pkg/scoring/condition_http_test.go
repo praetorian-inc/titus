@@ -454,3 +454,151 @@ func TestHTTPCondition_CachedRateLimit_StaysClassified(t *testing.T) {
 	assert.NotErrorIs(t, err2, ErrConditionNotApplicable,
 		"a throttled API must never be silently skipped")
 }
+
+// --- Fallback URL tests (LAB-6047) ---
+
+func TestHTTPCondition_FallbackURL_UsedOn401(t *testing.T) {
+	// Primary returns 401, fallback returns 200 with scopes.
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte(`{"errors":[{"message":"authorization required"}]}`))
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"scopes":["mail.send"]}`))
+	}))
+	defer fallback.Close()
+
+	cond := &httpCondition{
+		method:       "GET",
+		url:          primary.URL,
+		fallbackURLs: []string{fallback.URL},
+		auth:         scorerAuth{},
+		firesWhen:    &responseBodyContainsLeaf{Value: `"mail.send"`},
+	}
+
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired, "should fire against fallback response")
+}
+
+func TestHTTPCondition_FallbackURL_NotUsedOnSuccess(t *testing.T) {
+	var fallbackCalled bool
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"scopes":["mail.send"]}`))
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallbackCalled = true
+		w.WriteHeader(200)
+	}))
+	defer fallback.Close()
+
+	cond := &httpCondition{
+		method:       "GET",
+		url:          primary.URL,
+		fallbackURLs: []string{fallback.URL},
+		auth:         scorerAuth{},
+		firesWhen:    &statusCodeLeaf{Code: 200},
+	}
+
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+	assert.False(t, fallbackCalled, "fallback should not be called when primary succeeds")
+}
+
+func TestHTTPCondition_FallbackURL_BothReject(t *testing.T) {
+	// Both hosts return 401 → revoked-key should fire.
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+	}))
+	defer fallback.Close()
+
+	cond := &httpCondition{
+		method:       "GET",
+		url:          primary.URL,
+		fallbackURLs: []string{fallback.URL},
+		auth:         scorerAuth{},
+		firesWhen:    &statusCodeLeaf{Code: 401},
+	}
+
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired, "revoked-key should fire when both hosts reject")
+}
+
+func TestHTTPCondition_FallbackURL_CachesIndependently(t *testing.T) {
+	var primaryCalls, fallbackCalls int
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		primaryCalls++
+		w.WriteHeader(401)
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallbackCalls++
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"scopes":["mail.send"]}`))
+	}))
+	defer fallback.Close()
+
+	cache := newHTTPResponseCache()
+	cond := &httpCondition{
+		method:       "GET",
+		url:          primary.URL,
+		fallbackURLs: []string{fallback.URL},
+		auth:         scorerAuth{},
+		firesWhen:    &responseBodyContainsLeaf{Value: `"mail.send"`},
+	}
+	m := matchWithGroups(nil)
+
+	// First call: hits both servers.
+	_, err := cond.evaluateWithCache(context.Background(), m, cache)
+	require.NoError(t, err)
+	assert.Equal(t, 1, primaryCalls)
+	assert.Equal(t, 1, fallbackCalls)
+
+	// Second call: both responses cached — no new HTTP calls.
+	_, err = cond.evaluateWithCache(context.Background(), m, cache)
+	require.NoError(t, err)
+	assert.Equal(t, 1, primaryCalls, "primary should be cached")
+	assert.Equal(t, 1, fallbackCalls, "fallback should be cached")
+}
+
+func TestHTTPCondition_FallbackURL_SkipsOn403(t *testing.T) {
+	// Fallback is only tried on 401, not on other error codes.
+	var fallbackCalled bool
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+	}))
+	defer primary.Close()
+
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallbackCalled = true
+		w.WriteHeader(200)
+	}))
+	defer fallback.Close()
+
+	cond := &httpCondition{
+		method:       "GET",
+		url:          primary.URL,
+		fallbackURLs: []string{fallback.URL},
+		auth:         scorerAuth{},
+		firesWhen:    &statusCodeLeaf{Code: 403},
+	}
+
+	fired, err := cond.Evaluate(context.Background(), matchWithGroups(nil))
+	require.NoError(t, err)
+	assert.True(t, fired)
+	assert.False(t, fallbackCalled, "fallback should not be tried on 403")
+}

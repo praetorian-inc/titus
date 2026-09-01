@@ -8,6 +8,8 @@ validators:
     http:
       method: GET
       url: https://api.sendgrid.com/v3/scopes
+      fallback_urls:
+        - https://api.eu.sendgrid.com/v3/scopes
       auth:
         type: bearer
         secret_group: "token"  # Matches (?P<token>...) in rule regex

@@ -23,6 +23,7 @@ type ValidatorDef struct {
 type HTTPDef struct {
 	Method              string   `yaml:"method"`
 	URL                 string   `yaml:"url"`
+	FallbackURLs        []string `yaml:"fallback_urls,omitempty"` // tried in order when primary returns a failure code
 	Auth                AuthDef  `yaml:"auth"`
 	Headers             []Header `yaml:"headers,omitempty"`
 	Body                string   `yaml:"body,omitempty"` // Static request body for POST/PUT
