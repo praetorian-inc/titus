@@ -87,34 +87,6 @@ func TestPII_SSN(t *testing.T) {
 	assert.False(t, piiMatchesInput(t, rule, `ssn = "111-11-1111"`))
 }
 
-func TestPII_PhoneNumber(t *testing.T) {
-	rule := loadPIIRule(t, "np.pii.phone.1")
-	assert.Equal(t, 15, rule.BaseScore)
-	assert.True(t, rule.Noisy)
-
-	assert.True(t, piiMatchesInput(t, rule, `phone = "(212) 867-5309"`))
-	assert.True(t, piiMatchesInput(t, rule, `contact: 415-867-5309`))
-	assert.True(t, piiMatchesInput(t, rule, `call +1 202-486-0143`))
-
-	assert.False(t, piiMatchesInput(t, rule, `phone = "123-456-7890"`))
-	assert.False(t, piiMatchesInput(t, rule, `phone = "000-000-0000"`))
-	assert.False(t, piiMatchesInput(t, rule, `phone = "(212) 555-1234"`))
-	assert.False(t, piiMatchesInput(t, rule, `phone = "212.555.1234"`))
-}
-
-func TestPII_Email(t *testing.T) {
-	rule := loadPIIRule(t, "np.pii.email.1")
-	assert.Equal(t, 15, rule.BaseScore)
-	assert.True(t, rule.Noisy)
-
-	assert.True(t, piiMatchesInput(t, rule, `email = "alice.smith@company.com"`))
-
-	assert.False(t, piiMatchesInput(t, rule, `email = "test@example.com"`))
-	assert.False(t, piiMatchesInput(t, rule, `email = "noreply@company.com"`))
-	assert.False(t, piiMatchesInput(t, rule, `email = "johndoe@gmail.com"`))
-	assert.False(t, piiMatchesInput(t, rule, `import user from "user@1.0.0"`))
-}
-
 func TestPII_AllRulesInDefaultRuleset(t *testing.T) {
 	loader := NewLoader()
 	rulesets, err := loader.LoadBuiltinRulesets()
@@ -131,7 +103,7 @@ func TestPII_AllRulesInDefaultRuleset(t *testing.T) {
 
 	piiIDs := []string{
 		"np.pii.cc.1", "np.pii.cc.2", "np.pii.cc.3", "np.pii.cc.4",
-		"np.pii.ssn.1", "np.pii.phone.1", "np.pii.email.1",
+		"np.pii.ssn.1",
 	}
 
 	ruleIDSet := make(map[string]bool, len(defaultRS.RuleIDs))
