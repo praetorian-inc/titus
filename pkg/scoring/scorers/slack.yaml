@@ -11,6 +11,10 @@
 # API documentation:
 #   auth.test (ok field, enterprise_id):
 #     https://docs.slack.dev/reference/methods/auth.test
+#   conversations.list (private channel enumeration):
+#     https://docs.slack.dev/reference/methods/conversations.list
+#   admin.users.list (workspace admin scope):
+#     https://docs.slack.dev/reference/methods/admin.users.list
 #   Enterprise Grid enterprise_id identification:
 #     https://docs.slack.dev/enterprise-grid/developing-for-enterprise-grid/#enterprise-ids
 #
@@ -53,6 +57,27 @@ scorers:
             value: true
         delta: 10   # confirmed live token — elevated risk
 
+      # --- Dynamic: revoked token detection ---
+      # Inverse of valid-active-token: if auth.test does NOT return ok:true,
+      # the token is revoked or invalid. Zero out the score entirely.
+      - name: revoked-token
+        priority: 1
+        http:
+          method: POST
+          url: https://slack.com/api/auth.test
+          auth:
+            type: bearer
+            secret_group: token
+          headers:
+            - name: Content-Type
+              value: application/json
+        fires_when:
+          negative: true
+          json_path_equals:
+            path: ".ok"
+            value: true
+        set_score: 0   # revoked token — no risk
+
       # --- Dynamic: check if token belongs to an enterprise grid ---
       # auth.test includes enterprise_id as a top-level string field; it is
       # only present (non-empty) for Enterprise Grid workspaces. The previous
@@ -76,3 +101,47 @@ scorers:
             path: ".enterprise_id"
             regex: "^E[A-Z0-9]+"
         delta: 15   # enterprise grid = broader blast radius
+
+      # --- Dynamic: private channel access ---
+      # conversations.list with types=private_channel returns private channels
+      # the token can see. Any result means elevated data access.
+      - name: private-channel-access
+        priority: 60
+        http:
+          method: GET
+          url: https://slack.com/api/conversations.list?types=private_channel&limit=1
+          auth:
+            type: bearer
+            secret_group: token
+        fires_when:
+          json_array_length_gte:
+            path: ".channels"
+            value: 1
+        delta: 10   # can read private channels
+
+      # --- Dynamic: workspace admin scope ---
+      # admin.users.list requires admin.users:read scope. A 200 with ok:true
+      # confirms the token has workspace admin privileges.
+      - name: workspace-admin
+        priority: 50
+        http:
+          method: GET
+          url: https://slack.com/api/admin.users.list?limit=1
+          auth:
+            type: bearer
+            secret_group: token
+        fires_when:
+          json_path_equals:
+            path: ".ok"
+            value: true
+        delta: 20   # workspace admin = full control
+
+      # --- Static: user token prefix (xoxp-) scores higher than bot ---
+      # User tokens (xoxp-) can access broader scopes including user identity,
+      # email harvesting, and potentially admin operations.
+      - name: user-token-prefix
+        priority: 40
+        match_group:
+          name: token
+          matches: '^xoxp-'
+        delta: 5   # user tokens have broader potential scope
