@@ -16,6 +16,7 @@ func BuiltinGoScorers() []*Scorer {
 		GCPGoScorer(),
 		AzureGoScorer(),
 		PlaidGoScorer(),
+		CreditCardGoScorer(),
 	}
 }
 

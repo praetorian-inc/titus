@@ -517,3 +517,8 @@ rulesets:
   - kingfisher.dbconn.perl.1            # Perl DBI Connection with Credentials
   - kingfisher.dbconn.ruby.1            # Ruby DBI Connection with Credentials
   - kingfisher.dbconn.csharp.1          # C# Database Connection Object with Password
+  # Credit card number detection rules (all noisy — require --include-noisy)
+  - np.ccn.1                         # Credit Card Number (Visa)
+  - np.ccn.2                         # Credit Card Number (Mastercard)
+  - np.ccn.3                         # Credit Card Number (Amex)
+  - np.ccn.4                         # Credit Card Number (Discover)

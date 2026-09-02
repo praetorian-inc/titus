@@ -1,0 +1,159 @@
+# Credit card number (CCN) detection rules.
+#
+# All CCN rules are marked noisy: true because they have inherently higher false-positive
+# rates than secret detection rules. Users opt in via --include-noisy.
+#
+# These rules detect potential credit card number exposure, not credential leaks. Base scores are kept
+# low (15-30) to reflect the lower direct exploitability compared to secrets.
+
+rules:
+
+- name: Credit Card Number (Visa)
+  id: np.ccn.1
+  base_score: 25
+  noisy: true
+
+  pattern: |
+    (?x)
+    \b
+    (?P<card> 4[0-9]{3} [\s\-]? [0-9]{4} [\s\-]? [0-9]{4} [\s\-]? [0-9]{4} )
+    \b
+
+  categories: [pii]
+  min_entropy: 2.5
+
+  pattern_requirements:
+    min_digits: 13
+    ignore_if_contains:
+    - "4111111111111111"
+    - "4111-1111-1111-1111"
+    - "4242424242424242"
+    - "4242-4242-4242-4242"
+    - "4000000000000000"
+    - "4000-0000-0000-0000"
+    - "4012888888881881"
+    - "4012-8888-8888-1881"
+
+  examples:
+  - 'card_number = "4532015112830366"'
+  - 'visa: 4916-3385-0728-9460'
+  - 'payment: 4539 1488 0343 6467'
+
+  negative_examples:
+  - 'test_card = "4111111111111111"'
+  - 'stripe_test = "4242424242424242"'
+  - '4000000000000000'
+  - '4444444444444444'
+
+  description: |
+    Visa credit card number (starts with 4, 16 digits). Test/placeholder card numbers
+    are filtered out. This finding indicates potential credit card number exposure that may require
+    review under PCI DSS or data protection regulations.
+
+- name: Credit Card Number (Mastercard)
+  id: np.ccn.2
+  base_score: 25
+  noisy: true
+
+  pattern: |
+    (?x)
+    \b
+    (?P<card> 5[1-5][0-9]{2} [\s\-]? [0-9]{4} [\s\-]? [0-9]{4} [\s\-]? [0-9]{4} )
+    \b
+
+  categories: [pii]
+  min_entropy: 2.5
+
+  pattern_requirements:
+    min_digits: 13
+    ignore_if_contains:
+    - "5500000000000004"
+    - "5500-0000-0000-0004"
+    - "5555555555554444"
+    - "5555-5555-5555-4444"
+    - "5105105105105100"
+    - "5105-1051-0510-5100"
+
+  examples:
+  - 'mc_card = "5425233430109903"'
+  - 'mastercard: 5219-6812-4509-3821'
+
+  negative_examples:
+  - 'test_card = "5555555555554444"'
+  - 'test_card = "5105105105105100"'
+
+  description: |
+    Mastercard credit card number (starts with 51-55, 16 digits). Test/placeholder
+    card numbers are filtered out.
+
+- name: Credit Card Number (Amex)
+  id: np.ccn.3
+  base_score: 25
+  noisy: true
+
+  pattern: |
+    (?x)
+    \b
+    (?P<card> 3[47][0-9]{2} [\s\-]? [0-9]{6} [\s\-]? [0-9]{5} )
+    \b
+
+  categories: [pii]
+  min_entropy: 2.5
+
+  pattern_requirements:
+    min_digits: 13
+    ignore_if_contains:
+    - "378282246310005"
+    - "3782-822463-10005"
+    - "371449635398431"
+    - "3714-496353-98431"
+    - "340000000000009"
+    - "3400-000000-00009"
+
+  examples:
+  - 'amex = "378734493671000"'
+  - 'card: 3493-021578-52310'
+
+  negative_examples:
+  - 'test_amex = "378282246310005"'
+  - 'test_amex = "371449635398431"'
+
+  description: |
+    American Express credit card number (starts with 34 or 37, 15 digits).
+    Test/placeholder card numbers are filtered out.
+
+- name: Credit Card Number (Discover)
+  id: np.ccn.4
+  base_score: 25
+  noisy: true
+
+  pattern: |
+    (?x)
+    \b
+    (?P<card> 6(?:011|5[0-9]{2}) [\s\-]? [0-9]{4} [\s\-]? [0-9]{4} [\s\-]? [0-9]{4} )
+    \b
+
+  categories: [pii]
+  min_entropy: 2.5
+
+  pattern_requirements:
+    min_digits: 13
+    ignore_if_contains:
+    - "6011111111111117"
+    - "6011-1111-1111-1117"
+    - "6011000000000004"
+    - "6011-0000-0000-0004"
+
+  examples:
+  - 'discover = "6011514433546201"'
+  - 'card: 6011-0009-9013-9424'
+
+  negative_examples:
+  - 'test_discover = "6011111111111117"'
+  - 'test_discover = "6011000000000004"'
+
+  description: |
+    Discover credit card number (starts with 6011 or 65, 16 digits).
+    Test/placeholder card numbers are filtered out.
+
+
