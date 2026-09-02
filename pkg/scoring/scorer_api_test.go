@@ -349,3 +349,197 @@ scorers:
 
 	assert.Equal(t, 60, score.Final, "standard workspace (no enterprise_id) should not fire")
 }
+
+func TestSlackScorer_RevokedToken_ZerosScore(t *testing.T) {
+	srv := mockAPIServer(t, 200, loadFixture(t, "slack_auth_test_invalid.json"), nil)
+	defer srv.Close()
+
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.2]
+    modifiers:
+      - name: revoked-token
+        priority: 85
+        http:
+          method: POST
+          url: ` + srv.URL + `
+          auth: {type: bearer, secret_group: token}
+        fires_when:
+          negative: true
+          json_path_equals:
+            path: ".ok"
+            value: true
+        set_score: 0
+`
+	score := scoreWithYAML(t, yaml, "np.slack.2", 70, map[string][]byte{"token": []byte("xoxb-revoked")})
+
+	assert.Equal(t, 0, score.Final, "revoked token should zero the score")
+}
+
+func TestSlackScorer_RevokedToken_DoesNotFireForValidToken(t *testing.T) {
+	srv := mockAPIServer(t, 200, loadFixture(t, "slack_auth_test_valid.json"), nil)
+	defer srv.Close()
+
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.2]
+    modifiers:
+      - name: revoked-token
+        priority: 85
+        http:
+          method: POST
+          url: ` + srv.URL + `
+          auth: {type: bearer, secret_group: token}
+        fires_when:
+          negative: true
+          json_path_equals:
+            path: ".ok"
+            value: true
+        set_score: 0
+`
+	score := scoreWithYAML(t, yaml, "np.slack.2", 70, map[string][]byte{"token": []byte("xoxb-valid")})
+
+	assert.Equal(t, 70, score.Final, "valid token should not trigger revoked modifier")
+}
+
+func TestSlackScorer_PrivateChannelAccess_Fires(t *testing.T) {
+	srv := mockAPIServer(t, 200, loadFixture(t, "slack_conversations_private.json"), nil)
+	defer srv.Close()
+
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.2]
+    modifiers:
+      - name: private-channel-access
+        priority: 60
+        http:
+          method: GET
+          url: ` + srv.URL + `
+          auth: {type: bearer, secret_group: token}
+        fires_when:
+          json_array_length_gte:
+            path: ".channels"
+            value: 1
+        delta: 10
+`
+	score := scoreWithYAML(t, yaml, "np.slack.2", 60, map[string][]byte{"token": []byte("xoxb-test")})
+
+	assert.Equal(t, 70, score.Final, "private channel access should add +10")
+}
+
+func TestSlackScorer_PrivateChannelAccess_DoesNotFireWhenEmpty(t *testing.T) {
+	srv := mockAPIServer(t, 200, loadFixture(t, "slack_conversations_empty.json"), nil)
+	defer srv.Close()
+
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.2]
+    modifiers:
+      - name: private-channel-access
+        priority: 60
+        http:
+          method: GET
+          url: ` + srv.URL + `
+          auth: {type: bearer, secret_group: token}
+        fires_when:
+          json_array_length_gte:
+            path: ".channels"
+            value: 1
+        delta: 10
+`
+	score := scoreWithYAML(t, yaml, "np.slack.2", 60, map[string][]byte{"token": []byte("xoxb-test")})
+
+	assert.Equal(t, 60, score.Final, "no private channels should not fire")
+}
+
+func TestSlackScorer_WorkspaceAdmin_Fires(t *testing.T) {
+	srv := mockAPIServer(t, 200, loadFixture(t, "slack_admin_users_ok.json"), nil)
+	defer srv.Close()
+
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.2]
+    modifiers:
+      - name: workspace-admin
+        priority: 50
+        http:
+          method: GET
+          url: ` + srv.URL + `
+          auth: {type: bearer, secret_group: token}
+        fires_when:
+          json_path_equals:
+            path: ".ok"
+            value: true
+        delta: 20
+`
+	score := scoreWithYAML(t, yaml, "np.slack.2", 60, map[string][]byte{"token": []byte("xoxb-admin")})
+
+	assert.Equal(t, 80, score.Final, "workspace admin should add +20")
+}
+
+func TestSlackScorer_WorkspaceAdmin_DoesNotFireWithoutScope(t *testing.T) {
+	srv := mockAPIServer(t, 200, loadFixture(t, "slack_admin_users_denied.json"), nil)
+	defer srv.Close()
+
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.2]
+    modifiers:
+      - name: workspace-admin
+        priority: 50
+        http:
+          method: GET
+          url: ` + srv.URL + `
+          auth: {type: bearer, secret_group: token}
+        fires_when:
+          json_path_equals:
+            path: ".ok"
+            value: true
+        delta: 20
+`
+	score := scoreWithYAML(t, yaml, "np.slack.2", 60, map[string][]byte{"token": []byte("xoxb-limited")})
+
+	assert.Equal(t, 60, score.Final, "missing admin scope should not fire")
+}
+
+func TestSlackScorer_UserTokenPrefix_Fires(t *testing.T) {
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.4]
+    modifiers:
+      - name: user-token-prefix
+        priority: 40
+        match_group:
+          name: token
+          matches: '^xoxp-'
+        delta: 5
+`
+	score := scoreWithYAML(t, yaml, "np.slack.4", 75, map[string][]byte{"token": []byte("xoxp-12345-67890-abcdef")})
+
+	assert.Equal(t, 80, score.Final, "user token prefix should add +5")
+}
+
+func TestSlackScorer_UserTokenPrefix_DoesNotFireForBotToken(t *testing.T) {
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.2]
+    modifiers:
+      - name: user-token-prefix
+        priority: 40
+        match_group:
+          name: token
+          matches: '^xoxp-'
+        delta: 5
+`
+	score := scoreWithYAML(t, yaml, "np.slack.2", 70, map[string][]byte{"token": []byte("xoxb-12345-67890-abcdef")})
+
+	assert.Equal(t, 70, score.Final, "bot token should not match xoxp- prefix")
+}
