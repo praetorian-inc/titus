@@ -41,7 +41,9 @@ func TestPII_VisaCreditCard(t *testing.T) {
 	assert.True(t, piiMatchesInput(t, rule, `visa: 4916-3385-0728-9460`))
 
 	assert.False(t, piiMatchesInput(t, rule, `test_card = "4111111111111111"`))
+	assert.False(t, piiMatchesInput(t, rule, `test_card = "4111-1111-1111-1111"`))
 	assert.False(t, piiMatchesInput(t, rule, `test_card = "4242424242424242"`))
+	assert.False(t, piiMatchesInput(t, rule, `test_card = "4242-4242-4242-4242"`))
 }
 
 func TestPII_MastercardCreditCard(t *testing.T) {
@@ -90,10 +92,14 @@ func TestPII_PhoneNumber(t *testing.T) {
 	assert.Equal(t, 15, rule.BaseScore)
 	assert.True(t, rule.Noisy)
 
+	assert.True(t, piiMatchesInput(t, rule, `phone = "(212) 867-5309"`))
 	assert.True(t, piiMatchesInput(t, rule, `contact: 415-867-5309`))
+	assert.True(t, piiMatchesInput(t, rule, `call +1 202-486-0143`))
 
 	assert.False(t, piiMatchesInput(t, rule, `phone = "123-456-7890"`))
 	assert.False(t, piiMatchesInput(t, rule, `phone = "000-000-0000"`))
+	assert.False(t, piiMatchesInput(t, rule, `phone = "(212) 555-1234"`))
+	assert.False(t, piiMatchesInput(t, rule, `phone = "212.555.1234"`))
 }
 
 func TestPII_Email(t *testing.T) {
