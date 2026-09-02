@@ -517,3 +517,11 @@ rulesets:
   - kingfisher.dbconn.perl.1            # Perl DBI Connection with Credentials
   - kingfisher.dbconn.ruby.1            # Ruby DBI Connection with Credentials
   - kingfisher.dbconn.csharp.1          # C# Database Connection Object with Password
+  # PII detection rules (all noisy — require --include-noisy)
+  - np.pii.cc.1                         # Credit Card Number (Visa)
+  - np.pii.cc.2                         # Credit Card Number (Mastercard)
+  - np.pii.cc.3                         # Credit Card Number (Amex)
+  - np.pii.cc.4                         # Credit Card Number (Discover)
+  - np.pii.ssn.1                        # US Social Security Number
+  - np.pii.phone.1                      # US Phone Number
+  - np.pii.email.1                      # Email Address (PII Context)
