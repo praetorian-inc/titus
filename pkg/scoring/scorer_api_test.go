@@ -360,7 +360,7 @@ scorers:
     rule_ids: [np.slack.2]
     modifiers:
       - name: revoked-token
-        priority: 85
+        priority: 1
         http:
           method: POST
           url: ` + srv.URL + `
@@ -387,7 +387,7 @@ scorers:
     rule_ids: [np.slack.2]
     modifiers:
       - name: revoked-token
-        priority: 85
+        priority: 1
         http:
           method: POST
           url: ` + srv.URL + `
@@ -402,6 +402,39 @@ scorers:
 	score := scoreWithYAML(t, yaml, "np.slack.2", 70, map[string][]byte{"token": []byte("xoxb-valid")})
 
 	assert.Equal(t, 70, score.Final, "valid token should not trigger revoked modifier")
+}
+
+func TestSlackScorer_RevokedUserToken_ZerosScoreAfterPrefixDelta(t *testing.T) {
+	srv := mockAPIServer(t, 200, loadFixture(t, "slack_auth_test_invalid.json"), nil)
+	defer srv.Close()
+
+	yaml := `
+scorers:
+  - name: test-scorer
+    rule_ids: [np.slack.4]
+    modifiers:
+      - name: user-token-prefix
+        priority: 40
+        match_group:
+          name: token
+          matches: '^xoxp-'
+        delta: 5
+      - name: revoked-token
+        priority: 1
+        http:
+          method: POST
+          url: ` + srv.URL + `
+          auth: {type: bearer, secret_group: token}
+        fires_when:
+          negative: true
+          json_path_equals:
+            path: ".ok"
+            value: true
+        set_score: 0
+`
+	score := scoreWithYAML(t, yaml, "np.slack.4", 75, map[string][]byte{"token": []byte("xoxp-revoked-token")})
+
+	assert.Equal(t, 0, score.Final, "revoked xoxp- token must be zero after prefix delta fires first")
 }
 
 func TestSlackScorer_PrivateChannelAccess_Fires(t *testing.T) {

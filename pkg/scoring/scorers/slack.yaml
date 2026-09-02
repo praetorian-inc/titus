@@ -61,7 +61,7 @@ scorers:
       # Inverse of valid-active-token: if auth.test does NOT return ok:true,
       # the token is revoked or invalid. Zero out the score entirely.
       - name: revoked-token
-        priority: 85
+        priority: 1
         http:
           method: POST
           url: https://slack.com/api/auth.test
@@ -130,9 +130,6 @@ scorers:
           auth:
             type: bearer
             secret_group: token
-          headers:
-            - name: Content-Type
-              value: application/json
         fires_when:
           json_path_equals:
             path: ".ok"
