@@ -522,4 +522,3 @@ rulesets:
   - np.pii.cc.2                         # Credit Card Number (Mastercard)
   - np.pii.cc.3                         # Credit Card Number (Amex)
   - np.pii.cc.4                         # Credit Card Number (Discover)
-  - np.pii.ssn.1                        # US Social Security Number

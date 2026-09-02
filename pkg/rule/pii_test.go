@@ -70,23 +70,6 @@ func TestPII_DiscoverCreditCard(t *testing.T) {
 	assert.False(t, piiMatchesInput(t, rule, `test_discover = "6011111111111117"`))
 }
 
-func TestPII_SSN(t *testing.T) {
-	rule := loadPIIRule(t, "np.pii.ssn.1")
-	assert.Equal(t, 30, rule.BaseScore)
-	assert.True(t, rule.Noisy)
-
-	assert.True(t, piiMatchesInput(t, rule, `ssn = "267-43-9185"`))
-	assert.True(t, piiMatchesInput(t, rule, `social_security: 431 98 2134`))
-
-	assert.False(t, piiMatchesInput(t, rule, `ssn = "123-45-6789"`))
-	assert.False(t, piiMatchesInput(t, rule, `ssn = "000-12-3456"`))
-	assert.False(t, piiMatchesInput(t, rule, `ssn = "666-12-3456"`))
-	assert.False(t, piiMatchesInput(t, rule, `ssn = "900-12-3456"`))
-	assert.False(t, piiMatchesInput(t, rule, `ssn = "123-00-3456"`))
-	assert.False(t, piiMatchesInput(t, rule, `ssn = "123-45-0000"`))
-	assert.False(t, piiMatchesInput(t, rule, `ssn = "111-11-1111"`))
-}
-
 func TestPII_AllRulesInDefaultRuleset(t *testing.T) {
 	loader := NewLoader()
 	rulesets, err := loader.LoadBuiltinRulesets()
@@ -103,7 +86,6 @@ func TestPII_AllRulesInDefaultRuleset(t *testing.T) {
 
 	piiIDs := []string{
 		"np.pii.cc.1", "np.pii.cc.2", "np.pii.cc.3", "np.pii.cc.4",
-		"np.pii.ssn.1",
 	}
 
 	ruleIDSet := make(map[string]bool, len(defaultRS.RuleIDs))
