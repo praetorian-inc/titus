@@ -54,13 +54,13 @@ func (c *ccFailsLuhnCondition) Evaluate(_ context.Context, m *types.Match) (bool
 	return !luhnCheck(digits), nil
 }
 
-// CreditCardGoScorer returns the PII credit card scoring configuration.
+// CreditCardGoScorer returns the credit card number (CCN) scoring configuration.
 // It zeros the score for captured numbers that fail the Luhn checksum,
 // eliminating false positives from non-card digit sequences.
 func CreditCardGoScorer() *Scorer {
 	return &Scorer{
-		Name:    "pii-credit-card-luhn",
-		RuleIDs: []string{"np.pii.cc.1", "np.pii.cc.2", "np.pii.cc.3", "np.pii.cc.4"},
+		Name:    "ccn-luhn",
+		RuleIDs: []string{"np.ccn.1", "np.ccn.2", "np.ccn.3", "np.ccn.4"},
 		Modifiers: []Modifier{
 			{
 				Name:      "fails-luhn",

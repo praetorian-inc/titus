@@ -1,15 +1,15 @@
-# PII detection rules — credit card numbers, social security numbers, phone numbers, email addresses.
+# Credit card number (CCN) detection rules.
 #
-# All PII rules are marked noisy: true because they have inherently higher false-positive
+# All CCN rules are marked noisy: true because they have inherently higher false-positive
 # rates than secret detection rules. Users opt in via --include-noisy.
 #
-# These rules detect potential PII exposure, not credential leaks. Base scores are kept
+# These rules detect potential credit card number exposure, not credential leaks. Base scores are kept
 # low (15-30) to reflect the lower direct exploitability compared to secrets.
 
 rules:
 
 - name: Credit Card Number (Visa)
-  id: np.pii.cc.1
+  id: np.ccn.1
   base_score: 25
   noisy: true
 
@@ -47,11 +47,11 @@ rules:
 
   description: |
     Visa credit card number (starts with 4, 16 digits). Test/placeholder card numbers
-    are filtered out. This finding indicates potential PII exposure that may require
+    are filtered out. This finding indicates potential credit card number exposure that may require
     review under PCI DSS or data protection regulations.
 
 - name: Credit Card Number (Mastercard)
-  id: np.pii.cc.2
+  id: np.ccn.2
   base_score: 25
   noisy: true
 
@@ -87,7 +87,7 @@ rules:
     card numbers are filtered out.
 
 - name: Credit Card Number (Amex)
-  id: np.pii.cc.3
+  id: np.ccn.3
   base_score: 25
   noisy: true
 
@@ -123,7 +123,7 @@ rules:
     Test/placeholder card numbers are filtered out.
 
 - name: Credit Card Number (Discover)
-  id: np.pii.cc.4
+  id: np.ccn.4
   base_score: 25
   noisy: true
 

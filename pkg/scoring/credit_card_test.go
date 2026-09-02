@@ -96,8 +96,8 @@ func TestCCFailsLuhnCondition_MissingGroup(t *testing.T) {
 
 func TestCreditCardGoScorer_Structure(t *testing.T) {
 	s := CreditCardGoScorer()
-	assert.Equal(t, "pii-credit-card-luhn", s.Name)
-	assert.Equal(t, []string{"np.pii.cc.1", "np.pii.cc.2", "np.pii.cc.3", "np.pii.cc.4"}, s.RuleIDs)
+	assert.Equal(t, "ccn-luhn", s.Name)
+	assert.Equal(t, []string{"np.ccn.1", "np.ccn.2", "np.ccn.3", "np.ccn.4"}, s.RuleIDs)
 	require.Len(t, s.Modifiers, 1)
 	assert.Equal(t, "fails-luhn", s.Modifiers[0].Name)
 	assert.Equal(t, ModifierKindSetScore, s.Modifiers[0].Kind)
@@ -108,10 +108,10 @@ func TestCreditCardGoScorer_Structure(t *testing.T) {
 func TestCreditCardGoScorer_Integration_ValidCard(t *testing.T) {
 	scorers := []*Scorer{CreditCardGoScorer()}
 	engine := NewEngine(scorers, EngineConfig{ScopeEnabled: false, Timeout: 5e9})
-	rule := &types.Rule{ID: "np.pii.cc.1", BaseScore: 25}
-	finding := &types.Finding{ID: "test", RuleID: "np.pii.cc.1"}
+	rule := &types.Rule{ID: "np.ccn.1", BaseScore: 25}
+	finding := &types.Finding{ID: "test", RuleID: "np.ccn.1"}
 	match := &types.Match{
-		RuleID:      "np.pii.cc.1",
+		RuleID:      "np.ccn.1",
 		NamedGroups: map[string][]byte{"card": []byte("4532015112830366")},
 	}
 	score := engine.Score(context.Background(), finding, []*types.Match{match}, rule)
@@ -121,10 +121,10 @@ func TestCreditCardGoScorer_Integration_ValidCard(t *testing.T) {
 func TestCreditCardGoScorer_Integration_InvalidCard(t *testing.T) {
 	scorers := []*Scorer{CreditCardGoScorer()}
 	engine := NewEngine(scorers, EngineConfig{ScopeEnabled: false, Timeout: 5e9})
-	rule := &types.Rule{ID: "np.pii.cc.1", BaseScore: 25}
-	finding := &types.Finding{ID: "test", RuleID: "np.pii.cc.1"}
+	rule := &types.Rule{ID: "np.ccn.1", BaseScore: 25}
+	finding := &types.Finding{ID: "test", RuleID: "np.ccn.1"}
 	match := &types.Match{
-		RuleID:      "np.pii.cc.1",
+		RuleID:      "np.ccn.1",
 		NamedGroups: map[string][]byte{"card": []byte("1234567890123456")},
 	}
 	score := engine.Score(context.Background(), finding, []*types.Match{match}, rule)
