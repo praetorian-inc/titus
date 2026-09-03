@@ -226,11 +226,23 @@ func (c *stsKeyActiveCondition) Evaluate(ctx context.Context, m *types.Match) (b
 	if err != nil {
 		return false, nil
 	}
-	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
-		// Credential rejected — not an error in the scoring sense, just doesn't fire
 		return false, nil
 	}
+
+	arn := awslib.ToString(identity.Arn)
+	m.Owner = &types.OwnerInfo{
+		Service:   "aws",
+		AccountID: awslib.ToString(identity.Account),
+		ARN:       arn,
+	}
+	if username := extractUsernameFromARN(arn); username != "" {
+		m.Owner.User = username
+	} else if roleName := extractRoleNameFromARN(arn); roleName != "" {
+		m.Owner.User = roleName
+	}
+
 	return true, nil
 }
 
