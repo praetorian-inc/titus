@@ -71,6 +71,28 @@ titus scan path/to/code --validate
 
 Results are written to a datastore (`titus.ds` by default) and printed to the console.
 
+### Subcommands
+
+<!-- BEGIN generated: cli-subcommands -->
+Titus organizes its functionality into these focused subcommands:
+
+```bash
+titus enum    # Enumerate remote services for secrets
+titus explore # Interactively explore scan results
+titus report  # Generate a report from scan results
+titus rules   # Manage detection rules
+titus scan    # Scan a target for secrets
+titus serve   # Run as streaming server for Burp extension integration
+titus version # Show version information
+```
+<!-- END generated: cli-subcommands -->
+
+Every subcommand accepts `--help` for its own flags. The top-level `titus <provider>` forms that predate `titus enum <provider>` still work, but they are hidden and deprecated rather than aliases, so they are listed in the generated reference instead of here.
+
+<!-- BEGIN generated: cli-aliases -->
+The full reference — every subcommand, alias and flag, including the ones hidden from `--help` — is generated into [docs/CLI.md](docs/CLI.md).
+<!-- END generated: cli-aliases -->
+
 ## Scanning Options
 
 ### GitHub & GitLab Scanning
@@ -105,7 +127,7 @@ titus github --user octocat
 titus gitlab scan --group mygroup --token $GITLAB_TOKEN
 
 # Scan a single repo with git history (finds deleted secrets)
-titus github owner/repo --git
+titus github scan owner/repo --git
 ```
 
 Tokens are optional for public repositories. Set `GITHUB_TOKEN` or `GITLAB_TOKEN` (or use `--token`) for private repository access and higher API rate limits.

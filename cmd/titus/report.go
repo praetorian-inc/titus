@@ -37,7 +37,7 @@ type styles struct {
 }
 
 // newStyles creates color formatters for report output
-// enabled=false respects --no-color flag and NO_COLOR env var
+// enabled=false is what --color=never and the NO_COLOR env var resolve to
 func newStyles(enabled bool) *styles {
 	s := &styles{
 		findingHeading: color.New(color.Bold, color.FgHiWhite),
