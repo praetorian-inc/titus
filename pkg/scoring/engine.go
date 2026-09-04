@@ -172,6 +172,9 @@ func (e *Engine) Score(ctx context.Context, f *types.Finding, matches []*types.M
 	if primary != nil && primary.Owner != nil && f.Owner == nil {
 		f.Owner = primary.Owner
 	}
+	if primary != nil && len(primary.Resources) > 0 && len(f.Resources) == 0 {
+		f.Resources = primary.Resources
+	}
 
 	return score
 }

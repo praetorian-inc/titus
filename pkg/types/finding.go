@@ -18,6 +18,9 @@ type Finding struct {
 	// Owner identifies who owns or created the credential. Nil when
 	// owner resolution was not performed or the API did not return identity data.
 	Owner *OwnerInfo `json:"owner,omitempty"`
+	// Resources lists specific assets accessible via the credential. Nil when
+	// resource enumeration was not performed or the API returned nothing.
+	Resources []ResourceInfo `json:"resources,omitempty"`
 }
 
 // ComputeFindingID computes content-based finding ID.
