@@ -860,13 +860,17 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 }
 
 func formatResourceSummary(resources []types.ResourceInfo) string {
+	totals := map[string]int{}
 	counts := map[string]int{}
 	for _, r := range resources {
-		if r.Count > 0 {
-			counts[r.Type] += r.Count
+		if r.Name == "total" && r.Count > 0 {
+			totals[r.Type] = r.Count
 		} else {
 			counts[r.Type]++
 		}
+	}
+	for typ, total := range totals {
+		counts[typ] = total
 	}
 	var parts []string
 	for typ, n := range counts {

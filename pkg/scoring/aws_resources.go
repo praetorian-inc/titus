@@ -81,15 +81,14 @@ func (c *awsS3BucketsCondition) Evaluate(ctx context.Context, m *types.Match) (b
 
 	hasProd := false
 	for i, b := range out.Buckets {
-		if i >= maxResourcesPerType {
-			break
-		}
 		name := awslib.ToString(b.Name)
-		m.Resources = append(m.Resources, types.ResourceInfo{
-			Service: "aws",
-			Type:    "s3_bucket",
-			Name:    name,
-		})
+		if i < maxResourcesPerType {
+			m.Resources = append(m.Resources, types.ResourceInfo{
+				Service: "aws",
+				Type:    "s3_bucket",
+				Name:    name,
+			})
+		}
 		if containsSensitiveName(name) {
 			hasProd = true
 		}

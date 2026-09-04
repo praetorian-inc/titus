@@ -213,6 +213,30 @@ func TestAWSS3BucketsCondition_TruncatesAtMax(t *testing.T) {
 	assert.Equal(t, 15, m.Resources[10].Count)
 }
 
+func TestAWSS3BucketsCondition_ScansProdBeyondMax(t *testing.T) {
+	buckets := make([]string, 15)
+	for i := range buckets {
+		buckets[i] = "bucket-" + string(rune('a'+i))
+	}
+	buckets[12] = "prod-customer-data"
+	cond := &awsS3BucketsCondition{
+		clientFactory: fakeFactory(
+			&mockSTS{identity: &sts.GetCallerIdentityOutput{}},
+			&mockIAM{},
+		),
+		resourceClientFactory: fakeResourceFactory(
+			&mockS3{buckets: buckets},
+			&mockSecretsManager{},
+		),
+	}
+
+	m := testMatch()
+	fired, err := cond.Evaluate(context.Background(), m)
+	require.NoError(t, err)
+	assert.True(t, fired, "should fire when prod-named bucket is beyond maxResourcesPerType")
+	assert.Equal(t, 11, len(m.Resources), "still only 10 individual + 1 total summary")
+}
+
 func TestAWSSecretsManagerCondition_PopulatesResources(t *testing.T) {
 	cond := &awsSecretsManagerCondition{
 		clientFactory: fakeFactory(
