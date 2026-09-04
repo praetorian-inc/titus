@@ -1,0 +1,3230 @@
+{
+  "schemaVersion": 1,
+  "surfaceHash": "sha256:0acd16ad62c2775b57bf1cfa8f508594ef49decc0b9f93dcae62aa0f9cc06fa8",
+  "commands": [
+    {
+      "path": "titus",
+      "use": "titus",
+      "short": "Titus - Go port of NoseyParker secrets scanner",
+      "runnable": false,
+      "flags": [
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output"
+        }
+      ]
+    },
+    {
+      "path": "titus confluence",
+      "use": "confluence",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum confluence' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "base-url",
+          "type": "string",
+          "usage": "Confluence base URL (or CONFLUENCE_BASE_URL env)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "5",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "spaces",
+          "type": "string",
+          "usage": "Comma-separated space keys to scan (empty = all)"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Confluence API token or PAT (or CONFLUENCE_TOKEN env)"
+        },
+        {
+          "name": "username",
+          "type": "string",
+          "usage": "Confluence username for Cloud basic auth (or CONFLUENCE_USERNAME env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum",
+      "use": "enum",
+      "short": "Enumerate remote services for secrets",
+      "runnable": false,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum confluence",
+      "use": "confluence",
+      "short": "Scan a Confluence instance for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "base-url",
+          "type": "string",
+          "usage": "Confluence base URL (or CONFLUENCE_BASE_URL env)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "5",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "spaces",
+          "type": "string",
+          "usage": "Comma-separated space keys to scan (empty = all)"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Confluence API token or PAT (or CONFLUENCE_TOKEN env)"
+        },
+        {
+          "name": "username",
+          "type": "string",
+          "usage": "Confluence username for Cloud basic auth (or CONFLUENCE_USERNAME env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum discord",
+      "use": "discord",
+      "short": "Scan Discord servers for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "channels",
+          "type": "string",
+          "usage": "Comma-separated channel IDs to scan (default: all text channels)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "guilds",
+          "type": "string",
+          "usage": "Comma-separated guild/server IDs to scan (default: all)"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "2",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Discord Bot token (or DISCORD_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum gdrive",
+      "use": "gdrive",
+      "short": "Scan Google Drive for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "client-id",
+          "type": "string",
+          "usage": "OAuth client ID (or GOOGLE_DRIVE_CLIENT_ID env)"
+        },
+        {
+          "name": "client-secret",
+          "type": "string",
+          "usage": "OAuth client secret (or GOOGLE_DRIVE_CLIENT_SECRET env)"
+        },
+        {
+          "name": "concurrency",
+          "type": "int",
+          "default": "5",
+          "usage": "Number of parallel file download workers"
+        },
+        {
+          "name": "drive-id",
+          "type": "string",
+          "usage": "Scan a single shared drive by ID"
+        },
+        {
+          "name": "extract",
+          "type": "string",
+          "default": "xlsx",
+          "usage": "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "max-file-size",
+          "type": "int64",
+          "default": "10485760",
+          "usage": "Maximum file size to scan in bytes (0 = unlimited)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "16",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "refresh-token",
+          "type": "string",
+          "usage": "OAuth refresh token (or GOOGLE_DRIVE_REFRESH_TOKEN env)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "default": "all",
+          "usage": "Drive scope: all, mine, shared-with-me, shared-drives"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "OAuth access token (or GOOGLE_DRIVE_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum github",
+      "use": "github [owner/repo]",
+      "short": "Scan GitHub repositories for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between repository clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "org",
+          "type": "string",
+          "usage": "Scan all repositories in organization"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "skip-forks",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip forked repositories when scanning orgs or users"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitHub API token (or GITHUB_TOKEN env; optional for public repos)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all repositories for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus enum github scan",
+      "use": "scan [owner/repo]",
+      "short": "Scan GitHub repository or organization",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between repository clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "org",
+          "type": "string",
+          "usage": "Scan all repositories in organization"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "skip-forks",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip forked repositories when scanning orgs or users"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitHub API token (or GITHUB_TOKEN env; optional for public repos)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all repositories for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus enum gitlab",
+      "use": "gitlab [namespace/project]",
+      "short": "Scan GitLab projects",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "group",
+          "type": "string",
+          "usage": "Scan all projects in group"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between project clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitLab token (or GITLAB_TOKEN env; optional for public projects)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitLab base URL (default: gitlab.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all projects for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus enum gitlab scan",
+      "use": "scan [namespace/project]",
+      "short": "Scan GitLab project or group",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "group",
+          "type": "string",
+          "usage": "Scan all projects in group"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between project clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitLab token (or GITLAB_TOKEN env; optional for public projects)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitLab base URL (default: gitlab.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all projects for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus enum jira",
+      "use": "jira",
+      "short": "Scan a Jira instance for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "allow-insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "Allow plaintext HTTP base URLs (for internal instances)"
+        },
+        {
+          "name": "base-url",
+          "type": "string",
+          "usage": "Jira base URL (or JIRA_BASE_URL env)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "projects",
+          "type": "string",
+          "usage": "Comma-separated project keys to scan (empty = all)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "5",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Jira API token or PAT (or JIRA_TOKEN env)"
+        },
+        {
+          "name": "username",
+          "type": "string",
+          "usage": "Jira username for Cloud basic auth (or JIRA_USERNAME env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum linear",
+      "use": "linear",
+      "short": "Scan a Linear workspace for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Linear API key (or LINEAR_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum microsoft",
+      "use": "microsoft",
+      "short": "Scan Microsoft 365 services for secrets",
+      "runnable": false,
+      "flags": [
+        {
+          "name": "client-id",
+          "type": "string",
+          "default": "1950a258-227b-4e31-a9cf-717495945fc2",
+          "usage": "Azure AD application (client) ID for device code auth"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "refresh-token",
+          "type": "string",
+          "usage": "Microsoft refresh token (or SHAREPOINT_REFRESH_TOKEN env)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "tenant-id",
+          "type": "string",
+          "default": "organizations",
+          "usage": "Azure AD tenant ID (or 'organizations')"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Graph API OAuth bearer token (or SHAREPOINT_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum microsoft sharepoint",
+      "use": "sharepoint",
+      "short": "Scan SharePoint sites for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "client-id",
+          "type": "string",
+          "default": "1950a258-227b-4e31-a9cf-717495945fc2",
+          "usage": "Azure AD application (client) ID for device code auth",
+          "inherited": true
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "refresh-token",
+          "type": "string",
+          "usage": "Microsoft refresh token (or SHAREPOINT_REFRESH_TOKEN env)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "site",
+          "type": "string",
+          "usage": "Specific site URL or name to scan (empty = all sites)"
+        },
+        {
+          "name": "tenant-id",
+          "type": "string",
+          "default": "organizations",
+          "usage": "Azure AD tenant ID (or 'organizations')",
+          "inherited": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Graph API OAuth bearer token (or SHAREPOINT_TOKEN env)",
+          "inherited": true
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum notion",
+      "use": "notion",
+      "short": "Scan a Notion workspace for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "concurrency",
+          "type": "int",
+          "default": "10",
+          "usage": "Number of parallel page fetchers"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "page",
+          "type": "string",
+          "usage": "Scan a single page (URL or page ID)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "teamspace",
+          "type": "string",
+          "usage": "Scan only pages in this teamspace (name or ID)"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Notion token_v2 session cookie (or NOTION_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "usage": "Workspace name or ID (for multi-workspace accounts)"
+        }
+      ]
+    },
+    {
+      "path": "titus enum servicenow",
+      "use": "servicenow",
+      "short": "Scan a ServiceNow instance for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "allow-insecure-http",
+          "type": "bool",
+          "default": "false",
+          "usage": "Allow plaintext HTTP instance URLs"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "instance",
+          "type": "string",
+          "usage": "ServiceNow instance URL (or SERVICENOW_INSTANCE env)"
+        },
+        {
+          "name": "oauth-token",
+          "type": "string",
+          "usage": "ServiceNow OAuth2 bearer token (or SERVICENOW_OAUTH_TOKEN env)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "password",
+          "type": "string",
+          "usage": "ServiceNow password for basic auth (or SERVICENOW_PASSWORD env)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "3",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "tables",
+          "type": "string",
+          "usage": "Comma-separated table names to scan (default: incident,change_request,kb_knowledge)"
+        },
+        {
+          "name": "username",
+          "type": "string",
+          "usage": "ServiceNow username for basic auth (or SERVICENOW_USERNAME env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum slack",
+      "use": "slack",
+      "short": "Scan a Slack workspace for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "channels",
+          "type": "string",
+          "usage": "Comma-separated channel names to scan (default: all)"
+        },
+        {
+          "name": "cookie",
+          "type": "string",
+          "usage": "Slack session cookie (xoxd-...) — required for xoxc- tokens (or SLACK_COOKIE env)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0.75",
+          "usage": "API requests per second (default 0.75, Slack Tier 3 = 50 req/min)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Slack API token (or SLACK_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum trello",
+      "use": "trello",
+      "short": "Scan Trello boards for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "api-key",
+          "type": "string",
+          "usage": "Trello API key (or TRELLO_API_KEY env)"
+        },
+        {
+          "name": "boards",
+          "type": "string",
+          "usage": "Comma-separated board IDs to scan (default: all)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "3",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Trello user token (or TRELLO_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus enum zendesk",
+      "use": "zendesk",
+      "short": "Scan a Zendesk instance for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "email",
+          "type": "string",
+          "usage": "Agent email address (or ZENDESK_EMAIL env)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human",
+          "inherited": true
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives",
+          "inherited": true
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "3",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)",
+          "inherited": true
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)",
+          "inherited": true
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all",
+          "inherited": true
+        },
+        {
+          "name": "subdomain",
+          "type": "string",
+          "usage": "Zendesk subdomain (or ZENDESK_SUBDOMAIN env)"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Zendesk API token (or ZENDESK_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus explore",
+      "use": "explore [datastore]",
+      "short": "Interactively explore scan results",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "datastore",
+          "type": "string",
+          "default": "titus.ds",
+          "usage": "Path to datastore directory or file"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus github",
+      "use": "github",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum github' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between repository clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "org",
+          "type": "string",
+          "usage": "Scan all repositories in organization"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "skip-forks",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip forked repositories when scanning orgs or users"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitHub API token (or GITHUB_TOKEN env; optional for public repos)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all repositories for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus github scan",
+      "use": "scan",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum github scan' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between repository clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "org",
+          "type": "string",
+          "usage": "Scan all repositories in organization"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between repository clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "skip-forks",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip forked repositories when scanning orgs or users"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitHub API token (or GITHUB_TOKEN env; optional for public repos)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitHub Enterprise base URL (or GITHUB_BASE_URL env; e.g., https://github.example.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all repositories for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus gitlab",
+      "use": "gitlab",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum gitlab' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "group",
+          "type": "string",
+          "usage": "Scan all projects in group"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between project clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitLab token (or GITLAB_TOKEN env; optional for public projects)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitLab base URL (default: gitlab.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all projects for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus gitlab scan",
+      "use": "scan",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum gitlab scan' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Scan full git history (slower; default scans only current files)"
+        },
+        {
+          "name": "group",
+          "type": "string",
+          "usage": "Scan all projects in group"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "jitter",
+          "type": "float64",
+          "default": "0",
+          "usage": "Maximum random delay in seconds between project clones (e.g., 1200 for 20min; combined with --rate-limit as minimum)"
+        },
+        {
+          "name": "no-clone",
+          "type": "bool",
+          "default": "false",
+          "usage": "Fetch files via API instead of cloning (requires token, no git history)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Delay in seconds between project clones (e.g., 2 or 0.5; 0 = no delay)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "GitLab token (or GITLAB_TOKEN env; optional for public projects)"
+        },
+        {
+          "name": "url",
+          "type": "string",
+          "usage": "GitLab base URL (default: gitlab.com)"
+        },
+        {
+          "name": "user",
+          "type": "string",
+          "usage": "Scan all projects for user"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip confirmation prompt for scan time estimate"
+        }
+      ]
+    },
+    {
+      "path": "titus jira",
+      "use": "jira",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum jira' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "allow-insecure",
+          "type": "bool",
+          "default": "false",
+          "usage": "Allow plaintext HTTP base URLs (for internal instances)"
+        },
+        {
+          "name": "base-url",
+          "type": "string",
+          "usage": "Jira base URL (or JIRA_BASE_URL env)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "projects",
+          "type": "string",
+          "usage": "Comma-separated project keys to scan (empty = all)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "5",
+          "usage": "Requests per second"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Jira API token or PAT (or JIRA_TOKEN env)"
+        },
+        {
+          "name": "username",
+          "type": "string",
+          "usage": "Jira username for Cloud basic auth (or JIRA_USERNAME env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus linear",
+      "use": "linear",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum linear' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Linear API key (or LINEAR_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus notion",
+      "use": "notion",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum notion' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "concurrency",
+          "type": "int",
+          "default": "10",
+          "usage": "Number of parallel page fetchers"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "page",
+          "type": "string",
+          "usage": "Scan a single page (URL or page ID)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "teamspace",
+          "type": "string",
+          "usage": "Scan only pages in this teamspace (name or ID)"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Notion token_v2 session cookie (or NOTION_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "usage": "Workspace name or ID (for multi-workspace accounts)"
+        }
+      ]
+    },
+    {
+      "path": "titus report",
+      "use": "report",
+      "short": "Generate a report from scan results",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "color",
+          "type": "string",
+          "default": "auto",
+          "usage": "Color output: auto, always, never"
+        },
+        {
+          "name": "datastore",
+          "type": "string",
+          "default": "titus.ds",
+          "usage": "Path to datastore directory or file"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: human, json, sarif"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "show-rejected",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include findings marked as rejected via the explore command (hidden by default)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus report summary",
+      "use": "summary",
+      "short": "Show a summary of findings by rule type",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "color",
+          "type": "string",
+          "default": "auto",
+          "usage": "Color output: auto, always, never",
+          "inherited": true
+        },
+        {
+          "name": "datastore",
+          "type": "string",
+          "default": "titus.ds",
+          "usage": "Path to datastore directory or file",
+          "inherited": true
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: human, json"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "show-rejected",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include findings marked as rejected via the explore command (hidden by default)",
+          "inherited": true
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus rules",
+      "use": "rules",
+      "short": "Manage detection rules",
+      "runnable": false,
+      "flags": [
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus rules list",
+      "use": "list",
+      "short": "List available rules",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "table",
+          "usage": "Output format: table, json"
+        },
+        {
+          "name": "include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include rules marked noisy: true (off by default; high false-positive rate)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus scan",
+      "use": "scan <target>",
+      "short": "Scan a target for secrets",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "accessibility",
+          "type": "string",
+          "default": "auto",
+          "usage": "code accessibility: \"public\" (no penalty), \"private\" (-25 to all scores),\nor \"auto\" (detect via git remote/GitHub API, defaults to private if undetermined)"
+        },
+        {
+          "name": "asana-attachment-max-size",
+          "type": "int64",
+          "default": "52428800",
+          "usage": "Maximum Asana attachment size in bytes to download"
+        },
+        {
+          "name": "asana-concurrency",
+          "type": "int",
+          "default": "0",
+          "usage": "Number of workers processing tasks within a project (0 = use default of 5)"
+        },
+        {
+          "name": "asana-include-attachments",
+          "type": "bool",
+          "default": "false",
+          "usage": "Download and scan Asana-hosted file attachments"
+        },
+        {
+          "name": "asana-rate-limit",
+          "type": "float64",
+          "default": "10",
+          "usage": "Asana API requests per second (free tier ≈ 2.5/sec; paid tier ≈ 25/sec)"
+        },
+        {
+          "name": "context-lines",
+          "type": "int",
+          "default": "3",
+          "usage": "Lines of context before/after matches (0 to disable)"
+        },
+        {
+          "name": "docker",
+          "type": "bool",
+          "default": "false",
+          "usage": "Treat target as Docker image (uses docker image save)"
+        },
+        {
+          "name": "extract",
+          "type": "extensions",
+          "usage": "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')"
+        },
+        {
+          "name": "extract-max-depth",
+          "type": "int",
+          "default": "5",
+          "usage": "Max nested archive depth"
+        },
+        {
+          "name": "extract-max-size",
+          "type": "string",
+          "default": "10MB",
+          "usage": "Max uncompressed size per extracted file"
+        },
+        {
+          "name": "extract-max-total",
+          "type": "string",
+          "default": "100MB",
+          "usage": "Max total bytes to extract from one archive"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, sarif, human"
+        },
+        {
+          "name": "gdrive-concurrency",
+          "type": "int",
+          "default": "0",
+          "usage": "Google Drive parallel file workers (default 5; 0 = use default; clamped to [1, 100])"
+        },
+        {
+          "name": "gdrive-rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "Google Drive API requests per second (default 16; 0 = use default). Per-user cap is ~325k quota units/min"
+        },
+        {
+          "name": "git",
+          "type": "bool",
+          "default": "false",
+          "usage": "Treat target as git repository (enumerate git history)"
+        },
+        {
+          "name": "ignore",
+          "type": "string",
+          "usage": "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Enable rules marked noisy: true (off by default; high false-positive rate)"
+        },
+        {
+          "name": "incremental",
+          "type": "bool",
+          "default": "false",
+          "usage": "Skip already-scanned blobs"
+        },
+        {
+          "name": "max-file-size",
+          "type": "int64",
+          "default": "10485760",
+          "usage": "Maximum file size to scan (bytes)"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.ds",
+          "usage": "Output datastore path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "readers",
+          "type": "int",
+          "default": "0",
+          "usage": "Number of parallel file readers (0 = NumCPU)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)"
+        },
+        {
+          "name": "score-budget",
+          "type": "duration",
+          "default": "1m0s",
+          "usage": "per-finding overall scoring budget across all modifiers (default 60s; 0 = unlimited)"
+        },
+        {
+          "name": "score-scope",
+          "type": "bool",
+          "default": "false",
+          "usage": "enable HTTP dynamic scoring modifiers (calls external APIs to determine secret scope/permissions)"
+        },
+        {
+          "name": "score-timeout",
+          "type": "duration",
+          "default": "10s",
+          "usage": "per-modifier HTTP timeout for dynamic scoring (default 10s)"
+        },
+        {
+          "name": "sqlite-row-limit",
+          "type": "int",
+          "default": "1000",
+          "usage": "Max rows per table for SQLite extraction (0 for unlimited)"
+        },
+        {
+          "name": "store-blobs",
+          "type": "bool",
+          "default": "false",
+          "usage": "Store file contents in blobs/ directory"
+        },
+        {
+          "name": "validate",
+          "type": "bool",
+          "default": "false",
+          "usage": "validate detected secrets against their source APIs"
+        },
+        {
+          "name": "validate-workers",
+          "type": "int",
+          "default": "4",
+          "usage": "number of concurrent validation workers"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        },
+        {
+          "name": "workers",
+          "type": "int",
+          "default": "18",
+          "usage": "Number of parallel scan workers"
+        }
+      ]
+    },
+    {
+      "path": "titus serve",
+      "use": "serve",
+      "short": "Run as streaming server for Burp extension integration",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "true",
+          "usage": "Enable rules marked noisy: true (high false-positive rate)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "all",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all (all = no filtering)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus sharepoint",
+      "use": "sharepoint",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum microsoft sharepoint' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "client-id",
+          "type": "string",
+          "default": "1950a258-227b-4e31-a9cf-717495945fc2",
+          "usage": "Azure AD application (client) ID for device code auth"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "refresh-token",
+          "type": "string",
+          "usage": "Microsoft refresh token (or SHAREPOINT_REFRESH_TOKEN env)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "site",
+          "type": "string",
+          "usage": "Specific site URL or name to scan (empty = all sites)"
+        },
+        {
+          "name": "tenant-id",
+          "type": "string",
+          "default": "organizations",
+          "usage": "Azure AD tenant ID (or 'organizations')"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Graph API OAuth bearer token (or SHAREPOINT_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus slack",
+      "use": "slack",
+      "short": "",
+      "hidden": true,
+      "deprecated": "use 'titus enum slack' instead",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "channels",
+          "type": "string",
+          "usage": "Comma-separated channel names to scan (default: all)"
+        },
+        {
+          "name": "cookie",
+          "type": "string",
+          "usage": "Slack session cookie (xoxd-...) — required for xoxc- tokens (or SLACK_COOKIE env)"
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: json, human"
+        },
+        {
+          "name": "include-noisy",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include noisy rules that may produce more false positives"
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "default": "titus.db",
+          "usage": "Output database path (:memory: for in-memory, :auto: to derive from target name)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "rate-limit",
+          "type": "float64",
+          "default": "0.75",
+          "usage": "API requests per second (default 0.75, Slack Tier 3 = 50 req/min)"
+        },
+        {
+          "name": "rules",
+          "type": "string",
+          "usage": "Path to custom rules file or directory (merged with builtins)"
+        },
+        {
+          "name": "rules-exclude",
+          "type": "string",
+          "usage": "Exclude rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "rules-include",
+          "type": "string",
+          "usage": "Include rules matching regex pattern (comma-separated)"
+        },
+        {
+          "name": "ruleset",
+          "type": "string",
+          "default": "default",
+          "usage": "Ruleset to use: default, np.assets, np.hashes, all"
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "usage": "Slack API token (or SLACK_TOKEN env)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus version",
+      "use": "version",
+      "short": "Show version information",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    }
+  ]
+}

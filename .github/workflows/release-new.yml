@@ -449,6 +449,16 @@ jobs:
         mv artifacts/titus-burp-extension/*.jar release/
         mv artifacts/titus-browser-extension/*.zip release/
 
+        # Copy (not move) the machine-readable CLI surface from the checkout.
+        # It is a committed source artifact, not a build output, so it is not in
+        # artifacts/ — the Checkout step above is what puts it on disk. Staging
+        # it here rather than adding a second `files:` entry keeps release/* the
+        # single asset list and gets it into checksums.txt for free.
+        # Hard failure is intentional: the cli-surface.yml gate guarantees this
+        # file is present and current on main, so a missing one means the gate
+        # regressed and the release must not ship silently without it.
+        cp docs/cli-surface.json release/
+
         # Create checksums
         cd release
         sha256sum * > checksums.txt

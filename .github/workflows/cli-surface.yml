@@ -1,0 +1,124 @@
+name: CLI Surface Drift
+
+# Fails CI when the documented titus CLI surface no longer matches what cobra
+# registers, in either direction: a documented flag or subcommand that no longer
+# exists, or a registered one that is not documented.
+#
+# Deliberately carries NO `paths:` filter. Documentation drift usually arrives as
+# a markdown-only change, and `ci.yml` filters on '**/*.go', go.mod, go.sum,
+# '.golangci*', 'Makefile' and a few validator paths — so a README-only or
+# docs/-only pull request runs no Go CI at all today. This gate has to fire on
+# every pull request to be worth anything.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cli-surface:
+    name: CLI Surface Drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+
+      # Baseline for the did-not-write safety net at the end of this job. Taken
+      # before the gate runs, and after checkout/setup-go so that a failure here
+      # is unambiguously about the checkout's own contents.
+      - name: Snapshot the committed documentation
+        run: |
+          set -eo pipefail
+          find docs README.md -type f -exec sha256sum {} + \
+            | LC_ALL=C sort > "$RUNNER_TEMP/docs.before"
+          echo "baselined $(wc -l < "$RUNNER_TEMP/docs.before") file(s)"
+
+      # The surface is walked out of the live cobra tree, which lives in
+      # `package main`, so the gate is a test in that package rather than a
+      # separate generator binary. `make cli-docs` is the regeneration path the
+      # failure message points contributors at.
+      # No `-tags vectorscan`: the walk only needs the cobra tree cmd/titus
+      # registers, so the gate must not depend on libhyperscan being installed
+      # on the runner (`ci.yml` installs it; this workflow does not). The
+      # omitted tag is the entire protection, and it is enough on its own:
+      # every vectorscan-backed file is constrained
+      # `//go:build !wasm && cgo && vectorscan`, a conjunction, so the tag
+      # alone decides whether libhyperscan is linked. Do not read this as a
+      # CGO-free build -- nothing here sets CGO_ENABLED=0, so cgo stays at
+      # Go's default (enabled on a runner with a C toolchain).
+      # `go test -run` exits 0 when the pattern matches no tests, so renaming these
+      # away from the TestCLISurface prefix would turn the gate green with no drift
+      # protection at all. Assert by name that each one actually ran.
+      - name: Check CLI surface and documentation for drift
+        run: |
+          set -eo pipefail
+          # The log lands in RUNNER_TEMP, not the workspace: the snapshot check
+          # below asks whether anything in the checkout changed, and build
+          # scratch has no business being part of that question. It also makes
+          # the cleanup the runner's job -- an `rm` after the loop below would be
+          # unreachable on the failing path, which is the path that leaves a
+          # file behind.
+          go test ./cmd/titus -run 'TestCLISurface' -count=1 -v \
+            | tee "$RUNNER_TEMP/gate.log"
+          for name in TestCLISurface TestCLISurfaceDocLint TestCLISurfaceGateDetectsRename; do
+            # The trailing space is load-bearing: `TestCLISurface` is a strict
+            # prefix of the other two, so without it the first name matches
+            # their PASS lines and would be reported as having run even when it
+            # did not.
+            if ! grep -qE "^--- PASS: ${name} " "$RUNNER_TEMP/gate.log"; then
+              echo "::error::${name} did not run. The drift gate is not executing; check the -run pattern against the test names in cmd/titus/cli_surface_test.go."
+              exit 1
+            fi
+          done
+
+      # Safety net: the gate above compares in memory and must never write. If it
+      # did, a stale golden could be silently "fixed" in CI and pass. The snapshot
+      # deliberately spans MORE than the three artifacts Docs.Write emits
+      # (docs/cli-surface.json, docs/CLI.md, README.md): it manifests every file
+      # under docs/ plus README.md -- 14 of them in this checkout at the time of
+      # writing, most unrelated to the CLI surface. Listing only the three cannot
+      # see the gate creating a fourth file, which is one of the ways a write
+      # escapes; walking the tree can. The cost is that any step which
+      # legitimately wrote under docs/ between the snapshot and this check would
+      # trip it -- there is no such step, and a new one should regenerate before
+      # the snapshot or move it.
+      - name: Verify the gate did not rewrite the goldens
+        run: |
+          set -eo pipefail
+          # Compared by checksum manifest, NOT by asking git. Neither
+          # `git diff --quiet` nor `git status --porcelain` can see the whole
+          # failure mode: both omit ignored paths, so in any repo whose
+          # .gitignore excludes content under docs/ a file the gate CREATES
+          # there -- a new subcommand's page, say -- is reported as a clean
+          # tree. titus carries no such rule today (measured: no `docs`, `*.md`
+          # or `*.json` pattern in .gitignore, and `git check-ignore -q
+          # docs/CLI-newsubcommand.md` exits 1), so the git probe was not blind
+          # here -- but it was one .gitignore line away from being blind, and
+          # sibling repos on the same gate already are. A manifest is
+          # independent of every ignore rule and catches creation,
+          # modification and deletion alike.
+          find docs README.md -type f -exec sha256sum {} + \
+            | LC_ALL=C sort > "$RUNNER_TEMP/docs.after"
+          if ! diff -u "$RUNNER_TEMP/docs.before" "$RUNNER_TEMP/docs.after"; then
+            echo "::error::The drift gate wrote to the committed documentation; the diff above names every file added, removed or changed. Check mode must compare without writing, so this is a defect in the gate itself -- cmd/titus/cli_surface_test.go, or a clisurface write reached outside the -update branch. Regenerating with 'make cli-docs' will not fix it."
+            exit 1
+          fi
+
+      # Deliberately no step for the library's own unit tests: `clisurface` now
+      # lives in capability-sdk, whose CI already runs `go test -race ./...`.

@@ -1,0 +1,18 @@
+# Flag tokens the CLI-surface doc linter must not report.
+#
+# Every entry needs a '# reason' on the same line. An entry is a claim that one
+# specific mention is deliberate — not a way to quiet the linter in bulk. If a
+# titus flag is renamed, the fix is the documentation, not a line here.
+#
+# Every entry below is the same case: a Go comment that names ANOTHER PROGRAM's
+# flag. The comment linter checks every '--token' in every comment under cmd/
+# and pkg/ against titus's own flag vocabulary, with no way to say "this one
+# belongs to git". Rewording these comments to hide the flag name would make
+# them less accurate, so the mention is allowed and the owning tool is named.
+
+--all          # git rev-list --all --objects, in pkg/enum/git_native.go's history walk
+--objects      # git rev-list --all --objects, in pkg/enum/git_native.go's history walk
+--batch        # git cat-file --batch, the blob-streaming phase in pkg/enum/git_native.go
+--diff-filter  # git log --diff-filter=ARC, why pkg/enum/commit_metadata.go accepts renames and copies
+--stdin        # git hash-object --stdin, the command that produced the expected hashes in pkg/types/blobid_test.go
+--digest       # curl --user ... --digest, the Atlas API call pkg/scoring/mongodb_atlas.go's third pattern matches

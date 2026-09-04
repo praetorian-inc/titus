@@ -1,7 +1,7 @@
 # Titus Makefile
 # Build automation for secrets scanner
 
-.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint test-validators record-fixtures scan-fixtures
+.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint test-validators record-fixtures scan-fixtures cli-docs
 
 VERSION ?= dev
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
@@ -192,6 +192,32 @@ vet:
 lint:
 	@which staticcheck > /dev/null || (echo "staticcheck not installed" && exit 0)
 	GOWORK=off CGO_ENABLED=$(CGO_ENABLED) staticcheck $(TAGS_FLAG) ./...
+
+# Regenerate the documented CLI surface from the live cobra tree.
+#
+# This is the single command to run after a deliberate rename: it rewrites
+# docs/cli-surface.json, docs/CLI.md and the generated regions of README.md from
+# whatever cobra actually registers. CI runs the same walk in check mode and fails when
+# the committed copies disagree.
+#
+# Deliberately tag-free: the walk only needs the cobra tree that cmd/titus
+# registers, so it must not depend on vectorscan being installed. Omitting
+# $(TAGS_FLAG) is the whole of that protection and is enough on its own --
+# every vectorscan-backed file is constrained
+# `//go:build !wasm && cgo && vectorscan`, a conjunction, so the tag alone
+# decides whether libhyperscan is linked. It is NOT a CGO-free recipe: unlike
+# every other Go recipe in this file it passes no CGO_ENABLED, and the
+# CGO_ENABLED variable above is never exported, so cgo stays at Go's default
+# (enabled wherever a C toolchain is present).
+#
+# `go test -run` exits 0 when its pattern matches nothing, so a rename away
+# from the TestCLISurface prefix would make this target print `ok`, regenerate
+# nothing, and leave the developer committing stale goldens. Assert the writer
+# exists by name first.
+cli-docs:
+	@GOWORK=off go test ./cmd/titus -list 'TestCLISurface' | grep -qE '^TestCLISurface$$' \
+	  || { echo "cli-docs: no TestCLISurface in ./cmd/titus -- the -update writer was renamed. 'go test -run' exits 0 when its pattern matches nothing, so this target would report success having regenerated nothing at all; fix the name in cmd/titus/cli_surface_test.go."; exit 1; }
+	GOWORK=off go test ./cmd/titus -run 'TestCLISurface' -count=1 -update
 
 # Install titus binary to ~/.titus/ for Burp extension
 install:
