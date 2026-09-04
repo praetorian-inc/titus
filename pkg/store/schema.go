@@ -135,7 +135,7 @@ func createFindingsTable(db *sql.DB) error {
 		return err
 	}
 
-	// Migrate old datastores: add score columns if missing.
+	// Migrate old datastores: add score and owner columns if missing.
 	// ALTER TABLE ADD COLUMN errors (column already exists) are ignored,
 	// following the same pattern as provenance table migration.
 	for _, col := range []string{
@@ -143,6 +143,7 @@ func createFindingsTable(db *sql.DB) error {
 		"score_base INTEGER",
 		"score_suggested_severity TEXT",
 		"score_applied_json TEXT",
+		"owner_json TEXT",
 	} {
 		_, _ = db.Exec("ALTER TABLE findings ADD COLUMN " + col)
 	}

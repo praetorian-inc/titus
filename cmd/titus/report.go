@@ -750,6 +750,19 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				severityColor.Sprint(f.Score.SuggestedSeverity))
 		}
 
+		if f.Owner != nil {
+			ownerStr := f.Owner.User
+			if f.Owner.Email != "" && f.Owner.Email != f.Owner.User {
+				ownerStr += " (" + f.Owner.Email + ")"
+			}
+			if f.Owner.AccountID != "" {
+				ownerStr += " [" + f.Owner.AccountID + "]"
+			}
+			_, _ = fmt.Fprintf(out, "%s %s\n",
+				s.heading.Sprint("Owner:"),
+				s.metadata.Sprint(ownerStr))
+		}
+
 		// Rule name - "Rule:" in heading style, rule name in ruleName style
 		ruleName := f.RuleID
 		if r, ok := ruleMap[f.RuleID]; ok {

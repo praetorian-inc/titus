@@ -66,11 +66,15 @@ type gitlabTokenSelfResponse struct {
 	Scopes    []string `json:"scopes"`
 	Revoked   bool     `json:"revoked"`
 	ExpiresAt string   `json:"expires_at"`
+	UserID    int      `json:"user_id"`
 }
 
 // gitlabUserResponse holds the relevant fields from /user.
 type gitlabUserResponse struct {
-	IsAdmin bool `json:"is_admin"`
+	IsAdmin  bool   `json:"is_admin"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
 }
 
 // gitlabFetchTokenSelf calls GET /api/v4/personal_access_tokens/self and returns
@@ -218,6 +222,19 @@ func gitlabOnlyHasScopes(scopes []string, allowed ...string) bool {
 	return true
 }
 
+// setGitLabOwner populates owner info on the match from a /user response.
+func setGitLabOwner(m *types.Match, user *gitlabUserResponse) {
+	if m.Owner != nil || user == nil || user.Username == "" {
+		return
+	}
+	m.Owner = &types.OwnerInfo{
+		Service:     "gitlab",
+		User:        user.Username,
+		Email:       user.Email,
+		DisplayName: user.Name,
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Condition implementations
 // ----------------------------------------------------------------------------
@@ -321,6 +338,7 @@ func (c *gitlabAdminAPIScopeCondition) Evaluate(ctx context.Context, m *types.Ma
 	if err != nil || user == nil {
 		return false, nil
 	}
+	setGitLabOwner(m, user)
 	return user.IsAdmin, nil
 }
 
@@ -511,6 +529,7 @@ func (c *gitlabReadAPIOnlyNonAdminCondition) Evaluate(ctx context.Context, m *ty
 	if err != nil || user == nil {
 		return false, nil
 	}
+	setGitLabOwner(m, user)
 	return !user.IsAdmin, nil
 }
 

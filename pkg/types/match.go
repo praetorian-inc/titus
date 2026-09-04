@@ -18,6 +18,9 @@ type Match struct {
 	NamedGroups      map[string][]byte // named capture groups from regex (?P<name>...)
 	Snippet          Snippet
 	ValidationResult *ValidationResult `json:"validation_result,omitempty"`
+	// Owner is populated by scorer conditions as a side-effect of API calls.
+	// The engine copies the first non-nil Owner to the parent Finding.
+	Owner *OwnerInfo `json:"-"`
 }
 
 // ComputeStructuralID computes content-based unique ID.

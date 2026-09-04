@@ -161,6 +161,19 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// setGitHubOwner populates owner info on the match from a successful GET /user response.
+func setGitHubOwner(m *types.Match, res githubUserResult) {
+	if m.Owner != nil || res.user == nil {
+		return
+	}
+	m.Owner = &types.OwnerInfo{
+		Service:     "github",
+		User:        res.user.GetLogin(),
+		Email:       res.user.GetEmail(),
+		DisplayName: res.user.GetName(),
+	}
+}
+
 // githubScopePresentCondition fires when an exact scope token is present in the
 // token's X-OAuth-Scopes set.
 type githubScopePresentCondition struct {
@@ -180,6 +193,7 @@ func (c *githubScopePresentCondition) Evaluate(ctx context.Context, m *types.Mat
 	if ready, ferr := userFetchReady(res, err); !ready {
 		return false, ferr
 	}
+	setGitHubOwner(m, res)
 	return res.scopes[c.scope], nil
 }
 
@@ -203,6 +217,7 @@ func (c *githubScopeOnlyCondition) Evaluate(ctx context.Context, m *types.Match)
 	if ready, ferr := userFetchReady(res, err); !ready {
 		return false, ferr
 	}
+	setGitHubOwner(m, res)
 	if len(res.scopes) == 0 {
 		return false, nil
 	}
@@ -236,6 +251,7 @@ func (c *githubSiteAdminCondition) Evaluate(ctx context.Context, m *types.Match)
 	if ready, ferr := userFetchReady(res, err); !ready {
 		return false, ferr
 	}
+	setGitHubOwner(m, res)
 	if res.user == nil {
 		return false, nil
 	}
@@ -289,6 +305,7 @@ func (c *githubEnterprisePlanCondition) Evaluate(ctx context.Context, m *types.M
 	if ready, ferr := userFetchReady(res, err); !ready {
 		return false, ferr
 	}
+	setGitHubOwner(m, res)
 	if res.user == nil {
 		return false, nil
 	}
