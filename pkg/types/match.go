@@ -21,6 +21,9 @@ type Match struct {
 	// Owner is populated by scorer conditions as a side-effect of API calls.
 	// The engine copies the first non-nil Owner to the parent Finding.
 	Owner *OwnerInfo `json:"-"`
+	// Resources lists specific assets accessible via the credential.
+	// Populated by scorer conditions; the engine copies them to the Finding.
+	Resources []ResourceInfo `json:"-"`
 }
 
 // ComputeStructuralID computes content-based unique ID.

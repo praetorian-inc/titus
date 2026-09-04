@@ -335,6 +335,21 @@ func AWSGoScorer() *Scorer {
 				Value:     10,
 				Condition: &iamCanAssumeRolesCondition{},
 			},
+			// Resource enumeration (low priority, runs after scoring)
+			{
+				Name:      "has-secrets-manager",
+				Priority:  15,
+				Kind:      ModifierKindDelta,
+				Value:     15,
+				Condition: &awsSecretsManagerCondition{},
+			},
+			{
+				Name:      "has-prod-s3-buckets",
+				Priority:  10,
+				Kind:      ModifierKindDelta,
+				Value:     10,
+				Condition: &awsS3BucketsCondition{},
+			},
 		},
 	}
 }

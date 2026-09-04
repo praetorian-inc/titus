@@ -444,6 +444,14 @@ func gitHubClassicPATScorerWithFactory(factory func(token string) *github.Client
 				Value:     15,
 				Condition: &githubEnterprisePlanCondition{clientFactory: factory, userCache: cache},
 			},
+			// Resource enumeration (low priority, runs after scoring)
+			{
+				Name:      "has-resources",
+				Priority:  10,
+				Kind:      ModifierKindDelta,
+				Value:     0,
+				Condition: &githubResourcesCondition{clientFactory: factory, userCache: cache},
+			},
 		},
 	}
 }

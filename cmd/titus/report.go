@@ -763,6 +763,25 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				s.metadata.Sprint(ownerStr))
 		}
 
+		if len(f.Resources) > 0 {
+			_, _ = fmt.Fprintf(out, "%s %s\n",
+				s.heading.Sprint("Resources:"),
+				s.metadata.Sprint(formatResourceSummary(f.Resources)))
+			for _, r := range f.Resources {
+				detail := r.Type + ": " + r.Name
+				if r.Count > 0 {
+					detail = fmt.Sprintf("%s: %d", r.Type, r.Count)
+					if r.Name != "" {
+						detail += " (" + r.Name + ")"
+					}
+				}
+				if r.Region != "" {
+					detail += " [" + r.Region + "]"
+				}
+				_, _ = fmt.Fprintf(out, "  %s\n", s.metadata.Sprint(detail))
+			}
+		}
+
 		// Rule name - "Rule:" in heading style, rule name in ruleName style
 		ruleName := f.RuleID
 		if r, ok := ruleMap[f.RuleID]; ok {
@@ -838,4 +857,21 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 	}
 
 	return nil
+}
+
+func formatResourceSummary(resources []types.ResourceInfo) string {
+	counts := map[string]int{}
+	for _, r := range resources {
+		if r.Count > 0 {
+			counts[r.Type] += r.Count
+		} else {
+			counts[r.Type]++
+		}
+	}
+	var parts []string
+	for typ, n := range counts {
+		parts = append(parts, fmt.Sprintf("%d %s", n, typ))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ", ")
 }

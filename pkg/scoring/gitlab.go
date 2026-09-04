@@ -596,6 +596,8 @@ func GitLabGoScorer() *Scorer {
 			{Name: "write-repo-multi-group", Priority: 60, Kind: ModifierKindDelta, Value: 10, Condition: &gitlabWriteRepoMultiGroupCondition{}},
 			{Name: "read-api-only-non-admin", Priority: 55, Kind: ModifierKindDelta, Value: -20, Condition: &gitlabReadAPIOnlyNonAdminCondition{}},
 			{Name: "no-group-owner", Priority: 50, Kind: ModifierKindDelta, Value: -10, Condition: &gitlabNoGroupOwnerCondition{}},
+			// Resource enumeration (low priority, runs after scoring)
+			{Name: "has-resources", Priority: 10, Kind: ModifierKindDelta, Value: 0, Condition: &gitlabResourcesCondition{}},
 		},
 	}
 }

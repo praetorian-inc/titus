@@ -144,6 +144,7 @@ func createFindingsTable(db *sql.DB) error {
 		"score_suggested_severity TEXT",
 		"score_applied_json TEXT",
 		"owner_json TEXT",
+		"resources_json TEXT",
 	} {
 		_, _ = db.Exec("ALTER TABLE findings ADD COLUMN " + col)
 	}

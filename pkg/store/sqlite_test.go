@@ -484,3 +484,49 @@ func TestSQLiteStore_AddFinding_NilOwnerAllowed(t *testing.T) {
 	require.Len(t, findings, 1)
 	assert.Nil(t, findings[0].Owner)
 }
+
+func TestSQLiteStore_AddFinding_PersistsResources(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := NewSQLite(filepath.Join(tmpDir, "test.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	finding := &types.Finding{
+		ID:     "resources-test",
+		RuleID: "np.aws.6",
+		Groups: [][]byte{[]byte("AKIAIOSFODNN7EXAMPLE")},
+		Resources: []types.ResourceInfo{
+			{Service: "aws", Type: "s3_bucket", Name: "prod-data"},
+			{Service: "aws", Type: "secret", Name: "db-password"},
+		},
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Len(t, findings[0].Resources, 2)
+	assert.Equal(t, "s3_bucket", findings[0].Resources[0].Type)
+	assert.Equal(t, "prod-data", findings[0].Resources[0].Name)
+	assert.Equal(t, "secret", findings[0].Resources[1].Type)
+	assert.Equal(t, "db-password", findings[0].Resources[1].Name)
+}
+
+func TestSQLiteStore_AddFinding_NilResourcesAllowed(t *testing.T) {
+	tmpDir := t.TempDir()
+	s, err := NewSQLite(filepath.Join(tmpDir, "test.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	finding := &types.Finding{
+		ID:     "no-resources",
+		RuleID: "np.test.1",
+		Groups: [][]byte{[]byte("x")},
+	}
+	require.NoError(t, s.AddFinding(finding))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	assert.Nil(t, findings[0].Resources)
+}
