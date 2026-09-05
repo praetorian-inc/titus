@@ -1,16 +1,16 @@
-name: CLAUDE.md Drift Detection
+name: Instruction-File Drift Detection
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
 
 concurrency:
-  group: claude-drift-${{ github.event.pull_request.number }}
+  group: instruction-drift-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   drift-check:
-    uses: praetorian-inc/public-workflows/.github/workflows/claude-md-drift.yml@34dccb3bc8463c387bdf05d2d7408872325a4416  # v2.16.15
+    uses: praetorian-inc/public-workflows/.github/workflows/agents-md-drift.yml@defe609cc7ff3f7630a36928d620c29bcf3b7930  # v2.19.3
     permissions:
       contents: read
       pull-requests: write
