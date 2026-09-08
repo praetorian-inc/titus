@@ -15,9 +15,10 @@ jobs:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
       (github.event_name != 'pull_request_review_comment' || contains(github.event.comment.body, '@gemini'))
-    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@3fb9ffbace86c9e93a7b92170241dd54b5031608  # v2.11.3
+    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@7d5ab6d7c9288e7513e2995dc432a86e73ded955  # v2.19.8 (ENG-7716)
     permissions:
       contents: read
       pull-requests: write
+      actions: read  # ENG-7654: fetch-graph downloads this repo's graphify artifact (fail-open skip if none)
     secrets:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
