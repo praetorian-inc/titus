@@ -30,7 +30,7 @@ func (c *githubResourcesCondition) Evaluate(ctx context.Context, m *types.Match)
 
 	client := githubClientFor(ctx, c.clientFactory, token)
 
-	repos, _, err := client.Repositories.List(ctx, "", &github.RepositoryListOptions{
+	repos, _, err := client.Repositories.ListByAuthenticatedUser(ctx, &github.RepositoryListByAuthenticatedUserOptions{
 		Sort:        "pushed",
 		ListOptions: github.ListOptions{PerPage: maxResourcesPerType},
 	})
