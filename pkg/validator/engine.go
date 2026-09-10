@@ -20,6 +20,7 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewAzureStorageValidator())
 	validators = append(validators, NewPostgresValidator())
 	validators = append(validators, NewMySQLValidator())
+	validators = append(validators, NewSentryDSNValidator())
 	validators = append(validators, NewBrowserStackValidator())
 	validators = append(validators, NewAmplitudeValidator())
 	validators = append(validators, NewShopifyValidator())
