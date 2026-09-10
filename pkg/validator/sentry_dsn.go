@@ -21,6 +21,9 @@ func NewSentryDSNValidator() *SentryDSNValidator {
 		timeout: 5 * time.Second,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 	}
 }
@@ -66,6 +69,8 @@ func (v *SentryDSNValidator) Validate(ctx context.Context, match *types.Match) (
 		return types.NewValidationResult(types.StatusInvalid, 1.0, "Sentry DSN rejected — invalid key or project"), nil
 	case resp.StatusCode == 429:
 		return types.NewValidationResult(types.StatusUndetermined, 0.7, "Sentry rate limited — DSN may be valid"), nil
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("redirect to %s — cannot confirm DSN validity", resp.Header.Get("Location"))), nil
 	default:
 		return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("unexpected status %d", resp.StatusCode)), nil
 	}
