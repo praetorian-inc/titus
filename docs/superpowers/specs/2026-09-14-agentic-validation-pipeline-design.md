@@ -300,16 +300,16 @@ scorers:
 
 The `prompt` field supports the same `{{variable}}` template system that YAML
 validators and HTTP scoring conditions already use. `fires_when` matches against
-the LLM's response text (case-insensitive contains).
+the LLM's response text (case-insensitive whole-token match).
 
 ### Gating
 
 LLM conditions implement the `networkCondition` marker interface, same as
 `httpCondition`. `--score-scope` is currently a boolean flag that gates all
 network conditions (HTTP). LLM conditions are gated the same way — when
-`--score-scope` is enabled, both HTTP and LLM conditions run. No separate
-`--score-scope-llm` flag; LLM conditions only exist in scorers where they
-add value, so the existing boolean is sufficient.
+`--score-scope` is enabled, both HTTP and LLM conditions run. There is no
+separate LLM-only score-scope switch; LLM conditions only exist in scorers
+where they add value, so the existing boolean is sufficient.
 
 ### Budget and timeout
 

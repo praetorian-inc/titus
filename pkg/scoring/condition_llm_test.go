@@ -85,6 +85,15 @@ func TestLLMCondition_TemplateSubstitution(t *testing.T) {
 	assert.Contains(t, capturedPrompt, "AKIA1234")
 }
 
+func TestLLMCondition_FiresWhenDoesNotMatchSubstring(t *testing.T) {
+	mock := &mockLLMClient{response: "not_admin"}
+	c := newLLMCondition(mock, "test", "admin")
+	match := &types.Match{Snippet: types.Snippet{Matching: []byte("x")}}
+	fired, err := c.Evaluate(context.Background(), match)
+	require.NoError(t, err)
+	assert.False(t, fired)
+}
+
 func TestLLMCondition_IsNetworkCondition(t *testing.T) {
 	mock := &mockLLMClient{response: "x"}
 	c := newLLMCondition(mock, "test", "x")

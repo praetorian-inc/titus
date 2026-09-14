@@ -20,19 +20,20 @@ func TestAnthropicClient_Success(t *testing.T) {
 		assert.Equal(t, "test-key", r.Header.Get("x-api-key"))
 		assert.Equal(t, "2023-06-01", r.Header.Get("anthropic-version"))
 
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
 		var reqBody map[string]any
-		json.Unmarshal(body, &reqBody)
+		require.NoError(t, json.Unmarshal(body, &reqBody))
 		assert.Equal(t, "claude-haiku-4-5-20251001", reqBody["model"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 			"content": []map[string]any{
 				{"type": "text", "text": `{"status":"valid","confidence":0.9,"reason":"token works"}`},
 			},
 			"model": "claude-haiku-4-5-20251001",
 			"usage": map[string]any{"input_tokens": 100, "output_tokens": 50},
-		})
+		}))
 	}))
 	defer srv.Close()
 
@@ -57,15 +58,16 @@ func TestAnthropicClient_429Retry(t *testing.T) {
 		if calls == 1 {
 			w.Header().Set("Retry-After", "0")
 			w.WriteHeader(429)
-			w.Write([]byte(`{"error":{"type":"rate_limit","message":"slow down"}}`))
+			_, err := w.Write([]byte(`{"error":{"type":"rate_limit","message":"slow down"}}`))
+			require.NoError(t, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 			"content": []map[string]any{{"type": "text", "text": "ok"}},
 			"model":   "claude-haiku-4-5-20251001",
 			"usage":   map[string]any{"input_tokens": 10, "output_tokens": 5},
-		})
+		}))
 	}))
 	defer srv.Close()
 
@@ -86,15 +88,16 @@ func TestAnthropicClient_529Retry(t *testing.T) {
 		calls++
 		if calls == 1 {
 			w.WriteHeader(529)
-			w.Write([]byte(`{"error":{"type":"overloaded","message":"overloaded"}}`))
+			_, err := w.Write([]byte(`{"error":{"type":"overloaded","message":"overloaded"}}`))
+			require.NoError(t, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 			"content": []map[string]any{{"type": "text", "text": "ok"}},
 			"model":   "claude-haiku-4-5-20251001",
 			"usage":   map[string]any{"input_tokens": 10, "output_tokens": 5},
-		})
+		}))
 	}))
 	defer srv.Close()
 
@@ -112,7 +115,8 @@ func TestAnthropicClient_529Retry(t *testing.T) {
 func TestAnthropicClient_AuthError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
-		w.Write([]byte(`{"error":{"type":"authentication_error","message":"invalid key"}}`))
+		_, err := w.Write([]byte(`{"error":{"type":"authentication_error","message":"invalid key"}}`))
+		require.NoError(t, err)
 	}))
 	defer srv.Close()
 
@@ -140,4 +144,15 @@ func TestAnthropicClient_Timeout(t *testing.T) {
 		MaxTokens: 100,
 	})
 	assert.Error(t, err)
+}
+
+func TestNewClient_RejectsNonHTTPSBaseURL(t *testing.T) {
+	_, err := NewClient("anthropic", "test-key", "claude-haiku-4-5-20251001", WithBaseURL("http://example.com"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "https")
+}
+
+func TestNewClient_AllowsLoopbackHTTP(t *testing.T) {
+	_, err := NewClient("anthropic", "test-key", "claude-haiku-4-5-20251001", WithBaseURL("http://127.0.0.1:9"))
+	require.NoError(t, err)
 }

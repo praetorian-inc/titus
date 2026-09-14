@@ -2,6 +2,7 @@ package llm
 
 import (
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 )
@@ -37,6 +38,6 @@ func TruncateBody(body []byte, maxLen int) string {
 // clearly delineate untrusted input within an LLM prompt as a mitigation
 // against prompt injection.
 func WrapUntrusted(tag, content string) string {
-	content = Sanitize(content)
+	content = html.EscapeString(Sanitize(content))
 	return fmt.Sprintf("<%s>\n%s\n</%s>", tag, content, tag)
 }

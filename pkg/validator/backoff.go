@@ -70,7 +70,7 @@ func (b *BackoffController) Wait(ctx context.Context) error {
 	if d == 0 {
 		return nil
 	}
-	jitter := time.Duration(rand.Int63n(int64(d)))
+	jitter := time.Duration(rand.Int63n(int64(d))) // #nosec G404 -- jitter for retry backoff; cryptographic randomness unnecessary.
 	d = d/2 + jitter/2
 	t := time.NewTimer(d)
 	defer t.Stop()

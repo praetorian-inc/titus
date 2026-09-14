@@ -29,12 +29,15 @@ func BuiltinGoScorers() []*Scorer {
 // identical — assembling the list in only one path silently drops Go-scored
 // rules (e.g. classic GitHub PATs) from the other.
 //
-// llmClient is threaded through to every YAML scorer's llm: conditions. Pass
-// nil when LLM scoring is unavailable (e.g. --score-scope disabled or no
-// TITUS_LLM_API_KEY) — llm: conditions with a nil client silently evaluate
-// to false rather than firing.
-func AllBuiltinScorers(llmClient llm.Client) ([]*Scorer, error) {
-	yamlScorers, err := NewLoader().WithLLMClient(llmClient).LoadBuiltinScorers()
+// An optional llm.Client is threaded through to every YAML scorer's llm:
+// conditions. Omit it (or pass nil) when LLM scoring is unavailable — llm:
+// conditions with a nil client silently evaluate to false rather than firing.
+func AllBuiltinScorers(llmClient ...llm.Client) ([]*Scorer, error) {
+	var client llm.Client
+	if len(llmClient) > 0 {
+		client = llmClient[0]
+	}
+	yamlScorers, err := NewLoader().WithLLMClient(client).LoadBuiltinScorers()
 	if err != nil {
 		return nil, err
 	}

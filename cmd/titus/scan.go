@@ -118,7 +118,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
 	scanCmd.Flags().Float64Var(&scanValidateRateLimit, "validate-rate-limit", 0, "max validation requests per second (0 = unlimited)")
-	scanCmd.Flags().BoolVar(&scanLLMVerify, "llm-verify", false, "enable LLM second-pass validation for undetermined results")
+	scanCmd.Flags().BoolVar(&scanLLMVerify, "llm-verify", false, "enable LLM second-pass validation for undetermined results (sends response bodies to the LLM provider)")
 	scanCmd.Flags().IntVar(&scanLLMBudget, "llm-budget", 100, "max LLM calls per scan")
 	scanCmd.Flags().StringVar(&scanLLMModel, "llm-model", "claude-haiku-4-5-20251001", "LLM model for verification")
 	scanCmd.Flags().DurationVar(&scanLLMTimeout, "llm-timeout", 15*time.Second, "timeout per LLM call")
@@ -2122,6 +2122,7 @@ func initValidationEngine() validationEngine {
 		return e
 	}
 
+	fmt.Fprintf(os.Stderr, "[warn] --llm-verify sends validation response bodies and request URLs to the configured LLM provider\n")
 	return validator.NewLLMVerifier(e, client, 256, int64(scanLLMBudget))
 }
 
@@ -2258,6 +2259,8 @@ func buildScoringEngine() (scoringEngineInterface, error) {
 				llm.WithTimeout(scanLLMTimeout))
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[warn] failed to create LLM client for scoring: %v\n", err)
+			} else {
+				fmt.Fprintf(os.Stderr, "[warn] --score-scope with TITUS_LLM_API_KEY sends secret values from llm: scoring conditions to the configured LLM provider\n")
 			}
 		}
 	}

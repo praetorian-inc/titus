@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "surfaceHash": "sha256:4d4da820671766fd35b8066eb3ac71db3ec866e2d13330488d29d7af05f8c5e5",
+  "surfaceHash": "sha256:97ada7e789af5a2fabd04eca76dc4dc4fef002640597f32c2863460c91414bd7",
   "commands": [
     {
       "path": "titus",
@@ -2932,6 +2932,30 @@
           "usage": "Skip already-scanned blobs"
         },
         {
+          "name": "llm-budget",
+          "type": "int",
+          "default": "100",
+          "usage": "max LLM calls per scan"
+        },
+        {
+          "name": "llm-model",
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "usage": "LLM model for verification"
+        },
+        {
+          "name": "llm-timeout",
+          "type": "duration",
+          "default": "15s",
+          "usage": "timeout per LLM call"
+        },
+        {
+          "name": "llm-verify",
+          "type": "bool",
+          "default": "false",
+          "usage": "enable LLM second-pass validation for undetermined results (sends response bodies to the LLM provider)"
+        },
+        {
           "name": "max-file-size",
           "type": "int64",
           "default": "10485760",
@@ -3013,6 +3037,12 @@
           "type": "bool",
           "default": "false",
           "usage": "validate detected secrets against their source APIs"
+        },
+        {
+          "name": "validate-rate-limit",
+          "type": "float64",
+          "default": "0",
+          "usage": "max validation requests per second (0 = unlimited)"
         },
         {
           "name": "validate-workers",

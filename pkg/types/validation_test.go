@@ -3,8 +3,8 @@ package types
 
 import (
 	"encoding/json"
-	"testing"
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestValidationStatus_String(t *testing.T) {
@@ -15,7 +15,7 @@ func TestValidationStatus_String(t *testing.T) {
 
 func TestValidationResult_New(t *testing.T) {
 	result := NewValidationResult(StatusValid, 1.0, "credentials accepted")
-	
+
 	assert.Equal(t, StatusValid, result.Status)
 	assert.Equal(t, 1.0, result.Confidence)
 	assert.Equal(t, "credentials accepted", result.Message)
@@ -24,16 +24,16 @@ func TestValidationResult_New(t *testing.T) {
 
 func TestValidationResult_JSON(t *testing.T) {
 	result := NewValidationResult(StatusInvalid, 0.95, "credentials rejected")
-	
+
 	// Marshal
 	data, err := json.Marshal(result)
 	assert.NoError(t, err)
-	
+
 	// Check JSON structure
 	var decoded map[string]interface{}
 	err = json.Unmarshal(data, &decoded)
 	assert.NoError(t, err)
-	
+
 	assert.Equal(t, "invalid", decoded["status"])
 	assert.Equal(t, 0.95, decoded["confidence"])
 	assert.Equal(t, "credentials rejected", decoded["message"])
@@ -55,6 +55,20 @@ func TestValidationResult_JSON_Omitempty(t *testing.T) {
 func TestValidationResult_ResponseMetaNil(t *testing.T) {
 	r := NewValidationResult(StatusUndetermined, 0.5, "test")
 	assert.Nil(t, r.ResponseMeta)
+}
+
+func TestValidationResult_ResponseMetaOmittedFromJSON(t *testing.T) {
+	r := NewValidationResult(StatusValid, 1.0, "ok")
+	r.ResponseMeta = &ResponseMeta{
+		StatusCode: 200,
+		Body:       []byte(`{"token":"secret"}`),
+		URL:        "https://api.example.com/check?key=secret",
+	}
+	data, err := json.Marshal(r)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(data), "response_meta")
+	assert.NotContains(t, string(data), "secret")
+	assert.NotContains(t, string(data), "api.example.com")
 }
 
 func TestValidationResult_ResponseMetaSet(t *testing.T) {

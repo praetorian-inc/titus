@@ -45,7 +45,12 @@ func WithTimeout(d time.Duration) Option {
 }
 
 func WithMaxRetries(n int) Option {
-	return func(c *clientConfig) { c.MaxRetries = n }
+	return func(c *clientConfig) {
+		if n < 0 {
+			n = 0
+		}
+		c.MaxRetries = n
+	}
 }
 
 func WithBaseURL(url string) Option {

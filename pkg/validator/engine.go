@@ -86,6 +86,12 @@ func (e *Engine) ValidateMatch(ctx context.Context, match *types.Match) (*types.
 		return cached, nil
 	}
 
+	if e.limiter != nil {
+		if err := e.limiter.Wait(ctx); err != nil {
+			return types.NewValidationResult(types.StatusUndetermined, 0, "rate limit cancelled"), nil
+		}
+	}
+
 	// Find appropriate validator
 	for _, v := range e.validators {
 		if v.CanValidate(match.RuleID) {

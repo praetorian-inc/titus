@@ -76,7 +76,13 @@ func (v *JenkinsValidator) Validate(ctx context.Context, match *types.Match) (*t
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, (1<<16)+1))
+	if err != nil {
+		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read Jenkins response: %v", err)), nil
+	}
+	if len(body) > 1<<16 {
+		return types.NewValidationResult(types.StatusUndetermined, 0, "Jenkins response exceeds validation limit"), nil
+	}
 	meta := &types.ResponseMeta{
 		StatusCode: resp.StatusCode,
 		Headers:    selectResponseHeaders(resp.Header),

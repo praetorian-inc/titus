@@ -19,7 +19,7 @@ type ValidationResult struct {
 	Message      string            `json:"message"`
 	ValidatedAt  time.Time         `json:"validated_at"`
 	Details      map[string]string `json:"details,omitempty"` // Extended validation details
-	ResponseMeta *ResponseMeta     `json:"response_meta,omitempty"`
+	ResponseMeta *ResponseMeta     `json:"-"`
 }
 
 // ResponseMeta carries HTTP response data captured during validation, for

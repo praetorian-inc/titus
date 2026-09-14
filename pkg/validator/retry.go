@@ -8,6 +8,27 @@ import (
 	"time"
 )
 
+// RoundTrip implements http.RoundTripper so a RetryHTTPClient can be
+// installed as a client's Transport (see WrapHTTPClient).
+func (c *RetryHTTPClient) RoundTrip(req *http.Request) (*http.Response, error) {
+	return c.Do(req)
+}
+
+// WrapHTTPClient returns a shallow copy of inner whose Transport retries
+// transient failures via RetryHTTPClient, coordinating with backoff when
+// non-nil. inner is not mutated. A nil inner uses http.DefaultClient.
+func WrapHTTPClient(inner *http.Client, backoff *BackoffController) *http.Client {
+	if inner == nil {
+		inner = http.DefaultClient
+	}
+	if _, ok := inner.Transport.(*RetryHTTPClient); ok {
+		return inner
+	}
+	wrapped := *inner
+	wrapped.Transport = NewRetryHTTPClient(inner, backoff)
+	return &wrapped
+}
+
 const (
 	retryMaxAttempts  = 2
 	retryBackoffDelay = 1 * time.Second
@@ -20,18 +41,22 @@ const (
 // An optional BackoffController records errors/successes and is consulted
 // before each attempt to apply adaptive backoff across concurrent callers.
 type RetryHTTPClient struct {
-	inner   *http.Client
+	rt      http.RoundTripper
 	backoff *BackoffController
 }
 
-// NewRetryHTTPClient creates a RetryHTTPClient wrapping inner (or
-// http.DefaultClient if nil), optionally coordinating with backoff (may be
+// NewRetryHTTPClient creates a RetryHTTPClient wrapping inner's Transport (or
+// http.DefaultTransport if nil), optionally coordinating with backoff (may be
 // nil to disable adaptive backoff).
 func NewRetryHTTPClient(inner *http.Client, backoff *BackoffController) *RetryHTTPClient {
-	if inner == nil {
-		inner = http.DefaultClient
+	var rt http.RoundTripper
+	if inner != nil {
+		rt = inner.Transport
 	}
-	return &RetryHTTPClient{inner: inner, backoff: backoff}
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	return &RetryHTTPClient{rt: rt, backoff: backoff}
 }
 
 // Do executes req, retrying once on 429/5xx/connection error. On success
@@ -49,13 +74,26 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	var lastErr error
 
 	for attempt := 0; attempt < retryMaxAttempts; attempt++ {
-		if attempt > 0 && lastResp != nil {
-			_, _ = io.Copy(io.Discard, lastResp.Body)
-			_ = lastResp.Body.Close()
-			lastResp = nil
+		if attempt > 0 {
+			if lastResp != nil {
+				_, _ = io.Copy(io.Discard, lastResp.Body)
+				_ = lastResp.Body.Close()
+				lastResp = nil
+			}
+			if !canReplay(req) {
+				break
+			}
+			if err := rewindBody(req); err != nil {
+				if lastErr != nil {
+					return nil, lastErr
+				}
+				return nil, err
+			}
 		}
 
-		resp, err := c.inner.Do(req)
+		// Validators intentionally contact caller-supplied endpoints; this
+		// wrapper replays the request it was given.
+		resp, err := c.rt.RoundTrip(req) //nolint:gosec // G107: URL comes from the validator request, not from this wrapper.
 		if err != nil {
 			if c.backoff != nil {
 				c.backoff.RecordError()
@@ -63,14 +101,8 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 			lastErr = err
 			lastResp = nil
 			if attempt < retryMaxAttempts-1 {
-				if c.backoff != nil {
-					if waitErr := c.backoff.Wait(req.Context()); waitErr != nil {
-						return nil, waitErr
-					}
-				} else {
-					if sleepErr := sleepCtx(req.Context(), retryBackoffDelay); sleepErr != nil {
-						return nil, sleepErr
-					}
+				if waitErr := c.waitForRetry(req.Context(), retryBackoffDelay); waitErr != nil {
+					return nil, waitErr
 				}
 			}
 			continue
@@ -84,10 +116,10 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 			if c.backoff != nil {
 				c.backoff.RecordError()
 			}
-			if attempt < retryMaxAttempts-1 {
+			if attempt < retryMaxAttempts-1 && canReplay(req) {
 				delay := parseRetryAfter(resp.Header.Get("Retry-After"))
 				if sleepErr := sleepCtx(req.Context(), delay); sleepErr != nil {
-					return resp, nil
+					return resp, sleepErr
 				}
 				continue
 			}
@@ -95,9 +127,9 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 			if c.backoff != nil {
 				c.backoff.RecordError()
 			}
-			if attempt < retryMaxAttempts-1 {
+			if attempt < retryMaxAttempts-1 && canReplay(req) {
 				if sleepErr := sleepCtx(req.Context(), retryBackoffDelay); sleepErr != nil {
-					return resp, nil
+					return resp, sleepErr
 				}
 				continue
 			}
@@ -110,12 +142,32 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	if lastResp != nil {
-		if c.backoff != nil {
-			c.backoff.RecordSuccess()
-		}
 		return lastResp, nil
 	}
 	return nil, lastErr
+}
+
+func canReplay(req *http.Request) bool {
+	return req.Body == nil || req.GetBody != nil
+}
+
+func rewindBody(req *http.Request) error {
+	if req.GetBody == nil {
+		return nil
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return err
+	}
+	req.Body = body
+	return nil
+}
+
+func (c *RetryHTTPClient) waitForRetry(ctx context.Context, d time.Duration) error {
+	if c.backoff != nil {
+		return c.backoff.Wait(ctx)
+	}
+	return sleepCtx(ctx, d)
 }
 
 // parseRetryAfter parses an HTTP Retry-After header value (seconds form)

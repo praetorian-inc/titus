@@ -161,8 +161,7 @@ func convertYAMLScorer(ys yamlScorer, llmClient llm.Client) (*Scorer, error) {
 
 // convertYAMLModifier enforces the "exactly one condition, exactly one action"
 // rule and compiles the regex (if any). llmClient is injected by the caller
-// for llm: conditions; it may be nil when no LLM condition is present, or
-// when LLM scoring hasn't been wired up yet (see Task 14).
+// for llm: conditions. A nil client makes llm: conditions evaluate false.
 func convertYAMLModifier(ym yamlModifier, llmClient llm.Client) (Modifier, error) {
 	if ym.Name == "" {
 		return Modifier{}, fmt.Errorf("modifier name is required")

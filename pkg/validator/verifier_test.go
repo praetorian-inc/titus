@@ -197,3 +197,87 @@ func TestLLMVerifier_ParseError(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, types.StatusUndetermined, result.Status, "parse failure keeps original")
 }
+
+func TestLLMVerifier_ValidateAsyncUpgrades(t *testing.T) {
+	undetermined := &types.ValidationResult{
+		Status: types.StatusUndetermined, Confidence: 0.5, Message: "unclear",
+		ResponseMeta: &types.ResponseMeta{StatusCode: 200, Body: []byte(`{"user":"admin"}`), URL: "https://api.example.com"},
+	}
+	sv := &staticValidator{result: undetermined}
+	engine := NewEngine(1, sv)
+	mock := &mockLLMClient{response: `{"status":"valid","confidence":0.9,"reason":"admin access"}`}
+	v := NewLLMVerifier(engine, mock, 256, 100)
+	match := &types.Match{
+		RuleID:  "test.1",
+		Groups:  [][]byte{[]byte("secret")},
+		Snippet: types.Snippet{Matching: []byte("secret")},
+	}
+
+	result := <-v.ValidateAsync(context.Background(), match)
+	require.NotNil(t, result)
+	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Equal(t, int32(1), mock.calls.Load())
+}
+
+func TestLLMVerifier_RejectsLowConfidence(t *testing.T) {
+	undetermined := &types.ValidationResult{
+		Status: types.StatusUndetermined, Confidence: 0.5, Message: "unclear",
+		ResponseMeta: &types.ResponseMeta{StatusCode: 200, Body: []byte("x")},
+	}
+	sv := &staticValidator{result: undetermined}
+	engine := NewEngine(1, sv)
+	mock := &mockLLMClient{response: `{"status":"valid","confidence":0.1,"reason":"guess"}`}
+	v := NewLLMVerifier(engine, mock, 256, 100)
+	match := &types.Match{
+		RuleID:  "test.1",
+		Groups:  [][]byte{[]byte("secret")},
+		Snippet: types.Snippet{Matching: []byte("secret")},
+	}
+	result, err := v.ValidateMatch(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+}
+
+func TestLLMVerifier_RejectsOutOfRangeConfidence(t *testing.T) {
+	undetermined := &types.ValidationResult{
+		Status: types.StatusUndetermined, Confidence: 0.5, Message: "unclear",
+		ResponseMeta: &types.ResponseMeta{StatusCode: 200, Body: []byte("x")},
+	}
+	sv := &staticValidator{result: undetermined}
+	engine := NewEngine(1, sv)
+	mock := &mockLLMClient{response: `{"status":"valid","confidence":2,"reason":"wild"}`}
+	v := NewLLMVerifier(engine, mock, 256, 100)
+	match := &types.Match{
+		RuleID:  "test.1",
+		Groups:  [][]byte{[]byte("secret")},
+		Snippet: types.Snippet{Matching: []byte("secret")},
+	}
+	result, err := v.ValidateMatch(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+}
+
+func TestLLMVerifier_CacheHitAfterBudget(t *testing.T) {
+	undetermined := &types.ValidationResult{
+		Status: types.StatusUndetermined, Confidence: 0.5, Message: "unclear",
+		ResponseMeta: &types.ResponseMeta{StatusCode: 200, Body: []byte("same-body"), URL: "https://api.example.com"},
+	}
+	sv := &staticValidator{result: undetermined}
+	engine := NewEngine(1, sv)
+	mock := &mockLLMClient{response: `{"status":"valid","confidence":0.9,"reason":"ok"}`}
+	v := NewLLMVerifier(engine, mock, 256, 1)
+	match := &types.Match{
+		RuleID:  "test.1",
+		Groups:  [][]byte{[]byte("secret")},
+		Snippet: types.Snippet{Matching: []byte("secret")},
+	}
+	first, err := v.ValidateMatch(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusValid, first.Status)
+	assert.Equal(t, int32(1), mock.calls.Load())
+
+	second, err := v.ValidateMatch(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusValid, second.Status)
+	assert.Equal(t, int32(1), mock.calls.Load(), "cache hit must not consume further budget")
+}

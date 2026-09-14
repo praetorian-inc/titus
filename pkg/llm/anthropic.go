@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,9 +25,9 @@ type anthropicClient struct {
 }
 
 func newAnthropicClient(apiKey, model string, cfg clientConfig) (Client, error) {
-	baseURL := cfg.BaseURL
-	if baseURL == "" {
-		baseURL = defaultAnthropicURL
+	baseURL, err := validateBaseURL(cfg.BaseURL)
+	if err != nil {
+		return nil, err
 	}
 	return &anthropicClient{
 		apiKey:  apiKey,
@@ -33,6 +36,36 @@ func newAnthropicClient(apiKey, model string, cfg clientConfig) (Client, error) 
 		client:  &http.Client{Timeout: cfg.Timeout},
 		retries: cfg.MaxRetries,
 	}, nil
+}
+
+func validateBaseURL(raw string) (string, error) {
+	if raw == "" {
+		return defaultAnthropicURL, nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid base URL: %w", err)
+	}
+	switch u.Scheme {
+	case "https":
+		return strings.TrimRight(raw, "/"), nil
+	case "http":
+		host := u.Hostname()
+		if isLoopbackHost(host) {
+			return strings.TrimRight(raw, "/"), nil
+		}
+		return "", fmt.Errorf("base URL must use https")
+	default:
+		return "", fmt.Errorf("base URL must use https")
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 type anthropicRequest struct {
@@ -62,16 +95,23 @@ type anthropicResponse struct {
 // retryableError marks errors from doRequest that should trigger a retry
 // (e.g. HTTP 429/529) rather than being returned immediately to the caller.
 type retryableError struct {
-	err error
+	err   error
+	delay time.Duration
 }
 
 func (r *retryableError) Error() string { return r.err.Error() }
 func (r *retryableError) Unwrap() error { return r.err }
 
 func (c *anthropicClient) Complete(ctx context.Context, req *Request) (*Response, error) {
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && c.client.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.client.Timeout)
+		defer cancel()
+	}
+
 	msgs := make([]anthropicMessage, len(req.Messages))
 	for i, m := range req.Messages {
-		msgs[i] = anthropicMessage{Role: m.Role, Content: m.Content}
+		msgs[i] = anthropicMessage(m)
 	}
 
 	maxTokens := req.MaxTokens
@@ -97,13 +137,50 @@ func (c *anthropicClient) Complete(ctx context.Context, req *Request) (*Response
 		if !isRetryable(err) {
 			return nil, lastErr
 		}
-
-		// If context is already done, stop retrying.
 		if ctx.Err() != nil {
 			return nil, lastErr
 		}
+		if attempt == c.retries {
+			break
+		}
+		if sleepErr := sleepRetry(ctx, retryDelay(err)); sleepErr != nil {
+			return nil, sleepErr
+		}
 	}
 	return nil, lastErr
+}
+
+func retryDelay(err error) time.Duration {
+	var re *retryableError
+	for e := err; e != nil; {
+		if r, ok := e.(*retryableError); ok {
+			re = r
+			break
+		}
+		u, ok := e.(interface{ Unwrap() error })
+		if !ok {
+			break
+		}
+		e = u.Unwrap()
+	}
+	if re == nil || re.delay <= 0 {
+		return time.Second
+	}
+	return re.delay
+}
+
+func sleepRetry(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func isRetryable(err error) bool {
@@ -157,16 +234,10 @@ func (c *anthropicClient) doRequest(ctx context.Context, body anthropicRequest) 
 				}
 			}
 		}
-		if delay > 0 {
-			t := time.NewTimer(delay)
-			defer t.Stop()
-			select {
-			case <-t.C:
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
+		return nil, &retryableError{
+			err:   fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody)),
+			delay: delay,
 		}
-		return nil, &retryableError{err: fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))}
 	}
 
 	if resp.StatusCode != http.StatusOK {

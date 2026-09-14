@@ -33,6 +33,14 @@ func TestMessage_Roles(t *testing.T) {
 	assert.Equal(t, "assistant", m2.Role)
 }
 
+func TestWithMaxRetries_NegativeNormalized(t *testing.T) {
+	c, err := NewClient("anthropic", "test-key", "claude-haiku-4-5-20251001", WithMaxRetries(-3))
+	require.NoError(t, err)
+	ac, ok := c.(*anthropicClient)
+	require.True(t, ok)
+	assert.Equal(t, 0, ac.retries)
+}
+
 func TestRequest_Defaults(t *testing.T) {
 	r := &Request{
 		System:    "You are helpful.",
