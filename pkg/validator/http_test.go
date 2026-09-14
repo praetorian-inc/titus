@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -884,6 +885,105 @@ func TestHTTPValidator_PullJSON_IgnoredWhenNotJSON(t *testing.T) {
 	assert.Equal(t, types.StatusValid, result.Status)
 	assert.Empty(t, result.Details["scopes"])
 	assert.NotContains(t, result.Message, "scopes:")
+}
+
+// --- ResponseMeta capture tests (Task 9) ---
+
+func TestHTTPValidator_PopulatesResponseMeta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Custom", "test-value")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"status":"active"}`))
+	}))
+	defer srv.Close()
+
+	def := ValidatorDef{
+		Name:    "test-validator",
+		RuleIDs: []string{"test.1"},
+		HTTP: HTTPDef{
+			Method:       "GET",
+			URL:          srv.URL,
+			Auth:         AuthDef{Type: "none", SecretGroup: "secret"},
+			SuccessCodes: []int{200},
+		},
+	}
+	v := NewHTTPValidator(def, srv.Client())
+	match := &types.Match{
+		RuleID:      "test.1",
+		NamedGroups: map[string][]byte{"secret": []byte("test")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	require.NotNil(t, result.ResponseMeta)
+	assert.Equal(t, 200, result.ResponseMeta.StatusCode)
+	assert.Equal(t, srv.URL, result.ResponseMeta.URL)
+	assert.Contains(t, string(result.ResponseMeta.Body), "active")
+}
+
+func TestHTTPValidator_ResponseMeta_SelectedHeadersOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Request-Id", "req-123")
+		w.Header().Set("Server", "nginx")
+		w.Header().Set("X-Custom-Unlisted", "should-not-appear")
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	def := ValidatorDef{
+		Name:    "test-validator",
+		RuleIDs: []string{"test.1"},
+		HTTP: HTTPDef{
+			Method:       "GET",
+			URL:          srv.URL,
+			Auth:         AuthDef{Type: "none", SecretGroup: "secret"},
+			SuccessCodes: []int{200},
+		},
+	}
+	v := NewHTTPValidator(def, srv.Client())
+	match := &types.Match{
+		RuleID:      "test.1",
+		NamedGroups: map[string][]byte{"secret": []byte("test")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	require.NotNil(t, result.ResponseMeta)
+	assert.Equal(t, "application/json", result.ResponseMeta.Headers["Content-Type"])
+	assert.Equal(t, "req-123", result.ResponseMeta.Headers["X-Request-Id"])
+	assert.Equal(t, "nginx", result.ResponseMeta.Headers["Server"])
+	assert.NotContains(t, result.ResponseMeta.Headers, "X-Custom-Unlisted")
+}
+
+func TestHTTPValidator_ResponseMeta_BodyTruncatedTo2KB(t *testing.T) {
+	largeBody := strings.Repeat("a", 5000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(largeBody))
+	}))
+	defer srv.Close()
+
+	def := ValidatorDef{
+		Name:    "test-validator",
+		RuleIDs: []string{"test.1"},
+		HTTP: HTTPDef{
+			Method:       "GET",
+			URL:          srv.URL,
+			Auth:         AuthDef{Type: "none", SecretGroup: "secret"},
+			SuccessCodes: []int{200},
+		},
+	}
+	v := NewHTTPValidator(def, srv.Client())
+	match := &types.Match{
+		RuleID:      "test.1",
+		NamedGroups: map[string][]byte{"secret": []byte("test")},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	require.NotNil(t, result.ResponseMeta)
+	assert.LessOrEqual(t, len(result.ResponseMeta.Body), 2048)
 }
 
 func TestEmbeddedValidators_PullConfig(t *testing.T) {

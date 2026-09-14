@@ -14,6 +14,35 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
+// maxResponseMetaBodyBytes caps the response body captured in ResponseMeta,
+// keeping it small enough to hand to a downstream LLM verifier cheaply.
+const maxResponseMetaBodyBytes = 2048
+
+// responseMetaHeaderNames lists the response headers captured into
+// ResponseMeta for use by downstream consumers such as the Phase 3 LLM
+// verifier.
+var responseMetaHeaderNames = []string{"Content-Type", "X-Request-Id", "Server"}
+
+// selectResponseHeaders extracts a fixed allowlist of headers from an HTTP
+// response for inclusion in ResponseMeta.
+func selectResponseHeaders(header http.Header) map[string]string {
+	selected := make(map[string]string)
+	for _, name := range responseMetaHeaderNames {
+		if val := header.Get(name); val != "" {
+			selected[name] = val
+		}
+	}
+	return selected
+}
+
+// truncateResponseBody truncates body to at most maxResponseMetaBodyBytes.
+func truncateResponseBody(body []byte) []byte {
+	if len(body) > maxResponseMetaBodyBytes {
+		return body[:maxResponseMetaBodyBytes]
+	}
+	return body
+}
+
 // HTTPValidator validates secrets via HTTP requests defined in YAML.
 type HTTPValidator struct {
 	def    ValidatorDef
@@ -109,11 +138,24 @@ func (v *HTTPValidator) tryURL(ctx context.Context, match *types.Match, secret, 
 			return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read response body: %v", err)), nil
 		}
 	} else {
+		// Read a small amount for ResponseMeta capture even when the
+		// validator doesn't need the body for evaluation, then discard
+		// whatever remains so the connection can be reused.
+		respBody, _ = io.ReadAll(io.LimitReader(resp.Body, maxResponseMetaBodyBytes))
 		_, _ = io.Copy(io.Discard, resp.Body)
 	}
 
 	result := v.evaluateResponse(resp.StatusCode, respBody)
 	v.pullThrough(result, resp.Header, respBody)
+
+	// Capture response metadata for the LLM verifier.
+	result.ResponseMeta = &types.ResponseMeta{
+		StatusCode: resp.StatusCode,
+		Headers:    selectResponseHeaders(resp.Header),
+		Body:       truncateResponseBody(respBody),
+		URL:        url,
+	}
+
 	return result, nil
 }
 
