@@ -39,3 +39,7 @@ coverage.out
 .capability-development/
 .claude/
 .worktrees/
+
+# Agent-generated plan and spec scaffolding. Written locally by the
+# superpowers workflow skills; not project documentation, so not committed.
+docs/superpowers/
