@@ -45,9 +45,33 @@ func TestValidationResult_JSON_Omitempty(t *testing.T) {
 	type wrapper struct {
 		Result *ValidationResult `json:"validation_result,omitempty"`
 	}
-	
+
 	w := wrapper{Result: nil}
 	data, err := json.Marshal(w)
 	assert.NoError(t, err)
 	assert.Equal(t, "{}", string(data))
+}
+
+func TestValidationResult_ResponseMetaNil(t *testing.T) {
+	r := NewValidationResult(StatusUndetermined, 0.5, "test")
+	assert.Nil(t, r.ResponseMeta)
+}
+
+func TestValidationResult_ResponseMetaSet(t *testing.T) {
+	r := NewValidationResult(StatusValid, 1.0, "ok")
+	r.ResponseMeta = &ResponseMeta{
+		StatusCode: 200,
+		Headers:    map[string]string{"Content-Type": "application/json"},
+		Body:       []byte(`{"ok":true}`),
+		URL:        "https://api.example.com/check",
+	}
+	assert.Equal(t, 200, r.ResponseMeta.StatusCode)
+	assert.Equal(t, "application/json", r.ResponseMeta.Headers["Content-Type"])
+	assert.Equal(t, "https://api.example.com/check", r.ResponseMeta.URL)
+}
+
+func TestResponseMeta_EmptyBody(t *testing.T) {
+	m := &ResponseMeta{StatusCode: 204}
+	assert.Empty(t, m.Body)
+	assert.Nil(t, m.Headers)
 }
