@@ -27,7 +27,7 @@ func gitBinaryAvailable() bool {
 
 // enumerateAllHistoryNative uses native git commands for fast history enumeration.
 // Phase 1: git rev-list --all --objects → collect unique blob hashes with paths.
-// Phase 2: git log → collect commit metadata keyed by file path.
+// Phase 2: git log --raw → collect commit metadata keyed by blob hash.
 // Phase 3: git cat-file --batch → stream content, filter, and invoke callback.
 func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	blobs, err := e.collectBlobEntries(ctx)
@@ -35,9 +35,9 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		return err
 	}
 
-	commitMap, _ := e.collectCommitMetadata(ctx) // best-effort; nil map is safe
+	blobCommitMap, _ := collectBlobCommitMap(ctx, e.config.Root) // best-effort; nil map is safe
 
-	return e.streamBlobContentsWithMeta(ctx, blobs, commitMap, callback)
+	return e.streamBlobContentsWithMeta(ctx, blobs, blobCommitMap, callback)
 }
 
 // collectBlobEntries runs git rev-list --all --objects and returns deduplicated blob entries.
@@ -101,14 +101,9 @@ func (e *GitEnumerator) collectBlobEntries(ctx context.Context) ([]blobEntry, er
 	return blobs, nil
 }
 
-// collectCommitMetadata runs git log to build a map of file path → first commit metadata.
-func (e *GitEnumerator) collectCommitMetadata(ctx context.Context) (map[string]*types.CommitMetadata, error) {
-	return collectCommitMetadataForRepo(ctx, e.config.Root, true)
-}
-
 // streamBlobContentsWithMeta feeds hashes to git cat-file --batch and invokes callback for text blobs.
-// If commitMap is non-nil, attaches commit metadata to git provenance records.
-func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []blobEntry, commitMap map[string]*types.CommitMetadata, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+// blobCommitMap maps blob hash (hex) → commit metadata for the commit that first introduced the blob.
+func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []blobEntry, blobCommitMap map[string]*types.CommitMetadata, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	if len(blobs) == 0 {
 		return nil
 	}
@@ -237,7 +232,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 
 		prov := types.GitProvenance{
 			RepoPath: e.config.Root,
-			Commit:   commitMap[blob.path],
+			Commit:   blobCommitMap[hexStr],
 			BlobPath: blob.path,
 		}
 
