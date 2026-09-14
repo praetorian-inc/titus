@@ -38,7 +38,7 @@ func (c *llmCondition) markDynamic() {}
 // false (condition does not fire) rather than propagating, since a transient
 // LLM failure should not be treated as a scoring engine error.
 func (c *llmCondition) Evaluate(ctx context.Context, m *types.Match) (bool, error) {
-	if m == nil {
+	if m == nil || c.client == nil {
 		return false, nil
 	}
 
