@@ -17,6 +17,7 @@ import (
 
 	"github.com/praetorian-inc/titus/pkg/datastore"
 	"github.com/praetorian-inc/titus/pkg/enum"
+	"github.com/praetorian-inc/titus/pkg/llm"
 	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/sarif"
@@ -45,19 +46,26 @@ func (e *extensionsValue) Type() string {
 }
 
 var (
-	scanRulesPath           string
-	scanRulesInclude        string
-	scanRulesExclude        string
-	scanOutputPath          string
-	scanOutputFormat        string
-	scanGit                 bool
-	scanDocker              bool
-	scanMaxFileSize         int64
-	scanContextLines        int
-	scanIncremental         bool
-	scanValidate            bool
-	scanValidateWorkers     int
-	scanValidateRateLimit   float64
+	scanRulesPath         string
+	scanRulesInclude      string
+	scanRulesExclude      string
+	scanOutputPath        string
+	scanOutputFormat      string
+	scanGit               bool
+	scanDocker            bool
+	scanMaxFileSize       int64
+	scanContextLines      int
+	scanIncremental       bool
+	scanValidate          bool
+	scanValidateWorkers   int
+	scanValidateRateLimit float64
+
+	// LLM flags
+	scanLLMVerify  bool
+	scanLLMBudget  int
+	scanLLMModel   string
+	scanLLMTimeout time.Duration
+
 	scanStoreBlobs          bool
 	scanExtractArchivesFlag extensionsValue
 	extractMaxSize          string
@@ -110,6 +118,10 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
 	scanCmd.Flags().Float64Var(&scanValidateRateLimit, "validate-rate-limit", 0, "max validation requests per second (0 = unlimited)")
+	scanCmd.Flags().BoolVar(&scanLLMVerify, "llm-verify", false, "enable LLM second-pass validation for undetermined results")
+	scanCmd.Flags().IntVar(&scanLLMBudget, "llm-budget", 100, "max LLM calls per scan")
+	scanCmd.Flags().StringVar(&scanLLMModel, "llm-model", "claude-haiku-4-5-20251001", "LLM model for verification")
+	scanCmd.Flags().DurationVar(&scanLLMTimeout, "llm-timeout", 15*time.Second, "timeout per LLM call")
 	scanCmd.Flags().BoolVar(&scanStoreBlobs, "store-blobs", false, "Store file contents in blobs/ directory")
 	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract", "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')")
 	scanCmd.Flags().StringVar(&extractMaxSize, "extract-max-size", "10MB", "Max uncompressed size per extracted file")
@@ -441,6 +453,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if s := engine.Stats(); s.Any() {
 		fmt.Fprintf(os.Stderr, "[scoring] Dynamic modifiers: %d timeouts, %d rate-limited, %d server errors, %d network errors\n",
 			s.Timeouts, s.RateLimited, s.ServerErrors, s.NetworkErrors)
+	}
+
+	if v, ok := validationEngine.(*validator.LLMVerifier); ok {
+		if s := v.Stats(); s.Requests > 0 {
+			fmt.Fprintf(os.Stderr, "[llm] %d requests (%d cache hits, %d upgrades, %d failures)\n",
+				s.Requests, s.CacheHits, s.Upgrades, s.Failures)
+		}
 	}
 
 	if verbose {
@@ -2062,8 +2081,20 @@ func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches
 	return nil
 }
 
+// validationEngine is the narrow surface runScan needs from a validation
+// backend, kept as an interface so a bare *validator.Engine and an
+// LLM-wrapped *validator.LLMVerifier are interchangeable at the call sites.
+type validationEngine interface {
+	ValidateMatch(ctx context.Context, match *types.Match) (*types.ValidationResult, error)
+	ValidateAsync(ctx context.Context, match *types.Match) <-chan *types.ValidationResult
+	CanValidate(ruleID string) bool
+}
+
 // initValidationEngine creates the validation engine if validation is enabled.
-func initValidationEngine() *validator.Engine {
+// When --llm-verify is also enabled (and TITUS_LLM_API_KEY is set), the
+// engine is wrapped with an LLMVerifier for second-pass review of
+// undetermined results.
+func initValidationEngine() validationEngine {
 	if !scanValidate {
 		return nil
 	}
@@ -2073,11 +2104,29 @@ func initValidationEngine() *validator.Engine {
 	}
 	bc := validator.NewBackoffController(3, 500*time.Millisecond, 30*time.Second)
 	e.SetBackoff(bc)
-	return e
+
+	if !scanLLMVerify {
+		return e
+	}
+
+	apiKey := os.Getenv("TITUS_LLM_API_KEY")
+	if apiKey == "" {
+		fmt.Fprintf(os.Stderr, "[warn] --llm-verify set but TITUS_LLM_API_KEY not set; LLM verification disabled\n")
+		return e
+	}
+
+	client, err := llm.NewClient("anthropic", apiKey, scanLLMModel,
+		llm.WithTimeout(scanLLMTimeout))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[warn] failed to create LLM client: %v; LLM verification disabled\n", err)
+		return e
+	}
+
+	return validator.NewLLMVerifier(e, client, 256, int64(scanLLMBudget))
 }
 
 // validateMatches validates matches using the validation engine.
-func validateMatches(ctx context.Context, engine *validator.Engine, matches []*types.Match, verbose bool) {
+func validateMatches(ctx context.Context, engine validationEngine, matches []*types.Match, verbose bool) {
 	if engine == nil || len(matches) == 0 {
 		return
 	}

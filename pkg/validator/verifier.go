@@ -19,10 +19,10 @@ import (
 // verdict produced by the engine, and it enforces a call budget and bounded
 // concurrency against the LLM client.
 type LLMVerifier struct {
-	engine    *Engine
-	llm       llm.Client
-	cache     *llm.ResponseCache
-	maxTokens int
+	engine     *Engine
+	llm        llm.Client
+	cache      *llm.ResponseCache
+	maxTokens  int
 	budget     int64
 	spent      atomic.Int64
 	upgrades   atomic.Int64
@@ -76,6 +76,19 @@ func (v *LLMVerifier) ValidateMatch(ctx context.Context, match *types.Match) (*t
 		v.upgrades.Add(1)
 	}
 	return upgraded, nil
+}
+
+// ValidateAsync forwards to the wrapped engine's async path. The LLM
+// second-pass review only applies to the synchronous ValidateMatch path;
+// this passthrough exists so LLMVerifier satisfies the same interface as
+// the bare Engine for callers that use the async API.
+func (v *LLMVerifier) ValidateAsync(ctx context.Context, match *types.Match) <-chan *types.ValidationResult {
+	return v.engine.ValidateAsync(ctx, match)
+}
+
+// CanValidate forwards to the wrapped engine.
+func (v *LLMVerifier) CanValidate(ruleID string) bool {
+	return v.engine.CanValidate(ruleID)
 }
 
 // shouldCallLLM reports whether the LLM second pass should be invoked for
