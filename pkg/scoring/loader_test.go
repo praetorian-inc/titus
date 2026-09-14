@@ -473,3 +473,95 @@ func TestLoadScorers_SupportedAuthTypes_Load(t *testing.T) {
 		require.NoErrorf(t, err, "auth type %q should load", at)
 	}
 }
+
+func TestConvertYAMLModifier_LLMCondition(t *testing.T) {
+	delta := 30
+	ym := yamlModifier{
+		Name:     "llm-scope-check",
+		Priority: 50,
+		LLM: &yamlLLMDef{
+			Prompt:    "What access does {{secret}} have? Respond: admin, read_write, read_only, unknown",
+			FiresWhen: "admin",
+		},
+		Delta: &delta,
+	}
+
+	m, err := convertYAMLModifier(ym, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "llm-scope-check", m.Name)
+	assert.Equal(t, 50, m.Priority)
+	assert.True(t, m.IsDynamic(), "llmCondition should be a network condition")
+}
+
+func TestConvertYAMLModifier_LLMAndHTTPRejects(t *testing.T) {
+	delta := 10
+	ym := yamlModifier{
+		Name: "bad",
+		LLM: &yamlLLMDef{
+			Prompt:    "test",
+			FiresWhen: "yes",
+		},
+		HTTP:      &yamlHTTPDef{Method: "GET", URL: "http://x"},
+		FiresWhen: &yamlFiresWhen{StatusCode: intPtr(200)},
+		Delta:     &delta,
+	}
+	_, err := convertYAMLModifier(ym, nil)
+	assert.Error(t, err, "should reject two condition types")
+}
+
+func TestConvertYAMLModifier_LLMMissingPrompt(t *testing.T) {
+	delta := 10
+	ym := yamlModifier{
+		Name: "bad",
+		LLM: &yamlLLMDef{
+			FiresWhen: "yes",
+		},
+		Delta: &delta,
+	}
+	_, err := convertYAMLModifier(ym, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "prompt")
+}
+
+func TestConvertYAMLModifier_LLMMissingFiresWhen(t *testing.T) {
+	delta := 10
+	ym := yamlModifier{
+		Name: "bad",
+		LLM: &yamlLLMDef{
+			Prompt: "test",
+		},
+		Delta: &delta,
+	}
+	_, err := convertYAMLModifier(ym, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "fires_when")
+}
+
+func intPtr(n int) *int { return &n }
+
+// TestLoadScorers_LLMModifier_Parses exercises the llm: block through the
+// full YAML unmarshal path (as opposed to the struct-literal tests above),
+// verifying the yaml tags on yamlLLMDef map correctly end to end.
+func TestLoadScorers_LLMModifier_Parses(t *testing.T) {
+	yamlDoc := `
+scorers:
+  - name: stripe-key-scope
+    rule_ids: [np.stripe.1]
+    modifiers:
+      - name: llm-scope-check
+        priority: 50
+        llm:
+          prompt: "What access does {{secret}} have? Respond: admin, read_write, read_only, unknown"
+          fires_when: admin
+        delta: 30
+`
+	scorers, err := loadScorers(strings.NewReader(yamlDoc))
+	require.NoError(t, err)
+	require.Len(t, scorers, 1)
+	require.Len(t, scorers[0].Modifiers, 1)
+	mod := scorers[0].Modifiers[0]
+	assert.Equal(t, "llm-scope-check", mod.Name)
+	assert.Equal(t, 50, mod.Priority)
+	assert.NotNil(t, mod.Condition, "llm modifier must have a compiled condition")
+	assert.True(t, mod.IsDynamic(), "llmCondition should be a network condition")
+}

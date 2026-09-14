@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/praetorian-inc/titus/pkg/llm"
 	"gopkg.in/yaml.v3"
 )
 
@@ -138,7 +139,7 @@ func convertYAMLScorer(ys yamlScorer) (*Scorer, error) {
 		Modifiers: make([]Modifier, 0, len(ys.Modifiers)),
 	}
 	for i, ym := range ys.Modifiers {
-		m, err := convertYAMLModifier(ym)
+		m, err := convertYAMLModifier(ym, nil)
 		if err != nil {
 			return nil, fmt.Errorf("modifier[%d] %q: %w", i, ym.Name, err)
 		}
@@ -148,8 +149,10 @@ func convertYAMLScorer(ys yamlScorer) (*Scorer, error) {
 }
 
 // convertYAMLModifier enforces the "exactly one condition, exactly one action"
-// rule and compiles the regex (if any).
-func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
+// rule and compiles the regex (if any). llmClient is injected by the caller
+// for llm: conditions; it may be nil when no LLM condition is present, or
+// when LLM scoring hasn't been wired up yet (see Task 14).
+func convertYAMLModifier(ym yamlModifier, llmClient llm.Client) (Modifier, error) {
 	if ym.Name == "" {
 		return Modifier{}, fmt.Errorf("modifier name is required")
 	}
@@ -220,6 +223,16 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 			body:         ym.HTTP.Body,
 			firesWhen:    leaf,
 		}
+	}
+	if ym.LLM != nil {
+		condCount++
+		if ym.LLM.Prompt == "" {
+			return Modifier{}, fmt.Errorf("llm.prompt is required")
+		}
+		if ym.LLM.FiresWhen == "" {
+			return Modifier{}, fmt.Errorf("llm.fires_when is required")
+		}
+		cond = newLLMCondition(llmClient, ym.LLM.Prompt, ym.LLM.FiresWhen)
 	}
 	if condCount != 1 {
 		return Modifier{}, fmt.Errorf("exactly one condition leaf required (got %d)", condCount)
