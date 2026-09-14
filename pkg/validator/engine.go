@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/praetorian-inc/titus/pkg/types"
+	"golang.org/x/time/rate"
 )
 
 // NewDefaultEngine creates a validation engine pre-loaded with all built-in validators.
@@ -53,7 +54,9 @@ type Engine struct {
 	validators []Validator
 	cache      *ValidationCache
 	workers    int
-	sem        chan struct{} // semaphore for bounded concurrency
+	sem        chan struct{}      // semaphore for bounded concurrency
+	limiter    *rate.Limiter      // optional rate limiter
+	backoff    *BackoffController // optional adaptive backoff
 }
 
 // NewEngine creates a validation engine with registered validators.
@@ -159,6 +162,14 @@ func (e *Engine) ValidateAsync(ctx context.Context, match *types.Match) <-chan *
 		case <-ctx.Done():
 			result <- types.NewValidationResult(types.StatusUndetermined, 0, "context cancelled")
 			return
+		}
+
+		// Apply rate limit if configured.
+		if e.limiter != nil {
+			if err := e.limiter.Wait(ctx); err != nil {
+				result <- types.NewValidationResult(types.StatusUndetermined, 0, "rate limit cancelled")
+				return
+			}
 		}
 
 		// Re-check cache (another goroutine may have validated)

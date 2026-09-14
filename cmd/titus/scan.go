@@ -57,6 +57,7 @@ var (
 	scanIncremental         bool
 	scanValidate            bool
 	scanValidateWorkers     int
+	scanValidateRateLimit   float64
 	scanStoreBlobs          bool
 	scanExtractArchivesFlag extensionsValue
 	extractMaxSize          string
@@ -82,8 +83,8 @@ var (
 	scanAsanaConcurrency        int
 
 	// Google Drive flags.
-	scanGDriveRateLimit       float64
-	scanGDriveConcurrency     int
+	scanGDriveRateLimit   float64
+	scanGDriveConcurrency int
 )
 
 var scanCmd = &cobra.Command{
@@ -108,6 +109,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
+	scanCmd.Flags().Float64Var(&scanValidateRateLimit, "validate-rate-limit", 0, "max validation requests per second (0 = unlimited)")
 	scanCmd.Flags().BoolVar(&scanStoreBlobs, "store-blobs", false, "Store file contents in blobs/ directory")
 	scanCmd.Flags().Var(&scanExtractArchivesFlag, "extract", "Extract text from binary files (extensions: xlsx,docx,pdf,zip or 'all')")
 	scanCmd.Flags().StringVar(&extractMaxSize, "extract-max-size", "10MB", "Max uncompressed size per extracted file")
@@ -2065,7 +2067,13 @@ func initValidationEngine() *validator.Engine {
 	if !scanValidate {
 		return nil
 	}
-	return validator.NewDefaultEngine(scanValidateWorkers)
+	e := validator.NewDefaultEngine(scanValidateWorkers)
+	if scanValidateRateLimit > 0 {
+		e.SetRateLimit(scanValidateRateLimit)
+	}
+	bc := validator.NewBackoffController(3, 500*time.Millisecond, 30*time.Second)
+	e.SetBackoff(bc)
+	return e
 }
 
 // validateMatches validates matches using the validation engine.
