@@ -3,6 +3,7 @@
 package matcher
 
 import (
+	"bytes"
 	"sync"
 	"testing"
 
@@ -79,8 +80,13 @@ func TestScratchPool_ConcurrentMatchStaysBounded(t *testing.T) {
 	}
 	wg.Wait()
 
-	assert.LessOrEqual(t, len(m.scratchPool), cap(m.scratchPool),
-		"concurrent matching must not park more scratches than the pool holds")
+	// len <= cap holds for any buffered channel whatever acquire and release
+	// do, so asserting it proves nothing. What can actually fail is the
+	// ownership contract: with more callers than pool slots, every completed
+	// match still has to hand its scratch back, so the pool cannot end up
+	// empty. Exercising that path under -race is the rest of this test's value.
+	assert.NotEmpty(t, m.scratchPool,
+		"completed matches must return their scratches to the pool rather than drop them")
 }
 
 func TestClose_DrainsScratchPool(t *testing.T) {
@@ -92,6 +98,27 @@ func TestClose_DrainsScratchPool(t *testing.T) {
 
 	require.NoError(t, m.Close())
 	assert.Nil(t, m.scratchPool, "Close must free pooled scratches, not leave them to the GC")
+}
+
+// TestMatchChunked_TolerantSkipsFailedChunk covers the nil result a failed
+// chunk returns. Tolerant mode swallows the per-chunk error and then used to
+// walk straight into result.Matches on that nil result. Closing the matcher is
+// the cheapest way to make every chunk fail.
+func TestMatchChunked_TolerantSkipsFailedChunk(t *testing.T) {
+	m := newScratchTestMatcher(t)
+	require.NoError(t, m.Close())
+
+	// Over one chunk, so matchChunked runs its per-chunk loop rather than the
+	// single-chunk fast path.
+	maxChunk := DefaultChunkConfig().MaxChunkSize
+	line := []byte("no secret here, just filler text\n")
+	content := bytes.Repeat(line, maxChunk/len(line)+1024)
+	require.Greater(t, len(content), maxChunk)
+
+	result, err := m.MatchWithBlobIDAndOptions(content, types.ComputeBlobID(content), Options{Tolerant: true})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Empty(t, result.Matches)
 }
 
 func TestClose_WaitsForInFlightMatches(t *testing.T) {

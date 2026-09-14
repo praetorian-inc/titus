@@ -182,6 +182,13 @@ func NewVectorscanWithTimeout(rules []*types.Rule, contextLines int, warnf func(
 		// Initialize scratch pool for concurrent matching. A buffered channel
 		// rather than a sync.Pool: a scratch owns a C allocation that the Go GC
 		// cannot see, so a pool that may drop entries leaks one per drop.
+		//
+		// GOMAXPROCS sizes the pool for the number of callers that can actually
+		// be scanning at once. Callers can still outnumber it — `titus scan
+		// --workers` is user-set and defaults to NumCPU, which diverges from
+		// GOMAXPROCS under a container CPU quota — but that is a pool hit rate
+		// question, not a correctness one: acquireScratch clones on a miss and
+		// releaseScratch frees whatever will not fit.
 		m.scratchPool = make(chan *hyperscan.Scratch, runtime.GOMAXPROCS(0))
 	}
 
@@ -736,6 +743,13 @@ func (m *VectorscanMatcher) matchChunked(content []byte, chunks []Chunk, blobID 
 		result, err := m.matchChunk(chunk.Content, blobID, opts)
 		if err != nil && !opts.Tolerant {
 			return nil, err
+		}
+
+		// Tolerant mode carries on past a failed chunk, and every error path in
+		// matchChunk returns a nil result, so drop the chunk rather than
+		// dereference it.
+		if result == nil {
+			continue
 		}
 
 		// Adjust match offsets to be relative to original file
