@@ -72,14 +72,3 @@ func NewClient(provider, apiKey, model string, opts ...Option) (Client, error) {
 		return nil, fmt.Errorf("unsupported provider: %q", provider)
 	}
 }
-
-// Temporary stub at bottom of client.go — replaced in Task 5
-func newAnthropicClient(apiKey, model string, cfg clientConfig) (Client, error) {
-	return &stubClient{}, nil
-}
-
-type stubClient struct{}
-
-func (s *stubClient) Complete(ctx context.Context, req *Request) (*Response, error) {
-	return nil, fmt.Errorf("not implemented")
-}
