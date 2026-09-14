@@ -49,7 +49,7 @@ func (c *llmCondition) Evaluate(ctx context.Context, m *types.Match) (bool, erro
 
 	resp, err := c.client.Complete(ctx, &llm.Request{
 		System:    "You are analyzing a detected secret. Answer concisely.",
-		Messages:  []llm.Message{{Role: "user", Content: prompt}},
+		Messages:  []llm.Message{{Role: "user", Content: llm.WrapUntrusted("scoring_prompt", prompt)}},
 		MaxTokens: 256,
 	})
 	if err != nil {
@@ -65,15 +65,15 @@ func (c *llmCondition) Evaluate(ctx context.Context, m *types.Match) (bool, erro
 // substituted verbatim here; callers constructing prompts from untrusted
 // sources should sanitize via llm.Sanitize/llm.WrapUntrusted beforehand.
 func substituteMatchVars(tpl string, m *types.Match) string {
-	tpl = strings.ReplaceAll(tpl, "{{rule_name}}", m.RuleID)
-	tpl = strings.ReplaceAll(tpl, "{{ rule_name }}", m.RuleID)
+	tpl = strings.ReplaceAll(tpl, "{{rule_name}}", llm.Sanitize(m.RuleID))
+	tpl = strings.ReplaceAll(tpl, "{{ rule_name }}", llm.Sanitize(m.RuleID))
 	for name, value := range m.NamedGroups {
-		val := string(value)
+		val := llm.Sanitize(string(value))
 		tpl = strings.ReplaceAll(tpl, "{{"+name+"}}", val)
 		tpl = strings.ReplaceAll(tpl, "{{ "+name+" }}", val)
 	}
 	if m.Snippet.Matching != nil {
-		val := string(m.Snippet.Matching)
+		val := llm.Sanitize(string(m.Snippet.Matching))
 		tpl = strings.ReplaceAll(tpl, "{{matching}}", val)
 		tpl = strings.ReplaceAll(tpl, "{{ matching }}", val)
 	}
