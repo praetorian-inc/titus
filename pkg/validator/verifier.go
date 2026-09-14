@@ -78,12 +78,35 @@ func (v *LLMVerifier) ValidateMatch(ctx context.Context, match *types.Match) (*t
 	return upgraded, nil
 }
 
-// ValidateAsync forwards to the wrapped engine's async path. The LLM
-// second-pass review only applies to the synchronous ValidateMatch path;
-// this passthrough exists so LLMVerifier satisfies the same interface as
-// the bare Engine for callers that use the async API.
+// ValidateAsync submits match to the wrapped engine's async path, then
+// applies the LLM second-pass review on the result when applicable.
 func (v *LLMVerifier) ValidateAsync(ctx context.Context, match *types.Match) <-chan *types.ValidationResult {
-	return v.engine.ValidateAsync(ctx, match)
+	engineCh := v.engine.ValidateAsync(ctx, match)
+	out := make(chan *types.ValidationResult, 1)
+	go func() {
+		defer close(out)
+		result := <-engineCh
+		if result == nil {
+			return
+		}
+		if !v.shouldCallLLM(result) || v.spent.Load() >= v.budget {
+			out <- result
+			return
+		}
+		select {
+		case v.sem <- struct{}{}:
+			defer func() { <-v.sem }()
+		case <-ctx.Done():
+			out <- result
+			return
+		}
+		upgraded := v.tryLLMUpgrade(ctx, match, result)
+		if upgraded != result {
+			v.upgrades.Add(1)
+		}
+		out <- upgraded
+	}()
+	return out
 }
 
 // CanValidate forwards to the wrapped engine.
