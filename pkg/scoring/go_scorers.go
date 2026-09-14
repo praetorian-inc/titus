@@ -1,5 +1,7 @@
 package scoring
 
+import "github.com/praetorian-inc/titus/pkg/llm"
+
 // BuiltinGoScorers returns the set of custom Go scorers registered for M4.
 // Prepended to YAML scorers so they take first-match-wins precedence.
 func BuiltinGoScorers() []*Scorer {
@@ -26,8 +28,13 @@ func BuiltinGoScorers() []*Scorer {
 // (titus.go WithScoring) MUST use this so their scoring behavior stays
 // identical — assembling the list in only one path silently drops Go-scored
 // rules (e.g. classic GitHub PATs) from the other.
-func AllBuiltinScorers() ([]*Scorer, error) {
-	yamlScorers, err := NewLoader().LoadBuiltinScorers()
+//
+// llmClient is threaded through to every YAML scorer's llm: conditions. Pass
+// nil when LLM scoring is unavailable (e.g. --score-scope disabled or no
+// TITUS_LLM_API_KEY) — llm: conditions with a nil client silently evaluate
+// to false rather than firing.
+func AllBuiltinScorers(llmClient llm.Client) ([]*Scorer, error) {
+	yamlScorers, err := NewLoader().WithLLMClient(llmClient).LoadBuiltinScorers()
 	if err != nil {
 		return nil, err
 	}

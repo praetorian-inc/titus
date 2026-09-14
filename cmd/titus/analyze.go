@@ -99,7 +99,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	valEngine := validator.NewDefaultEngine(analyzeValidateWorkers)
 	validateMatches(ctx, valEngine, matches, verbose)
 
-	scorers, err := scoring.AllBuiltinScorers()
+	scorers, err := scoring.AllBuiltinScorers(nil)
 	if err != nil {
 		return fmt.Errorf("loading scorers: %w", err)
 	}

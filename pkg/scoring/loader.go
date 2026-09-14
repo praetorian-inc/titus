@@ -58,7 +58,8 @@ func yamlHeadersToScorerHeaders(hs []yamlHeader) []scorerHeader {
 
 // ScorerLoader handles loading scorer YAML files. Mirrors pkg/rule.Loader.
 type ScorerLoader struct {
-	fs fs.FS
+	fs        fs.FS
+	llmClient llm.Client
 }
 
 // NewLoader creates a loader backed by the embedded builtinFS.
@@ -69,6 +70,15 @@ func NewLoader() *ScorerLoader {
 // NewLoaderWithFS creates a loader backed by a custom fs.FS (for tests).
 func NewLoaderWithFS(fsys fs.FS) *ScorerLoader {
 	return &ScorerLoader{fs: fsys}
+}
+
+// WithLLMClient sets the LLM client used to evaluate llm: conditions in
+// scorers loaded by this loader. Returns the loader for chaining. When left
+// unset (nil), llm: conditions are constructed with a nil client, which
+// causes them to silently evaluate to false (see llmCondition.Evaluate).
+func (l *ScorerLoader) WithLLMClient(client llm.Client) *ScorerLoader {
+	l.llmClient = client
+	return l
 }
 
 // LoadScorers parses a scorers YAML document and returns the compiled Scorers.
@@ -84,7 +94,7 @@ func (l *ScorerLoader) LoadScorers(data []byte) ([]*Scorer, error) {
 	}
 	result := make([]*Scorer, 0, len(yf.Scorers))
 	for i, ys := range yf.Scorers {
-		s, err := convertYAMLScorer(ys)
+		s, err := convertYAMLScorer(ys, l.llmClient)
 		if err != nil {
 			return nil, fmt.Errorf("scorer[%d] %q: %w", i, ys.Name, err)
 		}
@@ -122,8 +132,9 @@ func (l *ScorerLoader) LoadBuiltinScorers() ([]*Scorer, error) {
 }
 
 // convertYAMLScorer compiles a yamlScorer into a *Scorer, validating every
-// modifier and precompiling all regexes.
-func convertYAMLScorer(ys yamlScorer) (*Scorer, error) {
+// modifier and precompiling all regexes. llmClient is threaded through to
+// convertYAMLModifier for llm: conditions; it may be nil.
+func convertYAMLScorer(ys yamlScorer, llmClient llm.Client) (*Scorer, error) {
 	if ys.Name == "" {
 		return nil, fmt.Errorf("scorer name is required")
 	}
@@ -139,7 +150,7 @@ func convertYAMLScorer(ys yamlScorer) (*Scorer, error) {
 		Modifiers: make([]Modifier, 0, len(ys.Modifiers)),
 	}
 	for i, ym := range ys.Modifiers {
-		m, err := convertYAMLModifier(ym, nil)
+		m, err := convertYAMLModifier(ym, llmClient)
 		if err != nil {
 			return nil, fmt.Errorf("modifier[%d] %q: %w", i, ym.Name, err)
 		}

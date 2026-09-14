@@ -2249,7 +2249,20 @@ type scoringEngineInterface interface {
 // Loader errors (malformed YAML, bad regex) are hard failures: scan startup
 // must abort rather than silently scoring all findings at base.
 func buildScoringEngine() (scoringEngineInterface, error) {
-	allScorers, err := scoring.AllBuiltinScorers()
+	var llmClient llm.Client
+	if scanScopeEnabled {
+		apiKey := os.Getenv("TITUS_LLM_API_KEY")
+		if apiKey != "" {
+			var err error
+			llmClient, err = llm.NewClient("anthropic", apiKey, scanLLMModel,
+				llm.WithTimeout(scanLLMTimeout))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[warn] failed to create LLM client for scoring: %v\n", err)
+			}
+		}
+	}
+
+	allScorers, err := scoring.AllBuiltinScorers(llmClient)
 	if err != nil {
 		return nil, fmt.Errorf("loading scorers: %w", err)
 	}
