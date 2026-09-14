@@ -23,9 +23,13 @@ type LLMVerifier struct {
 	llm       llm.Client
 	cache     *llm.ResponseCache
 	maxTokens int
-	budget    int64
-	spent     atomic.Int64
-	sem       chan struct{}
+	budget     int64
+	spent      atomic.Int64
+	upgrades   atomic.Int64
+	failures   atomic.Int64
+	inputToks  atomic.Int64
+	outputToks atomic.Int64
+	sem        chan struct{}
 }
 
 // NewLLMVerifier creates an LLMVerifier wrapping engine, using client for
@@ -68,6 +72,9 @@ func (v *LLMVerifier) ValidateMatch(ctx context.Context, match *types.Match) (*t
 	}
 
 	upgraded := v.tryLLMUpgrade(ctx, match, result)
+	if upgraded != result {
+		v.upgrades.Add(1)
+	}
 	return upgraded, nil
 }
 
@@ -118,9 +125,12 @@ func (v *LLMVerifier) tryLLMUpgrade(ctx context.Context, match *types.Match, ori
 		MaxTokens: v.maxTokens,
 	})
 	if err != nil {
+		v.failures.Add(1)
 		return original
 	}
 
+	v.inputToks.Add(int64(resp.Usage.InputTokens))
+	v.outputToks.Add(int64(resp.Usage.OutputTokens))
 	v.cache.Set(key, resp)
 	return v.applyLLMResponse(resp.Content, original)
 }
@@ -160,6 +170,7 @@ type llmVerdict struct {
 func (v *LLMVerifier) applyLLMResponse(content string, original *types.ValidationResult) *types.ValidationResult {
 	var verdict llmVerdict
 	if err := json.Unmarshal([]byte(content), &verdict); err != nil {
+		v.failures.Add(1)
 		return original
 	}
 
@@ -192,8 +203,12 @@ func (v *LLMVerifier) applyLLMResponse(content string, original *types.Validatio
 // Stats returns a snapshot of this verifier's LLM usage counters.
 func (v *LLMVerifier) Stats() LLMStats {
 	return LLMStats{
-		Requests:  v.spent.Load(),
-		CacheHits: v.cache.Hits(),
+		Requests:     v.spent.Load(),
+		CacheHits:    v.cache.Hits(),
+		Upgrades:     v.upgrades.Load(),
+		Failures:     v.failures.Load(),
+		InputTokens:  v.inputToks.Load(),
+		OutputTokens: v.outputToks.Load(),
 	}
 }
 
