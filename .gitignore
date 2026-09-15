@@ -31,6 +31,20 @@ coverage.out
 .env
 .env.*
 
+# Credentials and local secrets — never commit these
+*.pem
+*.p12
+*.pfx
+*.kdbx
+id_rsa
+id_dsa
+id_ed25519
+id_ecdsa
+
+# Agent plans/specs — keep local, do not ship in PRs
+docs/superpowers/plans/
+docs/superpowers/specs/
+
 # OS
 .DS_Store
 
