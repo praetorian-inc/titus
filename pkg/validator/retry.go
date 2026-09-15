@@ -123,6 +123,7 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 				}
 				continue
 			}
+			return resp, nil
 		case resp.StatusCode >= 500:
 			if c.backoff != nil {
 				c.backoff.RecordError()
@@ -133,6 +134,7 @@ func (c *RetryHTTPClient) Do(req *http.Request) (*http.Response, error) {
 				}
 				continue
 			}
+			return resp, nil
 		default:
 			if c.backoff != nil {
 				c.backoff.RecordSuccess()

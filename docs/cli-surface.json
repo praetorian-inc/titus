@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "surfaceHash": "sha256:97ada7e789af5a2fabd04eca76dc4dc4fef002640597f32c2863460c91414bd7",
+  "surfaceHash": "sha256:ed417793be71ee0ef1568964813d023b6dcf266d043ad90c8a1a693d19a28ed5",
   "commands": [
     {
       "path": "titus",
@@ -2930,30 +2930,6 @@
           "type": "bool",
           "default": "false",
           "usage": "Skip already-scanned blobs"
-        },
-        {
-          "name": "llm-budget",
-          "type": "int",
-          "default": "100",
-          "usage": "max LLM calls per scan"
-        },
-        {
-          "name": "llm-model",
-          "type": "string",
-          "default": "claude-haiku-4-5-20251001",
-          "usage": "LLM model for verification"
-        },
-        {
-          "name": "llm-timeout",
-          "type": "duration",
-          "default": "15s",
-          "usage": "timeout per LLM call"
-        },
-        {
-          "name": "llm-verify",
-          "type": "bool",
-          "default": "false",
-          "usage": "enable LLM second-pass validation for undetermined results (sends response bodies to the LLM provider)"
         },
         {
           "name": "max-file-size",

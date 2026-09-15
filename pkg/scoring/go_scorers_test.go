@@ -37,7 +37,7 @@ func TestBuiltinGoScorers_IncludesGitHub(t *testing.T) {
 }
 
 func TestAllBuiltinScorers_IncludesGoAndYAML(t *testing.T) {
-	scorers, err := AllBuiltinScorers(nil)
+	scorers, err := AllBuiltinScorers()
 	if err != nil {
 		t.Fatalf("AllBuiltinScorers: %v", err)
 	}

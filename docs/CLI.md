@@ -3,7 +3,7 @@
 # titus CLI reference
 
 Every command, alias and flag below is derived from the cobra command tree, not from prose.
-Schema version 1, surface hash `sha256:97ada7e789af5a2fabd04eca76dc4dc4fef002640597f32c2863460c91414bd7`.
+Schema version 1, surface hash `sha256:ed417793be71ee0ef1568964813d023b6dcf266d043ad90c8a1a693d19a28ed5`.
 
 Regenerate with `make cli-docs` after adding, removing or renaming a command or a flag.
 
@@ -1028,10 +1028,6 @@ Scan a target for secrets
 | `--ignore` |  | string |  | Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable) |
 | `--include-noisy` |  | bool | `false` | Enable rules marked noisy: true (off by default; high false-positive rate) |
 | `--incremental` |  | bool | `false` | Skip already-scanned blobs |
-| `--llm-budget` |  | int | `100` | max LLM calls per scan |
-| `--llm-model` |  | string | `claude-haiku-4-5-20251001` | LLM model for verification |
-| `--llm-timeout` |  | duration | `15s` | timeout per LLM call |
-| `--llm-verify` |  | bool | `false` | enable LLM second-pass validation for undetermined results (sends response bodies to the LLM provider) |
 | `--max-file-size` |  | int64 | `10485760` | Maximum file size to scan (bytes) |
 | `--output` |  | string | `titus.ds` | Output datastore path (:memory: for in-memory, :auto: to derive from target name) |
 | `--readers` |  | int | `0` | Number of parallel file readers (0 = NumCPU) |

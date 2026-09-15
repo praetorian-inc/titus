@@ -76,34 +76,16 @@ func (v *JenkinsValidator) Validate(ctx context.Context, match *types.Match) (*t
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, (1<<16)+1))
-	if err != nil {
-		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to read Jenkins response: %v", err)), nil
-	}
-	if len(body) > 1<<16 {
-		return types.NewValidationResult(types.StatusUndetermined, 0, "Jenkins response exceeds validation limit"), nil
-	}
-	meta := &types.ResponseMeta{
-		StatusCode: resp.StatusCode,
-		Headers:    selectResponseHeaders(resp.Header),
-		Body:       truncateResponseBody(body),
-		URL:        apiURL,
-	}
-
-	var result *types.ValidationResult
 	switch {
 	case resp.StatusCode == 200:
-		result = v.verifyWhoAmI(body, jenkinsURL)
+		return v.verifyWhoAmI(resp, user, jenkinsURL)
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
-		result = types.NewValidationResult(types.StatusInvalid, 1.0, "Jenkins credentials rejected")
+		return types.NewValidationResult(types.StatusInvalid, 1.0, "Jenkins credentials rejected"), nil
 	case resp.StatusCode >= 300 && resp.StatusCode < 400:
-		result = types.NewValidationResult(types.StatusUndetermined, 0.5, "Jenkins responded with redirect — cannot confirm credentials")
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, "Jenkins responded with redirect — cannot confirm credentials"), nil
 	default:
-		result = types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("unexpected status %d from Jenkins", resp.StatusCode))
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("unexpected status %d from Jenkins", resp.StatusCode)), nil
 	}
-
-	result.ResponseMeta = meta
-	return result, nil
 }
 
 type whoAmIResponse struct {
@@ -111,17 +93,22 @@ type whoAmIResponse struct {
 	Name          string `json:"name"`
 }
 
-func (v *JenkinsValidator) verifyWhoAmI(body []byte, jenkinsURL string) *types.ValidationResult {
+func (v *JenkinsValidator) verifyWhoAmI(resp *http.Response, expectedUser, jenkinsURL string) (*types.ValidationResult, error) {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, "failed to read whoAmI response"), nil
+	}
+
 	var who whoAmIResponse
 	if err := json.Unmarshal(body, &who); err != nil {
-		return types.NewValidationResult(types.StatusUndetermined, 0.5, "whoAmI response is not valid JSON")
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, "whoAmI response is not valid JSON"), nil
 	}
 
 	if !who.Authenticated || who.Name == "anonymous" {
-		return types.NewValidationResult(types.StatusUndetermined, 0.5, "Jenkins returned anonymous session — credentials may not have been applied")
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, "Jenkins returned anonymous session — credentials may not have been applied"), nil
 	}
 
-	return types.NewValidationResult(types.StatusValid, 1.0, fmt.Sprintf("Jenkins credentials valid for %s@%s", who.Name, jenkinsURL))
+	return types.NewValidationResult(types.StatusValid, 1.0, fmt.Sprintf("Jenkins credentials valid for %s@%s", who.Name, jenkinsURL)), nil
 }
 
 func (v *JenkinsValidator) extractToken(match *types.Match) string {

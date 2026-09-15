@@ -2,27 +2,12 @@ package validator
 
 import (
 	"context"
-	"net"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// redirectingTransport dials targetAddr regardless of the address requested,
-// letting a test point a validator at a "public-looking" hostname (so
-// isLocalhost checks pass) while actually talking to a local httptest server.
-func redirectingTransport(targetAddr string) http.RoundTripper {
-	return &http.Transport{
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, network, targetAddr)
-		},
-	}
-}
 
 func TestJenkinsValidator_Name(t *testing.T) {
 	v := NewJenkinsValidator()
@@ -291,66 +276,6 @@ func TestJenkinsValidator_SkipsLocalhost(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, types.StatusUndetermined, result.Status)
 	assert.Contains(t, result.Message, "localhost")
-}
-
-func TestJenkinsValidator_PopulatesResponseMeta_Valid(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/whoAmI/api/json", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"authenticated":true,"name":"admin"}`))
-	}))
-	defer srv.Close()
-
-	v := NewJenkinsValidator()
-	v.client.Transport = redirectingTransport(srv.Listener.Addr().String())
-
-	match := &types.Match{
-		RuleID: "np.jenkins.1",
-		Groups: [][]byte{[]byte("11f4274ec59be12eace9a08b08ee13d54b")},
-		Snippet: types.Snippet{
-			Before:   []byte("JENKINS_URL=http://jenkins.example.com\nJENKINS_USER=admin\n"),
-			Matching: []byte("jenkins_token=11f4274ec59be12eace9a08b08ee13d54b"),
-			After:    []byte(""),
-		},
-	}
-
-	result, err := v.Validate(context.Background(), match)
-	require.NoError(t, err)
-	assert.Equal(t, types.StatusValid, result.Status)
-	require.NotNil(t, result.ResponseMeta)
-	assert.Equal(t, 200, result.ResponseMeta.StatusCode)
-	assert.Equal(t, "http://jenkins.example.com/whoAmI/api/json", result.ResponseMeta.URL)
-	assert.Contains(t, string(result.ResponseMeta.Body), "authenticated")
-	assert.Equal(t, "application/json", result.ResponseMeta.Headers["Content-Type"])
-}
-
-func TestJenkinsValidator_PopulatesResponseMeta_Rejected(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(403)
-		_, _ = w.Write([]byte(`{"message":"forbidden"}`))
-	}))
-	defer srv.Close()
-
-	v := NewJenkinsValidator()
-	v.client.Transport = redirectingTransport(srv.Listener.Addr().String())
-
-	match := &types.Match{
-		RuleID: "np.jenkins.1",
-		Groups: [][]byte{[]byte("11f4274ec59be12eace9a08b08ee13d54b")},
-		Snippet: types.Snippet{
-			Before:   []byte("JENKINS_URL=http://jenkins.example.com\nJENKINS_USER=admin\n"),
-			Matching: []byte("jenkins_token=11f4274ec59be12eace9a08b08ee13d54b"),
-			After:    []byte(""),
-		},
-	}
-
-	result, err := v.Validate(context.Background(), match)
-	require.NoError(t, err)
-	assert.Equal(t, types.StatusInvalid, result.Status)
-	require.NotNil(t, result.ResponseMeta)
-	assert.Equal(t, 403, result.ResponseMeta.StatusCode)
-	assert.Equal(t, "http://jenkins.example.com/whoAmI/api/json", result.ResponseMeta.URL)
 }
 
 func TestJenkinsValidator_ConnectionError(t *testing.T) {

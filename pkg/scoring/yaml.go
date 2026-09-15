@@ -37,20 +37,9 @@ type yamlModifier struct {
 	HTTP      *yamlHTTPDef   `yaml:"http,omitempty"`
 	FiresWhen *yamlFiresWhen `yaml:"fires_when,omitempty"`
 
-	// LLM condition (Phase 4)
-	LLM *yamlLLMDef `yaml:"llm,omitempty"`
-
 	// Action (exactly one expected). Pointers so absent vs. zero are distinct.
 	Delta    *int `yaml:"delta,omitempty"`
 	SetScore *int `yaml:"set_score,omitempty"`
-}
-
-// yamlLLMDef holds an LLM condition: a prompt template rendered against the
-// match's named groups / rule ID, and a substring the LLM's response must
-// contain (case-insensitively) for the condition to fire.
-type yamlLLMDef struct {
-	Prompt    string `yaml:"prompt"`
-	FiresWhen string `yaml:"fires_when"`
 }
 
 // yamlHTTPDef mirrors pkg/validator/yaml.go HTTPDef but lives in the scorer package.
