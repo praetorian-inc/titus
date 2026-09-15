@@ -15,12 +15,11 @@ import (
 )
 
 var lookerBaseURLPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(https?://[a-zA-Z0-9.-]+\.looker\.com(?::\d{2,5})?)`),
+	regexp.MustCompile(`(https://[a-zA-Z0-9.-]+\.looker\.com(?::\d{2,5})?)`),
 }
 
 var lookerClientIDPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(?:looker|client[_-]?id)\s*[:=]\s*['"]?([a-z0-9]{20})\b`),
-	regexp.MustCompile(`\b([a-z0-9]{20})\b`),
 }
 
 type LookerValidator struct {
@@ -30,13 +29,23 @@ type LookerValidator struct {
 
 func NewLookerValidator() *LookerValidator {
 	return &LookerValidator{
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 
 func NewLookerValidatorWithClient(client *http.Client) *LookerValidator {
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = &http.Client{
+			Timeout: 10 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 	return &LookerValidator{client: client}
 }
@@ -67,7 +76,7 @@ func (v *LookerValidator) Validate(ctx context.Context, match *types.Match) (*ty
 }
 
 func (v *LookerValidator) validateClientSecret(ctx context.Context, match *types.Match) (*types.ValidationResult, error) {
-	secret := extractPositionalGroup(match)
+	secret := extractLookerSecret(match)
 	if secret == "" {
 		return types.NewValidationResult(types.StatusUndetermined, 0,
 			"cannot extract client secret from match"), nil
@@ -122,7 +131,9 @@ func (v *LookerValidator) validateClientSecret(ctx context.Context, match *types
 	switch {
 	case resp.StatusCode == http.StatusOK:
 		return v.verifyLoginResponse(resp, baseURL)
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+	case resp.StatusCode == http.StatusUnauthorized ||
+		resp.StatusCode == http.StatusForbidden ||
+		resp.StatusCode == http.StatusNotFound:
 		return types.NewValidationResult(types.StatusInvalid, 1.0,
 			fmt.Sprintf("Looker credentials rejected: HTTP %d", resp.StatusCode)), nil
 	default:
@@ -144,18 +155,39 @@ func (v *LookerValidator) verifyLoginResponse(resp *http.Response, baseURL strin
 			"login response is not valid JSON"), nil
 	}
 
-	if _, ok := result["access_token"]; !ok {
+	token, ok := result["access_token"]
+	if !ok {
 		return types.NewValidationResult(types.StatusUndetermined, 0.5,
 			"login response missing access_token field"), nil
+	}
+	tokenStr, ok := token.(string)
+	if !ok || tokenStr == "" {
+		return types.NewValidationResult(types.StatusUndetermined, 0.5,
+			"login response has empty or non-string access_token"), nil
 	}
 
 	return types.NewValidationResult(types.StatusValid, 1.0,
 		fmt.Sprintf("Looker credentials valid at %s", baseURL)), nil
 }
 
+func extractLookerSecret(match *types.Match) string {
+	if s := extractPositionalGroup(match); s != "" {
+		return s
+	}
+	if match.NamedGroups != nil {
+		if v, ok := match.NamedGroups["secret"]; ok && len(v) > 0 {
+			return string(v)
+		}
+	}
+	return ""
+}
+
 func isLookerDomain(rawURL string) bool {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "https" {
 		return false
 	}
 	host := strings.ToLower(parsed.Hostname())

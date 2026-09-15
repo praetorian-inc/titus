@@ -26,6 +26,14 @@ func testRSAPrivateKeyPEM(t *testing.T) string {
 	return string(pem.EncodeToMemory(block))
 }
 
+func testRSAPrivateKeyPKCS1PEM(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	block := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}
+	return string(pem.EncodeToMemory(block))
+}
+
 func testServiceAccountJSON(t *testing.T, overrides map[string]string) string {
 	t.Helper()
 	sa := map[string]string{
@@ -172,6 +180,35 @@ func TestGCPValidator_InvalidGrantError(t *testing.T) {
 	assert.Contains(t, result.Message, "invalid_grant")
 }
 
+func TestGCPValidator_InvalidGrantWithDescription(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":             "invalid_grant",
+			"error_description": "Service account key has been deleted.",
+		})
+	}))
+	defer srv.Close()
+
+	v := newTestGCPValidator(srv)
+	saJSON := testServiceAccountJSON(t, nil)
+
+	match := &types.Match{
+		RuleID: "kingfisher.gcp.1",
+		NamedGroups: map[string][]byte{
+			"service_account": []byte(saJSON),
+		},
+		Snippet: types.Snippet{
+			Matching: []byte(saJSON),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusInvalid, result.Status)
+	assert.Contains(t, result.Message, "Service account key has been deleted")
+}
+
 func TestGCPValidator_Unauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -218,7 +255,7 @@ func TestGCPValidator_MissingClientEmail(t *testing.T) {
 	result, err := v.Validate(context.Background(), match)
 	require.NoError(t, err)
 	assert.Equal(t, types.StatusUndetermined, result.Status)
-	assert.Contains(t, result.Message, "missing client_email or private_key")
+	assert.Contains(t, result.Message, "no service account found")
 }
 
 func TestGCPValidator_MissingPrivateKey(t *testing.T) {
@@ -242,7 +279,7 @@ func TestGCPValidator_MissingPrivateKey(t *testing.T) {
 	result, err := v.Validate(context.Background(), match)
 	require.NoError(t, err)
 	assert.Equal(t, types.StatusUndetermined, result.Status)
-	assert.Contains(t, result.Message, "missing client_email or private_key")
+	assert.Contains(t, result.Message, "no service account found")
 }
 
 func TestGCPValidator_InvalidJSON(t *testing.T) {
@@ -374,6 +411,28 @@ func TestGCPValidator_MaliciousTokenURI(t *testing.T) {
 	assert.Contains(t, result.Message, "not a recognized Google endpoint")
 }
 
+func TestGCPValidator_HTTPTokenURIRejected(t *testing.T) {
+	v := NewGCPValidator()
+	saJSON := testServiceAccountJSON(t, map[string]string{
+		"token_uri": "http://oauth2.googleapis.com/token",
+	})
+
+	match := &types.Match{
+		RuleID: "kingfisher.gcp.1",
+		NamedGroups: map[string][]byte{
+			"service_account": []byte(saJSON),
+		},
+		Snippet: types.Snippet{
+			Matching: []byte(saJSON),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "not a recognized Google endpoint")
+}
+
 func TestIsAllowedGCPTokenHost(t *testing.T) {
 	tests := []struct {
 		url  string
@@ -383,6 +442,7 @@ func TestIsAllowedGCPTokenHost(t *testing.T) {
 		{"https://accounts.google.com/o/oauth2/token", true},
 		{"https://www.googleapis.com/oauth2/v4/token", true},
 		{"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test:generateAccessToken", true},
+		{"http://oauth2.googleapis.com/token", false},
 		{"https://evil.com/token", false},
 		{"https://googleapis.com.evil.com/token", false},
 		{"not-a-url", false},
@@ -424,6 +484,58 @@ func TestGCPValidator_ResponseMissingAccessToken(t *testing.T) {
 	assert.Contains(t, result.Message, "missing access_token")
 }
 
+func TestGCPValidator_NullAccessToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token":null,"token_type":"Bearer"}`))
+	}))
+	defer srv.Close()
+
+	v := newTestGCPValidator(srv)
+	saJSON := testServiceAccountJSON(t, nil)
+
+	match := &types.Match{
+		RuleID: "kingfisher.gcp.1",
+		NamedGroups: map[string][]byte{
+			"service_account": []byte(saJSON),
+		},
+		Snippet: types.Snippet{
+			Matching: []byte(saJSON),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "empty or non-string")
+}
+
+func TestGCPValidator_EmptyAccessToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token":"","token_type":"Bearer"}`))
+	}))
+	defer srv.Close()
+
+	v := newTestGCPValidator(srv)
+	saJSON := testServiceAccountJSON(t, nil)
+
+	match := &types.Match{
+		RuleID: "kingfisher.gcp.1",
+		NamedGroups: map[string][]byte{
+			"service_account": []byte(saJSON),
+		},
+		Snippet: types.Snippet{
+			Matching: []byte(saJSON),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "empty or non-string")
+}
+
 func TestGCPValidator_NestedServiceAccountGroup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -446,6 +558,95 @@ func TestGCPValidator_NestedServiceAccountGroup(t *testing.T) {
 		Snippet: types.Snippet{
 			Matching: []byte(saJSON),
 		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestGCPValidator_NestedWrapperJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "ya29.test",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer srv.Close()
+
+	v := newTestGCPValidator(srv)
+	innerSA := testServiceAccountJSON(t, nil)
+	wrapper := `{"admin":{"credential":` + innerSA + `}}`
+
+	match := &types.Match{
+		RuleID: "kingfisher.gcp.1",
+		NamedGroups: map[string][]byte{
+			"service_account_nested": []byte(wrapper),
+		},
+		Snippet: types.Snippet{
+			Matching: []byte(wrapper),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Contains(t, result.Message, "test@test-project.iam.gserviceaccount.com")
+}
+
+func TestGCPValidator_PKCS1PrivateKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "ya29.test",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer srv.Close()
+
+	v := newTestGCPValidator(srv)
+	saJSON := testServiceAccountJSON(t, map[string]string{
+		"private_key": testRSAPrivateKeyPKCS1PEM(t),
+	})
+
+	match := &types.Match{
+		RuleID: "kingfisher.gcp.1",
+		NamedGroups: map[string][]byte{
+			"service_account": []byte(saJSON),
+		},
+		Snippet: types.Snippet{
+			Matching: []byte(saJSON),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+}
+
+func TestGCPValidator_SecretNamedGroup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "ya29.test",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer srv.Close()
+
+	v := newTestGCPValidator(srv)
+	saJSON := testServiceAccountJSON(t, nil)
+
+	match := &types.Match{
+		RuleID: "kingfisher.gcp.1",
+		NamedGroups: map[string][]byte{
+			"secret": []byte(saJSON),
+		},
+		Snippet: types.Snippet{},
 	}
 
 	result, err := v.Validate(context.Background(), match)
