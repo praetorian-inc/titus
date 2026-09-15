@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1407,4 +1408,64 @@ func TestLegacyDatastore_NilScore_RendersCleanly(t *testing.T) {
 		assert.Contains(t, humanBuf.String(), legacyFinding.ID,
 			"human report must contain the finding ID")
 	}
+}
+
+func TestOutputReportHuman_AllMatchesFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	s, err := store.New(store.Config{Path: dbPath})
+	require.NoError(t, err)
+
+	rule := &types.Rule{ID: "np.test.1", Name: "Test Rule", Pattern: "x"}
+	rule.StructuralID = rule.ComputeStructuralID()
+	require.NoError(t, s.AddRule(rule))
+
+	groups := [][]byte{[]byte("SECRET_KEY")}
+	finding := &types.Finding{
+		ID:     types.ComputeFindingID(rule.StructuralID, groups),
+		RuleID: "np.test.1",
+		Groups: groups,
+	}
+	require.NoError(t, s.AddFinding(finding))
+	require.NoError(t, s.Close())
+
+	// Five occurrences of the same secret, all belonging to one finding
+	matches := make([]*types.Match, 5)
+	for i := range matches {
+		matches[i] = &types.Match{
+			StructuralID: fmt.Sprintf("match-%d", i+1),
+			RuleID:       "np.test.1",
+			Groups:       groups,
+			Snippet:      types.Snippet{Matching: []byte("SECRET_KEY")},
+		}
+	}
+	findings := []*types.Finding{finding}
+	ruleMap := map[string]*types.Rule{"np.test.1": rule}
+
+	// Disable color for stable output
+	reportColor = "never"
+	defer func() { reportAllMatches = false }()
+
+	reportAllMatches = false
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportHuman(cmd, findings, matches, dbPath, ruleMap))
+
+	output := buf.String()
+	assert.Contains(t, output, "Showing 3/5 matches:", "expected truncation banner by default")
+	assert.Contains(t, output, "Match 3/5", "expected third match in default output")
+	assert.NotContains(t, output, "Match 4/5", "expected fourth match to be truncated by default")
+
+	reportAllMatches = true
+	cmd = &cobra.Command{}
+	buf.Reset()
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportHuman(cmd, findings, matches, dbPath, ruleMap))
+
+	output = buf.String()
+	assert.NotContains(t, output, "Showing 3/5 matches:", "expected no truncation banner with --all-matches")
+	assert.Contains(t, output, "Match 4/5", "expected fourth match with --all-matches")
+	assert.Contains(t, output, "Match 5/5", "expected fifth match with --all-matches")
 }

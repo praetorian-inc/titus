@@ -18,6 +18,12 @@ func New(cfg Config) (Matcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.KeepAllMatches {
+		// Keep every location-distinct occurrence instead of collapsing
+		// repeats of the same secret within a blob (the vectorscan and wasm
+		// matchers already dedup by location).
+		inner.dedup.SetMode(DedupeByLocation)
+	}
 	filtered := newFilteringMatcher(inner, cfg.Rules)
-	return newDedupMatcher(filtered, cfg.Rules), nil
+	return newDedupMatcher(filtered, cfg.Rules, cfg.KeepAllMatches), nil
 }

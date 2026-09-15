@@ -429,3 +429,35 @@ func TestCrossRule_ValidatorBeatsSpecificity(t *testing.T) {
 	assert.Equal(t, "np.generic.2", result[0].RuleID,
 		"a validated generic match still beats an unvalidated specific match")
 }
+
+func TestCrossRule_KeepAllMatches(t *testing.T) {
+	// The winning rule matched the same secret at two locations; a generic
+	// rule matched one of them. Default: cluster collapses to one match.
+	// KeepAllMatches: both winner-rule locations survive, the loser is dropped.
+	rules := makeRules(
+		struct{ id, pattern string }{"np.aws.1", `AKIA[A-Z0-9]{16}`},
+		struct{ id, pattern string }{"generic.1", `[A-Z0-9]{20}`},
+	)
+
+	canValidate := func(ruleID string) bool { return ruleID == "np.aws.1" }
+
+	first := makeMatch("np.aws.1", "AKIAZ52KNG5GARBXTEST")
+	first.Location.Offset.Start = 10
+	second := makeMatch("np.aws.1", "AKIAZ52KNG5GARBXTEST")
+	second.Location.Offset.Start = 200
+	generic := makeMatch("generic.1", "AKIAZ52KNG5GARBXTEST")
+	generic.Location.Offset.Start = 10
+
+	matches := []*types.Match{first, second, generic}
+
+	dedup := NewCrossRuleDeduplicator(rules, canValidate)
+	result := dedup.Deduplicate(matches)
+	require.Len(t, result, 1, "default keeps a single winner per cluster")
+	assert.Equal(t, "np.aws.1", result[0].RuleID)
+
+	dedup.SetKeepAllMatches(true)
+	result = dedup.Deduplicate(matches)
+	require.Len(t, result, 2, "expected both winner-rule locations to survive")
+	assert.Same(t, first, result[0])
+	assert.Same(t, second, result[1])
+}

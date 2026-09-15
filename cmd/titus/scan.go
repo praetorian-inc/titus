@@ -54,6 +54,7 @@ var (
 	scanDocker              bool
 	scanMaxFileSize         int64
 	scanContextLines        int
+	scanAllMatches          bool
 	scanIncremental         bool
 	scanValidate            bool
 	scanValidateWorkers     int
@@ -105,6 +106,7 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanDocker, "docker", false, "Treat target as Docker image (uses docker image save)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
+	scanCmd.Flags().BoolVar(&scanAllMatches, "all-matches", false, "Store every occurrence of a secret instead of collapsing repeats within a file (pair with 'report --all-matches')")
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
 	scanCmd.Flags().BoolVar(&scanValidate, "validate", false, "validate detected secrets against their source APIs")
 	scanCmd.Flags().IntVar(&scanValidateWorkers, "validate-workers", 4, "number of concurrent validation workers")
@@ -206,8 +208,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Create matcher
 	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: scanContextLines,
+		Rules:          rules,
+		ContextLines:   scanContextLines,
+		KeepAllMatches: scanAllMatches,
 		WarnFunc: func(format string, args ...any) {
 			fmt.Fprintf(os.Stderr, format, args...)
 		},
@@ -878,8 +881,9 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 
 	// Create matcher
 	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: scanContextLines,
+		Rules:          rules,
+		ContextLines:   scanContextLines,
+		KeepAllMatches: scanAllMatches,
 		WarnFunc: func(format string, args ...any) {
 			fmt.Fprintf(os.Stderr, format, args...)
 		},
@@ -1098,8 +1102,9 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 
 	// Create matcher
 	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: scanContextLines,
+		Rules:          rules,
+		ContextLines:   scanContextLines,
+		KeepAllMatches: scanAllMatches,
 		WarnFunc: func(format string, args ...any) {
 			fmt.Fprintf(os.Stderr, format, args...)
 		},
@@ -1356,8 +1361,9 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 	}
 
 	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: scanContextLines,
+		Rules:          rules,
+		ContextLines:   scanContextLines,
+		KeepAllMatches: scanAllMatches,
 		WarnFunc: func(format string, args ...any) {
 			fmt.Fprintf(os.Stderr, format, args...)
 		},
@@ -1641,8 +1647,9 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 
 	// Create matcher
 	m, err := matcher.New(matcher.Config{
-		Rules:        rules,
-		ContextLines: scanContextLines,
+		Rules:          rules,
+		ContextLines:   scanContextLines,
+		KeepAllMatches: scanAllMatches,
 		WarnFunc: func(format string, args ...any) {
 			fmt.Fprintf(os.Stderr, format, args...)
 		},

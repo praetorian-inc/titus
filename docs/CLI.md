@@ -3,7 +3,7 @@
 # titus CLI reference
 
 Every command, alias and flag below is derived from the cobra command tree, not from prose.
-Schema version 1, surface hash `sha256:4d4da820671766fd35b8066eb3ac71db3ec866e2d13330488d29d7af05f8c5e5`.
+Schema version 1, surface hash `sha256:acd842575a72a206a12b2811535d90400e59523e11b2f7b8e3a6f1be7895d2a3`.
 
 Regenerate with `make cli-docs` after adding, removing or renaming a command or a flag.
 
@@ -925,6 +925,7 @@ Generate a report from scan results
 
 | Flag | Short | Type | Default | Description |
 | --- | --- | --- | --- | --- |
+| `--all-matches` |  | bool | `false` | Show all matches per finding in human output instead of the first 3 |
 | `--color` |  | string | `auto` | Color output: auto, always, never |
 | `--datastore` |  | string | `titus.ds` | Path to datastore directory or file |
 | `--format` |  | string | `human` | Output format: human, json, sarif |
@@ -1011,6 +1012,7 @@ Scan a target for secrets
 | Flag | Short | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `--accessibility` |  | string | `auto` | code accessibility: "public" (no penalty), "private" (-25 to all scores), or "auto" (detect via git remote/GitHub API, defaults to private if undetermined) |
+| `--all-matches` |  | bool | `false` | Store every occurrence of a secret instead of collapsing repeats within a file (pair with 'report --all-matches') |
 | `--asana-attachment-max-size` |  | int64 | `52428800` | Maximum Asana attachment size in bytes to download |
 | `--asana-concurrency` |  | int | `0` | Number of workers processing tasks within a project (0 = use default of 5) |
 | `--asana-include-attachments` |  | bool | `false` | Download and scan Asana-hosted file attachments |

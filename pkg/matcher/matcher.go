@@ -53,4 +53,11 @@ type Config struct {
 	// If zero, the default of 5s is used. The retry pass uses a longer
 	// timeout derived from this value (10x, capped at 30s).
 	MatchTimeout time.Duration
+
+	// KeepAllMatches preserves every location-distinct occurrence of a secret
+	// within a blob. By default repeated occurrences of the same secret in one
+	// blob are collapsed to a single match (content deduplication in the pure-Go
+	// matcher, winner selection in the cross-rule deduplicator); matches are
+	// still grouped into one finding per secret downstream either way.
+	KeepAllMatches bool
 }

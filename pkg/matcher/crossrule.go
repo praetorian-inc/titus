@@ -15,6 +15,10 @@ import (
 type CrossRuleDeduplicator struct {
 	rules       map[string]*types.Rule
 	canValidate func(ruleID string) bool
+	// keepAllMatches keeps every match of the winning rule in a cluster
+	// instead of collapsing the cluster to a single match, so repeated
+	// occurrences of a secret retain their distinct locations.
+	keepAllMatches bool
 }
 
 // NewCrossRuleDeduplicator creates a deduplicator with rule metadata and
@@ -35,6 +39,12 @@ func (d *CrossRuleDeduplicator) SetCanValidate(fn func(ruleID string) bool) {
 	d.canValidate = fn
 }
 
+// SetKeepAllMatches controls whether every match of a cluster's winning rule
+// is kept (true) or the cluster collapses to a single match (false, default).
+func (d *CrossRuleDeduplicator) SetKeepAllMatches(keep bool) {
+	d.keepAllMatches = keep
+}
+
 // Deduplicate takes all matches from a single blob and returns only the
 // non-redundant subset. Matches are clustered by shared captured group values,
 // then for each cluster the most informative match is kept.
@@ -52,6 +62,14 @@ func (d *CrossRuleDeduplicator) Deduplicate(matches []*types.Match) []*types.Mat
 			continue
 		}
 		winner := d.pickWinner(cluster)
+		if d.keepAllMatches {
+			for _, m := range cluster {
+				if m.RuleID == winner.RuleID {
+					result = append(result, m)
+				}
+			}
+			continue
+		}
 		result = append(result, winner)
 	}
 	return result

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "surfaceHash": "sha256:4d4da820671766fd35b8066eb3ac71db3ec866e2d13330488d29d7af05f8c5e5",
+  "surfaceHash": "sha256:acd842575a72a206a12b2811535d90400e59523e11b2f7b8e3a6f1be7895d2a3",
   "commands": [
     {
       "path": "titus",
@@ -2652,6 +2652,12 @@
       "runnable": true,
       "flags": [
         {
+          "name": "all-matches",
+          "type": "bool",
+          "default": "false",
+          "usage": "Show all matches per finding in human output instead of the first 3"
+        },
+        {
           "name": "color",
           "type": "string",
           "default": "auto",
@@ -2830,6 +2836,12 @@
           "type": "string",
           "default": "auto",
           "usage": "code accessibility: \"public\" (no penalty), \"private\" (-25 to all scores),\nor \"auto\" (detect via git remote/GitHub API, defaults to private if undetermined)"
+        },
+        {
+          "name": "all-matches",
+          "type": "bool",
+          "default": "false",
+          "usage": "Store every occurrence of a secret instead of collapsing repeats within a file (pair with 'report --all-matches')"
         },
         {
           "name": "asana-attachment-max-size",

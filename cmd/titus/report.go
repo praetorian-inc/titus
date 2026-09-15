@@ -24,6 +24,7 @@ var (
 	reportColor          string
 	summaryFormat        string
 	reportShowRejected bool
+	reportAllMatches   bool
 )
 
 // styles holds color formatters matching NoseyParker color scheme
@@ -193,6 +194,7 @@ func init() {
 	reportCmd.PersistentFlags().StringVar(&reportColor, "color", "auto", "Color output: auto, always, never")
 	reportCmd.PersistentFlags().Lookup("color").NoOptDefVal = "always"
 	reportCmd.PersistentFlags().BoolVar(&reportShowRejected, "show-rejected", false, "Include findings marked as rejected via the explore command (hidden by default)")
+	reportCmd.Flags().BoolVar(&reportAllMatches, "all-matches", false, "Show all matches per finding in human output instead of the first 3")
 
 	reportCmd.AddCommand(summaryCmd)
 	summaryCmd.Flags().StringVar(&summaryFormat, "format", "human", "Output format: human, json")
@@ -798,7 +800,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 
 		// Matches for this finding
 		findingMatches := matchesByFinding[f.ID]
-		if len(findingMatches) > 3 {
+		if !reportAllMatches && len(findingMatches) > 3 {
 			_, _ = fmt.Fprintf(out, "Showing 3/%d matches:\n", len(findingMatches))
 			findingMatches = findingMatches[:3]
 		}

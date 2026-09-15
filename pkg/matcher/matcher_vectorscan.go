@@ -24,5 +24,5 @@ func New(cfg Config) (Matcher, error) {
 		return nil, err
 	}
 	filtered := newFilteringMatcher(inner, cfg.Rules)
-	return newDedupMatcher(filtered, cfg.Rules), nil
+	return newDedupMatcher(filtered, cfg.Rules, cfg.KeepAllMatches), nil
 }

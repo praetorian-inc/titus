@@ -10,14 +10,16 @@ type dedupMatcher struct {
 }
 
 // newDedupMatcher wraps a matcher with cross-rule deduplication.
-func newDedupMatcher(inner Matcher, rules []*types.Rule) *dedupMatcher {
+func newDedupMatcher(inner Matcher, rules []*types.Rule, keepAllMatches bool) *dedupMatcher {
 	ruleMap := make(map[string]*types.Rule, len(rules))
 	for _, r := range rules {
 		ruleMap[r.ID] = r
 	}
+	dedup := NewCrossRuleDeduplicator(ruleMap, nil)
+	dedup.SetKeepAllMatches(keepAllMatches)
 	return &dedupMatcher{
 		inner: inner,
-		dedup: NewCrossRuleDeduplicator(ruleMap, nil),
+		dedup: dedup,
 	}
 }
 
