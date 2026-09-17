@@ -227,7 +227,8 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 			return fmt.Errorf("git cat-file: read trailing newline: %w", err)
 		}
 
-		if isBinary(content) {
+		var isText bool
+		if content, isText = textContent(content); !isText {
 			continue
 		}
 

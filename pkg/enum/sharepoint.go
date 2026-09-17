@@ -393,7 +393,8 @@ func (e *SharePointEnumerator) walkDriveFolder(ctx context.Context, driveID, fol
 			fileURL = webURL
 		}
 
-		if isBinary(content) {
+		var isText bool
+		if content, isText = textContent(content); !isText {
 			// Extract text from binary files (Office docs, PDFs, archives, etc.)
 			extracted, err := ExtractText(filePath, content, DefaultExtractionLimits())
 			if err != nil || len(extracted) == 0 {

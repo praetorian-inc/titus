@@ -410,7 +410,8 @@ func (e *GDriveEnumerator) processFile(ctx context.Context, f *drive.File, drive
 	}
 
 	// Binary handling
-	if isBinary(content) {
+	content, isText := textContent(content)
+	if !isText {
 		if e.cfg.ExtractArchives != "" {
 			ext := extFromName(extractName)
 			if shouldExtract(e.cfg.Config, ext) {

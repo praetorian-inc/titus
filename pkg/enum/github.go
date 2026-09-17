@@ -255,7 +255,8 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 		}
 
 		// Skip binary files
-		if isBinary(data) {
+		var isText bool
+		if data, isText = textContent(data); !isText {
 			continue
 		}
 

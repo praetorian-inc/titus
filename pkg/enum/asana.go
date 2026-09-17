@@ -747,7 +747,8 @@ func (e *AsanaEnumerator) enumerateAttachments(ctx context.Context, workspaceGID
 				continue
 			}
 
-			if isBinary(content) {
+			var isText bool
+			if content, isText = textContent(content); !isText {
 				// Binary attachment: extract text from supported archive/document formats
 				// when the user has opted into extraction via --extract. Never emit raw
 				// binary to the matcher — regexp2 NFA blows up on rune-decoded binary

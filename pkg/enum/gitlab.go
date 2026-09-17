@@ -206,7 +206,8 @@ func (e *GitLabEnumerator) enumerateProject(ctx context.Context, project *gitlab
 		}
 
 		// Skip binary files
-		if isBinary(content) {
+		var isText bool
+		if content, isText = textContent(content); !isText {
 			continue
 		}
 

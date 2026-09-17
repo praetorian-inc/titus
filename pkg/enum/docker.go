@@ -330,7 +330,8 @@ func (e *DockerImageEnumerator) emitMetadata(ctx context.Context, content []byte
 	default:
 	}
 
-	if isBinary(content) {
+	content, isText := textContent(content)
+	if !isText {
 		return nil
 	}
 
@@ -355,7 +356,8 @@ func (e *DockerImageEnumerator) emitLayerFile(ctx context.Context, content []byt
 
 	layerArchivePath := dockerArchivePath(e.Image, layerName)
 
-	if isBinary(content) {
+	content, isText := textContent(content)
+	if !isText {
 		if e.config.ExtractArchives == "" {
 			return nil
 		}

@@ -116,7 +116,8 @@ func (e *S3Enumerator) processObject(ctx context.Context, obj s3types.Object, ca
 
 	s3Path := fmt.Sprintf("s3://%s/%s", e.Bucket, key)
 
-	binary := isBinary(content)
+	content, isText := textContent(content)
+	binary := !isText
 
 	// Handle binary files with extraction enabled
 	if binary && e.config.ExtractArchives != "" {

@@ -142,7 +142,8 @@ func (e *FilesystemEnumerator) processFile(ctx context.Context, path string, cal
 		return nil
 	}
 
-	binary := isBinary(content)
+	content, isText := textContent(content)
+	binary := !isText
 
 	// Handle binary files with extraction enabled
 	if binary && e.config.ExtractArchives != "" {

@@ -97,9 +97,11 @@ func (e *GitEnumerator) enumerateSingleCommit(ctx context.Context, callback func
 		}
 
 		// Skip binary files
-		if isBinary([]byte(content)) {
+		decoded, isText := textContent([]byte(content))
+		if !isText {
 			return nil
 		}
+		content = string(decoded)
 
 		// Compute blob ID
 		blobID := types.ComputeBlobID([]byte(content))
@@ -194,9 +196,11 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 			}
 
 			// Skip binary files
-			if isBinary([]byte(content)) {
+			decoded, isText := textContent([]byte(content))
+			if !isText {
 				return nil
 			}
+			content = string(decoded)
 
 			// Compute blob ID
 			blobID := types.ComputeBlobID([]byte(content))
