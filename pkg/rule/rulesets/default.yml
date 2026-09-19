@@ -183,6 +183,7 @@ rulesets:
   - np.reactapp.2     # React App Password
   - np.redis.1        # Redis URI Connection String
   - np.redis.2        # Python Redis Client Debug Output
+  - np.retool.1       # Retool Workflow API Key
   - np.rubygems.1     # RubyGems API Key
   - np.salesforce.1   # Salesforce Access Token
   - np.sauce.1        # Sauce Token

@@ -1,0 +1,29 @@
+rules:
+
+- name: Retool Workflow API Key
+  id: np.retool.1
+  base_score: 80
+  pattern: '\b(retool_wk_[0-9a-f]{32})\b'
+  categories: [api, secret]
+
+  description: >
+    A Retool workflow API key was found. These keys authorize workflow
+    execution and can appear in HTTP headers or query parameters.
+
+  references:
+  - https://docs.retool.com/workflows/guides/webhooks
+
+  examples:
+  - 'workflowApiKey=retool_wk_0123456789abcdef0123456789abcdef'
+  - '"X-Workflow-Api-Key": "retool_wk_0123456789abcdef0123456789abcdef"'
+  - '{"credential": "retool_wk_0123456789abcdef0123456789abcdef"}'
+  - 'credential: retool_wk_0123456789abcdef0123456789abcdef'
+  - "INSERT INTO config VALUES ('retool_wk_0123456789abcdef0123456789abcdef');"
+  - 'RETOOL_WORKFLOW=retool_wk_0123456789abcdef0123456789abcdef'
+
+  negative_examples:
+  - 'retool_wk_0123456789abcdef0123456789abcde'
+  - 'retool_wk_0123456789abcdef0123456789abcdef0'
+  - 'retool_wk_0123456789abcdef0123456789abcdeg'
+  - 'prefix_retool_wk_0123456789abcdef0123456789abcdef'
+  - 'retool_wk_0123456789abcdef0123456789abcdef_suffix'
