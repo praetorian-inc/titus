@@ -3,9 +3,12 @@
 package matcher
 
 import (
+	"bytes"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,8 +57,8 @@ func TestVectorscanMatcher_ExtendedMode(t *testing.T) {
 	// Test that extended mode patterns work after preprocessing
 	rules := []*types.Rule{
 		{
-			ID:      "extended-rule",
-			Name:    "Extended Mode Test",
+			ID:   "extended-rule",
+			Name: "Extended Mode Test",
 			Pattern: `(?x)
 				secret_    # prefix
 				[a-z]+     # identifier
@@ -103,8 +106,8 @@ func TestVectorscanMatcher_DefaultFlagsConfiguration(t *testing.T) {
 
 	rules := []*types.Rule{
 		{
-			ID:      "basic-pattern",
-			Name:    "Basic Pattern",
+			ID:   "basic-pattern",
+			Name: "Basic Pattern",
 			// Simple pattern that should compile with any flag configuration
 			Pattern: `password`,
 		},
@@ -324,6 +327,40 @@ func TestVectorscanMatcher_ContextExtraction(t *testing.T) {
 	assert.Equal(t, "secret_token", string(matches[0].Snippet.Matching))
 }
 
+func TestVectorscanMatcher_GoSourceLines(t *testing.T) {
+	rules := []*types.Rule{
+		{
+			ID:      "go-secret",
+			Name:    "Go Secret",
+			Pattern: `0123456789abcdef0123456789abcdef`,
+		},
+	}
+	matcher, err := NewVectorscan(rules, 2, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, matcher.Close()) })
+
+	content := []byte(`package main
+
+import "fmt"
+
+func main() {
+	const secret = "0123456789abcdef0123456789abcdef"
+	fmt.Println("ok")
+}
+`)
+	matches, err := matcher.Match(content)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	start := bytes.Index(content, secret)
+	assert.Equal(t, int64(start), matches[0].Location.Offset.Start)
+	assert.Equal(t, int64(start+len(secret)), matches[0].Location.Offset.End)
+	assert.Equal(t, "\nfunc main() {\n\tconst secret = \"", string(matches[0].Snippet.Before))
+	assert.Equal(t, secret, matches[0].Snippet.Matching)
+	assert.Equal(t, "\"\n\tfmt.Println(\"ok\")\n", string(matches[0].Snippet.After))
+}
+
 func TestVectorscanMatcher_Deduplication(t *testing.T) {
 	rules := []*types.Rule{
 		{
@@ -377,7 +414,7 @@ func TestVectorscanMatcher_InvalidPattern(t *testing.T) {
 		{
 			ID:      "invalid-rule",
 			Name:    "Invalid Pattern",
-			Pattern: `[`,  // Invalid regex
+			Pattern: `[`, // Invalid regex
 		},
 	}
 
@@ -559,8 +596,8 @@ func TestVectorscanMatcher_CombinedFlagsCaseInsensitive(t *testing.T) {
 	// Test that combined flags like (?xi) properly detect case-insensitivity
 	rules := []*types.Rule{
 		{
-			ID:      "combined-xi",
-			Name:    "Combined (?xi) Test",
+			ID:   "combined-xi",
+			Name: "Combined (?xi) Test",
 			Pattern: `(?xi)
 				secret   # keyword
 				_key     # suffix
@@ -625,4 +662,74 @@ func TestVectorscanMatcher_FallbackTimedOutBlobsAreRetried(t *testing.T) {
 	retried2, err := matcher.DrainTimedOut()
 	require.NoError(t, err)
 	assert.Empty(t, retried2, "second DrainTimedOut call must return nothing (queue cleared)")
+}
+
+func TestVectorscanMatcher_BinaryChunkOverlap(t *testing.T) {
+	rules, err := rule.NewLoader().LoadBuiltinRules()
+	require.NoError(t, err)
+	index := slices.IndexFunc(rules, func(r *types.Rule) bool {
+		return r.ID == "np.generic.1"
+	})
+	require.NotEqual(t, -1, index)
+	generic := rules[index]
+
+	matcher, err := NewVectorscan([]*types.Rule{generic}, 3, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, matcher.Close()) })
+	require.Len(t, matcher.hsRules, 1)
+
+	content, wantOffsets := binaryWithSecrets()
+	matches, err := matcher.MatchWithBlobID(content, types.ComputeBlobID(content))
+	require.NoError(t, err)
+	require.Empty(t, matcher.retryJobs, "a timeout would make this a partial scan")
+
+	// Compare metadata, not matches: a failed assertion must not dump megabytes of binary context.
+	counts := make(map[types.OffsetSpan]int)
+	var contextBytes, staleIDs int
+	for _, match := range matches {
+		counts[match.Location.Offset]++
+		contextBytes += cap(match.Snippet.Before) + cap(match.Snippet.After)
+		if match.StructuralID != match.ComputeStructuralID(generic.StructuralID) {
+			staleIDs++
+		}
+	}
+	t.Logf(
+		"input=%.2f MB matches=%d unique_locations=%d retained_context=%.2f MB stale_ids=%d",
+		float64(len(content))/1e6,
+		len(matches),
+		len(counts),
+		float64(contextBytes)/1e6,
+		staleIDs,
+	)
+
+	wantCounts := make(map[types.OffsetSpan]int)
+	for _, offset := range wantOffsets {
+		wantCounts[offset]++
+	}
+	assert.Equal(t, wantCounts, counts)
+	assert.Zero(t, staleIDs, "match identities must use file-absolute offsets")
+	assert.LessOrEqual(t, contextBytes, len(content), "two small matches must not retain more context than the entire input")
+}
+
+func binaryWithSecrets() ([]byte, []types.OffsetSpan) {
+	content := []byte("\x7fELF\x02\x01\x01\x00\n")
+	content = append(content, bytes.Repeat([]byte{0x01, 0x00, '\n'}, 20)...)
+	lineStart := len(content)
+
+	// Exceed the default 5-MiB chunk size without a newline, as an executable's data can.
+	content = append(content, bytes.Repeat([]byte{0x00, 0xff}, 3*1024*1024)...)
+	secret := []byte("secret = 0123456789abcdef0123456789abcdef")
+	var offsets []types.OffsetSpan
+	for _, relativeOffset := range []int{1024 * 1024, 5*1024*1024 + 1024} {
+		start := lineStart + relativeOffset
+		copy(content[start:], secret)
+		offsets = append(offsets, types.OffsetSpan{
+			Start: int64(start),
+			End:   int64(start + len(secret)),
+		})
+	}
+
+	content = append(content, '\n')
+	content = append(content, bytes.Repeat([]byte{0x01, 0x00, '\n'}, 20)...)
+	return content, offsets
 }

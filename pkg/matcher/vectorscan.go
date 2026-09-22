@@ -737,6 +737,10 @@ func (m *VectorscanMatcher) matchChunked(content []byte, chunks []Chunk, blobID 
 	var allMatches []*types.Match
 	aggregatedStats := make(map[string]RuleStat)
 	crossChunkDedup := NewDeduplicator()
+	ruleSIDs := make(map[string]string, len(m.rules))
+	for _, r := range m.rules {
+		ruleSIDs[r.ID] = r.StructuralID
+	}
 
 	// Process chunks (could be parallelized in future)
 	for _, chunk := range chunks {
@@ -754,7 +758,8 @@ func (m *VectorscanMatcher) matchChunked(content []byte, chunks []Chunk, blobID 
 
 		// Adjust match offsets to be relative to original file
 		for _, match := range result.Matches {
-			AdjustMatchOffset(match, chunk)
+			AdjustMatchOffset(match, chunk, ruleSIDs[match.RuleID])
+			// TODO: re-extract Snippet.Before/After from full content; first-chunk wins and can truncate context at a chunk boundary.
 
 			// Deduplicate across chunks
 			if !crossChunkDedup.IsDuplicate(match) {

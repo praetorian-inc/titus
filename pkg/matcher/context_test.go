@@ -1,6 +1,7 @@
 package matcher
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,11 +9,11 @@ import (
 
 func TestExtractContext(t *testing.T) {
 	tests := []struct {
-		name     string
-		content  string
-		start    int
-		end      int
-		lines    int
+		name       string
+		content    string
+		start      int
+		end        int
+		lines      int
 		wantBefore string
 		wantAfter  string
 	}{
@@ -113,11 +114,11 @@ line7
 			wantAfter:  "line6\nline7\n",
 		},
 		{
-			name: "single line file with match",
-			content: "MATCH",
-			start:   0,
-			end:     5,
-			lines:   3,
+			name:       "single line file with match",
+			content:    "MATCH",
+			start:      0,
+			end:        5,
+			lines:      3,
 			wantBefore: "",
 			wantAfter:  "",
 		},
@@ -134,7 +135,7 @@ line3
 			wantAfter:  "line3\n",
 		},
 		{
-			name: "empty content",
+			name:       "empty content",
 			content:    "",
 			start:      0,
 			end:        0,
@@ -178,20 +179,20 @@ func TestExtractContext_BoundaryConditions(t *testing.T) {
 		wantAfter  string
 	}{
 		{
-			name: "start exceeds content length",
-			content: "short",
-			start:   100,
-			end:     100,
-			lines:   3,
+			name:       "start exceeds content length",
+			content:    "short",
+			start:      100,
+			end:        100,
+			lines:      3,
 			wantBefore: "",
 			wantAfter:  "",
 		},
 		{
-			name: "end exceeds content length",
-			content: "short",
-			start:   0,
-			end:     100,
-			lines:   3,
+			name:       "end exceeds content length",
+			content:    "short",
+			start:      0,
+			end:        100,
+			lines:      3,
 			wantBefore: "",
 			wantAfter:  "",
 		},
@@ -240,6 +241,41 @@ line3`,
 			assert.Equal(t, tt.wantAfter, string(after), "after context mismatch")
 		})
 	}
+}
+
+func TestExtractContext_GoSource(t *testing.T) {
+	content := []byte(`package main
+
+import "fmt"
+
+func main() {
+	const secret = "0123456789abcdef0123456789abcdef"
+	fmt.Println("ok")
+}
+`)
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	start := bytes.Index(content, secret)
+	end := start + len(secret)
+
+	before, after := ExtractContext(content, start, end, 2)
+
+	assert.Equal(t, "\nfunc main() {\n\tconst secret = \"", string(before))
+	assert.Equal(t, "\"\n\tfmt.Println(\"ok\")\n", string(after))
+}
+
+func TestExtractContext_ByteCap(t *testing.T) {
+	beforePad := bytes.Repeat([]byte{'A'}, defaultContextBytes+100)
+	afterPad := bytes.Repeat([]byte{'B'}, defaultContextBytes+100)
+	content := append(append(beforePad, []byte("MATCH")...), afterPad...)
+	start := len(beforePad)
+	end := start + 5
+
+	before, after := ExtractContext(content, start, end, 3)
+
+	assert.Equal(t, defaultContextBytes, len(before))
+	assert.Equal(t, defaultContextBytes, len(after))
+	assert.Equal(t, beforePad[len(beforePad)-defaultContextBytes:], before)
+	assert.Equal(t, afterPad[:defaultContextBytes], after)
 }
 
 func TestExtractContext_ReturnsIndependentCopies(t *testing.T) {
