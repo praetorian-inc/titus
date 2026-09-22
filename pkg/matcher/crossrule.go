@@ -43,6 +43,16 @@ func (d *CrossRuleDeduplicator) Deduplicate(matches []*types.Match) []*types.Mat
 		return matches
 	}
 
+	// The matcher collects per-rule results from a map, so the incoming
+	// order is not stable. Sort up front so clustering, winner selection and
+	// output order never depend on it.
+	sorted := make([]*types.Match, len(matches))
+	copy(sorted, matches)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return lessMatch(sorted[i], sorted[j])
+	})
+	matches = sorted
+
 	clusters := d.clusterBySharedValues(matches)
 
 	result := make([]*types.Match, 0, len(matches))
@@ -111,25 +121,26 @@ func (d *CrossRuleDeduplicator) clusterBySharedValues(matches []*types.Match) []
 		clusters = append(clusters, c)
 	}
 
-	// Sort clusters deterministically by minimum match start offset.
-	// This eliminates nondeterminism from Go's map iteration order.
-	sort.Slice(clusters, func(i, j int) bool {
-		return minStartOffset(clusters[i]) < minStartOffset(clusters[j])
+	// Sort clusters deterministically. The input is already sorted, so the
+	// first match of each cluster is its representative; comparing on it
+	// eliminates nondeterminism from Go's map iteration order even when two
+	// clusters start at the same offset.
+	sort.SliceStable(clusters, func(i, j int) bool {
+		return lessMatch(clusters[i][0], clusters[j][0])
 	})
 
 	return clusters
 }
 
-// minStartOffset returns the smallest Location.Offset.Start among all matches
-// in the cluster. Used to produce a deterministic cluster ordering.
-func minStartOffset(cluster []*types.Match) int64 {
-	min := cluster[0].Location.Offset.Start
-	for _, m := range cluster[1:] {
-		if m.Location.Offset.Start < min {
-			min = m.Location.Offset.Start
-		}
+// lessMatch orders matches by start offset, then end offset, then rule ID.
+func lessMatch(a, b *types.Match) bool {
+	if a.Location.Offset.Start != b.Location.Offset.Start {
+		return a.Location.Offset.Start < b.Location.Offset.Start
 	}
-	return min
+	if a.Location.Offset.End != b.Location.Offset.End {
+		return a.Location.Offset.End < b.Location.Offset.End
+	}
+	return a.RuleID < b.RuleID
 }
 
 // pickWinner selects the most informative match from a cluster.

@@ -429,3 +429,27 @@ func TestCrossRule_ValidatorBeatsSpecificity(t *testing.T) {
 	assert.Equal(t, "np.generic.2", result[0].RuleID,
 		"a validated generic match still beats an unvalidated specific match")
 }
+
+func makeMatchWithSpan(ruleID string, start, end int64, groups ...string) *types.Match {
+	m := makeMatch(ruleID, groups...)
+	m.Location.Offset.Start = start
+	m.Location.Offset.End = end
+	return m
+}
+
+func TestCrossRuleDeduplicator_TiedStartOffsetOrderIsStable(t *testing.T) {
+	rules := makeRules(
+		struct{ id, pattern string }{"rule.a", `a`},
+		struct{ id, pattern string }{"rule.b", `b`},
+	)
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	a := makeMatchWithSpan("rule.a", 10, 20, "aaa")
+	b := makeMatchWithSpan("rule.b", 10, 30, "bbb")
+
+	first := dedup.Deduplicate([]*types.Match{a, b})
+	second := dedup.Deduplicate([]*types.Match{b, a})
+	require.Len(t, first, 2)
+	require.Equal(t, []string{"rule.a", "rule.b"}, []string{first[0].RuleID, first[1].RuleID})
+	require.Equal(t, []string{"rule.a", "rule.b"}, []string{second[0].RuleID, second[1].RuleID})
+}
