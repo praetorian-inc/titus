@@ -31,7 +31,10 @@ func main() {
     // Scan a string for secrets
     content := `
         # Config file
-        aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+        region = us-east-1
+        aws_access_key_id = AKIADEADBEEFDEADBEEF
+        output = json
+        max_retries = 3
         aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
     `
 

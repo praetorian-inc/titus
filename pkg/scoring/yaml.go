@@ -44,11 +44,12 @@ type yamlModifier struct {
 
 // yamlHTTPDef mirrors pkg/validator/yaml.go HTTPDef but lives in the scorer package.
 type yamlHTTPDef struct {
-	Method  string         `yaml:"method"`
-	URL     string         `yaml:"url"`
-	Auth    yamlScorerAuth `yaml:"auth,omitempty"`
-	Headers []yamlHeader   `yaml:"headers,omitempty"`
-	Body    string         `yaml:"body,omitempty"`
+	Method       string         `yaml:"method"`
+	URL          string         `yaml:"url"`
+	FallbackURLs []string      `yaml:"fallback_urls,omitempty"`
+	Auth         yamlScorerAuth `yaml:"auth,omitempty"`
+	Headers      []yamlHeader   `yaml:"headers,omitempty"`
+	Body         string         `yaml:"body,omitempty"`
 }
 
 type yamlScorerAuth struct {

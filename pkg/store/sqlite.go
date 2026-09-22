@@ -154,16 +154,35 @@ func (s *SQLiteStore) AddFinding(f *types.Finding) error {
 		scoreApplied = sql.NullString{String: string(appliedJSON), Valid: true}
 	}
 
+	var ownerJSON sql.NullString
+	if f.Owner != nil {
+		oj, err := json.Marshal(f.Owner)
+		if err != nil {
+			return fmt.Errorf("marshaling owner: %w", err)
+		}
+		ownerJSON = sql.NullString{String: string(oj), Valid: true}
+	}
+
+	var resourcesJSON sql.NullString
+	if len(f.Resources) > 0 {
+		rj, err := json.Marshal(f.Resources)
+		if err != nil {
+			return fmt.Errorf("marshaling resources: %w", err)
+		}
+		resourcesJSON = sql.NullString{String: string(rj), Valid: true}
+	}
+
 	_, err = s.e.Exec(
-		`INSERT OR IGNORE INTO findings (structural_id, rule_id, groups_json, score_final, score_base, score_suggested_severity, score_applied_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT OR IGNORE INTO findings (structural_id, rule_id, groups_json, score_final, score_base, score_suggested_severity, score_applied_json, owner_json, resources_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		f.ID, f.RuleID, groupsJSON,
 		scoreFinal, scoreBase, scoreSeverity, scoreApplied,
+		ownerJSON, resourcesJSON,
 	)
 	return err
 }
 
 func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
-	rows, err := s.e.Query("SELECT structural_id, rule_id, groups_json, score_final, score_base, score_suggested_severity, score_applied_json FROM findings")
+	rows, err := s.e.Query("SELECT structural_id, rule_id, groups_json, score_final, score_base, score_suggested_severity, score_applied_json, owner_json, resources_json FROM findings")
 	if err != nil {
 		return nil, err
 	}
@@ -171,9 +190,9 @@ func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
 	var result []*types.Finding
 	for rows.Next() {
 		var f types.Finding
-		var groupsJSON, scoreSeverity, scoreApplied sql.NullString
+		var groupsJSON, scoreSeverity, scoreApplied, ownerJSON, resourcesJSON sql.NullString
 		var scoreFinal, scoreBase sql.NullInt64
-		if err := rows.Scan(&f.ID, &f.RuleID, &groupsJSON, &scoreFinal, &scoreBase, &scoreSeverity, &scoreApplied); err != nil {
+		if err := rows.Scan(&f.ID, &f.RuleID, &groupsJSON, &scoreFinal, &scoreBase, &scoreSeverity, &scoreApplied, &ownerJSON, &resourcesJSON); err != nil {
 			return nil, err
 		}
 		if groupsJSON.Valid {
@@ -193,6 +212,18 @@ func (s *SQLiteStore) GetFindings() ([]*types.Finding, error) {
 				}
 			}
 			f.Score = sc
+		}
+		if ownerJSON.Valid && ownerJSON.String != "" {
+			var owner types.OwnerInfo
+			if json.Unmarshal([]byte(ownerJSON.String), &owner) == nil {
+				f.Owner = &owner
+			}
+		}
+		if resourcesJSON.Valid && resourcesJSON.String != "" {
+			var resources []types.ResourceInfo
+			if json.Unmarshal([]byte(resourcesJSON.String), &resources) == nil {
+				f.Resources = resources
+			}
 		}
 		result = append(result, &f)
 	}

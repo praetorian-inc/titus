@@ -317,7 +317,7 @@ func TestGitLabGoScorer_Structure(t *testing.T) {
 	assert.Equal(t, "gitlab-pat-scope", s.Name)
 	assert.Contains(t, s.RuleIDs, "np.gitlab.2")
 	assert.Contains(t, s.RuleIDs, "np.gitlab.4")
-	assert.Equal(t, 9, len(s.Modifiers), "expected 9 modifiers")
+	assert.Equal(t, 10, len(s.Modifiers), "expected 10 modifiers")
 
 	names := make([]string, len(s.Modifiers))
 	for i, mod := range s.Modifiers {
@@ -332,6 +332,7 @@ func TestGitLabGoScorer_Structure(t *testing.T) {
 	assert.Contains(t, names, "write-repo-multi-group")
 	assert.Contains(t, names, "read-api-only-non-admin")
 	assert.Contains(t, names, "no-group-owner")
+	assert.Contains(t, names, "has-resources")
 }
 
 func TestGitLabGoScorer_MissingCredentials(t *testing.T) {

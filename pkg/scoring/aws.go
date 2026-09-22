@@ -226,11 +226,25 @@ func (c *stsKeyActiveCondition) Evaluate(ctx context.Context, m *types.Match) (b
 	if err != nil {
 		return false, nil
 	}
-	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
-		// Credential rejected — not an error in the scoring sense, just doesn't fire
 		return false, nil
 	}
+
+	if m.Owner == nil {
+		arn := awslib.ToString(identity.Arn)
+		m.Owner = &types.OwnerInfo{
+			Service:   "aws",
+			AccountID: awslib.ToString(identity.Account),
+			ARN:       arn,
+		}
+		if username := extractUsernameFromARN(arn); username != "" {
+			m.Owner.User = username
+		} else if roleName := extractRoleNameFromARN(arn); roleName != "" {
+			m.Owner.User = roleName
+		}
+	}
+
 	return true, nil
 }
 
@@ -320,6 +334,21 @@ func AWSGoScorer() *Scorer {
 				Kind:      ModifierKindDelta,
 				Value:     10,
 				Condition: &iamCanAssumeRolesCondition{},
+			},
+			// Resource enumeration (low priority, runs after scoring)
+			{
+				Name:      "has-secrets-manager",
+				Priority:  15,
+				Kind:      ModifierKindDelta,
+				Value:     15,
+				Condition: &awsSecretsManagerCondition{},
+			},
+			{
+				Name:      "has-prod-s3-buckets",
+				Priority:  10,
+				Kind:      ModifierKindDelta,
+				Value:     10,
+				Condition: &awsS3BucketsCondition{},
 			},
 		},
 	}

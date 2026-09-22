@@ -1,0 +1,22 @@
+# pkg/validator/validators/recaptcha.yaml
+# Google reCAPTCHA secret key validation via the siteverify API.
+# The API always returns HTTP 200; invalid keys include "invalid-input-secret"
+# in the error-codes array. A valid key with a dummy response token returns
+# other errors (e.g. "timeout-or-duplicate") but NOT "invalid-input-secret".
+validators:
+  - name: recaptcha-secret-key
+    rule_ids:
+      - kingfisher.recaptcha.1
+    http:
+      method: POST
+      url: https://www.google.com/recaptcha/api/siteverify
+      auth:
+        type: none
+        secret_group: "token"
+      headers:
+        - name: Content-Type
+          value: application/x-www-form-urlencoded
+      body: "secret={{token}}&response=test"
+      success_codes: [200]
+      failure_codes: []
+      failure_body_contains: "invalid-input-secret"

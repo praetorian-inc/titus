@@ -109,7 +109,13 @@ func TestHyperscanDatabaseBuiltinRules(t *testing.T) {
 
 	current, err := NewVectorscan(rules, 0, nil)
 	require.NoError(t, err)
-	matches, err := current.Match([]byte("aws_access_key_id=AKIAIOSFODNN7EXAMPLE"))
+	// The corpus must NOT be an AWS documentation placeholder key ID -- one whose
+	// last 7 characters are "EXAMPLE" (LAB-6509). np.aws.1 and np.aws.6 carry a
+	// negative lookahead that deliberately rejects those, so a placeholder makes
+	// this corpus inert and NotEmpty below fails for a reason that has nothing to
+	// do with the Hyperscan database build/cache this test actually exercises.
+	// AKIADEADBEEFDEADBEEF is np.aws.1's own positive example.
+	matches, err := current.Match([]byte("aws_access_key_id=AKIADEADBEEFDEADBEEF"))
 	require.NoError(t, err)
 	assert.NotEmpty(t, matches)
 	require.NoError(t, current.Close())

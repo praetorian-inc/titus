@@ -26,6 +26,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Quiet mode (errors only)")
 
 	// Add subcommands
+	rootCmd.AddCommand(analyzeCmd)
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(rulesCmd)

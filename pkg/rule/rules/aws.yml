@@ -4,7 +4,7 @@ rules:
   id: np.aws.1
   base_score: 48
 
-  pattern: '\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})\b'
+  pattern: '\b(?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)(?![A-Z0-9]{9}EXAMPLE\b)[A-Z0-9]{16})\b'
 
   references:
   - https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
@@ -30,6 +30,12 @@ rules:
   - '======================'
   - '//////////////////////'
   - '++++++++++++++++++++++'
+  # AWS documentation placeholder key IDs (last 7 characters are EXAMPLE)
+  - 'AKIAIOSFODNN7EXAMPLE'
+  - 'ASIAIOSFODNN7EXAMPLE'
+  - 'AIDAIOSFODNN7EXAMPLE'
+  - 'AROAIOSFODNN7EXAMPLE'
+  - 'A3T0IOSFODNN7EXAMPLE'
 
 
 - name: AWS Secret Access Key
@@ -410,7 +416,7 @@ rules:
   pattern: |
     (?x)
     \b
-    (?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16})     (?# API key )
+    (?P<key_id>(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)(?![A-Z0-9]{9}EXAMPLE\b)[A-Z0-9]{16})     (?# API key; lookahead rejects AWS docs placeholder IDs ending in EXAMPLE )
     \b
     (?: (?s) .{0,40} )                                                        (?# Arbitrary intermediate stuff; ?s causes . to match newlines )
     \b
@@ -434,3 +440,23 @@ rules:
       export AWS_SECRET_ACCESS_KEY='ded7db27a4558eea9bbf0bf36e0e8521618f366c'
 
   - export AWS_API_KEY='A3T0ABCDEFGHIJKLMNOP''ded7db27a4558eea9bbf0bf36e0e8521618f366c'
+
+  # AWS documentation placeholder credential pairs (key ID's last 7 characters are EXAMPLE)
+  negative_examples:
+  - |
+      export AWS_ACCESS_KEY_ID='AKIAIOSFODNN7EXAMPLE'
+      export AWS_SECRET_ACCESS_KEY='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+
+  - |
+      export AWS_ACCESS_KEY_ID='ASIAIOSFODNN7EXAMPLE'
+      export AWS_SECRET_ACCESS_KEY='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+
+  - |
+      export AWS_ACCESS_KEY_ID='AIDAIOSFODNN7EXAMPLE'
+      export AWS_SECRET_ACCESS_KEY='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+
+  - |
+      export AWS_ACCESS_KEY_ID='AROAIOSFODNN7EXAMPLE'
+      export AWS_SECRET_ACCESS_KEY='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+
+  - export AWS_API_KEY='A3T0IOSFODNN7EXAMPLE''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'

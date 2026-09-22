@@ -1,7 +1,7 @@
 # Titus Makefile
 # Build automation for secrets scanner
 
-.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint test-validators record-fixtures scan-fixtures
+.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint test-validators record-fixtures scan-fixtures cli-docs
 
 VERSION ?= dev
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
@@ -192,6 +192,14 @@ vet:
 lint:
 	@which staticcheck > /dev/null || (echo "staticcheck not installed" && exit 0)
 	GOWORK=off CGO_ENABLED=$(CGO_ENABLED) staticcheck $(TAGS_FLAG) ./...
+
+# Regenerate CLI surface docs from the live cobra tree. Tag-free so it does
+# not require vectorscan. Asserts TestCLISurface exists first because
+# `go test -run` exits 0 when the pattern matches nothing.
+cli-docs:
+	@GOWORK=off go test ./cmd/titus -list 'TestCLISurface' | grep -qE '^TestCLISurface$$' \
+	  || { echo "cli-docs: 'go test -list' did not report TestCLISurface in ./cmd/titus. Either the -update writer was renamed, or the package failed to build -- run 'go build ./cmd/titus' to tell which. 'go test -run' exits 0 when its pattern matches nothing, so without this check the target would report success having regenerated nothing at all."; exit 1; }
+	GOWORK=off go test ./cmd/titus -run 'TestCLISurface' -count=1 -update
 
 # Install titus binary to ~/.titus/ for Burp extension
 install:

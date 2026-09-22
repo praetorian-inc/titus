@@ -25,12 +25,13 @@ type firesWhenLeaf interface {
 // goroutines concurrently wrote to the cache field of shared *httpCondition
 // instances.
 type httpCondition struct {
-	method    string
-	url       string         // may contain {{group}} placeholders
-	headers   []scorerHeader
-	body      string
-	auth      scorerAuth
-	firesWhen firesWhenLeaf
+	method       string
+	url          string         // may contain {{group}} placeholders
+	fallbackURLs []string      // tried in order on 401 from the primary URL
+	headers      []scorerHeader
+	body         string
+	auth         scorerAuth
+	firesWhen    firesWhenLeaf
 }
 
 // markDynamic implements the networkCondition marker interface.
@@ -78,10 +79,34 @@ func (c *httpCondition) evaluateWithCache(ctx context.Context, m *types.Match, c
 		if err != nil {
 			return false, fmt.Errorf("http condition request: %w", err)
 		}
-		// Always cache the response — including 429/5xx — so that subsequent
-		// calls for the same secret/URL fast-fail without hitting the network
-		// again.
 		cache.put(key, resp)
+	}
+
+	// Regional fallback: if the primary host returned 401 and fallback URLs
+	// are configured, try each in order. The first non-401 response wins.
+	// This handles providers with regional endpoints (e.g. SendGrid EU) where
+	// a key valid on one host is rejected by the other.
+	if resp.StatusCode == http.StatusUnauthorized && len(c.fallbackURLs) > 0 {
+		for _, fbURL := range c.fallbackURLs {
+			fbRendered := renderRequest(c.method, fbURL, c.headers, c.body, m.NamedGroups)
+			fbKey := httpCacheKey(fbRendered, c.auth, secretBytes)
+
+			fbResp, fbFound := cache.get(fbKey)
+			if !fbFound {
+				var err error
+				fbResp, err = withRetry(ctx, func() (*cachedHTTPResponse, error) {
+					return sendRenderedRequest(ctx, fbRendered, c.auth, string(secretBytes))
+				})
+				if err != nil {
+					continue
+				}
+				cache.put(fbKey, fbResp)
+			}
+			if fbResp.StatusCode != http.StatusUnauthorized {
+				resp = fbResp
+				break
+			}
+		}
 	}
 
 	// Classify persistent 429/5xx as sentinel errors so trackError increments the

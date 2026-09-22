@@ -115,6 +115,9 @@ func init() {
 	scanCmd.Flags().IntVar(&extractMaxDepth, "extract-max-depth", 5, "Max nested archive depth")
 	scanCmd.Flags().IntVar(&scanSQLiteRowLimit, "sqlite-row-limit", 1000, "Max rows per table for SQLite extraction (0 for unlimited)")
 	scanCmd.Flags().IntVar(&scanWorkers, "workers", runtime.NumCPU(), "Number of parallel scan workers")
+	// The runtime default is one worker per CPU, but the *documented* default must be
+	// machine-independent or the CLI-surface golden drifts with the generating host.
+	scanCmd.Flags().Lookup("workers").DefValue = "NumCPU"
 	scanCmd.Flags().IntVar(&scanReaders, "readers", 0, "Number of parallel file readers (0 = NumCPU)")
 	scanCmd.Flags().StringVar(&scanIgnoreFile, "ignore", "", "Path to gitignore-style ignore file (replaces built-in defaults; use /dev/null to disable)")
 	scanCmd.Flags().BoolVar(&scanIncludeNoisy, "include-noisy", false, "Enable rules marked noisy: true (off by default; high false-positive rate)")

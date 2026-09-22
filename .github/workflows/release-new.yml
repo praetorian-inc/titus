@@ -449,6 +449,9 @@ jobs:
         mv artifacts/titus-burp-extension/*.jar release/
         mv artifacts/titus-browser-extension/*.zip release/
 
+        # Committed source artifact, not a build output — copy, don't move.
+        cp docs/cli-surface.json release/
+
         # Create checksums
         cd release
         sha256sum * > checksums.txt

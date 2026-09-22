@@ -13,7 +13,7 @@
 //	}
 //	defer scanner.Close()
 //
-//	matches, err := scanner.ScanString("aws_access_key_id=AKIAIOSFODNN7EXAMPLE")
+//	matches, err := scanner.ScanString("aws_access_key_id=AKIADEADBEEFDEADBEEF")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -358,7 +358,7 @@ func NewScanner(opts ...Option) (*Scanner, error) {
 //
 // Example:
 //
-//	matches, err := scanner.ScanString("aws_access_key_id=AKIAIOSFODNN7EXAMPLE")
+//	matches, err := scanner.ScanString("aws_access_key_id=AKIADEADBEEFDEADBEEF")
 //	if err != nil {
 //	    return err
 //	}

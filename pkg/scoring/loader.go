@@ -212,12 +212,13 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 			return Modifier{}, fmt.Errorf("modifier %q fires_when: %w", ym.Name, err)
 		}
 		cond = &httpCondition{
-			method:    ym.HTTP.Method,
-			url:       ym.HTTP.URL,
-			auth:      yamlAuthToScorerAuth(ym.HTTP.Auth),
-			headers:   yamlHeadersToScorerHeaders(ym.HTTP.Headers),
-			body:      ym.HTTP.Body,
-			firesWhen: leaf,
+			method:       ym.HTTP.Method,
+			url:          ym.HTTP.URL,
+			fallbackURLs: ym.HTTP.FallbackURLs,
+			auth:         yamlAuthToScorerAuth(ym.HTTP.Auth),
+			headers:      yamlHeadersToScorerHeaders(ym.HTTP.Headers),
+			body:         ym.HTTP.Body,
+			firesWhen:    leaf,
 		}
 	}
 	if condCount != 1 {
