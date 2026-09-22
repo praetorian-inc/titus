@@ -18,6 +18,16 @@ func TestChunkContent_SmallContentIsSingleChunk(t *testing.T) {
 	assert.Equal(t, len(content), chunks[0].EndOffset)
 }
 
+func TestChunkContent_TinyMaxChunkSizeStillAdvances(t *testing.T) {
+	content := []byte("abcdef")
+	chunks := ChunkContent(content, ChunkConfig{MaxChunkSize: 1, OverlapLines: 10, MaxOverlapBytes: 1})
+	require.Len(t, chunks, len(content))
+	for i, chunk := range chunks {
+		assert.Equal(t, 1, len(chunk.Content))
+		assert.Equal(t, i, chunk.StartOffset)
+	}
+}
+
 func TestChunkContent_OversizedLineIsByteBounded(t *testing.T) {
 	config := ChunkConfig{MaxChunkSize: 100, OverlapLines: 10, MaxOverlapBytes: 20}
 	content := bytes.Repeat([]byte{0x00}, 250)

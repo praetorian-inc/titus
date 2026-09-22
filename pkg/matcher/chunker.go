@@ -56,8 +56,8 @@ func ChunkContent(content []byte, config ChunkConfig) []Chunk {
 		end := start + config.MaxChunkSize
 		if end > len(content) {
 			end = len(content)
-		} else if i := bytes.LastIndexByte(content[start:end], '\n'); i+1 >= config.MaxChunkSize/2 {
-			// We prefer a newline to end chunks, if this newline is far enough along in the chunk (over halfway) then we use it to end the chunk
+		} else if i := bytes.LastIndexByte(content[start:end], '\n'); i >= 0 && i+1 >= config.MaxChunkSize/2 {
+			// Prefer a newline in the second half of the window so we don't stall on an early '\n'.
 			end = start + i + 1
 		}
 
