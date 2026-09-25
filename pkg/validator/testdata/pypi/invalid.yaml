@@ -1,0 +1,34 @@
+---
+# Captured from upload.pypi.org/legacy/ with a non-existent token.
+# The body string is what the validator keys its rejection on.
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: ""
+        url: https://upload.pypi.org/legacy/
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 0
+        body: |
+            <html>
+             <head>
+              <title>403 Invalid or non-existent authentication information. See https://pypi.org/help/#invalid-auth for more information.</title>
+             </head>
+             <body>
+              <h1>403 Invalid or non-existent authentication information. See https://pypi.org/help/#invalid-auth for more information.</h1>
+              Access was denied to this resource.<br/><br/>
+            Invalid or non-existent authentication information. See https://pypi.org/help/#invalid-auth for more information.
+             </body>
+            </html>
+        headers: {}
+        status: 403 Forbidden
+        code: 403
+        duration: 0s

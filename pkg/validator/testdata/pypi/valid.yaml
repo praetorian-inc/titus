@@ -1,0 +1,37 @@
+---
+# Synthetic. A live token gets past authentication and is then rejected by
+# warehouse's UploadForm validation, because this request deliberately carries no
+# artifact. Reaching any 400 means the credential was accepted: warehouse checks
+# authentication before it looks at the form, so an unauthenticated request with
+# this exact body is answered 403, never 400.
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        host: ""
+        url: https://upload.pypi.org/legacy/
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 0
+        body: |
+            <html>
+             <head>
+              <title>400 Invalid value for name. Error: This field is required.</title>
+             </head>
+             <body>
+              <h1>400 Invalid value for name. Error: This field is required.</h1>
+              The server could not comply with the request since it is either malformed or otherwise incorrect.<br/><br/>
+            Invalid value for name. Error: This field is required.
+             </body>
+            </html>
+        headers: {}
+        status: 400 Bad Request
+        code: 400
+        duration: 0s
