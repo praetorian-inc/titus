@@ -1,0 +1,23 @@
+# Cassette provenance for PyPI upload token validator
+#
+# service: pypi
+# rule: np.pypi.1  (PyPI Upload Token, pattern pypi-AgEIcHlwaS5vcmc...)
+# endpoint: POST https://upload.pypi.org/legacy/  (:action=file_upload)
+#
+# invalid_response: {status: 403, discriminator: "auth rejected before payload"}
+#   Verified live against upload.pypi.org on 2026-09-25 with a syntactically
+#   valid but non-existent token and with no auth: both returned
+#   403 "Invalid or non-existent authentication information".
+#
+# valid_response: {status: 400, discriminator: "auth passes, payload rejected"}
+#   A valid __token__ authenticates at the WAF/auth layer and the request then
+#   fails distribution-payload validation with 400. Hand-authored from PyPI's
+#   documented upload/auth flow; not recorded against a live valid token to avoid
+#   handling a real publishing credential. To re-record with a throwaway token:
+#     SECRET_PLAINTEXT=<pypi_upload_token> RECORD=1 make record-fixtures SVC=pypi
+#   then revoke it at https://pypi.org/manage/account/token/
+#
+# Status-code based (400=valid, 401/403=invalid); response body elided.
+notes: |
+  The prior validator hit GET https://pypi.org/simple/ (public index) which
+  returns 200 for any request, producing false "valid" results for every match.

@@ -1,0 +1,23 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 38
+        host: upload.pypi.org
+        body: ":action=file_upload&protocol_version=1"
+        url: https://upload.pypi.org/legacy/
+        method: POST
+      response:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        body: ""
+        headers: {}
+        status: 403 Forbidden
+        code: 403
+        duration: 0s

@@ -3,11 +3,27 @@ validators:
     rule_ids:
       - np.pypi.1
     http:
-      method: GET
-      url: "https://pypi.org/simple/"
+      # The previous target (GET https://pypi.org/simple/) is the PUBLIC package
+      # index: it returns HTTP 200 for ANY request regardless of the supplied
+      # basic-auth credentials, so every detected token was reported "valid".
+      #
+      # PyPI upload tokens are only meaningful against the upload endpoint. A POST
+      # to the legacy upload API authenticates the token at the WAF/auth layer
+      # BEFORE any payload processing:
+      #   - bad / absent token  -> 403 "Invalid or non-existent authentication information"
+      #   - valid token         -> auth passes, request then fails payload
+      #                            validation (missing distribution file) -> 400
+      # We deliberately send a minimal, non-destructive body so a valid token can
+      # never actually publish anything: it is rejected on payload, not on auth.
+      method: POST
+      url: "https://upload.pypi.org/legacy/"
       auth:
         type: basic
         username: "__token__"
         secret_group: "token"
-      success_codes: [200]
+      headers:
+        - name: Content-Type
+          value: application/x-www-form-urlencoded
+      body: ":action=file_upload&protocol_version=1"
+      success_codes: [400]
       failure_codes: [401, 403]
