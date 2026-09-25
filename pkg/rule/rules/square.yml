@@ -9,7 +9,6 @@ rules:
   categories: [api, secret]
 
   examples:
-  - "SQUARE_ACCESS_TOKEN=sq0atp-qUlZzae8wVMc5P5NZdf5DA"
   - |
       var applicationId = 'sq0idp-r34HdSnJVWaCesH3dnJrGA';
       var accessToken = 'sq0atp-RdSPeJa5qDMaCesxHOjeRQ';

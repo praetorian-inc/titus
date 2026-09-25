@@ -1,3 +1,14 @@
+# pkg/validator/validators/resend.yaml
+#
+# success_codes previously read [200, 401]: 401 Unauthorized was listed as a
+# success, so anything that produced one -- an anonymous request included --
+# was reported valid at confidence 1.0. Measured:
+#
+#   no key      -> 401 {"statusCode":401,"message":"Missing API Key"}
+#   garbage key -> 400 {"statusCode":400,"message":"API key is invalid"}
+#
+# 401 is now a failure, and the 400 carrying "API key is invalid" is matched on
+# the body, since a bare 400 is not otherwise a credential verdict.
 validators:
 
 - name: resend-api-key
@@ -14,5 +25,6 @@ validators:
       - name: "Accept"
         value: "application/json"
 
-    success_codes: [200, 401]
-    failure_codes: [403]
+    success_codes: [200]
+    failure_codes: [401, 403]
+    failure_body_contains: "API key is invalid"

@@ -1,13 +1,41 @@
+# pkg/validator/validators/pypi.yaml
+#
+# PyPI upload tokens (pypi-AgEIcHlwaS5vcmc...) authenticate against the legacy
+# upload API. They are not credentials for the package index.
+#
+# The previous definition sent them to https://pypi.org/simple/ with
+# success_codes: [200]. That is the PUBLIC package index: it answers 200 with a
+# byte-identical ~46MB body to an anonymous client, so every np.pypi.1 match was
+# reported "valid" at confidence 1.0 whatever the token was -- and every
+# validation downloaded 46MB to decide it.
+#
+# upload.pypi.org/legacy/ evaluates authentication before it validates the form,
+# so a well-formed request carrying no credentials is still rejected with 403 and
+# "Invalid or non-existent authentication information". That string is therefore a
+# reliable rejection signal, and reaching any 400 means the token was accepted.
+#
+# The failure signal is keyed on the BODY, not on the 403 status, deliberately:
+# warehouse also returns 403 for tokens that are perfectly valid but whose owner
+# lacks 2FA or a verified primary email. Those carry a different message, so they
+# fall through to "undetermined" rather than being called invalid.
+#
+# The posted form declares :action=file_upload and carries no file, so it cannot
+# publish anything; warehouse rejects it on form validation well before any
+# artifact is written.
 validators:
   - name: pypi-upload-token
     rule_ids:
       - np.pypi.1
     http:
-      method: GET
-      url: "https://pypi.org/simple/"
+      method: POST
+      url: "https://upload.pypi.org/legacy/"
       auth:
         type: basic
         username: "__token__"
         secret_group: "token"
-      success_codes: [200]
-      failure_codes: [401, 403]
+      headers:
+        - name: Content-Type
+          value: "multipart/form-data; boundary=titusvalidate"
+      body: "--titusvalidate\r\nContent-Disposition: form-data; name=\":action\"\r\n\r\nfile_upload\r\n--titusvalidate--\r\n"
+      success_codes: [400]
+      failure_body_contains: "Invalid or non-existent authentication information"

@@ -1,3 +1,18 @@
+# pkg/validator/validators/flyio.yaml
+#
+# api.fly.io/graphql is a GraphQL endpoint, so it answers 200 to an
+# unauthenticated request and reports the problem in the body:
+#
+#   POST /graphql, bearer <freshly generated random token>
+#   -> 200 {"data":null,"errors":[{"message":"You must be authenticated to
+#           view this.","extensions":{"code":"UNAUTHORIZED"}}]}
+#
+# success_codes: [200] alone therefore reported every fly.io token as valid at
+# confidence 1.0. The rejection has to come from the body.
+#
+# Keyed on the GraphQL error code rather than the human-readable message, since
+# the code is the stable half of that contract. A successful { viewer { id } }
+# response carries no errors array and so cannot contain it.
 validators:
 
 - name: flyio-api-token
@@ -17,3 +32,4 @@ validators:
 
     success_codes: [200]
     failure_codes: [401, 403]
+    failure_body_contains: "UNAUTHORIZED"
