@@ -1,6 +1,20 @@
 # pkg/validator/validators/mapbox.yaml
-# Mapbox validates tokens via the tokens API
-# Works for public (pk), secret (sk), and temporary (tk) tokens
+# Mapbox validates tokens via the tokens API.
+# Works for public (pk), secret (sk), and temporary (tk) tokens.
+#
+# The tokens API answers 200 to every request and puts the verdict in a "code"
+# field, so success_codes: [200] alone reported every mapbox token as valid at
+# confidence 1.0. Measured:
+#
+#   well-formed but fake -> 200 {"code":"TokenInvalid","token":{...}}
+#   malformed            -> 200 {"code":"TokenMalformed"}
+#   absent               -> 422 {"code":"TokenRequired"}
+#
+# So the check requires the positive verdict rather than enumerating the
+# negative ones: a body without "TokenValid" is treated as a rejection, which
+# covers TokenInvalid and TokenMalformed and anything else added later.
+# "TokenValid" is not a substring of "TokenInvalid", so the two cannot be
+# confused.
 validators:
   - name: mapbox-public-token
     rule_ids:
@@ -13,6 +27,7 @@ validators:
         secret_group: "token"
         query_param: "access_token"
       success_codes: [200]
+      success_body_contains: "TokenValid"
       failure_codes: [401, 403]
 
   - name: mapbox-secret-token
@@ -26,6 +41,7 @@ validators:
         secret_group: "token"
         query_param: "access_token"
       success_codes: [200]
+      success_body_contains: "TokenValid"
       failure_codes: [401, 403]
 
   - name: mapbox-temporary-token
@@ -39,4 +55,5 @@ validators:
         secret_group: "token"
         query_param: "access_token"
       success_codes: [200]
+      success_body_contains: "TokenValid"
       failure_codes: [401, 403]
