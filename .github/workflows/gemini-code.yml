@@ -21,6 +21,4 @@ jobs:
       pull-requests: write
       actions: read  # ENG-7654: fetch-graph downloads this repo's graphify artifact (fail-open skip if none)
     secrets:
-      PALATINE_SKILLS_APP_ID: ${{ secrets.PALATINE_SKILLS_APP_ID }}
-      PALATINE_SKILLS_PRIVATE_KEY: ${{ secrets.PALATINE_SKILLS_PRIVATE_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
