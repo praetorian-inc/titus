@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   codex-review:
-    uses: praetorian-inc/public-workflows/.github/workflows/codex-code.yml@92435b1db7d91370abb6c1533af76c958e57bd22  # df013e9
+    uses: praetorian-inc/public-workflows/.github/workflows/codex-code.yml@92435b1db7d91370abb6c1533af76c958e57bd22  # public-workflows#184
     permissions:
       contents: read
       pull-requests: write
