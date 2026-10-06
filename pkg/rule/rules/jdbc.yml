@@ -1,7 +1,7 @@
 rules:
 
   - name: JDBC connection string with authority-inline credentials
-    id: kingfisher.jdbc.2
+    id: kingfisher.jdbc.1
     base_score: 85
     pattern: |
       (?xi)
@@ -46,7 +46,7 @@ rules:
       - https://www.postgresql.org/docs/current/jdbc-use.html
 
   - name: JDBC connection string with query-parameter credentials
-    id: kingfisher.jdbc.3
+    id: kingfisher.jdbc.2
     base_score: 85
     pattern: |
       (?xi)
@@ -89,7 +89,7 @@ rules:
       - https://www.postgresql.org/docs/current/jdbc-use.html
 
   - name: JDBC connection string with semicolon-property credentials
-    id: kingfisher.jdbc.4
+    id: kingfisher.jdbc.3
     base_score: 85
     pattern: |
       (?xi)
@@ -132,7 +132,7 @@ rules:
       - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
 
   - name: JDBC Oracle connection string with slash credentials
-    id: kingfisher.jdbc.5
+    id: kingfisher.jdbc.4
     base_score: 85
     pattern: |
       (?xi)
