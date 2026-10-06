@@ -192,6 +192,23 @@ func convertYAMLModifier(ym yamlModifier) (Modifier, error) {
 			Value:  ym.SurroundingContextContains.Value,
 		}
 	}
+	if ym.SurroundingContextMatches != nil {
+		condCount++
+		if ym.SurroundingContextMatches.Pattern == "" {
+			return Modifier{}, fmt.Errorf("surrounding_context_matches.pattern is required")
+		}
+		if ym.SurroundingContextMatches.Within < 0 {
+			return Modifier{}, fmt.Errorf("surrounding_context_matches.within must be >= 0")
+		}
+		re, err := regexp.Compile(ym.SurroundingContextMatches.Pattern)
+		if err != nil {
+			return Modifier{}, fmt.Errorf("surrounding_context_matches.pattern regex %q: %w", ym.SurroundingContextMatches.Pattern, err)
+		}
+		cond = &surroundingContextMatchesCondition{
+			Within:  ym.SurroundingContextMatches.Within,
+			Pattern: re,
+		}
+	}
 	if ym.MatchLength != nil {
 		condCount++
 		op := matchLengthOp(ym.MatchLength.Op)

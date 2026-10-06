@@ -197,6 +197,14 @@ scorers:
           within: 64
         delta: 5
 
+      # Static modifier: fires based on surrounding context matching a regex
+      - name: password-nearby
+        priority: 80
+        surrounding_context_matches:
+          pattern: '(?i)(?:password|passwd|pwd|secret|credential)\s*[=:\s]'
+          within: 256    # bytes on each side; 0 = unlimited
+        delta: 10
+
       # Static modifier: fires based on secret length (useful as an entropy proxy)
       - name: long-token
         priority: 70
