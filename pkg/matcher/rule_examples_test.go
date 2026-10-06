@@ -245,7 +245,7 @@ func negativeExampleOutcome(t *testing.T, r *types.Rule) (regexOnly, fullMatch [
 	t.Helper()
 	m, err := NewPortableRegexpWithTimeout([]*types.Rule{r}, 0, nil, 5*time.Second)
 	if err != nil {
-		return nil, nil
+		t.Fatalf("construct matcher for rule %q: %v", r.ID, err)
 	}
 	for i, ex := range r.NegativeExamples {
 		ms, err := m.Match([]byte(ex))
