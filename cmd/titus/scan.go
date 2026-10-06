@@ -52,6 +52,8 @@ var (
 	scanOutputFormat        string
 	scanGit                 bool
 	scanDocker              bool
+	scanAMI                 bool
+	scanRegion              string
 	scanMaxFileSize         int64
 	scanContextLines        int
 	scanIncremental         bool
@@ -82,14 +84,14 @@ var (
 	scanAsanaConcurrency        int
 
 	// Google Drive flags.
-	scanGDriveRateLimit       float64
-	scanGDriveConcurrency     int
+	scanGDriveRateLimit   float64
+	scanGDriveConcurrency int
 )
 
 var scanCmd = &cobra.Command{
 	Use:   "scan <target>",
 	Short: "Scan a target for secrets",
-	Long:  "Scan a file, directory, git repository, Docker image, or remote GitHub/GitLab repository for secrets using detection rules.\nSupports github.com/org/repo and gitlab.com/namespace/project URLs for direct remote scanning.\nUse --docker for image references or prefix the target with docker://.",
+	Long:  "Scan a file, directory, git repository, Docker image, Amazon Machine Image, or remote GitHub/GitLab repository for secrets using detection rules.\nSupports github.com/org/repo and gitlab.com/namespace/project URLs for direct remote scanning.\nUse --docker for container image references or prefix the target with docker://.\nUse --ami for an AMI ID or a raw disk image, or prefix an AMI ID with ami://.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runScan,
 }
@@ -103,6 +105,8 @@ func init() {
 	scanCmd.Flags().StringVar(&scanOutputFormat, "format", "human", "Output format: json, sarif, human")
 	scanCmd.Flags().BoolVar(&scanGit, "git", false, "Treat target as git repository (enumerate git history)")
 	scanCmd.Flags().BoolVar(&scanDocker, "docker", false, "Treat target as Docker image (uses docker image save)")
+	scanCmd.Flags().BoolVar(&scanAMI, "ami", false, "Treat target as an Amazon Machine Image (AMI ID or raw disk image)")
+	scanCmd.Flags().StringVar(&scanRegion, "region", "", "AWS region for AMI scans (ami://region/ami-id overrides this; otherwise the SDK default)")
 	scanCmd.Flags().Int64Var(&scanMaxFileSize, "max-file-size", 10*1024*1024, "Maximum file size to scan (bytes)")
 	scanCmd.Flags().IntVar(&scanContextLines, "context-lines", 3, "Lines of context before/after matches (0 to disable)")
 	scanCmd.Flags().BoolVar(&scanIncremental, "incremental", false, "Skip already-scanned blobs")
@@ -150,22 +154,23 @@ type blobJob struct {
 
 func runScan(cmd *cobra.Command, args []string) error {
 	target := args[0]
-	dockerImage := target
-	isDockerTarget := scanDocker
-	if parsedImage, ok := enum.ParseDockerImageReference(target); ok {
-		dockerImage = parsedImage
-		isDockerTarget = true
+	dockerImage, amiTarget, isDockerTarget, isAMITarget, err := resolveSpecialTarget(target, scanDocker, scanAMI)
+	if err != nil {
+		return err
 	}
 
 	if scanOutputPath == ":auto:" {
-		if isDockerTarget {
+		switch {
+		case isDockerTarget:
 			scanOutputPath = dockerAutoOutputName(dockerImage)
-		} else {
+		case isAMITarget:
+			scanOutputPath = amiAutoOutputName(amiTarget)
+		default:
 			scanOutputPath = resolveAutoOutput(target)
 		}
 	}
 
-	if !isDockerTarget {
+	if !isDockerTarget && !isAMITarget {
 		// Check if target is a GitHub or GitLab URL
 		if repoTarget, ok := parseRepoURL(target); ok {
 			return runRepoScan(cmd, repoTarget)
@@ -261,6 +266,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	var enumerator enum.Enumerator
 	if isDockerTarget {
 		enumerator, err = createDockerEnumerator(dockerImage)
+	} else if isAMITarget {
+		enumerator, err = createAMIEnumerator(amiTarget)
 	} else {
 		enumerator, err = createEnumerator(target, scanGit)
 	}
@@ -777,6 +784,69 @@ func createDockerEnumerator(image string) (enum.Enumerator, error) {
 		return nil, err
 	}
 	return enum.NewDockerImageEnumerator(image, config), nil
+}
+
+func createAMIEnumerator(target enum.AMITarget) (enum.Enumerator, error) {
+	root := target.ImageID
+	if target.Path != "" {
+		root = target.Path
+	}
+	config, err := enumConfigForTarget(root)
+	if err != nil {
+		return nil, err
+	}
+	return enum.NewAMIEnumerator(target, scanRegion, config), nil
+}
+
+// resolveSpecialTarget classifies Docker and AMI scan targets. Other targets
+// (filesystem, git, s3://, repo URLs) return false, false.
+func resolveSpecialTarget(target string, dockerFlag, amiFlag bool) (dockerImage string, ami enum.AMITarget, isDocker, isAMI bool, err error) {
+	target = strings.TrimSpace(target)
+	if dockerFlag && amiFlag {
+		return "", enum.AMITarget{}, false, false, fmt.Errorf("--docker and --ami cannot be combined")
+	}
+	if image, ok := enum.ParseDockerImageReference(target); ok {
+		if amiFlag {
+			return "", enum.AMITarget{}, false, false, fmt.Errorf("target %s is a Docker image, not an AMI", target)
+		}
+		return image, enum.AMITarget{}, true, false, nil
+	}
+	if strings.HasPrefix(strings.ToLower(target), "ami://") {
+		if dockerFlag {
+			return "", enum.AMITarget{}, false, false, fmt.Errorf("target %s is an AMI, not a Docker image", target)
+		}
+		parsed, ok := enum.ParseAMIReference(target)
+		if !ok {
+			return "", enum.AMITarget{}, false, false, fmt.Errorf("invalid AMI reference %q (want ami://ami-id or ami://region/ami-id)", target)
+		}
+		return "", parsed, false, true, nil
+	}
+	if dockerFlag {
+		return target, enum.AMITarget{}, true, false, nil
+	}
+	if amiFlag {
+		parsed, err := enum.AMITargetFromFlag(target)
+		if err != nil {
+			return "", enum.AMITarget{}, false, false, err
+		}
+		return "", parsed, false, true, nil
+	}
+	return "", enum.AMITarget{}, false, false, nil
+}
+
+func amiAutoOutputName(target enum.AMITarget) string {
+	if target.ImageID != "" {
+		name := target.ImageID
+		if target.Region != "" {
+			name = target.Region + "_" + name
+		}
+		return name + ".ds"
+	}
+	base := filepath.Base(target.Path)
+	if base == "." || base == "" || base == string(filepath.Separator) {
+		return "ami.ds"
+	}
+	return base + ".ds"
 }
 
 // repoTarget holds parsed repository URL information.
@@ -2127,6 +2197,9 @@ func resolveAutoName(group, user, project string) string {
 func resolveAutoOutput(target string) string {
 	if image, ok := enum.ParseDockerImageReference(target); ok {
 		return dockerAutoOutputName(image)
+	}
+	if ami, ok := enum.ParseAMIReference(target); ok {
+		return amiAutoOutputName(ami)
 	}
 
 	// Strip scheme prefix (e.g. "https://")

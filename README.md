@@ -31,6 +31,7 @@ Built for security engineers, penetration testers, and DevSecOps teams, Titus co
 - **Live secret validation**: Detected secrets are checked against their source APIs to confirm whether they are active, reducing false positives and prioritizing remediation.
 - **Risk-based severity scoring**: Every finding receives a numeric score (0–100) and severity tier (info → critical). Scores are tuned by static rule metadata, code-accessibility context, and live API calls that measure the real blast radius of a credential — so the most dangerous findings always surface first.
 - **Container image scanning**: Scan Docker and OCI images directly from any registry, tarball, or OCI layout directory — no Docker daemon or binary required.
+- **Amazon Machine Image scanning**: Scan EBS-backed AMIs and raw disk images for secrets via the EBS direct APIs — no instance launch required.
 - **Multiple interfaces for every workflow**: Scan from the CLI, embed as a Go library, passively scan HTTP traffic in Burp Suite, or scan web pages in Chrome during application security testing.
 - **Binary file extraction**: Extract and scan secrets from Office documents, PDFs, archives (zip, tar, 7z), mobile apps (APK, IPA), browser extensions, and more.
 
@@ -64,6 +65,9 @@ titus scan --git path/to/repo
 
 # Scan a Docker / OCI image (pulled from a registry — no docker daemon required)
 titus scan --docker alpine:latest
+# Scan an Amazon Machine Image (EBS snapshot blocks; no instance launch)
+titus scan ami://us-east-1/ami-0123456789abcdef0
+
 
 # Validate detected secrets against source APIs
 titus scan path/to/code --validate
@@ -154,6 +158,27 @@ titus scan --docker ./img/
 ```
 
 Authentication uses your existing Docker / Podman config (`~/.docker/config.json`, `${XDG_RUNTIME_DIR}/containers/auth.json`). Private registries that need a fresh login should first be authenticated with `docker login` (or `podman login`, or `crane auth login`) — titus does not prompt for credentials.
+
+### Amazon Machine Image Scanning
+
+Scan an EBS-backed AMI, or a raw disk image exported from one, for secrets. Titus calls `ec2:DescribeImages` and reads snapshot blocks with the EBS direct APIs (`ebs:ListSnapshotBlocks`, `ebs:GetSnapshotBlock`). It does not launch an instance. Credentials come from the default AWS chain, the same way S3 scans do.
+
+```bash
+# AMI in the SDK's default region
+titus scan --ami ami-0123456789abcdef0
+
+# Region in the target, or via --region / AWS_REGION
+titus scan ami://us-east-1/ami-0123456789abcdef0
+titus scan --region us-west-2 --ami ami-0123456789abcdef0
+
+# Local raw disk (coldsnap download, qemu-img convert -O raw). Not VMDK or QCOW2.
+titus scan --ami ./disk.raw
+```
+
+Every EBS snapshot on the AMI is scanned, root device first. GPT and primary MBR partitions are recognized, and ext2/3/4 and XFS files are walked. Findings are reported as `ami://region/ami-id/dev/xvda/etc/secret.txt`.
+
+Required IAM actions: `ec2:DescribeImages`, `ebs:ListSnapshotBlocks`, `ebs:GetSnapshotBlock`, plus `kms:Decrypt` when the snapshot uses a customer managed key. The snapshot must be owned by or shared with the caller. Marketplace AMIs and public AMIs whose snapshots were not shared cannot be read; copy the AMI into the account first. Instance-store AMIs fail the scan. LVM and unrecognized filesystems are skipped, and the scan fails if no ext2/3/4 or XFS filesystem is found. `GetSnapshotBlock` is billed per request, and a full AMI scan can take a while.
+
 
 ### Viewing Scan Results
 
