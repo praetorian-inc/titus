@@ -140,9 +140,9 @@ func TestRuleExamples_AllRulesDetectTheirOwnExamples(t *testing.T) {
 // A listed rule must fail EXACTLY the examples its baseline records.
 //
 // Allowlisting a rule ID alone would drop every one of its examples from
-// coverage, including the ones that currently pass -- kingfisher.jdbc.1 fails 3
-// of 4. Comparing exact indices keeps the passing example guarded, and means a
-// fixed failure cannot be exchanged for a new one without the test noticing.
+// coverage, including the ones that currently pass. Comparing exact indices
+// keeps the passing example guarded, and means a fixed failure cannot be
+// exchanged for a new one without the test noticing.
 func TestRuleExamples_KnownFailuresMatchBaseline(t *testing.T) {
 	byID := map[string]*types.Rule{}
 	for _, r := range rulesWithExamples(t) {
