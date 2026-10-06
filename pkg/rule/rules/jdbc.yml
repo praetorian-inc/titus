@@ -14,9 +14,8 @@ rules:
         :
         (?P<password>[^\s@"'<>,(){}\[\]:]{3,128})
         @
-        (?P<host>[a-zA-Z0-9._-]{3,253})
+        (?P<host>[a-zA-Z0-9._-]{1,253})
         (?::\d{1,5})?
-        [^\s"'<>]*
       )
     pattern_requirements:
       ignore_if_contains:
