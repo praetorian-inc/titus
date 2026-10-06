@@ -145,6 +145,7 @@ rules:
         /
         (?P<password>[^\s@"'<>,(){}\[\]]{3,128})
         @
+        (?://)?
         (?P<host>[a-zA-Z0-9._:-]{3,253})
       )
     pattern_requirements:
@@ -166,6 +167,7 @@ rules:
       - jdbc:oracle:thin:admin/s3cr3tP4ss@ora.proddb.net:1521:ORCLDB
       - jdbc:oracle:thin:appuser/xK9!mP2qR@dbhost:1521/ORCLPDB1
       - jdbc:oracle:oci:scott/tiger123@proddb.internal:1521:ORCL
+      - jdbc:oracle:thin:scott/tiger123@//db.prod.internal:1521/SVCNAME
     negative_examples:
       - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
       - jdbc:oracle:thin:@//ora.proddb.net:1521/ORCLPDB1
