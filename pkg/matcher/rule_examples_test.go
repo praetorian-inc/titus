@@ -171,3 +171,63 @@ func TestRuleExamples_KnownFailuresMatchBaseline(t *testing.T) {
 		}
 	}
 }
+
+// knownNegativeExampleFailures lists rules that have at least one
+// negative_example producing a finding. Same burn-down pattern as
+// knownExampleFailures: fix the rule or the example, then delete the entry.
+var knownNegativeExampleFailures = map[string]bool{
+	"np.azure.9":               true,
+	"np.browserstack.1":        true,
+	"np.cypress.1":             true,
+	"kingfisher.dbconn.perl.1": true,
+	"kingfisher.dbconn.ruby.1": true,
+	"np.grafana.1":             true,
+	"np.grafana.2":             true,
+	"np.grafana.3":             true,
+	"np.helpscout.1":           true,
+	"np.keenio.1":              true,
+	"kingfisher.powershell.1":  true,
+	"kingfisher.powershell.2":  true,
+	"np.slack.8":               true,
+	"np.wakatime.2":            true,
+	"np.zendesk.1":             true,
+}
+
+// Every rule's negative_examples must produce zero findings through the full
+// pipeline (regex + post-filters). Without this, negative_examples entries are
+// inert documentation.
+func TestRuleExamples_NegativeExamplesProduceNoFindings(t *testing.T) {
+	for _, r := range rulesWithNegativeExamples(t) {
+		if knownNegativeExampleFailures[r.ID] {
+			continue
+		}
+		for i, ex := range r.NegativeExamples {
+			t.Run(r.ID+"/negative_"+ex[:min(len(ex), 40)], func(t *testing.T) {
+				m, err := NewPortableRegexpWithTimeout([]*types.Rule{r}, 0, nil, 5*time.Second)
+				require.NoError(t, err)
+				ms, err := m.Match([]byte(ex))
+				if err != nil || len(ms) == 0 {
+					return
+				}
+				surviving := filterMatches(ms, map[string]*types.Rule{r.ID: r})
+				assert.Zerof(t, len(surviving),
+					"rule %q: negative_examples[%d] produced %d finding(s) but must produce none.\ninput: %q",
+					r.ID, i, len(surviving), ex)
+			})
+		}
+	}
+}
+
+func rulesWithNegativeExamples(t *testing.T) []*types.Rule {
+	t.Helper()
+	all, err := rule.NewLoader().LoadBuiltinRules()
+	require.NoError(t, err)
+	var out []*types.Rule
+	for _, r := range all {
+		if len(r.NegativeExamples) > 0 {
+			out = append(out, r)
+		}
+	}
+	require.NotEmpty(t, out)
+	return out
+}
