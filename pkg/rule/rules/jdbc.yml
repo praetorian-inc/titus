@@ -21,7 +21,6 @@ rules:
         - "****"
         - "xxxx"
         - "example"
-        - "password"
         - "changeme"
     confidence: medium
     examples:
@@ -51,7 +50,7 @@ rules:
       [^\s"'<>]*?                          (?# URL body          )
       (?:password|pwd)                     (?# keyword           )
       \s*=\s*
-      (?P<token>[^\s;'"<>]{3,128})         (?# password value    )
+      (?P<token>[^\s;&'"<>]{3,128})        (?# password value    )
     pattern_requirements:
       ignore_if_contains:
         - "****"
@@ -74,3 +73,33 @@ rules:
     references:
       - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
       - https://docs.microsoft.com/en-us/sql/connect/jdbc/building-the-connection-url
+
+  # Matches Oracle JDBC thin-driver URLs with user/password@ credentials.
+  # Oracle thin uses slash-separated credentials instead of the standard
+  # URI userinfo syntax: jdbc:oracle:thin:user/password@host:port/service
+  - name: JDBC Oracle thin connection with credentials
+    id: kingfisher.jdbc.3
+    base_score: 85
+    pattern: |
+      (?xi)
+      jdbc:oracle:thin:
+      [a-zA-Z0-9_.%+-]{1,64}              (?# username          )
+      /
+      (?P<token>[^\s/@'"<>]{3,128})        (?# password          )
+      @
+      [a-zA-Z0-9.\[\]:_-]+                (?# host              )
+    pattern_requirements:
+      ignore_if_contains:
+        - "****"
+        - "xxxx"
+        - "example"
+        - "changeme"
+    confidence: medium
+    examples:
+      - jdbc:oracle:thin:scott/tiger@ora.prod:1521:ORCL
+      - jdbc:oracle:thin:appuser/Xk9wL3n!@dbhost:1521/ORCLPDB1
+    negative_examples:
+      - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
+      - jdbc:oracle:thin:@//dbhost:1521/orcl
+    references:
+      - https://docs.oracle.com/en/database/oracle/oracle-database/21/jjdbc/data-sources-and-URLs.html

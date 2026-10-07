@@ -366,6 +366,7 @@ rulesets:
   - kingfisher.ipstack.1                # IpStack API Key
   - kingfisher.jdbc.1                   # JDBC connection string with userinfo credentials
   - kingfisher.jdbc.2                   # JDBC connection string with password keyword
+  - kingfisher.jdbc.3                   # JDBC Oracle thin connection with credentials
   - kingfisher.jira.1                   # Jira Domain
   - kingfisher.jira.2                   # Jira Token
   - kingfisher.jotform.1                # Jotform API Key
