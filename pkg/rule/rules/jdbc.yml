@@ -1,32 +1,76 @@
 rules:
-  - name: JDBC connection string with embedded credentials
+  # Matches JDBC URLs with user:password@ userinfo credentials.
+  # Follows the same structural-credential pattern as np.postgres.1 and
+  # kingfisher.mysql.1 — the regex requires a password between : and @.
+  - name: JDBC connection string with userinfo credentials
     id: kingfisher.jdbc.1
     base_score: 85
     pattern: |
       (?xi)
-      (?P<token>
-        jdbc:
-        [a-z][a-z0-9+.-]{2,32}
-        (?:[:][a-z0-9+.-]{1,32})*
-        :
-        [^\s"'<>,(){}\[\]]{10,448}
-      )
-    pattern_requirements:              
-      min_special_chars: 2
-      special_chars: ";=/?@&"
+      jdbc:
+      [a-z][a-z0-9+.-]{2,32}              (?# subprotocol       )
+      (?:[:][a-z0-9+.-]{1,32})*           (?# sub-subprotocol   )
+      ://
+      [a-zA-Z0-9_.%+-]{1,64}              (?# username          )
+      :
+      (?P<token>[^\s:@'"<>]{3,128})        (?# password          )
+      @
+      [a-zA-Z0-9.\[\]:_-]+                (?# host              )
+    pattern_requirements:
       ignore_if_contains:
         - "****"
         - "xxxx"
         - "example"
-    min_entropy: 3.3
+        - "password"
+        - "changeme"
     confidence: medium
-    validation:
-      type: Jdbc
     examples:
-      - jdbc:postgresql://db.internal.io:5432/app?user=admin&password=s3cr3t
       - jdbc:mysql://admin:s3cr3t@prod.internal:3306/inventory
+      - jdbc:postgresql://appuser:p%40ssw0rd@db.internal.io:5432/mydb
+      - jdbc:mariadb://deploy:Kj8#mP2x@mariadb.prod:3307/orders
+    negative_examples:
       - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
-      - jdbc:sqlserver://sql.proddb.org:1433;databaseName=inventory;user=sa;password=s3cr3t!
+      - jdbc:h2:mem:testdb
+      - jdbc:sqlite:/data/app.db
+      - "jdbc:mysql://admin:****@prod.internal:3306/inventory"
     references:
       - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
       - https://www.postgresql.org/docs/current/jdbc-use.html
+
+  # Matches JDBC URLs containing password= or pwd= keyword credentials,
+  # common in SQL Server (semicolon-delimited) and PostgreSQL (query params).
+  - name: JDBC connection string with password keyword
+    id: kingfisher.jdbc.2
+    base_score: 85
+    pattern: |
+      (?xi)
+      jdbc:
+      [a-z][a-z0-9+.-]{2,32}              (?# subprotocol       )
+      (?:[:][a-z0-9+.-]{1,32})*           (?# sub-subprotocol   )
+      :
+      [^\s"'<>]*?                          (?# URL body          )
+      (?:password|pwd)                     (?# keyword           )
+      \s*=\s*
+      (?P<token>[^\s;'"<>]{3,128})         (?# password value    )
+    pattern_requirements:
+      ignore_if_contains:
+        - "****"
+        - "xxxx"
+        - "example"
+        - "${DB_"
+        - "${JDBC_"
+        - "%PASSWORD"
+        - "changeme"
+    confidence: medium
+    examples:
+      - jdbc:postgresql://db.internal.io:5432/app?user=admin&password=s3cr3t
+      - "jdbc:sqlserver://sql.proddb.org:1433;databaseName=inventory;user=sa;password=s3cr3t!"
+      - "jdbc:oracle:thin:@//dbhost:1521/orcl;user=app;password=Xk9$wLen"
+    negative_examples:
+      - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
+      - jdbc:h2:mem:testdb
+      - "jdbc:sqlserver://host:1433;databaseName=mydb"
+      - "jdbc:postgresql://db.internal.io:5432/app?user=admin&password=****"
+    references:
+      - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
+      - https://docs.microsoft.com/en-us/sql/connect/jdbc/building-the-connection-url
