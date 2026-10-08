@@ -28,7 +28,7 @@ func TestRetoolWorkflowKey(t *testing.T) {
 	require.NotNil(t, retool, "Retool keys must be detected by the default ruleset")
 	m, err := matcher.NewPortableRegexp([]*types.Rule{retool}, 0, nil)
 	require.NoError(t, err)
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	for _, example := range retool.Examples {
 		t.Run(example, func(t *testing.T) {
