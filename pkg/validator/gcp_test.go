@@ -95,7 +95,7 @@ func TestGCPValidator_ValidServiceAccount(t *testing.T) {
 		assert.NotEmpty(t, r.FormValue("assertion"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "ya29.test-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -126,7 +126,7 @@ func TestGCPValidator_ValidServiceAccount(t *testing.T) {
 func TestGCPValidator_InvalidGrant(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":             "invalid_grant",
 			"error_description": "Invalid JWT: token has expired",
 		})
@@ -155,7 +155,7 @@ func TestGCPValidator_InvalidGrant(t *testing.T) {
 func TestGCPValidator_InvalidGrantError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": "invalid_grant",
 		})
 	}))
@@ -183,7 +183,7 @@ func TestGCPValidator_InvalidGrantError(t *testing.T) {
 func TestGCPValidator_InvalidGrantWithDescription(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":             "invalid_grant",
 			"error_description": "Service account key has been deleted.",
 		})
@@ -353,7 +353,7 @@ func TestGCPValidator_UnexpectedStatus(t *testing.T) {
 func TestGCPValidator_FallbackToSnippetMatching(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "ya29.test",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -458,7 +458,7 @@ func TestIsAllowedGCPTokenHost(t *testing.T) {
 func TestGCPValidator_ResponseMissingAccessToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"token_type": "Bearer",
 			"expires_in": 3600,
 		})
@@ -487,7 +487,7 @@ func TestGCPValidator_ResponseMissingAccessToken(t *testing.T) {
 func TestGCPValidator_NullAccessToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":null,"token_type":"Bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token":null,"token_type":"Bearer"}`))
 	}))
 	defer srv.Close()
 
@@ -513,7 +513,7 @@ func TestGCPValidator_NullAccessToken(t *testing.T) {
 func TestGCPValidator_EmptyAccessToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":"","token_type":"Bearer"}`))
+		_, _ = w.Write([]byte(`{"access_token":"","token_type":"Bearer"}`))
 	}))
 	defer srv.Close()
 
@@ -539,7 +539,7 @@ func TestGCPValidator_EmptyAccessToken(t *testing.T) {
 func TestGCPValidator_NestedServiceAccountGroup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "ya29.test",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -568,7 +568,7 @@ func TestGCPValidator_NestedServiceAccountGroup(t *testing.T) {
 func TestGCPValidator_NestedWrapperJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "ya29.test",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -599,7 +599,7 @@ func TestGCPValidator_NestedWrapperJSON(t *testing.T) {
 func TestGCPValidator_PKCS1PrivateKey(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "ya29.test",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -630,7 +630,7 @@ func TestGCPValidator_PKCS1PrivateKey(t *testing.T) {
 func TestGCPValidator_SecretNamedGroup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "ya29.test",
 			"token_type":   "Bearer",
 			"expires_in":   3600,

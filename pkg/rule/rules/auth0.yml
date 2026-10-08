@@ -2,6 +2,7 @@ rules:
 
 - name: Auth0 Application Credentials
   id: np.auth0.1
+  secret_group: client_secret
   base_score: 85
 
   pattern: |

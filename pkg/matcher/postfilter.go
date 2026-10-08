@@ -11,53 +11,37 @@ import (
 // evaluating min_special_chars requirements.
 const defaultSpecialChars = "!@#$%^&*()_+-=[]{}|;:'\",.<>?/\\`~"
 
-// findSecretCapture selects which capture group represents the secret value.
-// Priority (matching Kingfisher):
-//  1. Named capture called "TOKEN" (case-insensitive)
-//  2. Highest-entropy named capture in NamedGroups
-//  3. Groups[1] (second positional capture — index 0 is the first capture,
-//     NOT the full match; both backends strip the full match at index 0)
-//  4. Groups[0] (first positional capture)
+// SecretCapture selects the capture that holds the secret, in order:
+//  1. the rule's secret_group
+//  2. a group named "token" (case-insensitive)
+//  3. the only named group, when the pattern has exactly one
+//  4. Groups[1], then Groups[0] (positional rules; index 0 is the first
+//     capture, not the full match -- both backends strip the full match)
 //
-// For rules with 3+ captures that lack named groups, step 3 picks the SECOND
-// capture, which is often a username or context field rather than the secret.
-// Fix: name the secret capture "token" so step 1 selects it. See LAB-6101.
-func findSecretCapture(m *types.Match) []byte {
-	// 1. Named capture called "TOKEN" (case-insensitive)
+// Rules with several named groups must declare secret_group (the loader
+// enforces it), so step 4 is only reached by positional rules. Exported so
+// downstream post-filters (e.g. the ML denoiser) score the same bytes the
+// entropy and pattern-requirement checks do.
+func SecretCapture(m *types.Match, secretGroup string) []byte {
+	if v, ok := m.NamedGroups[secretGroup]; ok && secretGroup != "" {
+		return v
+	}
 	for k, v := range m.NamedGroups {
 		if strings.EqualFold(k, "token") {
 			return v
 		}
 	}
-
-	// 2. Select the named group with the highest Shannon entropy — deterministic
-	//    (max entropy + alphabetical tiebreaker on equal entropy) and semantically
-	//    correct: we want the most-secret-like value for the entropy threshold check.
-	if len(m.NamedGroups) > 0 {
-		var bestKey string
-		bestEntropy := -1.0
-		for k, v := range m.NamedGroups {
-			e := shannonEntropy(v)
-			if e > bestEntropy || (e == bestEntropy && (bestKey == "" || k < bestKey)) {
-				bestEntropy = e
-				bestKey = k
-			}
-		}
-		if bestKey != "" {
-			return m.NamedGroups[bestKey]
+	if len(m.NamedGroups) == 1 {
+		for _, v := range m.NamedGroups {
+			return v
 		}
 	}
-
-	// 3. Groups[1] (second positional capture)
 	if len(m.Groups) > 1 {
 		return m.Groups[1]
 	}
-
-	// 4. Groups[0] (first positional capture)
 	if len(m.Groups) > 0 {
 		return m.Groups[0]
 	}
-
 	return nil
 }
 
@@ -173,7 +157,7 @@ func filterMatches(matches []*types.Match, rules map[string]*types.Rule) []*type
 			continue
 		}
 
-		secret := findSecretCapture(m)
+		secret := SecretCapture(m, rule.SecretGroup)
 
 		if !passesEntropyCheck(secret, rule.MinEntropy) {
 			continue

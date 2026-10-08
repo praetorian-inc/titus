@@ -24,6 +24,7 @@ type yamlRule struct {
 	Categories          []string                 `yaml:"categories,omitempty"`
 	MinEntropy          float64                  `yaml:"min_entropy,omitempty"`
 	PatternRequirements *yamlPatternRequirements `yaml:"pattern_requirements,omitempty"`
+	SecretGroup         string                   `yaml:"secret_group,omitempty"`
 	BaseScore           *int                     `yaml:"base_score"`
 	Noisy               bool                     `yaml:"noisy,omitempty"`
 }

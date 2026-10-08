@@ -46,6 +46,7 @@ rules:
 
 - name: Facebook App Credentials
   id: np.facebook.3
+  secret_group: secret
   base_score: 60
 
   pattern: |

@@ -40,6 +40,12 @@ type Rule struct {
 	// for the captured value. nil means no requirements.
 	PatternRequirements *PatternRequirements
 
+	// SecretGroup names the capture group that holds the secret, for rules
+	// with several named groups. Empty means: the group named "token", else
+	// the sole named group, else positional. The loader rejects rules that
+	// have multiple named groups and neither a token group nor SecretGroup.
+	SecretGroup string
+
 	// BaseScore is the inherent severity of this rule's secret class,
 	// ranging 0-100. Assigned via research per rule. Required.
 	BaseScore int

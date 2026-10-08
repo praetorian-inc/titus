@@ -10,71 +10,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- findSecretCapture tests ---
+// --- SecretCapture tests ---
 
-func TestFindSecretCapture_TokenNamed(t *testing.T) {
-	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"TOKEN": []byte("secret123"),
-			"other": []byte("noise"),
-		},
-	}
-	got := findSecretCapture(m)
-	if string(got) != "secret123" {
-		t.Errorf("expected 'secret123', got %q", got)
-	}
+func TestSecretCapture_SecretGroupWins(t *testing.T) {
+	m := &types.Match{NamedGroups: map[string][]byte{
+		"host":     []byte("pgdb01-rds.prod.internal"), // higher entropy than the password
+		"password": []byte("hunter2"),
+		"token":    []byte("not-the-secret-either"),
+	}}
+	assert.Equal(t, "hunter2", string(SecretCapture(m, "password")), "secret_group beats both entropy and the token convention")
 }
 
-func TestFindSecretCapture_TokenCaseInsensitive(t *testing.T) {
-	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"token": []byte("lowtoken"),
-		},
-	}
-	got := findSecretCapture(m)
-	if string(got) != "lowtoken" {
-		t.Errorf("expected 'lowtoken', got %q", got)
-	}
+func TestSecretCapture_TokenNamed(t *testing.T) {
+	m := &types.Match{NamedGroups: map[string][]byte{"TOKEN": []byte("secret123"), "other": []byte("noise")}}
+	assert.Equal(t, "secret123", string(SecretCapture(m, "")))
+	m = &types.Match{NamedGroups: map[string][]byte{"token": []byte("lowtoken")}}
+	assert.Equal(t, "lowtoken", string(SecretCapture(m, "")), "token match is case-insensitive")
 }
 
-func TestFindSecretCapture_FirstNamedGroup(t *testing.T) {
-	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"key": []byte("keyvalue"),
-		},
-	}
-	got := findSecretCapture(m)
-	if string(got) != "keyvalue" {
-		t.Errorf("expected 'keyvalue', got %q", got)
-	}
+func TestSecretCapture_SoleNamedGroup(t *testing.T) {
+	m := &types.Match{NamedGroups: map[string][]byte{"key": []byte("keyvalue")}}
+	assert.Equal(t, "keyvalue", string(SecretCapture(m, "")))
 }
 
-func TestFindSecretCapture_Groups1(t *testing.T) {
-	m := &types.Match{
-		Groups: [][]byte{[]byte("full"), []byte("capture1")},
-	}
-	got := findSecretCapture(m)
-	if string(got) != "capture1" {
-		t.Errorf("expected 'capture1', got %q", got)
-	}
+func TestSecretCapture_UnknownSecretGroupFallsThrough(t *testing.T) {
+	m := &types.Match{NamedGroups: map[string][]byte{"key": []byte("keyvalue")}}
+	assert.Equal(t, "keyvalue", string(SecretCapture(m, "missing")), "a secret_group absent from this match must not blank the secret")
 }
 
-func TestFindSecretCapture_Groups0Fallback(t *testing.T) {
+// Several named groups and no secret_group cannot happen for loaded rules
+// (the loader rejects it); if reached, selection falls to positional captures
+// rather than guessing between the names.
+func TestSecretCapture_MultipleNamedWithoutSecretGroupUsesPositional(t *testing.T) {
 	m := &types.Match{
-		Groups: [][]byte{[]byte("fullmatch")},
+		NamedGroups: map[string][]byte{"host": []byte("db"), "password": []byte("pw")},
+		Groups:      [][]byte{[]byte("db"), []byte("pw")},
 	}
-	got := findSecretCapture(m)
-	if string(got) != "fullmatch" {
-		t.Errorf("expected 'fullmatch', got %q", got)
-	}
+	assert.Equal(t, "pw", string(SecretCapture(m, "")))
 }
 
-func TestFindSecretCapture_NoGroups(t *testing.T) {
-	m := &types.Match{}
-	got := findSecretCapture(m)
-	if got != nil {
-		t.Errorf("expected nil, got %q", got)
-	}
+func TestSecretCapture_Positional(t *testing.T) {
+	assert.Equal(t, "capture1", string(SecretCapture(&types.Match{Groups: [][]byte{[]byte("full"), []byte("capture1")}}, "")))
+	assert.Equal(t, "fullmatch", string(SecretCapture(&types.Match{Groups: [][]byte{[]byte("fullmatch")}}, "")))
+	assert.Nil(t, SecretCapture(&types.Match{}, ""))
 }
 
 // --- passesEntropyCheck tests ---
@@ -241,109 +219,13 @@ func TestFilterMatches_EntropyFiltering(t *testing.T) {
 	}
 }
 
-func TestFindSecretCapture_DeterministicNamedGroupSelection(t *testing.T) {
-	// Build a match simulating a Redis URI rule with named groups "host" and
-	// "password". "host" sorts alphabetically before "password", but "password"
-	// has much higher Shannon entropy and is the actual secret value.
-	//
-	// The max-entropy approach must always pick "password", not the alphabetically
-	// first key. Run -count=20 to confirm determinism across Go map iteration orders.
-	for i := 0; i < 20; i++ {
-		m := &types.Match{
-			NamedGroups: map[string][]byte{
-				"password": []byte("oJs3RjFV5CVD_very-high-entropy-value"),
-				"host":     []byte("redis.example.com"),
-			},
-		}
-		got := findSecretCapture(m)
-		if string(got) != "oJs3RjFV5CVD_very-high-entropy-value" {
-			t.Errorf("iteration %d: expected password group (highest entropy), got %q", i, got)
-		}
-	}
-}
-
-func TestFindSecretCapture_EqualEntropyAlphabeticalTiebreaker(t *testing.T) {
-	// When two named groups have identical Shannon entropy (e.g. both empty, or
-	// identical byte distributions), the alphabetically earlier key must win
-	// deterministically.
-	for i := 0; i < 20; i++ {
-		m := &types.Match{
-			NamedGroups: map[string][]byte{
-				"beta":  []byte(""), // entropy == 0
-				"alpha": []byte(""), // entropy == 0 — alphabetically first
-			},
-		}
-		got := findSecretCapture(m)
-		if string(got) != "" {
-			t.Errorf("iteration %d: expected empty string, got %q", i, got)
-		}
-		// Verify the key chosen was "alpha" by checking via a non-empty value variant.
-		m2 := &types.Match{
-			NamedGroups: map[string][]byte{
-				"zebra": []byte("aa"), // entropy == 0 (repeated byte)
-				"apple": []byte("bb"), // entropy == 0 (repeated byte), alphabetically first
-			},
-		}
-		got2 := findSecretCapture(m2)
-		if string(got2) != "bb" {
-			t.Errorf("iteration %d: alphabetical tiebreaker: expected 'bb' (group 'apple'), got %q", i, got2)
-		}
-	}
-}
-
-// TestFindSecretCapture_PrefersHighEntropySecret verifies that when a match has
-// named groups of different semantic roles (host, password, db), the group with
-// the highest Shannon entropy is selected for entropy checking — not the
-// alphabetically-first group, which could be a low-entropy field like "db" = "0".
-//
-// This catches a regression where entropy selection reverts to random or
-// alphabetical-only ordering and starts rejecting real Redis/multi-group matches.
-//
-// Regression for PR #201: max-entropy selection in findSecretCapture.
-func TestFindSecretCapture_PrefersHighEntropySecret(t *testing.T) {
-	// Redis-style match: db="0" (entropy≈0), host="redis.example.com" (moderate),
-	// password has the highest entropy and is the actual secret value.
-	password := []byte("oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=")
-	for i := 0; i < 20; i++ {
-		m := &types.Match{
-			NamedGroups: map[string][]byte{
-				"db":       []byte("0"),
-				"host":     []byte("redis.example.com"),
-				"password": password,
-				"username": []byte("admin"),
-				"port":     []byte("6379"),
-			},
-			Groups: [][]byte{[]byte("redis://admin:oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=@redis.example.com:6379/0")},
-		}
-
-		got := findSecretCapture(m)
-		assert.Equal(t, password, got,
-			"run %d: expected password group (highest entropy), got %q", i+1, got)
-	}
-}
-
-// TestPassesEntropyCheck_WithMultiGroupMatch verifies that a Redis-style match
-// with a real password passes entropy even though the "db" group alone wouldn't.
-// This ensures the entropy gate uses the highest-entropy group (password), not
-// the lowest-entropy group (db="0") that alphabetical selection would pick first.
-//
-// Regression for PR #201: findSecretCapture must return the high-entropy group
-// so that passesEntropyCheck operates on the actual secret, not a low-entropy field.
+// A multi-group match passes min_entropy on the declared secret group even
+// when its other groups (db="0") would fail on their own.
 func TestPassesEntropyCheck_WithMultiGroupMatch(t *testing.T) {
 	password := []byte("oJs3RjFV5CVDyObDiooJk8NGGSylGTlNmAzCaPVydjM=")
-	m := &types.Match{
-		NamedGroups: map[string][]byte{
-			"db":       []byte("0"),
-			"password": password,
-		},
-	}
-	secret := findSecretCapture(m)
-
-	// Password has sufficient entropy; "db"="0" alone would fail.
-	assert.True(t, passesEntropyCheck(secret, 3.0),
-		"high-entropy password must pass min_entropy=3.0 check")
-	assert.False(t, passesEntropyCheck([]byte("0"), 3.0),
-		"sanity: 'db'='0' alone fails entropy — confirms we're checking the right group")
+	m := &types.Match{NamedGroups: map[string][]byte{"db": []byte("0"), "password": password}}
+	assert.True(t, passesEntropyCheck(SecretCapture(m, "password"), 3.0))
+	assert.False(t, passesEntropyCheck([]byte("0"), 3.0), "sanity: db alone fails")
 }
 
 func TestFilterMatches_PatternRequirementsFiltering(t *testing.T) {
@@ -382,11 +264,11 @@ func TestFilterMatches_PatternRequirementsFiltering(t *testing.T) {
 // with 3+ captures select the password (via the named "token" group), not a
 // middle field like the login or username.
 //
-// Before LAB-6101, these rules had no named groups, so findSecretCapture fell
+// Before LAB-6101, these rules had no named groups, so SecretCapture fell
 // through to Groups[1] — the second capture — which was a username or path.
 // Entropy and pattern_requirements checks ran against that field instead of
 // the actual credential.
-func TestFindSecretCapture_MultiCaptureRulesSelectPassword(t *testing.T) {
+func TestSecretCapture_MultiCaptureRulesSelectPassword(t *testing.T) {
 	allRules, err := rule.NewLoader().LoadBuiltinRules()
 	require.NoError(t, err)
 
@@ -415,6 +297,29 @@ func TestFindSecretCapture_MultiCaptureRulesSelectPassword(t *testing.T) {
 			input:      `$domain = New-Object DirectoryServices.DirectoryEntry("LDAP://10.10.10.1","domain\user", "secret")`,
 			wantSecret: "secret",
 		},
+		// Before secret_group these four were decided by max entropy, which
+		// picked the hostname (or the AWS key ID) over the credential.
+		{
+			ruleID:     "np.postgres.1",
+			input:      "DATABASE_URL=postgresql://app_user:Tr0ub4dor@pgdb01-rds.prod.internal:5432/billing",
+			wantSecret: "Tr0ub4dor",
+		},
+		{
+			ruleID:     "kingfisher.rabbitmq.1",
+			input:      "amqp://svc_orders:Qz7vLm2pKe@mq-primary.prod.internal:5672/orders",
+			wantSecret: "Qz7vLm2pKe",
+		},
+		{
+			ruleID:     "np.mongodb.1",
+			input:      "mongodb://reporting:Xk4_Vt9qLp22@mongo-rs0.analytics.internal:27017/warehouse",
+			wantSecret: "Xk4_Vt9qLp22",
+		},
+		{
+			// Assembled at runtime so the synthetic pair is not a literal in the repo.
+			ruleID:     "np.aws.6",
+			input:      "AWS_ACCESS_KEY_ID=AKIA4RQ6ZGKJ" + "7XMP2TL3\nAWS_SECRET_ACCESS_KEY=" + "9vK2xQp1Rb8sT4uWy6zA" + "3cE5gH7jL0mN2oP4qS6t",
+			wantSecret: "9vK2xQp1Rb8sT4uWy6zA" + "3cE5gH7jL0mN2oP4qS6t",
+		},
 	}
 
 	for _, tt := range tests {
@@ -429,9 +334,9 @@ func TestFindSecretCapture_MultiCaptureRulesSelectPassword(t *testing.T) {
 			require.NoError(t, err)
 			require.NotEmpty(t, matches, "rule %s did not match its input", tt.ruleID)
 
-			secret := findSecretCapture(matches[0])
+			secret := SecretCapture(matches[0], r.SecretGroup)
 			assert.Equal(t, tt.wantSecret, string(secret),
-				"findSecretCapture should select the password, not another capture")
+				"SecretCapture should select the password, not another capture")
 		})
 	}
 }

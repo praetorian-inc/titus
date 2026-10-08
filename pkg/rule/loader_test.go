@@ -8,6 +8,8 @@ import (
 	"testing/fstest"
 
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadRule_Valid(t *testing.T) {
@@ -688,5 +690,33 @@ func TestBuiltinRules_UniqueIDs(t *testing.T) {
 			t.Errorf("duplicate rule ID %q: %q and %q", r.ID, prev, r.Name)
 		}
 		nameByID[r.ID] = r.Name
+	}
+}
+
+func TestLoadRule_SecretGroup(t *testing.T) {
+	load := func(t *testing.T, pattern, secretGroup string) (*types.Rule, error) {
+		t.Helper()
+		y := "rules:\n  - name: SG\n    id: np.test.sg.1\n    base_score: 50\n    pattern: '" + pattern + "'\n"
+		if secretGroup != "" {
+			y += "    secret_group: " + secretGroup + "\n"
+		}
+		return NewLoader().LoadRule([]byte(y))
+	}
+
+	r, err := load(t, `(?P<user>\w+):(?P<password>\w+)`, "password")
+	require.NoError(t, err)
+	assert.Equal(t, "password", r.SecretGroup)
+
+	_, err = load(t, `(?P<user>\w+):(?P<password>\w+)`, "")
+	require.Error(t, err, "two named groups and no token must be rejected")
+	assert.Contains(t, err.Error(), "secret_group")
+
+	_, err = load(t, `(?P<user>\w+):(?P<password>\w+)`, "passwd")
+	require.Error(t, err, "secret_group must name a real group")
+	assert.Contains(t, err.Error(), `"passwd"`)
+
+	for _, ok := range []string{`(?P<user>\w+):(?P<token>\w+)`, `(?P<key>\w+)`, `(\w+):(\w+)`, `(?P<secret>a)|(?P<secret>b)`} {
+		_, err = load(t, ok, "")
+		assert.NoErrorf(t, err, "pattern %s needs no secret_group", ok)
 	}
 }

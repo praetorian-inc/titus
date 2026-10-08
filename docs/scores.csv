@@ -260,7 +260,10 @@ np.wakatime.2,30,low,WakaTime Prefixed API Key — same as np.wakatime.1 with a 
 kingfisher.clickhouse.1,85,critical,ClickHouse Cloud secret key grants direct database access to all data the credential can reach.
 kingfisher.clickhouse.2,15,info,ClickHouse Cloud key ID is an identifier only; no access possible without the paired secret key.
 np.databricks.1,90,critical,Databricks PAT grants workspace-wide access and can spin up compute clusters incurring significant cost.
-kingfisher.jdbc.1,85,critical,JDBC connection string with embedded credentials provides raw database access for any data the DB user can reach.
+kingfisher.jdbc.1,85,critical,JDBC connection string with authority-inline credentials provides raw database access for any data the DB user can reach.
+kingfisher.jdbc.2,85,critical,JDBC connection string with query-parameter credentials provides raw database access for any data the DB user can reach.
+kingfisher.jdbc.3,85,critical,JDBC connection string with semicolon-property credentials provides raw database access for any data the DB user can reach.
+kingfisher.jdbc.4,85,critical,JDBC Oracle connection string with slash credentials provides raw database access for any data the DB user can reach.
 np.mongodb.1,85,critical,MongoDB connection string with credentials grants direct database access to all collections the user can reach.
 kingfisher.mongodb.1,85,critical,MongoDB API private key grants significant API-level access to Atlas resources.
 kingfisher.mongodb.2,15,info,MongoDB API public key is an identifier only; requires the paired private key to authenticate.

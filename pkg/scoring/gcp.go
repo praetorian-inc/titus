@@ -9,12 +9,13 @@ import (
 )
 
 // extractGCPCredentials extracts service account fields from the match.
-// Checks service_account group first, then service_account_nested.
+// kingfisher.gcp.1 captures the JSON as "token"; the older group names are
+// kept for custom rules.
 func extractGCPCredentials(m *types.Match) (*gcpServiceAccountKey, bool) {
 	if m == nil {
 		return nil, false
 	}
-	for _, group := range []string{"service_account", "service_account_nested"} {
+	for _, group := range []string{"token", "service_account", "service_account_nested"} {
 		raw, ok := m.NamedGroups[group]
 		if !ok || len(raw) == 0 {
 			continue

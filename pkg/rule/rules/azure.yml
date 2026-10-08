@@ -2,6 +2,7 @@ rules:
 
 - name: Azure Connection String
   id: np.azure.1
+  secret_group: account_key
   base_score: 85
 
   # XXX There are a bunch of other keys that seem to have secret content assigned to them:
@@ -78,6 +79,7 @@ rules:
 
 - name: Azure App Configuration Connection String
   id: np.azure.2
+  secret_group: secret
   base_score: 80
 
   pattern: |
