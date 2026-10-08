@@ -151,8 +151,8 @@ func (v *GCPValidator) evaluateTokenResponse(resp *http.Response, clientEmail st
 			"failed to read token response"), nil
 	}
 
-	switch {
-	case resp.StatusCode == http.StatusOK:
+	switch resp.StatusCode {
+	case http.StatusOK:
 		var tokenResp map[string]interface{}
 		if err := json.Unmarshal(body, &tokenResp); err != nil {
 			return types.NewValidationResult(types.StatusUndetermined, 0.5,
@@ -171,7 +171,7 @@ func (v *GCPValidator) evaluateTokenResponse(resp *http.Response, clientEmail st
 		return types.NewValidationResult(types.StatusValid, 1.0,
 			fmt.Sprintf("GCP service account key valid for %s", clientEmail)), nil
 
-	case resp.StatusCode == http.StatusBadRequest:
+	case http.StatusBadRequest:
 		var errResp map[string]interface{}
 		if err := json.Unmarshal(body, &errResp); err == nil {
 			errDesc, _ := errResp["error_description"].(string)
@@ -187,7 +187,7 @@ func (v *GCPValidator) evaluateTokenResponse(resp *http.Response, clientEmail st
 		return types.NewValidationResult(types.StatusUndetermined, 0.5,
 			fmt.Sprintf("token endpoint returned HTTP %d", resp.StatusCode)), nil
 
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+	case http.StatusUnauthorized, http.StatusForbidden:
 		return types.NewValidationResult(types.StatusInvalid, 1.0,
 			fmt.Sprintf("GCP credentials rejected: HTTP %d", resp.StatusCode)), nil
 
