@@ -85,6 +85,10 @@ func passesPatternRequirements(text []byte, reqs *types.PatternRequirements) boo
 		}
 	}
 
+	if reqs.Luhn && !luhnValid(text) {
+		return false
+	}
+
 	// Character class counts
 	var digits, uppercase, lowercase, special int
 	specialChars := reqs.SpecialChars
@@ -119,6 +123,38 @@ func passesPatternRequirements(text []byte, reqs *types.PatternRequirements) boo
 	}
 
 	return true
+}
+
+func luhnValid(text []byte) bool {
+	var digits [19]byte
+	n := 0
+	for _, b := range text {
+		switch {
+		case b == ' ' || b == '-':
+			continue
+		case b < '0' || b > '9' || n == len(digits):
+			return false
+		}
+		digits[n] = b - '0'
+		n++
+	}
+	return n >= 13 && luhnSum(digits[:n])%10 == 0
+}
+
+// luhnSum adds the digits right to left, doubling every second one. doubled
+// holds the digit sums of 0*2 .. 9*2 (e.g. 7*2 = 14 -> 1+4 = 5).
+func luhnSum(digits []byte) int {
+	doubled := [10]int{0, 2, 4, 6, 8, 1, 3, 5, 7, 9}
+	sum := 0
+	for i := range digits {
+		d := digits[len(digits)-1-i]
+		if i%2 == 1 {
+			sum += doubled[d]
+		} else {
+			sum += int(d)
+		}
+	}
+	return sum
 }
 
 // filterMatches iterates matches, looks up each rule, applies entropy and

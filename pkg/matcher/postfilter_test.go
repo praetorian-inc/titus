@@ -187,6 +187,20 @@ func TestPassesPatternRequirements_CustomSpecialChars(t *testing.T) {
 
 // --- filterMatches tests ---
 
+func TestPassesPatternRequirements_Luhn(t *testing.T) {
+	reqs := &types.PatternRequirements{Luhn: true}
+	assert.True(t, passesPatternRequirements([]byte("4532015112830366"), reqs))
+	assert.True(t, passesPatternRequirements([]byte("4532-0151-1283-0366"), reqs))
+	assert.True(t, passesPatternRequirements([]byte("4532 0151 1283 0366"), reqs))
+	assert.True(t, passesPatternRequirements([]byte("378282246310005"), reqs), "15-digit amex")
+	assert.False(t, passesPatternRequirements([]byte("4532015112830367"), reqs), "check digit off by one")
+	assert.False(t, passesPatternRequirements([]byte("1234567890123456"), reqs))
+	assert.False(t, passesPatternRequirements([]byte("4532O15112830366"), reqs), "letter O is not a digit")
+	assert.False(t, passesPatternRequirements([]byte("4532015112"), reqs), "too short")
+	assert.False(t, passesPatternRequirements([]byte("45320151128303664532"), reqs), "too long")
+	assert.True(t, passesPatternRequirements([]byte("not-a-number"), &types.PatternRequirements{}), "luhn off")
+}
+
 func TestFilterMatches_Empty(t *testing.T) {
 	result := filterMatches(nil, map[string]*types.Rule{})
 	if result != nil {

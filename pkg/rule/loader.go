@@ -221,6 +221,7 @@ func convertYAMLRule(yr yamlRule) (*types.Rule, error) {
 			MinSpecialChars:  yr.PatternRequirements.MinSpecialChars,
 			SpecialChars:     yr.PatternRequirements.SpecialChars,
 			IgnoreIfContains: yr.PatternRequirements.IgnoreIfContains,
+			Luhn:             yr.PatternRequirements.Luhn,
 		}
 	}
 	r.StructuralID = r.ComputeStructuralID()
