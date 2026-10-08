@@ -3,11 +3,15 @@ rules:
     id: kingfisher.plaid.1
     base_score: 15
     visible: false
+    # "plaid" is required within 64 characters of the key. A bare client_id
+    # followed by 24 hex characters is the shape of every MongoDB ObjectId, and
+    # those were >99% of this rule's production hits.
     pattern: |
       (?xi)
       \b
-      (?:plaid[\w-]{0,32})?
-      (?:client[_-]?id|plaid[_-]?client[_-]?id)
+      plaid
+      (?:.|[\n\r]){0,64}?
+      client[_-]?id
       \b
       (?:\s*[:=]\s*|["']\s*:\s*["']|=\s*["'])
       \s*
@@ -20,6 +24,12 @@ rules:
     confidence: medium
     examples:
       - 'plaid_client_id="sd479fjropblyr5b4m2dutha"'
+      - 'PLAID_CLIENT_ID = 5f0c1b2d3e4f5a6b7c8d9e0f'
+      - '"plaid": {"env": "production", "client_id": "5f0c1b2d3e4f5a6b7c8d9e0f"}'
+    negative_examples:
+      - '"distribution_id":"64b1f0c2e9a73d5b8c4e2a17","client_id":"64b1f0c2e9a73d5b8c4e2a9d"'
+      - 'client_id = "a1b2c3d4e5f60718293a4b5c"'
+      - '{"$oid": "61a2c3d4e5f60718293a4b5c"}, "client_id": "61a2c3d4e5f60718293a4bff"'
     references:
       - https://plaid.com/docs/api/institutions/
 
