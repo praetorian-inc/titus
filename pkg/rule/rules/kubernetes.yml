@@ -33,6 +33,7 @@ rules:
 
 - name: Kubernetes Bootstrap Token
   id: np.kubernetes.2
+  secret_group: token_secret
   base_score: 85
 
   description: |

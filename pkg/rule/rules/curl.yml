@@ -1,6 +1,7 @@
 rules:
   - name: Curl Basic Authentication Credentials
     id: kingfisher.curl.1
+    secret_group: password
     base_score: 55
     pattern: '(?i)\bcurl\s.*(?:-u|--user)\s+[''"]?(?P<username>[^:''"\s]+):(?P<password>[^''"\s]+)[''"]?'
     confidence: low

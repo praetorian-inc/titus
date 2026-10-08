@@ -4,14 +4,14 @@ rules:
     base_score: 92
     pattern: |
       (?xims)
-      (?P<service_account>
+      (?P<token>
         \{[^{}]*
         \"auth_provider_x509_cert_url\":
         .{0,512}?
         }
       )
       |
-      (?P<service_account_nested>
+      (?P<token>
         \{
           (?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*
           "auth_provider_x509_cert_url":\s*".+?"

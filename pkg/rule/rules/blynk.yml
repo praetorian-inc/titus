@@ -78,6 +78,7 @@ rules:
 
 - name: Blynk Organization Client Credentials
   id: np.blynk.8
+  secret_group: client_secret
   base_score: 85
 
   pattern: |
@@ -103,6 +104,7 @@ rules:
 
 - name: Blynk Organization Client Credentials
   id: np.blynk.9
+  secret_group: client_secret
   base_score: 85
 
   pattern: |
