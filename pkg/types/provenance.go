@@ -51,8 +51,8 @@ type CommitMetadata struct {
 	CommitterEmail     string
 	CommitterTimestamp time.Time
 	Message            string
-	// Branch is one ref git reached this commit from, with refs/heads/ and
-	// refs/remotes/<remote>/ removed. Empty when the walk had no ref name.
+	// Branch is the default branch when the commit is on it. Otherwise it is
+	// one ref from git log --source, with refs/heads/ and refs/remotes/<remote>/ removed.
 	Branch string
 }
 

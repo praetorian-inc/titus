@@ -96,6 +96,92 @@ func TestUnquoteGitPath(t *testing.T) {
 	}
 }
 
+func TestParseRawDestination(t *testing.T) {
+	result := "0123456789abcdef0123456789abcdef01234567"
+	parent := "abcdef0123456789abcdef0123456789abcdef01"
+	zeros := strings.Repeat("0", 40)
+	cases := []struct {
+		line, hash, path string
+	}{
+		{":100644 100644 " + zeros + " " + result + " A\tqa.env", result, "qa.env"},
+		{":100644 100644 " + parent + " " + result + " M\told.txt\tnew.txt", result, "new.txt"},
+		{"::000000 000000 100644 " + zeros + " " + zeros + " " + result + " AA\t.env-dev", result, ".env-dev"},
+		{"::100644 100644 100644 " + parent + " " + zeros + " " + result + " MA\t.env-dev", result, ".env-dev"},
+	}
+	for _, tc := range cases {
+		hash, path, ok := parseRawDestination(tc.line)
+		if !ok || hash != tc.hash || path != tc.path {
+			t.Errorf("parse %q => %v %s %s", tc.line, ok, hash, path)
+		}
+	}
+}
+
+func TestBlobIntroductionEvilMerge(t *testing.T) {
+	skipIfNoGit(t)
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init", "-b", "main")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+	writeFile(t, filepath.Join(tmpDir, "keep.txt"), "keep\n")
+	gitAddCommit(t, tmpDir, "base")
+	runGit(t, tmpDir, "checkout", "-b", "side")
+	writeFile(t, filepath.Join(tmpDir, "side.txt"), "side\n")
+	gitAddCommit(t, tmpDir, "side")
+	runGit(t, tmpDir, "checkout", "main")
+	writeFile(t, filepath.Join(tmpDir, "main.txt"), "main\n")
+	gitAddCommit(t, tmpDir, "main-only")
+	runGit(t, tmpDir, "merge", "--no-commit", "side")
+	writeFile(t, filepath.Join(tmpDir, ".env-dev"), "merge-only\n")
+	runGit(t, tmpDir, "add", ".env-dev")
+	runGit(t, tmpDir, "commit", "-m", "evil merge")
+
+	intros, err := collectBlobIntroductions(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro := intros[gitHash(t, "merge-only\n")]
+	if intro == nil || intro.Commit == nil || intro.Commit.Message != "evil merge" || intro.Path != ".env-dev" {
+		t.Fatalf("evil merge intro = %#v", intro)
+	}
+}
+
+func TestPreferDefaultBranch(t *testing.T) {
+	onMain := map[string]struct{}{"abc": {}}
+	if got := preferDefaultBranch("abc", "v32.5.0", "main", onMain); got != "main" {
+		t.Fatalf("on default: got %q", got)
+	}
+	if got := preferDefaultBranch("def", "feature", "main", onMain); got != "feature" {
+		t.Fatalf("off default: got %q", got)
+	}
+	if got := preferDefaultBranch("abc", "v32.5.0", "", onMain); got != "v32.5.0" {
+		t.Fatalf("no default: got %q", got)
+	}
+}
+
+func TestBlobIntroductionPrefersDefaultBranch(t *testing.T) {
+	skipIfNoGit(t)
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init", "-b", "main")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+	writeFile(t, filepath.Join(tmpDir, "a.txt"), "only-once\n")
+	gitAddCommit(t, tmpDir, "add a")
+	runGit(t, tmpDir, "branch", "0-release")
+	runGit(t, tmpDir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, tmpDir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	intros, err := collectBlobIntroductions(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro := intros[gitHash(t, "only-once\n")]
+	if intro == nil || intro.Commit == nil || intro.Commit.Branch != "main" {
+		t.Fatalf("branch = %#v", intro)
+	}
+}
+
 func TestDisplayRef(t *testing.T) {
 	cases := map[string]string{
 		"refs/heads/main":             "main",
@@ -229,7 +315,13 @@ func TestEnumeratorCitesIntroducingCommit(t *testing.T) {
 	}
 
 	var native types.Provenance
+	var nativeOrder []string
 	err := enum.enumerateAllHistoryNative(context.Background(), func(content []byte, _ types.BlobID, prov types.Provenance) error {
+		if !strings.Contains(string(content), "titus-marker-not-a-secret") {
+			return nil
+		}
+		gitProv := prov.(types.GitProvenance)
+		nativeOrder = append(nativeOrder, commitSubject(gitProv.Commit.Message))
 		if string(content) == marker {
 			native = prov
 		}
@@ -239,9 +331,18 @@ func TestEnumeratorCitesIntroducingCommit(t *testing.T) {
 		t.Fatalf("native: %v", err)
 	}
 	assertIntro(t, native, true)
+	if strings.Join(nativeOrder, ",") != "add marker,later edit" {
+		t.Fatalf("native order %v", nativeOrder)
+	}
 
 	var fallback types.Provenance
+	var fallbackOrder []string
 	err = enum.enumerateAllHistory(context.Background(), func(content []byte, _ types.BlobID, prov types.Provenance) error {
+		if !strings.Contains(string(content), "titus-marker-not-a-secret") {
+			return nil
+		}
+		gitProv := prov.(types.GitProvenance)
+		fallbackOrder = append(fallbackOrder, commitSubject(gitProv.Commit.Message))
 		if string(content) == marker {
 			fallback = prov
 		}
@@ -251,6 +352,9 @@ func TestEnumeratorCitesIntroducingCommit(t *testing.T) {
 		t.Fatalf("fallback: %v", err)
 	}
 	assertIntro(t, fallback, false)
+	if strings.Join(fallbackOrder, ",") != "add marker,later edit" {
+		t.Fatalf("fallback order %v", fallbackOrder)
+	}
 }
 
 func gitHash(t *testing.T, content string) string {

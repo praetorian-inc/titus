@@ -86,16 +86,17 @@ func collectCommitMetadataForRepo(ctx context.Context, repoPath string, firstAdd
 type blobIntroduction struct {
 	Commit *types.CommitMetadata
 	Path   string
+	Order  int
 }
 
 // collectBlobIntroductions maps a full blob hash to the commit that introduced
 // it. git log is newest-first; --reverse --topo-order walks root-to-tip, which
 // is the practical form of Nosey Parker's first-sighting rule. The first time
-// a blob hash appears wins. Merge commits are not diffed, so a blob that
-// exists only as an evil-merge result stays unmapped.
+// a blob hash appears wins. --cc records a merge result that matches neither
+// parent; a blob brought in from one parent was already seen on that parent.
 func collectBlobIntroductions(ctx context.Context, repoPath string) (map[string]*blobIntroduction, error) {
 	args := []string{
-		"log", "--reverse", "--topo-order", "--all", "--source",
+		"log", "--reverse", "--topo-order", "--all", "--source", "--cc",
 		"--raw", "--abbrev=40", "--diff-filter=AMRC",
 		"--format=%x01%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%S",
 	}
@@ -110,6 +111,7 @@ func collectBlobIntroductions(ctx context.Context, repoPath string) (map[string]
 		return nil, fmt.Errorf("git log: start: %w", err)
 	}
 
+	defaultName, onDefault := defaultBranchCommits(ctx, repoPath)
 	result := make(map[string]*blobIntroduction)
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -121,6 +123,7 @@ func collectBlobIntroductions(ctx context.Context, repoPath string) (map[string]
 			continue
 		}
 		if meta, ok := parseIntroCommit(line); ok {
+			meta.Branch = preferDefaultBranch(meta.CommitID, meta.Branch, defaultName, onDefault)
 			current = meta
 			continue
 		}
@@ -134,7 +137,7 @@ func collectBlobIntroductions(ctx context.Context, repoPath string) (map[string]
 		if _, exists := result[hash]; exists {
 			continue
 		}
-		result[hash] = &blobIntroduction{Commit: current, Path: path}
+		result[hash] = &blobIntroduction{Commit: current, Path: path, Order: len(result)}
 	}
 	if err := scanner.Err(); err != nil {
 		_ = cmd.Wait()
@@ -178,9 +181,22 @@ func parseRawDestination(line string) (hash, path string, ok bool) {
 	if len(fields) < 5 {
 		return "", "", false
 	}
-	hash = fields[3]
-	if !fullBlobHash(hash) {
-		return "", "", false
+	// A combined merge line starts with "::" and carries one hash per parent
+	// plus the result. The result is the last hash.
+	if strings.HasPrefix(fields[0], "::") {
+		for _, field := range fields {
+			if fullBlobHash(field) {
+				hash = field
+			}
+		}
+		if hash == "" {
+			return "", "", false
+		}
+	} else {
+		hash = fields[3]
+		if !fullBlobHash(hash) {
+			return "", "", false
+		}
 	}
 	if i := strings.LastIndex(paths, "\t"); i >= 0 {
 		paths = paths[i+1:]
@@ -215,6 +231,55 @@ func unquoteGitPath(path string) string {
 		return path
 	}
 	return s
+}
+
+func preferDefaultBranch(commitID, source, defaultName string, onDefault map[string]struct{}) string {
+	if defaultName != "" {
+		if _, ok := onDefault[commitID]; ok {
+			return defaultName
+		}
+	}
+	return source
+}
+
+func defaultBranchCommits(ctx context.Context, repoPath string) (string, map[string]struct{}) {
+	refCmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "origin/HEAD")
+	refCmd.Dir = repoPath
+	out, err := refCmd.Output()
+	if err != nil {
+		return "", nil
+	}
+	ref := strings.TrimSpace(string(out))
+	remote, name, ok := strings.Cut(ref, "/")
+	if !ok || remote == "" || name == "" || name == "HEAD" {
+		return "", nil
+	}
+
+	list := exec.CommandContext(ctx, "git", "rev-list", ref)
+	list.Dir = repoPath
+	stdout, err := list.StdoutPipe()
+	if err != nil {
+		return "", nil
+	}
+	if err := list.Start(); err != nil {
+		return "", nil
+	}
+	set := make(map[string]struct{})
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		hash := scanner.Text()
+		if len(hash) == 40 {
+			set[hash] = struct{}{}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		_ = list.Wait()
+		return "", nil
+	}
+	if err := list.Wait(); err != nil {
+		return "", nil
+	}
+	return name, set
 }
 
 func displayRef(ref string) string {

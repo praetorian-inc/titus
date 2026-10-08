@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -36,8 +37,28 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 	}
 
 	introductions, _ := collectBlobIntroductions(ctx, e.config.Root) // best-effort; nil map is safe
+	// Guard keeps the first proof for a finding id. rev-list yields the newest
+	// blob first, so stream introduction order or that proof cites a later edit.
+	orderBlobsByIntroduction(blobs, introductions)
 
 	return e.streamBlobContentsWithMeta(ctx, blobs, introductions, callback)
+}
+
+func orderBlobsByIntroduction(blobs []blobEntry, introductions map[string]*blobIntroduction) {
+	if len(introductions) == 0 {
+		return
+	}
+	sort.SliceStable(blobs, func(i, j int) bool {
+		left := introductions[hex.EncodeToString(blobs[i].hash[:])]
+		right := introductions[hex.EncodeToString(blobs[j].hash[:])]
+		if left == nil {
+			return false
+		}
+		if right == nil {
+			return true
+		}
+		return left.Order < right.Order
+	})
 }
 
 // collectBlobEntries runs git rev-list --all --objects and returns deduplicated blob entries.
