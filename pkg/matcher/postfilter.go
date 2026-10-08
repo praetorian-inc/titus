@@ -85,6 +85,10 @@ func passesPatternRequirements(text []byte, reqs *types.PatternRequirements) boo
 		}
 	}
 
+	if reqs.Luhn && !luhnValid(text) {
+		return false
+	}
+
 	// Character class counts
 	var digits, uppercase, lowercase, special int
 	specialChars := reqs.SpecialChars
@@ -119,6 +123,34 @@ func passesPatternRequirements(text []byte, reqs *types.PatternRequirements) boo
 	}
 
 	return true
+}
+
+// luhnValid reports whether text, ignoring spaces and dashes, is 13-19 digits
+// that pass the Luhn mod-10 check (ISO/IEC 7812-1). A random digit string
+// passes 1 in 10 times, so this removes ~90% of non-card numeric matches.
+func luhnValid(text []byte) bool {
+	sum, n := 0, 0
+	double := false
+	for i := len(text) - 1; i >= 0; i-- {
+		b := text[i]
+		if b == ' ' || b == '-' {
+			continue
+		}
+		if b < '0' || b > '9' {
+			return false
+		}
+		d := int(b - '0')
+		if double {
+			d *= 2
+			if d > 9 {
+				d -= 9
+			}
+		}
+		sum += d
+		double = !double
+		n++
+	}
+	return n >= 13 && n <= 19 && sum%10 == 0
 }
 
 // filterMatches iterates matches, looks up each rule, applies entropy and

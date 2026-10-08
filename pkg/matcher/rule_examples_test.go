@@ -361,6 +361,28 @@ func TestAWSExampleKeys_RealAndNearMissKeysStillMatch(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Rules whose production hits were >99% noise, each for one mechanical reason
+// the pattern can exclude. The cases pin each FP mode at the regex stage (so
+// a later "relax the requirements" change cannot quietly reintroduce it) and
+// pin synthetic production credential shapes that must keep matching.
+//
+//   - kingfisher.jdbc.* matched credential-less JDBC URLs; #386 split it into
+//     userinfo (jdbc.1), password-keyword (jdbc.2) and oracle-thin (jdbc.3).
+//   - kingfisher.discord.2 was case-insensitive, so it matched dotted package
+//     paths and qualified table names with a 6-character middle segment.
+//   - kingfisher.plaid.1 accepted client_id + 24 hex with "plaid" optional,
+//     which is the shape of every MongoDB ObjectId in a JSON dump.
+//   - np.ccn.1-4 reported every 13-16 digit run in the right prefix range;
+//     90% failed the Luhn check that every issued card passes. Luhn is now a
+//     pattern_requirement applied in filterMatches rather than a score-to-zero.
+//   - np.linkedin.3 matched any AQ-prefixed base64url blob of 200+ chars
+//     (Azure AD flow tokens, serialized XAML, protobuf); a LinkedIn anchor is
+//     now required within 128 bytes before the token.
+//   - kingfisher.alibabacloud.1 was case-insensitive with no leading \b, so
+//     lTai/ltAI inside base64 blobs matched.
+// ---------------------------------------------------------------------------
+
 var jdbcRuleIDs = []string{"kingfisher.jdbc.1", "kingfisher.jdbc.2", "kingfisher.jdbc.3"}
 
 func TestNoiseRules_FalsePositiveModesRejectedByPattern(t *testing.T) {
@@ -379,14 +401,38 @@ func TestNoiseRules_FalsePositiveModesRejectedByPattern(t *testing.T) {
 		{[]string{"kingfisher.discord.2"}, "kQwe-NR7d2_p5J41nTZk8QLRM3_6Y2B.bsVcmy.wKF428gm2b8PNPl6izTJ_Y8W_-p"},
 		{[]string{"kingfisher.plaid.1"}, `"client_id":"64b1f0c2e9a73d5b8c4e2a9d"`},
 		{[]string{"kingfisher.plaid.1"}, `client_id = "a1b2c3d4e5f60718293a4b5c"`},
+		{[]string{"np.linkedin.3"}, `"sFT":"AQABIQEAAACXIc87f18y-7AQGsEruYRNrkK6lBHyow44JJB0wHWbouZ156TjHMZOIQO_1YpO22P3ffAISMJBbyuZuc_tAxoW7PnfmX09biPawtiG34fZthW4xKTjLggzZ2g6GmDYl-hHCBfcwQ7kuPSS8Dout8yvmtVIMnNb6W1p5nqyR8OemkPRBq0gKUmDdCnWtXaaAQ7rGl3Qmlb9TP6WHHjasBVqtAx-tBzA3jqEB8hFE6H5trX9F8sjVI2GXimr0T6qFDcUwVBQjRqatEUxioQrDCkrVDgG6dqaJlC_HhnahWukH1mq1n2Q6NlKe4LHkEukm4k89N1lz_RNqi86SjzSBVMW-gvhYlPFkaGgoi_91e3nUfDtSsRlC4q7qKnH9QBD6RJCSjmQfHuEN9BA4Y1SvPUKJufSBQiim2dfvky0n6ftZpVzwqC3u-BFi4D4o84IWPt0FqcPU20LndpW8fTHmtxvUGUYs1b904Jv8svPxHnXh765XS5i7C9QnamsZKE1WW_oAJz7BYVUIFtv0JC8H09noKgi4cX71WKAcDx04ALsHP1Vt20PcXk1IO1_hkW19O1qBZToE8FRx8RqIBhPMUBM_bjxWKSrwXP3zXKHsNWU2kf"`},
+		{[]string{"np.linkedin.3"}, `{"access_token":"AQUvlL_DYEzvT2wz1QJiEPeLioeA","expires_in":5184000}`},
+		{[]string{"kingfisher.alibabacloud.1"}, "cCpjrf9TntYRTnAhKVDbzxopsCdmfJ03lTaisQzFDDdaZweWFevZLHMeui+1dfVhQZsm5qYSkfrZamXgbHBZ="},
+		{[]string{"kingfisher.alibabacloud.1"}, "wgaCeAEnWxSjq0nj8ZZA2AjntRVGLTAIVd5SiRm1OViODxptQQic7r+sldeICa672pNYKV6lS1rDDempkpDMu="},
 	}
 	for _, c := range cases {
 		for _, id := range c.rules {
-			t.Run(id+"/"+c.input, func(t *testing.T) {
+			t.Run(id+"/"+c.input[:min(len(c.input), 60)], func(t *testing.T) {
 				rx, _ := ruleOutcome(t, loadBuiltinRule(t, id), c.input)
 				assert.Zerof(t, rx, "pattern matched %q", c.input)
 			})
 		}
+	}
+}
+
+// Luhn is enforced in filterMatches, not the pattern, so these pins assert the
+// regex still matches (the digit shape is right) and the pipeline drops it.
+func TestNoiseRules_LuhnFailingCardNumbersAreFiltered(t *testing.T) {
+	cases := []struct{ rule, input string }{
+		{"np.ccn.1", `order_id = "4532015112830367"`},
+		{"np.ccn.1", `"aspRto":1.4998241294407315`},
+		{"np.ccn.2", `order_id = "5425233430109904"`},
+		{"np.ccn.2", `spearman rank correlation 0.5138344223385717`},
+		{"np.ccn.3", `ref = "378282246310006"`},
+		{"np.ccn.4", `order_id = "6011000990139425"`},
+	}
+	for _, c := range cases {
+		t.Run(c.rule+"/"+c.input, func(t *testing.T) {
+			rx, pipeline := ruleOutcome(t, loadBuiltinRule(t, c.rule), c.input)
+			assert.Positivef(t, rx, "regex should still match the digit shape of %q", c.input)
+			assert.Zerof(t, pipeline, "%q fails Luhn and must be filtered", c.input)
+		})
 	}
 }
 
@@ -401,6 +447,13 @@ func TestNoiseRules_RealShapesStillDetected(t *testing.T) {
 		{"kingfisher.jdbc.3", "jdbc:oracle:thin:APPTEST1/s3cretPw@10.0.0.57:1521:dev81"},
 		{"kingfisher.discord.2", `client.login("MTA5NTYxMjM0NTY3ODkwMTIz.GhJkLm.aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab")`},
 		{"kingfisher.plaid.1", "Plaid API credentials. client_id = 5f0c1b2d3e4f5a6b7c8d9e0f and plaid_api_secret = ..."},
+		{"np.ccn.1", `card_number = "4532015112830366"`},
+		{"np.ccn.2", `mastercard: 5425-2334-3010-9903`},
+		{"np.ccn.3", `amex: 3782 822463 10005`},
+		{"np.ccn.4", `discover: 6011000990139424`},
+		{"np.linkedin.3", `linkedin.access_token = "AQUvlL_DYEzvT2wz1QJiEPeLioeA"`},
+		{"np.linkedin.3", "LINKEDIN_OAUTH:\n  token: AQXa7v2cG5dR8kL1mN3pQ6sT9uW0xY4zA7bC2eF5gH8iJ1kL4mN7oP0qR3sT6uV9wX2yA5bD8cE1fG4hI7jK0lM3nO6pQ9rS2tU5vW8xY1zA4bC7dE0fG3hI6jK9lM2nO5pQ8rS1tU4vW7xY0z"},
+		{"kingfisher.alibabacloud.1", `ali_oss_access_key = LTAI4GxQp7ZkR2mN8vWs5tYb;`},
 	}
 	for _, c := range cases {
 		t.Run(c.rule+"/"+c.input, func(t *testing.T) {

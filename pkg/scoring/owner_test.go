@@ -90,7 +90,7 @@ func TestEngine_NilOwnerWhenNoConditionSetsIt(t *testing.T) {
 				Priority:  100,
 				Kind:      ModifierKindDelta,
 				Value:     5,
-				Condition: &ccFailsLuhnCondition{},
+				Condition: noopCondition{},
 			},
 		},
 	}
@@ -104,6 +104,11 @@ func TestEngine_NilOwnerWhenNoConditionSetsIt(t *testing.T) {
 
 	assert.Nil(t, finding.Owner)
 }
+
+// noopCondition fires without touching the match or finding.
+type noopCondition struct{}
+
+func (noopCondition) Evaluate(context.Context, *types.Match) (bool, error) { return true, nil }
 
 func TestSetGitHubOwner_NilUser(t *testing.T) {
 	m := &types.Match{}

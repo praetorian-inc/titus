@@ -24,6 +24,7 @@ rules:
 
   pattern_requirements:
     min_digits: 13
+    luhn: true
     ignore_if_contains:
     - "4111111111111111"
     - "4111-1111-1111-1111"
@@ -36,10 +37,12 @@ rules:
 
   examples:
   - 'card_number = "4532015112830366"'
-  - 'visa: 4916-3385-0728-9460'
+  - 'visa: 4916-3385-0728-9469'
   - 'payment: 4539 1488 0343 6467'
 
   negative_examples:
+  - 'order_id = "4532015112830367"'
+  - 'aspRto: 1.4998241294407315'
   - 'test_card = "4111111111111111"'
   - 'stripe_test = "4242424242424242"'
   - '4000000000000000'
@@ -66,6 +69,7 @@ rules:
 
   pattern_requirements:
     min_digits: 13
+    luhn: true
     ignore_if_contains:
     - "5500000000000004"
     - "5500-0000-0000-0004"
@@ -79,6 +83,8 @@ rules:
   - 'mastercard: 5219-6812-4509-3821'
 
   negative_examples:
+  - 'order_id = "5425233430109904"'
+  - 'correlation 0.5138344223385717'
   - 'test_card = "5555555555554444"'
   - 'test_card = "5105105105105100"'
 
@@ -102,6 +108,7 @@ rules:
 
   pattern_requirements:
     min_digits: 13
+    luhn: true
     ignore_if_contains:
     - "378282246310005"
     - "3782-822463-10005"
@@ -115,6 +122,7 @@ rules:
   - 'card: 3493-021578-52310'
 
   negative_examples:
+  - 'ref = "378282246310006"'
   - 'test_amex = "378282246310005"'
   - 'test_amex = "371449635398431"'
 
@@ -138,6 +146,7 @@ rules:
 
   pattern_requirements:
     min_digits: 13
+    luhn: true
     ignore_if_contains:
     - "6011111111111117"
     - "6011-1111-1111-1117"
@@ -149,6 +158,7 @@ rules:
   - 'card: 6011-0009-9013-9424'
 
   negative_examples:
+  - 'order_id = "6011000990139425"'
   - 'test_discover = "6011111111111117"'
   - 'test_discover = "6011000000000004"'
 

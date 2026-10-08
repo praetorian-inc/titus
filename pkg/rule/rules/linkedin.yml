@@ -56,7 +56,18 @@ rules:
   id: np.linkedin.3
   base_score: 35
 
-  pattern: '\b(?P<access_token>AQ[A-Za-z0-9_-]{200,1000})\b'
+  # An "AQ" prefix on a long base64url string is not specific to LinkedIn:
+  # Azure AD flow tokens, serialized XAML and protobuf blobs share it, and
+  # they were >99.9% of this rule's production hits. A LinkedIn anchor
+  # (the word, or the li_at session cookie) is required within 128 bytes
+  # before the token. Tokens in bare OAuth responses with no LinkedIn
+  # context are not detected; nothing distinguishes them from other
+  # providers' tokens. Length floor matches the documented example (28).
+  pattern: |
+    (?x)
+    (?i: linkedin | li_at )
+    (?:.|[\n\r]){0,128}?
+    \b (?P<access_token> AQ[A-Za-z0-9_-]{20,1000} ) \b
 
   categories: [api, secret, oauth_token]
 
@@ -64,5 +75,13 @@ rules:
   - https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow
 
   examples:
-  - 'Authorization: Bearer AQXa7v2cG5dR8kL1mN3pQ6sT9uW0xY4zA7bC2eF5gH8iJ1kL4mN7oP0qR3sT6uV9wX2yA5bD8cE1fG4hI7jK0lM3nO6pQ9rS2tU5vW8xY1zA4bC7dE0fG3hI6jK9lM2nO5pQ8rS1tU4vW7xY0zA3bC6dE9fG2hI5jK8lM1nO4pQ7rS0tU3vW6xY9zA2bC5dE8fG1hI4jK7lM0nO3pQ6rS9tU2vW5xY8zA1bC4dE7fG0hI3jK6lM9nO2pQ5rS8tU1vW4xY7zA0bC3dE6fG9hI2jK5lM8nO1pQ4rS7tU0vW3xY6z'
+  - 'linkedin.access_token = "AQUvlL_DYEzvT2wz1QJiEPeLioeA"'
   - 'LINKEDIN_ACCESS_TOKEN=AQXa7v2cG5dR8kL1mN3pQ6sT9uW0xY4zA7bC2eF5gH8iJ1kL4mN7oP0qR3sT6uV9wX2yA5bD8cE1fG4hI7jK0lM3nO6pQ9rS2tU5vW8xY1zA4bC7dE0fG3hI6jK9lM2nO5pQ8rS1tU4vW7xY0zA3bC6dE9fG2hI5jK8lM1nO4pQ7rS0tU3vW6xY9zA2bC5dE8fG1hI4jK7lM0nO3pQ6rS9tU2vW5xY8zA1bC4dE7fG0hI3jK6lM9nO2pQ5rS8tU1vW4xY7zA0bC3dE6fG9hI2jK5lM8nO1pQ4rS7tU0vW3xY6z'
+  - 'Cookie: li_at=AQEDARk3VzQBpQxWAAABjK2Lm9cAAAGM0ZgfF1YAt7p2QvC8NxwZ4mH5sJ9kR2tL6yB3dF8gX1eW0nP4qS7uV2zA5cE9hJ3kM6oR1tU4wY8bD2fG5iK0lN3pQ7sV9xZ2aC4eH8jL1mO5rT0uX3yB6dF9gI2kN5pS8vA1wE4zC7bH0jK3mP6qT9uY2xD5fG8iL1oR4sW7vZ0aE3hJ6nQ9tB2cF5kM8pU1xA4yD7gI0lO3rV6zC9eH2jN5qS8wB1fK4mP7tX0uG3iL6oR9vY2zA5dJ8nT1qE4hM7sW0cF3kO6p'
+  negative_examples:
+  # Azure AD flow token: same AQ prefix, no LinkedIn context.
+  - '"sFT":"AQABIQEAAACXIc87f18y-7AQGsEruYRNrkK6lBHyow44JJB0wHWbouZ156TjHMZOIQO_1YpO22P3ffAISMJBbyuZuc_tAxoW7PnfmX09biPawtiG34fZthW4xKTjLggzZ2g6GmDYl-hHCBfcwQ7kuPSS8Dout8yvmtVIMnNb6W1p5nqyR8OemkPRBq0gKUmDdCnWtXaaAQ7rGl3Qmlb9TP6WHHjasBVqtAx-tBzA3jqEB8hFE6H5trX9F8sjVI2GXimr0T6qFDcUwVBQjRqatEUxioQrDCkrVDgG6dqaJlC_HhnahWukH1mq1n2Q6NlKe4LHkEukm4k89N1lz_RNqi86SjzSBVMW-gvhYlPFkaGgoi_91e3nUfDtSsRlC4q7qKnH9QBD6RJCSjmQfHuEN9BA4Y1SvPUKJufSBQiim2dfvky0n6ftZpVzwqC3u-BFi4D4o84IWPt0FqcPU20LndpW8fTHmtxvUGUYs1b904Jv8svPxHnXh765XS5i7C9QnamsZKE1WW_oAJz7BYVUIFtv0JC8H09noKgi4cX71WKAcDx04ALsHP1Vt20PcXk1IO1_hkW19O1qBZToE8FRx8RqIBhPMUBM_bjxWKSrwXP3zXKHsNWU2kf"'
+  # Serialized XAML / protobuf blobs are long AQ-prefixed base64url too.
+  - 'AQAAPAEAAAUBBgACABUABNNDfHD7a2dDH3RUBEcM3HHMB1ccE3cLdKVOdYYbFPPf90JRCXCK93LBQFeKKAQAAPAEAAAUBBgACABUABNNDfHD7a2dDH3RUBEcM3HHMB1ccE3cLdKVOdYYbFPPf90JRCXCK93LBQFeKKAQAAPAEAAAUBBgACABUABNNDfHD7a2dDH3RUBEcM3HHMB1ccE3cLdKVOdYYbFPPf90JRCXCK93LBQFeKKAQAAPAEAAAUBBgACABUABNNDfHD7a2dDH3RUBEcM3HHMB1ccE3cLdKVOdYYbFPPf90JRCXCK93LBQFeKK'
+  # Documented LinkedIn response shape, but nothing in it says LinkedIn.
+  - '{"access_token":"AQUvlL_DYEzvT2wz1QJiEPeLioeA","expires_in":5184000,"scope":"r_basicprofile"}'

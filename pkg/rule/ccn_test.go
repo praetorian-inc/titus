@@ -38,7 +38,7 @@ func TestCCN_VisaCreditCard(t *testing.T) {
 	assert.Equal(t, 25, rule.BaseScore)
 
 	assert.True(t, ccnMatchesInput(t, rule, `card_number = "4532015112830366"`))
-	assert.True(t, ccnMatchesInput(t, rule, `visa: 4916-3385-0728-9460`))
+	assert.True(t, ccnMatchesInput(t, rule, `visa: 4916-3385-0728-9469`))
 
 	assert.False(t, ccnMatchesInput(t, rule, `test_card = "4111111111111111"`))
 	assert.False(t, ccnMatchesInput(t, rule, `test_card = "4111-1111-1111-1111"`))

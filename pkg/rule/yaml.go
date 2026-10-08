@@ -8,6 +8,7 @@ type yamlPatternRequirements struct {
 	MinSpecialChars  int      `yaml:"min_special_chars,omitempty"`
 	SpecialChars     string   `yaml:"special_chars,omitempty"`
 	IgnoreIfContains []string `yaml:"ignore_if_contains,omitempty"`
+	Luhn             bool     `yaml:"luhn,omitempty"`
 }
 
 // yamlRule is the intermediate struct for parsing NoseyParker YAML rule format.
