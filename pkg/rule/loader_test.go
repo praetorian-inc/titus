@@ -443,6 +443,29 @@ func TestLoadRule_BaseScoreParsed(t *testing.T) {
 	}
 }
 
+func TestLoadRule_VisibleFalseMarksHidden(t *testing.T) {
+	cases := []struct {
+		name, visibleLine string
+		wantHidden        bool
+	}{
+		{"visible false", "    visible: false\n", true},
+		{"visible true", "    visible: true\n", false},
+		{"visible absent", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			yaml := "rules:\n  - name: Test Rule\n    id: np.test.1\n    pattern: 'test'\n    base_score: 10\n" + tc.visibleLine
+			rule, err := NewLoader().LoadRule([]byte(yaml))
+			if err != nil {
+				t.Fatalf("LoadRule: %v", err)
+			}
+			if rule.Hidden != tc.wantHidden {
+				t.Errorf("Hidden = %v, want %v", rule.Hidden, tc.wantHidden)
+			}
+		})
+	}
+}
+
 func TestLoadRule_BaseScoreMissing_Rejected(t *testing.T) {
 	loader := NewLoader()
 	yaml := `rules:

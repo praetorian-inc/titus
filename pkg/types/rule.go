@@ -53,6 +53,13 @@ type Rule struct {
 	// disabled by default. Callers opt in via the CLI's --include-noisy flag
 	// (or by filtering the slice returned by LoadBuiltinRules themselves).
 	Noisy bool
+
+	// Hidden marks helper rules (YAML `visible: false`) that capture context for
+	// other rules, such as a client ID or an account name, rather than a secret.
+	// Their patterns still run, but the matcher drops their matches before
+	// cross-rule dedup, so they are never reported and never displace a
+	// reportable match. The zero value is visible.
+	Hidden bool
 }
 
 // namedGroupRe matches named capture groups like (?P<name>...) and replaces
