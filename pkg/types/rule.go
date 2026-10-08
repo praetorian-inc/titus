@@ -15,6 +15,7 @@ type PatternRequirements struct {
 	MinSpecialChars  int      `json:"min_special_chars,omitempty"`
 	SpecialChars     string   `json:"special_chars,omitempty"`
 	IgnoreIfContains []string `json:"ignore_if_contains,omitempty"`
+	Luhn             bool     `json:"luhn,omitempty"`
 }
 
 // Rule is a detection rule with pattern and metadata.
