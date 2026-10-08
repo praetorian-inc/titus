@@ -251,7 +251,11 @@ func negativeExampleOutcome(t *testing.T, r *types.Rule) (regexOnly, fullMatch [
 	}
 	for i, ex := range r.NegativeExamples {
 		ms, err := m.Match([]byte(ex))
-		if err != nil || len(ms) == 0 {
+		if err != nil {
+			// A negative example the matcher cannot evaluate is not a pass.
+			t.Fatalf("rule %q: match negative_examples[%d]: %v", r.ID, i, err)
+		}
+		if len(ms) == 0 {
 			continue
 		}
 		if len(filterMatches(ms, map[string]*types.Rule{r.ID: r})) == 0 {
