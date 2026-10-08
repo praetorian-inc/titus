@@ -16,6 +16,7 @@ import (
 func TestCondition_InterfaceCompliance(t *testing.T) {
 	var _ Condition = (*matchGroupCondition)(nil)
 	var _ Condition = (*surroundingContextContainsCondition)(nil)
+	var _ Condition = (*surroundingContextMatchesCondition)(nil)
 	var _ Condition = (*matchLengthCondition)(nil)
 	// Sanity: zero match must not panic any default nil-safe path.
 	m := &types.Match{}
@@ -202,5 +203,97 @@ func TestMatchLengthCondition_Evaluate(t *testing.T) {
 func TestMatchLengthCondition_InvalidOpIsError(t *testing.T) {
 	c := &matchLengthCondition{Op: "bogus", Value: 0}
 	_, err := c.Evaluate(context.Background(), &types.Match{Snippet: types.Snippet{Matching: []byte("x")}})
+	require.Error(t, err)
+}
+
+func TestSurroundingContextMatchesCondition_Evaluate(t *testing.T) {
+	mkMatch := func(before, after string) *types.Match {
+		return &types.Match{Snippet: types.Snippet{
+			Before: []byte(before),
+			After:  []byte(after),
+		}}
+	}
+	tests := []struct {
+		name      string
+		within    int
+		pattern   string
+		match     *types.Match
+		wantFired bool
+	}{
+		{
+			name:      "case-insensitive match in before",
+			within:    0,
+			pattern:   `(?i)password\s*=`,
+			match:     mkMatch("Password = s3cr3t\n", ""),
+			wantFired: true,
+		},
+		{
+			name:      "case-insensitive match in after",
+			within:    0,
+			pattern:   `(?i)password\s*=`,
+			match:     mkMatch("", "PASSWORD=hunter2"),
+			wantFired: true,
+		},
+		{
+			name:      "multi-keyword OR pattern",
+			within:    0,
+			pattern:   `(?i)(?:password|passwd|pwd|secret|credential)\s*[=:]`,
+			match:     mkMatch("credential: abc\n", ""),
+			wantFired: true,
+		},
+		{
+			name:      "no match anywhere",
+			within:    0,
+			pattern:   `(?i)password\s*=`,
+			match:     mkMatch("jdbc:postgresql://db:5432/app", "SELECT * FROM users"),
+			wantFired: false,
+		},
+		{
+			name:      "within limits prevents match beyond boundary",
+			within:    5,
+			pattern:   `password`,
+			match:     mkMatch("0123456789password", ""),
+			wantFired: false,
+		},
+		{
+			name:      "within limits preserves close match",
+			within:    20,
+			pattern:   `password`,
+			match:     mkMatch("0123456789password", ""),
+			wantFired: true,
+		},
+		{
+			name:      "within=0 means unlimited",
+			within:    0,
+			pattern:   `password`,
+			match:     mkMatch(string(make([]byte, 1000))+"password", ""),
+			wantFired: true,
+		},
+		{
+			name:      "nil match is non-fire",
+			within:    0,
+			pattern:   `anything`,
+			match:     nil,
+			wantFired: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			re := regexp.MustCompile(tt.pattern)
+			c := &surroundingContextMatchesCondition{Within: tt.within, Pattern: re}
+			got, err := c.Evaluate(context.Background(), tt.match)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantFired, got)
+		})
+	}
+}
+
+func TestSurroundingContextMatchesCondition_NilSafety(t *testing.T) {
+	var nilCond *surroundingContextMatchesCondition
+	_, err := nilCond.Evaluate(context.Background(), &types.Match{})
+	require.Error(t, err)
+
+	c := &surroundingContextMatchesCondition{Pattern: nil}
+	_, err = c.Evaluate(context.Background(), &types.Match{})
 	require.Error(t, err)
 }

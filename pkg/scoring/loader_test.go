@@ -449,6 +449,64 @@ func TestLoadScorers_UnknownAuthType_Errors(t *testing.T) {
 	assert.Contains(t, err.Error(), "oauth2")
 }
 
+func TestLoadScorers_SurroundingContextMatches_Parses(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: jdbc-context
+    rule_ids: [kingfisher.jdbc.1]
+    modifiers:
+      - name: password-nearby
+        priority: 80
+        surrounding_context_matches:
+          pattern: '(?i)(?:password|passwd|pwd|secret|credential)\s*[=:\s]'
+          within: 256
+        delta: 10
+`)
+	scorers, err := NewLoader().LoadScorers(yamlBytes)
+	require.NoError(t, err)
+	require.Len(t, scorers, 1)
+	require.Len(t, scorers[0].Modifiers, 1)
+	m := scorers[0].Modifiers[0]
+	assert.Equal(t, "password-nearby", m.Name)
+	assert.Equal(t, 80, m.Priority)
+	assert.Equal(t, ModifierKindDelta, m.Kind)
+	assert.Equal(t, 10, m.Value)
+	assert.NotNil(t, m.Condition)
+	cond, ok := m.Condition.(*surroundingContextMatchesCondition)
+	require.True(t, ok)
+	assert.Equal(t, 256, cond.Within)
+	assert.NotNil(t, cond.Pattern)
+}
+
+func TestLoadScorers_SurroundingContextMatches_InvalidRegex_Errors(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: bad-regex
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: bad
+        surrounding_context_matches:
+          pattern: '[unclosed'
+        delta: 1
+`)
+	_, err := NewLoader().LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "regex")
+}
+
+func TestLoadScorers_SurroundingContextMatches_EmptyPattern_Errors(t *testing.T) {
+	yamlBytes := []byte(`scorers:
+  - name: empty
+    rule_ids: [np.test.1]
+    modifiers:
+      - name: bad
+        surrounding_context_matches:
+          pattern: ''
+        delta: 1
+`)
+	_, err := NewLoader().LoadScorers(yamlBytes)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pattern is required")
+}
+
 // Every auth type the request layer supports must load.
 func TestLoadScorers_SupportedAuthTypes_Load(t *testing.T) {
 	for _, at := range []string{"bearer", "basic", "header", "query", "api_key", "none"} {

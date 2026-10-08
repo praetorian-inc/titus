@@ -21,9 +21,9 @@ type yamlScorer struct {
 }
 
 // yamlModifier is a single modifier entry. Exactly one condition leaf MUST
-// be present (match_group OR surrounding_context_contains OR match_length OR
-// http+fires_when pair); exactly one of delta / set_score MUST be present.
-// Loader enforces both.
+// be present (match_group OR surrounding_context_contains OR
+// surrounding_context_matches OR match_length OR http+fires_when pair);
+// exactly one of delta / set_score MUST be present. Loader enforces both.
 type yamlModifier struct {
 	Name     string `yaml:"name"`
 	Priority int    `yaml:"priority,omitempty"`
@@ -31,6 +31,7 @@ type yamlModifier struct {
 	// Static condition leaves (M2)
 	MatchGroup                 *yamlMatchGroup                 `yaml:"match_group,omitempty"`
 	SurroundingContextContains *yamlSurroundingContextContains `yaml:"surrounding_context_contains,omitempty"`
+	SurroundingContextMatches  *yamlSurroundingContextMatches  `yaml:"surrounding_context_matches,omitempty"`
 	MatchLength                *yamlMatchLength                `yaml:"match_length,omitempty"`
 
 	// Dynamic conditions (M3)
@@ -46,7 +47,7 @@ type yamlModifier struct {
 type yamlHTTPDef struct {
 	Method       string         `yaml:"method"`
 	URL          string         `yaml:"url"`
-	FallbackURLs []string      `yaml:"fallback_urls,omitempty"`
+	FallbackURLs []string       `yaml:"fallback_urls,omitempty"`
 	Auth         yamlScorerAuth `yaml:"auth,omitempty"`
 	Headers      []yamlHeader   `yaml:"headers,omitempty"`
 	Body         string         `yaml:"body,omitempty"`
@@ -110,7 +111,12 @@ type yamlSurroundingContextContains struct {
 	Value  string `yaml:"value"`
 }
 
+type yamlSurroundingContextMatches struct {
+	Within  int    `yaml:"within,omitempty"`
+	Pattern string `yaml:"pattern"`
+}
+
 type yamlMatchLength struct {
-	Op    string `yaml:"op"`    // "gt" | "lt" | "eq"
+	Op    string `yaml:"op"` // "gt" | "lt" | "eq"
 	Value int    `yaml:"value"`
 }

@@ -91,6 +91,45 @@ func (c *surroundingContextContainsCondition) Evaluate(_ context.Context, m *typ
 }
 
 // -----------------------------------------------------------------------------
+// surrounding_context_matches: regex test on Snippet.Before/After
+// -----------------------------------------------------------------------------
+
+// surroundingContextMatchesCondition fires when the Pattern regex matches
+// within Within bytes of either side of the match. Within=0 means unlimited
+// (full Snippet.Before + Snippet.After considered).
+type surroundingContextMatchesCondition struct {
+	Within  int            // bytes on each side to inspect; 0 = unlimited
+	Pattern *regexp.Regexp // precompiled; never nil after successful load
+}
+
+// Evaluate implements Condition.
+func (c *surroundingContextMatchesCondition) Evaluate(_ context.Context, m *types.Match) (bool, error) {
+	if c == nil || c.Pattern == nil {
+		return false, fmt.Errorf("surrounding_context_matches: nil condition or pattern")
+	}
+	if m == nil {
+		return false, nil
+	}
+	before := m.Snippet.Before
+	after := m.Snippet.After
+	if c.Within > 0 {
+		if len(before) > c.Within {
+			before = before[len(before)-c.Within:]
+		}
+		if len(after) > c.Within {
+			after = after[:c.Within]
+		}
+	}
+	if c.Pattern.Match(before) {
+		return true, nil
+	}
+	if c.Pattern.Match(after) {
+		return true, nil
+	}
+	return false, nil
+}
+
+// -----------------------------------------------------------------------------
 // match_length: integer comparison on len(Snippet.Matching)
 // -----------------------------------------------------------------------------
 
