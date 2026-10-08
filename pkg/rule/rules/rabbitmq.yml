@@ -4,6 +4,7 @@ rules:
   # Regex sourced from TruffleHog detector (detector ID 903) with named groups added.
   - name: RabbitMQ Credential
     id: kingfisher.rabbitmq.1
+    secret_group: password
     base_score: 75
     pattern: |
       (?xi)
@@ -16,18 +17,27 @@ rules:
       (?P<host>[-.%\w]+)
       (?::(?P<port>[0-9]{1,5}))?
       (?:[\/][^\s]*)?
+    # Thresholds apply to the password (secret_group). A special-character
+    # requirement rejects most real passwords, and 3.5 bits of entropy needs
+    # 12+ distinct characters; placeholders are excluded by name instead.
     pattern_requirements:
-      min_special_chars: 1
-    min_entropy: 3.5
+      ignore_if_contains:
+        - password
+        - passwd
+        - guest
+        - changeme
+        - example
+    min_entropy: 2.0
     confidence: medium
     examples:
-      - amqp://user:password@rabbitmq.example.com/queue
       - amqps://admin:3eCa3P@192.168.1.10:5671/vhost
       - amqps://myuser:s3cretP4ss@bunny.cloudamqp.com/myvhost
       - amqp://app:xK9!mN2$@broker.internal:5672/production
     negative_examples:
       - amqp://user:pw@host
       - amqp://guest:guest@localhost/
+      - amqp://user:password@rabbitmq.example.com/queue
+      - amqp://app:aaaaaa@broker.internal:5672/production
     references:
       - https://www.rabbitmq.com/docs/uri-spec
       - https://www.rabbitmq.com/docs/management

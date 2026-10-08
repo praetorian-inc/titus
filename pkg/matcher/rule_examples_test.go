@@ -64,7 +64,6 @@ var knownExampleFailures = map[string]exampleBaseline{
 	"kingfisher.jira.1":         {regex: nil, filter: []int{0, 1}, total: 2},
 	"kingfisher.privkey.1":      {regex: nil, filter: []int{0}, total: 1},
 	"kingfisher.privkey.2":      {regex: nil, filter: []int{4}, total: 5},
-	"kingfisher.rabbitmq.1":     {regex: nil, filter: []int{1, 3}, total: 4},
 	"kingfisher.recaptcha.1":    {regex: nil, filter: []int{0, 1, 2}, total: 3},
 	"kingfisher.runway.1":       {regex: nil, filter: []int{0, 1, 2, 3}, total: 4},
 	"kingfisher.scraperapi.1":   {regex: nil, filter: []int{1}, total: 2},

@@ -63,7 +63,7 @@ rules:
     pattern: |
       (?xi)
       \b
-      (
+      (?P<token>
         cflt(?P<body>[A-Za-z0-9\+/]{54})(?P<checksum>[A-Za-z0-9\+/]{6})
       )
     pattern_requirements:

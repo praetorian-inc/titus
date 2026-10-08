@@ -198,7 +198,7 @@ func (v *GCPValidator) evaluateTokenResponse(resp *http.Response, clientEmail st
 }
 
 func (v *GCPValidator) extractServiceAccountJSON(match *types.Match) string {
-	for _, name := range []string{"service_account", "service_account_nested", "secret"} {
+	for _, name := range []string{"token", "service_account", "service_account_nested", "secret"} {
 		if match.NamedGroups != nil {
 			if val, ok := match.NamedGroups[name]; ok && len(val) > 0 {
 				return string(val)

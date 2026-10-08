@@ -699,6 +699,7 @@ rules:
 
 - name: Hardcoded Credential in JSON Key-Value Pair
   id: np.generic.19
+  secret_group: credential
   base_score: 70
 
   pattern: |

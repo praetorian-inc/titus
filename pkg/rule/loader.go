@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 	"gopkg.in/yaml.v3"
@@ -200,10 +202,14 @@ func convertYAMLRule(yr yamlRule) (*types.Rule, error) {
 	if score < 0 || score > 100 {
 		return nil, fmt.Errorf("rule %s: base_score %d out of range [0, 100]", yr.ID, score)
 	}
+	if err := checkSecretGroup(yr.ID, yr.Pattern, yr.SecretGroup); err != nil {
+		return nil, err
+	}
 	r := &types.Rule{
 		ID:               yr.ID,
 		Name:             yr.Name,
 		Pattern:          yr.Pattern,
+		SecretGroup:      yr.SecretGroup,
 		Description:      yr.Description,
 		Examples:         yr.Examples,
 		NegativeExamples: yr.NegativeExamples,
@@ -225,6 +231,29 @@ func convertYAMLRule(yr yamlRule) (*types.Rule, error) {
 	}
 	r.StructuralID = r.ComputeStructuralID()
 	return r, nil
+}
+
+var namedGroupRe = regexp.MustCompile(`\(\?P?<([A-Za-z_][A-Za-z0-9_]*)>`)
+
+// checkSecretGroup enforces that the capture holding the secret is declared,
+// not guessed: a rule with two or more distinct named groups must either name
+// one "token" or set secret_group, and secret_group must name a real group.
+func checkSecretGroup(id, pattern, secretGroup string) error {
+	names := map[string]bool{}
+	hasToken := false
+	for _, m := range namedGroupRe.FindAllStringSubmatch(pattern, -1) {
+		names[m[1]] = true
+		if strings.EqualFold(m[1], "token") {
+			hasToken = true
+		}
+	}
+	if secretGroup != "" && !names[secretGroup] {
+		return fmt.Errorf("rule %s: secret_group %q is not a named capture group in the pattern", id, secretGroup)
+	}
+	if secretGroup == "" && !hasToken && len(names) >= 2 {
+		return fmt.Errorf("rule %s: %d named capture groups and no token group; set secret_group to the one holding the secret", id, len(names))
+	}
+	return nil
 }
 
 // convertYAMLRuleset converts yamlRuleset to types.Ruleset.

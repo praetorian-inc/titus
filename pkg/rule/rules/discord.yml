@@ -1,6 +1,7 @@
 rules:
   - name: Discord Webhook URL
     id: kingfisher.discord.1
+    secret_group: webhook_token
     base_score: 40
     pattern: |
       (?xi)
