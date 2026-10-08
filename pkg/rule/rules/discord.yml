@@ -35,16 +35,33 @@ rules:
   - name: Discord Bot Token
     id: kingfisher.discord.2
     base_score: 65
+    # The first segment is base64 of the bot's decimal snowflake ID. Base64 of
+    # ASCII digits has a rigid shape: every 4th character encodes the high bits
+    # of a digit (0x30-0x39) and is always M, N or O, and the alphabet never
+    # includes '-' or '_'. 17/18/19-digit IDs give 23/24/26 characters. The
+    # previous (?i)[MNO][A-Z0-9_-]{20,30} form matched any dotted identifier
+    # with a 6-character middle segment (package paths, qualified table names).
     pattern: |
-      (?xi)
+      (?x)
+      \b
       (?P<token>
-        [MNO][A-Z0-9_-]{20,30}\.[A-Z0-9_-]{6}\.[A-Z0-9_-]{27,40}
+        (?:[MNO][A-Za-z0-9]{3}){5,6}(?:[MNO][A-Za-z0-9]{1,2})?
+        \.[A-Za-z0-9_-]{6}
+        \.[A-Za-z0-9_-]{27,40}
       )
       \b
     min_entropy: 3.3
     confidence: medium
     examples:
+      - 'apikey: MTA5NTYxMjM0NTY3ODkwMTIz.GhJkLm.aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab'
+      - 'DISCORD_TOKEN=NzkyNzE1NDU0MTk2MDg4ODQy.X-hvzA.Ovy4MCQywSkoMRRclStW4xAYK7I'
+    negative_examples:
       - 'apikey: MC0dBvKTjD0rY0cV8i37CjBf.uLHQPq.Nb1Ok1mEhe-3iTdrGOuegj29yQR'
+      - 'Bracket_Steel_BR-XLSR-3.2mm_H5.6mm_ReverseMount_8812034560Bracket'
+      - 'from sdk_deployment_client.models.remote_gateway_tunnel_options_inner import RemoteNetworks'
+      - 'Namespace_httpx2_client1.models.batch_commit_tables_response'
+      - 'DROP TABLE IF EXISTS int_analytics_published.dm_ops.session_contract_daily_fact;'
+      - 'Zt3pVqRa.hgTe2kW9Lpq1XMyJQKu74BvAr5xTG2LN8q27pKWSEcN3fN9ptV2gEm.QA7Hyu.rPbXngGYcLWTKv7ZK2dSo9jpBnY.MHkEYtwrPl_rSzfkpB4'
     categories:
       - api
     validation:

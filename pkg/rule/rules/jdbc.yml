@@ -87,6 +87,7 @@ rules:
       /
       (?P<token>[^\s/@'"<>]{3,128})        (?# password          )
       @
+      (?://)?                             (?# service-name form: @//host:port/service )
       [a-zA-Z0-9.\[\]:_-]+                (?# host              )
     pattern_requirements:
       ignore_if_contains:
@@ -98,6 +99,7 @@ rules:
     examples:
       - jdbc:oracle:thin:scott/tiger@ora.prod:1521:ORCL
       - jdbc:oracle:thin:appuser/Xk9wL3n!@dbhost:1521/ORCLPDB1
+      - jdbc:oracle:thin:svc_report/Xk4_Vt9qLp22@//db01.corp.internal:1533/RPTD
     negative_examples:
       - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
       - jdbc:oracle:thin:@//dbhost:1521/orcl
