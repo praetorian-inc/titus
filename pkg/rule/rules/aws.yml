@@ -411,6 +411,7 @@ rules:
 # This matches an API key followed closely by a secret access key
 - name: AWS API Credentials
   id: np.aws.6
+  secret_group: secret_key
   base_score: 95
 
   pattern: |

@@ -63,7 +63,7 @@ func TestLookerValidator_ValidCredentials(t *testing.T) {
 		assert.Equal(t, "abcdefghijklmnop12345678", r.FormValue("client_secret"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "some-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -203,7 +203,7 @@ func TestLookerValidator_MissingClientID(t *testing.T) {
 func TestLookerValidator_ResponseNotJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 
@@ -228,7 +228,7 @@ func TestLookerValidator_ResponseNotJSON(t *testing.T) {
 func TestLookerValidator_MissingAccessToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": "something unexpected",
 		})
 	}))
@@ -255,7 +255,7 @@ func TestLookerValidator_MissingAccessToken(t *testing.T) {
 func TestLookerValidator_NullAccessToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":null}`))
+		_, _ = w.Write([]byte(`{"access_token":null}`))
 	}))
 	defer srv.Close()
 
@@ -280,7 +280,7 @@ func TestLookerValidator_NullAccessToken(t *testing.T) {
 func TestLookerValidator_EmptyAccessToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":""}`))
+		_, _ = w.Write([]byte(`{"access_token":""}`))
 	}))
 	defer srv.Close()
 
@@ -398,7 +398,7 @@ func TestLookerValidator_SecretFromNamedGroups(t *testing.T) {
 		assert.Equal(t, "abcdefghijklmnop12345678", r.FormValue("client_secret"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "tok",
 		})
 	}))

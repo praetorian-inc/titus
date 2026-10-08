@@ -18,7 +18,7 @@ rules:
             [A-Z0-9_.-]+
           )
           /
-          (?P<repo>
+          (?P<token>
             [A-Z0-9_.-]+
           )
         )
@@ -28,8 +28,8 @@ rules:
           github|bitbucket|gitlab
         )
         /
-        (?P<repo_path>
-          [A-Z0-9_.-]+
+        (?P<token>
+          [A-Z0-9_.-]+/[A-Z0-9_.-]+
         )
       )
     examples:

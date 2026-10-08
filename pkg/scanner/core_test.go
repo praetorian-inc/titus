@@ -170,7 +170,7 @@ func TestCore_SetCanValidate_PreferValidatedRule(t *testing.T) {
 // This is the most important regression test for PR #201: it catches any
 // nondeterminism that reaches the final output, regardless of which layer it
 // comes from — match ordering (matchParallel), dedup (clusterBySharedValues /
-// pickWinner), or entropy filtering (findSecretCapture). A single flaky run
+// pickWinner), or entropy filtering (SecretCapture). A single flaky run
 // in 20 is sufficient to detect the class of bug that was fixed.
 //
 // Content is >10KB to trigger matchParallel. Rules include two patterns that
@@ -179,7 +179,7 @@ func TestScannerDeterministicFindingCount(t *testing.T) {
 	// rule.key_only and rule.key_combo share group[0] (the AWS key), exercising
 	// crossrule deduplication. rule.key_combo wins (more groups).
 	// rule.named has a named group "password" with high entropy, exercising
-	// findSecretCapture's max-entropy named-group selection.
+	// SecretCapture's max-entropy named-group selection.
 	rules := []*types.Rule{
 		{
 			ID:      "rule.key_only",

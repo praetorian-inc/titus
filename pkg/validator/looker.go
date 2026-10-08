@@ -128,12 +128,10 @@ func (v *LookerValidator) validateClientSecret(ctx context.Context, match *types
 	}
 	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
-	switch {
-	case resp.StatusCode == http.StatusOK:
+	switch resp.StatusCode {
+	case http.StatusOK:
 		return v.verifyLoginResponse(resp, baseURL)
-	case resp.StatusCode == http.StatusUnauthorized ||
-		resp.StatusCode == http.StatusForbidden ||
-		resp.StatusCode == http.StatusNotFound:
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
 		return types.NewValidationResult(types.StatusInvalid, 1.0,
 			fmt.Sprintf("Looker credentials rejected: HTTP %d", resp.StatusCode)), nil
 	default:
