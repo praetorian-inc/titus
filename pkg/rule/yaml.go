@@ -27,6 +27,7 @@ type yamlRule struct {
 	SecretGroup         string                   `yaml:"secret_group,omitempty"`
 	BaseScore           *int                     `yaml:"base_score"`
 	Noisy               bool                     `yaml:"noisy,omitempty"`
+	Visible             *bool                    `yaml:"visible,omitempty"` // nil means visible
 }
 
 // yamlRulesFile represents the top-level structure of a rules YAML file.

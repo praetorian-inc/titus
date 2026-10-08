@@ -208,6 +208,8 @@ titus scan path/to/code --rules path/to/custom-rules.yaml
 titus scan path/to/code --include-noisy
 ```
 
+Rules marked `visible: false` are helpers that capture context for other rules, such as a client ID, account name or host, rather than a secret. Their patterns still run, but their matches are never reported, by the CLI or the Go library, even when the rule is selected explicitly.
+
 ### Extracting Secrets from Binary Files
 
 Titus can extract text from binary file formats and scan the contents for secrets:
