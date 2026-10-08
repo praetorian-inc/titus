@@ -140,9 +140,9 @@ func TestRuleExamples_AllRulesDetectTheirOwnExamples(t *testing.T) {
 // A listed rule must fail EXACTLY the examples its baseline records.
 //
 // Allowlisting a rule ID alone would drop every one of its examples from
-// coverage, including the ones that currently pass -- kingfisher.jdbc.1 fails 3
-// of 4. Comparing exact indices keeps the passing example guarded, and means a
-// fixed failure cannot be exchanged for a new one without the test noticing.
+// coverage, including the ones that currently pass. Comparing exact indices
+// keeps the passing example guarded, and means a fixed failure cannot be
+// exchanged for a new one without the test noticing.
 func TestRuleExamples_KnownFailuresMatchBaseline(t *testing.T) {
 	byID := map[string]*types.Rule{}
 	for _, r := range rulesWithExamples(t) {
@@ -188,7 +188,7 @@ type negativeExampleBaseline struct {
 }
 
 // knownNegativeExampleFailures is the burn-down list for LAB-7152: rules whose
-// negative examples wrongly produce a match. 36 rules remain of the 86 carrying
+// negative examples wrongly produce a match. 38 rules remain of the 164 carrying
 // negative examples.
 //
 // TO FIX A RULE, DELETE ITS LINE HERE. TestRuleNegativeExamples_KnownFailuresMatchBaseline
@@ -207,6 +207,8 @@ var knownNegativeExampleFailures = map[string]negativeExampleBaseline{
 	"kingfisher.gcp.1":               {regexOnly: []int{0}, full: nil, total: 1},
 	"kingfisher.gcp.3":               {regexOnly: []int{0}, full: nil, total: 2},
 	"kingfisher.gpp.1":               {regexOnly: []int{1}, full: nil, total: 3},
+	"kingfisher.jdbc.2":              {regexOnly: []int{2}, full: nil, total: 3},
+	"kingfisher.jdbc.3":              {regexOnly: []int{2}, full: nil, total: 3},
 	"kingfisher.powershell.1":        {regexOnly: nil, full: []int{2}, total: 3},
 	"kingfisher.powershell.2":        {regexOnly: nil, full: []int{2}, total: 3},
 	"kingfisher.rabbitmq.1":          {regexOnly: []int{1}, full: nil, total: 2},

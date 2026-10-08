@@ -1,32 +1,182 @@
 rules:
-  - name: JDBC connection string with embedded credentials
+
+  - name: JDBC connection string with authority-inline credentials
     id: kingfisher.jdbc.1
     base_score: 85
     pattern: |
       (?xi)
       (?P<token>
         jdbc:
-        [a-z][a-z0-9+.-]{2,32}
+        [a-z][a-z0-9+.-]{1,32}
         (?:[:][a-z0-9+.-]{1,32})*
+        ://
+        (?P<username>[a-zA-Z0-9_.%+-]{2,64})
         :
-        [^\s"'<>,(){}\[\]]{10,448}
+        (?P<password>[^\s@"'<>,(){}\[\]:]{3,128})
+        @
+        (?P<host>[a-zA-Z0-9._-]{1,253})
+        (?::\d{1,5})?
       )
-    pattern_requirements:              
-      min_special_chars: 2
-      special_chars: ";=/?@&"
+    pattern_requirements:
       ignore_if_contains:
         - "****"
         - "xxxx"
         - "example"
-    min_entropy: 3.3
+        - "changeme"
+        - "placeholder"
+        - "${"
+        - "{{"
+        - "%s"
+        - "ENV["
+        - "os.environ"
+    min_entropy: 3.0
     confidence: medium
-    validation:
-      type: Jdbc
+    categories: [secret]
     examples:
-      - jdbc:postgresql://db.internal.io:5432/app?user=admin&password=s3cr3t
       - jdbc:mysql://admin:s3cr3t@prod.internal:3306/inventory
-      - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
-      - jdbc:sqlserver://sql.proddb.org:1433;databaseName=inventory;user=sa;password=s3cr3t!
+      - jdbc:postgresql://appuser:xK9!mP2@db.internal.io:5432/appdb
+      - jdbc:mariadb://deploy:Th1s-1s-S3cure@mariadb.prod:3306/store
+    negative_examples:
+      - jdbc:postgresql://db.internal.io:5432/appdb
+      - jdbc:mysql://localhost:3306/testdb
+      - "jdbc:postgresql://user:${DB_PASSWORD}@db.host:5432/app"
+      - "jdbc:mysql://admin:{{password}}@host:3306/db"
     references:
       - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
       - https://www.postgresql.org/docs/current/jdbc-use.html
+
+  - name: JDBC connection string with query-parameter credentials
+    id: kingfisher.jdbc.2
+    base_score: 85
+    pattern: |
+      (?xi)
+      (?P<token>
+        jdbc:
+        [a-z][a-z0-9+.-]{1,32}
+        (?:[:][a-z0-9+.-]{1,32})*
+        :
+        [^\s"'<>,(){}\[\]]{5,200}
+        [?&]
+        (?:password|passwd|pwd)
+        =
+        (?P<password>[^\s&"'<>#]{3,128})
+      )
+    pattern_requirements:
+      ignore_if_contains:
+        - "****"
+        - "xxxx"
+        - "example"
+        - "changeme"
+        - "placeholder"
+        - "${"
+        - "{{"
+        - "%s"
+        - "ENV["
+        - "os.environ"
+    min_entropy: 3.0
+    confidence: medium
+    categories: [secret]
+    examples:
+      - jdbc:postgresql://db.internal.io:5432/app?user=admin&password=s3cr3t
+      - jdbc:mysql://localhost:3306/mydb?user=root&password=xK9mP2qR
+      - jdbc:postgresql://host:5432/db?password=Sup3r-S3cret&sslmode=require
+    negative_examples:
+      - jdbc:postgresql://db.internal.io:5432/app?sslmode=require
+      - jdbc:mysql://localhost:3306/mydb?user=root
+      - "jdbc:postgresql://host:5432/db?password=${DB_PASS}"
+    references:
+      - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
+      - https://www.postgresql.org/docs/current/jdbc-use.html
+
+  - name: JDBC connection string with semicolon-property credentials
+    id: kingfisher.jdbc.3
+    base_score: 85
+    pattern: |
+      (?xi)
+      (?P<token>
+        jdbc:
+        [a-z][a-z0-9+.-]{1,32}
+        (?:[:][a-z0-9+.-]{1,32})*
+        :
+        [^\s"'<>,(){}\[\]]{5,200}
+        ;
+        (?:password|passwd|pwd)
+        =
+        (?P<password>[^\s;"'<>]{3,128})
+      )
+    pattern_requirements:
+      ignore_if_contains:
+        - "****"
+        - "xxxx"
+        - "example"
+        - "changeme"
+        - "placeholder"
+        - "${"
+        - "{{"
+        - "%s"
+        - "ENV["
+        - "os.environ"
+    min_entropy: 3.0
+    confidence: medium
+    categories: [secret]
+    examples:
+      - jdbc:sqlserver://sql.proddb.org:1433;databaseName=inventory;user=sa;password=s3cr3t!
+      - jdbc:sqlserver://host:1433;database=mydb;user=admin;password=xK9mP2qR
+      - jdbc:jtds:sqlserver://db.host:1433/mydb;user=svc;password=C0mpl3x-Pa55
+    negative_examples:
+      - jdbc:sqlserver://sql.proddb.org:1433;databaseName=inventory
+      - jdbc:sqlserver://host:1433;database=mydb;user=admin
+      - "jdbc:sqlserver://host:1433;password=${SQL_PASS};database=mydb"
+    references:
+      - https://docs.microsoft.com/en-us/sql/connect/jdbc/building-the-connection-url
+      - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
+
+  - name: JDBC Oracle connection string with slash credentials
+    id: kingfisher.jdbc.4
+    base_score: 85
+    pattern: |
+      (?xi)
+      (?P<token>
+        jdbc:oracle:
+        [a-z][a-z0-9+.-]{0,32}
+        :
+        (?P<username>[a-zA-Z0-9_.]{2,64})
+        /
+        (?P<password>[^\s@"'<>,(){}\[\]]{3,128})
+        @
+        (?:
+          (?://)?
+          (?P<host>[a-zA-Z0-9._:-]{3,253})
+        |
+          \(\s*DESCRIPTION\s*=
+        )
+      )
+    pattern_requirements:
+      ignore_if_contains:
+        - "****"
+        - "xxxx"
+        - "example"
+        - "changeme"
+        - "placeholder"
+        - "${"
+        - "{{"
+        - "%s"
+        - "ENV["
+        - "os.environ"
+    min_entropy: 3.0
+    confidence: medium
+    categories: [secret]
+    examples:
+      - jdbc:oracle:thin:admin/s3cr3tP4ss@ora.proddb.net:1521:ORCLDB
+      - jdbc:oracle:thin:appuser/xK9!mP2qR@dbhost:1521/ORCLPDB1
+      - jdbc:oracle:oci:scott/tiger123@proddb.internal:1521:ORCL
+      - jdbc:oracle:thin:scott/tiger123@//db.prod.internal:1521/SVCNAME
+      - jdbc:oracle:thin:rpt_svc/Hx9#pQ2vLm@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=ora.prod.internal)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCLPDB1)))
+    negative_examples:
+      - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
+      - jdbc:oracle:thin:@//ora.proddb.net:1521/ORCLPDB1
+      - jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=ora.proddb.net)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCLPDB1)))
+      - "jdbc:oracle:thin:${DB_USER}/${DB_PASS}@host:1521:ORCL"
+    references:
+      - https://docs.oracle.com/en/database/oracle/oracle-database/19/jjdbc/data-sources-and-URLs.html
+      - https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html
