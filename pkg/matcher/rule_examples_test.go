@@ -210,7 +210,7 @@ var knownNegativeExampleFailures = map[string]negativeExampleBaseline{
 	"kingfisher.jdbc.3":              {regexOnly: []int{2}, full: nil, total: 3},
 	"kingfisher.powershell.1":        {regexOnly: nil, full: []int{2}, total: 3},
 	"kingfisher.powershell.2":        {regexOnly: nil, full: []int{2}, total: 3},
-	"kingfisher.rabbitmq.1":          {regexOnly: []int{1}, full: nil, total: 2},
+	"kingfisher.rabbitmq.1":          {regexOnly: []int{1, 2, 3}, full: nil, total: 4},
 	"np.appcenter.1":                 {regexOnly: []int{2}, full: nil, total: 3},
 	"np.azure.5":                     {regexOnly: []int{4, 5}, full: nil, total: 6},
 	"np.azure.8":                     {regexOnly: []int{0, 6, 7}, full: nil, total: 8},
