@@ -143,7 +143,8 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 		return fmt.Errorf("failed to open git repository: %w", err)
 	}
 
-	// Get commit iterator for all refs
+	// repo.Log is newest-first. Reverse it so the first sighting of a blob is
+	// the commit that introduced it. Production uses the native topo-order walk.
 	commitIter, err := repo.Log(&git.LogOptions{
 		All: true,
 	})
@@ -151,26 +152,35 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 		return fmt.Errorf("failed to get commit log: %w", err)
 	}
 
-	// Track seen blobs globally (across all commits)
-	seenBlobs := make(map[plumbing.Hash]bool)
-
-	// Iterate all commits
+	var commits []*object.Commit
 	err = commitIter.ForEach(func(commit *object.Commit) error {
-		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		commits = append(commits, commit)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to walk commits: %w", err)
+	}
+
+	seenBlobs := make(map[plumbing.Hash]bool)
+	for i := len(commits) - 1; i >= 0; i-- {
+		commit := commits[i]
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
 
-		// Get commit tree
 		tree, err := commit.Tree()
 		if err != nil {
 			return fmt.Errorf("failed to get tree for commit %s: %w", commit.Hash, err)
 		}
 
-		// Walk files in this commit's tree
-		return tree.Files().ForEach(func(f *object.File) error {
+		err = tree.Files().ForEach(func(f *object.File) error {
 			// Check context cancellation
 			select {
 			case <-ctx.Done():
@@ -205,8 +215,6 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 			// Compute blob ID
 			blobID := types.ComputeBlobID([]byte(content))
 
-			// Create git provenance with this commit's metadata
-			// (first commit where we encountered this blob)
 			commitMeta := &types.CommitMetadata{
 				CommitID:           commit.Hash.String(),
 				AuthorName:         commit.Author.Name,
@@ -224,13 +232,11 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 				BlobPath: f.Name,
 			}
 
-			// Yield to callback
 			return callback([]byte(content), blobID, prov)
 		})
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to walk commits: %w", err)
+		if err != nil {
+			return fmt.Errorf("failed to walk commits: %w", err)
+		}
 	}
 
 	return nil
