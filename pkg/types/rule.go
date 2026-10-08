@@ -15,9 +15,7 @@ type PatternRequirements struct {
 	MinSpecialChars  int      `json:"min_special_chars,omitempty"`
 	SpecialChars     string   `json:"special_chars,omitempty"`
 	IgnoreIfContains []string `json:"ignore_if_contains,omitempty"`
-	// Luhn requires the captured value (ignoring spaces and dashes) to be 13-19
-	// digits passing the Luhn mod-10 check. For payment card rules.
-	Luhn bool `json:"luhn,omitempty"`
+	Luhn             bool     `json:"luhn,omitempty"`
 }
 
 // Rule is a detection rule with pattern and metadata.
