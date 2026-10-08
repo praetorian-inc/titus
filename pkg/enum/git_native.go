@@ -27,7 +27,7 @@ func gitBinaryAvailable() bool {
 
 // enumerateAllHistoryNative uses native git commands for fast history enumeration.
 // Phase 1: git rev-list --all --objects → collect unique blob hashes with paths.
-// Phase 2: git log → collect commit metadata keyed by file path.
+// Phase 2: git log → commit that introduced each blob hash, oldest first.
 // Phase 3: git cat-file --batch → stream content, filter, and invoke callback.
 func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	blobs, err := e.collectBlobEntries(ctx)
@@ -35,9 +35,9 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		return err
 	}
 
-	commitMap, _ := e.collectCommitMetadata(ctx) // best-effort; nil map is safe
+	introductions, _ := collectBlobIntroductions(ctx, e.config.Root) // best-effort; nil map is safe
 
-	return e.streamBlobContentsWithMeta(ctx, blobs, commitMap, callback)
+	return e.streamBlobContentsWithMeta(ctx, blobs, introductions, callback)
 }
 
 // collectBlobEntries runs git rev-list --all --objects and returns deduplicated blob entries.
@@ -101,14 +101,9 @@ func (e *GitEnumerator) collectBlobEntries(ctx context.Context) ([]blobEntry, er
 	return blobs, nil
 }
 
-// collectCommitMetadata runs git log to build a map of file path → first commit metadata.
-func (e *GitEnumerator) collectCommitMetadata(ctx context.Context) (map[string]*types.CommitMetadata, error) {
-	return collectCommitMetadataForRepo(ctx, e.config.Root, true)
-}
-
 // streamBlobContentsWithMeta feeds hashes to git cat-file --batch and invokes callback for text blobs.
-// If commitMap is non-nil, attaches commit metadata to git provenance records.
-func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []blobEntry, commitMap map[string]*types.CommitMetadata, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+// introductions is keyed by full blob hash; a miss keeps the rev-list path and no commit.
+func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []blobEntry, introductions map[string]*blobIntroduction, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	if len(blobs) == 0 {
 		return nil
 	}
@@ -236,10 +231,18 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		var blobID types.BlobID
 		copy(blobID[:], blob.hash[:])
 
+		path := blob.path
+		var commit *types.CommitMetadata
+		if intro := introductions[hexStr]; intro != nil {
+			commit = intro.Commit
+			if intro.Path != "" {
+				path = intro.Path
+			}
+		}
 		prov := types.GitProvenance{
 			RepoPath: e.config.Root,
-			Commit:   commitMap[blob.path],
-			BlobPath: blob.path,
+			Commit:   commit,
+			BlobPath: path,
 		}
 
 		if err := callback(content, blobID, prov); err != nil {
