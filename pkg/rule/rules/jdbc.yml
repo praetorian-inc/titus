@@ -144,8 +144,12 @@ rules:
         /
         (?P<password>[^\s@"'<>,(){}\[\]]{3,128})
         @
-        (?://)?
-        (?P<host>[a-zA-Z0-9._:-]{3,253})
+        (?:
+          (?://)?
+          (?P<host>[a-zA-Z0-9._:-]{3,253})
+        |
+          \(\s*DESCRIPTION\s*=
+        )
       )
     pattern_requirements:
       ignore_if_contains:
@@ -167,9 +171,11 @@ rules:
       - jdbc:oracle:thin:appuser/xK9!mP2qR@dbhost:1521/ORCLPDB1
       - jdbc:oracle:oci:scott/tiger123@proddb.internal:1521:ORCL
       - jdbc:oracle:thin:scott/tiger123@//db.prod.internal:1521/SVCNAME
+      - jdbc:oracle:thin:rpt_svc/Hx9#pQ2vLm@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=ora.prod.internal)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCLPDB1)))
     negative_examples:
       - jdbc:oracle:thin:@ora.proddb.net:1521/ORCLPDB1
       - jdbc:oracle:thin:@//ora.proddb.net:1521/ORCLPDB1
+      - jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=ora.proddb.net)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCLPDB1)))
       - "jdbc:oracle:thin:${DB_USER}/${DB_PASS}@host:1521:ORCL"
     references:
       - https://docs.oracle.com/en/database/oracle/oracle-database/19/jjdbc/data-sources-and-URLs.html
