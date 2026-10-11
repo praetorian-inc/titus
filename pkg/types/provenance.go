@@ -51,6 +51,9 @@ type CommitMetadata struct {
 	CommitterEmail     string
 	CommitterTimestamp time.Time
 	Message            string
+	// Branch is the default branch when the commit is on it. Otherwise it is
+	// one ref from git log --source, with refs/heads/ and refs/remotes/<remote>/ removed.
+	Branch string
 }
 
 // ExtendedProvenance for custom sources (S3, HTTP, etc.).

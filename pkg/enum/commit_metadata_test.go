@@ -2,8 +2,12 @@ package enum
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 // TestCollectCommitMetadata_RenamedPath verifies that paths introduced by a
@@ -78,6 +82,298 @@ func TestCollectCommitMetadata_PlainAdd(t *testing.T) {
 			t.Errorf("%s: zero AuthorTimestamp", want)
 		}
 	}
+}
+
+func TestUnquoteGitPath(t *testing.T) {
+	if got := unquoteGitPath(`"caf\303\251.txt"`); got != "café.txt" {
+		t.Fatalf("octal path: got %q", got)
+	}
+	if got := unquoteGitPath(`"has\"quote.txt"`); got != "has\"quote.txt" {
+		t.Fatalf("quoted path: got %q", got)
+	}
+	if got := unquoteGitPath("my file.txt"); got != "my file.txt" {
+		t.Fatalf("plain path: got %q", got)
+	}
+}
+
+func TestParseRawDestination(t *testing.T) {
+	result := "0123456789abcdef0123456789abcdef01234567"
+	parent := "abcdef0123456789abcdef0123456789abcdef01"
+	zeros := strings.Repeat("0", 40)
+	cases := []struct {
+		line, hash, path string
+	}{
+		{":100644 100644 " + zeros + " " + result + " A\tqa.env", result, "qa.env"},
+		{":100644 100644 " + parent + " " + result + " M\told.txt\tnew.txt", result, "new.txt"},
+		{"::000000 000000 100644 " + zeros + " " + zeros + " " + result + " AA\t.env-dev", result, ".env-dev"},
+		{"::100644 100644 100644 " + parent + " " + zeros + " " + result + " MA\t.env-dev", result, ".env-dev"},
+	}
+	for _, tc := range cases {
+		hash, path, ok := parseRawDestination(tc.line)
+		if !ok || hash != tc.hash || path != tc.path {
+			t.Errorf("parse %q => %v %s %s", tc.line, ok, hash, path)
+		}
+	}
+}
+
+func TestBlobIntroductionEvilMerge(t *testing.T) {
+	skipIfNoGit(t)
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init", "-b", "main")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+	writeFile(t, filepath.Join(tmpDir, "keep.txt"), "keep\n")
+	gitAddCommit(t, tmpDir, "base")
+	runGit(t, tmpDir, "checkout", "-b", "side")
+	writeFile(t, filepath.Join(tmpDir, "side.txt"), "side\n")
+	gitAddCommit(t, tmpDir, "side")
+	runGit(t, tmpDir, "checkout", "main")
+	writeFile(t, filepath.Join(tmpDir, "main.txt"), "main\n")
+	gitAddCommit(t, tmpDir, "main-only")
+	runGit(t, tmpDir, "merge", "--no-commit", "side")
+	writeFile(t, filepath.Join(tmpDir, ".env-dev"), "merge-only\n")
+	runGit(t, tmpDir, "add", ".env-dev")
+	runGit(t, tmpDir, "commit", "-m", "evil merge")
+
+	intros, err := collectBlobIntroductions(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro := intros[gitHash(t, "merge-only\n")]
+	if intro == nil || intro.Commit == nil || intro.Commit.Message != "evil merge" || intro.Path != ".env-dev" {
+		t.Fatalf("evil merge intro = %#v", intro)
+	}
+}
+
+func TestPreferDefaultBranch(t *testing.T) {
+	onMain := map[string]struct{}{"abc": {}}
+	if got := preferDefaultBranch("abc", "v32.5.0", "main", onMain); got != "main" {
+		t.Fatalf("on default: got %q", got)
+	}
+	if got := preferDefaultBranch("def", "feature", "main", onMain); got != "feature" {
+		t.Fatalf("off default: got %q", got)
+	}
+	if got := preferDefaultBranch("abc", "v32.5.0", "", onMain); got != "v32.5.0" {
+		t.Fatalf("no default: got %q", got)
+	}
+}
+
+func TestBlobIntroductionPrefersDefaultBranch(t *testing.T) {
+	skipIfNoGit(t)
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init", "-b", "main")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+	writeFile(t, filepath.Join(tmpDir, "a.txt"), "only-once\n")
+	gitAddCommit(t, tmpDir, "add a")
+	runGit(t, tmpDir, "branch", "0-release")
+	runGit(t, tmpDir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, tmpDir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	intros, err := collectBlobIntroductions(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro := intros[gitHash(t, "only-once\n")]
+	if intro == nil || intro.Commit == nil || intro.Commit.Branch != "main" {
+		t.Fatalf("branch = %#v", intro)
+	}
+}
+
+func TestDisplayRef(t *testing.T) {
+	cases := map[string]string{
+		"refs/heads/main":             "main",
+		"refs/remotes/origin/feature": "feature",
+		"refs/remotes/upstream/a/b":   "a/b",
+		"refs/tags/v1.2.3":            "v1.2.3",
+		"HEAD":                        "",
+	}
+	for in, want := range cases {
+		if got := displayRef(in); got != want {
+			t.Errorf("displayRef(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCollectBlobIntroductions(t *testing.T) {
+	skipIfNoGit(t)
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init", "-b", "main")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+
+	writeFile(t, filepath.Join(tmpDir, "qa.env"), "plain\n")
+	gitAddCommit(t, tmpDir, "add qa.env")
+	writeFile(t, filepath.Join(tmpDir, "notes.txt"), "unrelated\n")
+	gitAddCommit(t, tmpDir, "unrelated")
+	marker := "plain\ntitus-marker-not-a-secret\n"
+	writeFile(t, filepath.Join(tmpDir, "qa.env"), marker)
+	gitAddCommit(t, tmpDir, "add marker")
+	writeFile(t, filepath.Join(tmpDir, "qa.env"), marker+"later\n")
+	gitAddCommit(t, tmpDir, "later edit")
+
+	writeFile(t, filepath.Join(tmpDir, "old.txt"), "stable-blob\n")
+	gitAddCommit(t, tmpDir, "add old")
+	runGit(t, tmpDir, "mv", "old.txt", "new.txt")
+	gitAddCommit(t, tmpDir, "rename")
+	writeFile(t, filepath.Join(tmpDir, "my file.txt"), "spaced\n")
+	writeFile(t, filepath.Join(tmpDir, "has\"quote.txt"), "quoted\n")
+	gitAddCommit(t, tmpDir, "odd names")
+
+	runGit(t, tmpDir, "checkout", "-b", "feature")
+	writeFile(t, filepath.Join(tmpDir, "feature.txt"), "feature-only\n")
+	gitAddCommit(t, tmpDir, "on feature")
+	runGit(t, tmpDir, "checkout", "main")
+
+	intros, err := collectBlobIntroductions(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatalf("collectBlobIntroductions: %v", err)
+	}
+
+	markerIntro := intros[gitHash(t, marker)]
+	if markerIntro == nil || markerIntro.Commit == nil {
+		t.Fatal("marker blob has no introduction")
+	}
+	if markerIntro.Commit.Message != "add marker" {
+		t.Errorf("marker commit = %q, want add marker", markerIntro.Commit.Message)
+	}
+	if markerIntro.Path != "qa.env" {
+		t.Errorf("marker path = %q", markerIntro.Path)
+	}
+	if markerIntro.Commit.Branch != "main" {
+		t.Errorf("marker branch = %q", markerIntro.Commit.Branch)
+	}
+	if markerIntro.Commit.AuthorEmail != "test@example.com" {
+		t.Errorf("marker author = %q", markerIntro.Commit.AuthorEmail)
+	}
+	if markerIntro.Commit.AuthorTimestamp.IsZero() {
+		t.Error("marker author timestamp is zero")
+	}
+
+	stable := intros[gitHash(t, "stable-blob\n")]
+	if stable == nil || stable.Commit == nil {
+		t.Fatal("stable blob has no introduction")
+	}
+	if stable.Commit.Message != "add old" || stable.Path != "old.txt" {
+		t.Errorf("rename kept %q at %q, want add old at old.txt", stable.Commit.Message, stable.Path)
+	}
+
+	spaced := intros[gitHash(t, "spaced\n")]
+	if spaced == nil || spaced.Path != "my file.txt" {
+		t.Fatalf("spaced path = %#v", spaced)
+	}
+	quoted := intros[gitHash(t, "quoted\n")]
+	if quoted == nil || quoted.Path != "has\"quote.txt" {
+		t.Fatalf("quoted path = %#v", quoted)
+	}
+
+	feature := intros[gitHash(t, "feature-only\n")]
+	if feature == nil || feature.Commit == nil {
+		t.Fatal("feature blob has no introduction")
+	}
+	if feature.Commit.Message != "on feature" || feature.Commit.Branch != "feature" || feature.Path != "feature.txt" {
+		t.Errorf("feature intro = %q branch %q path %q", feature.Commit.Message, feature.Commit.Branch, feature.Path)
+	}
+}
+
+func TestEnumeratorCitesIntroducingCommit(t *testing.T) {
+	skipIfNoGit(t)
+
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init", "-b", "main")
+	runGit(t, tmpDir, "config", "user.email", "test@example.com")
+	runGit(t, tmpDir, "config", "user.name", "Test User")
+
+	writeFile(t, filepath.Join(tmpDir, "qa.env"), "plain\n")
+	gitAddCommit(t, tmpDir, "add qa.env")
+	writeFile(t, filepath.Join(tmpDir, "notes.txt"), "unrelated\n")
+	gitAddCommit(t, tmpDir, "unrelated")
+	marker := "plain\ntitus-marker-not-a-secret\n"
+	writeFile(t, filepath.Join(tmpDir, "qa.env"), marker)
+	gitAddCommit(t, tmpDir, "add marker")
+	writeFile(t, filepath.Join(tmpDir, "qa.env"), marker+"later\n")
+	gitAddCommit(t, tmpDir, "later edit")
+
+	enum := NewGitEnumerator(Config{Root: tmpDir})
+	enum.WalkAll = true
+
+	assertIntro := func(t *testing.T, prov types.Provenance, wantBranch bool) {
+		t.Helper()
+		gitProv, ok := prov.(types.GitProvenance)
+		if !ok || gitProv.Commit == nil {
+			t.Fatalf("provenance %#v", prov)
+		}
+		if commitSubject(gitProv.Commit.Message) != "add marker" || gitProv.BlobPath != "qa.env" {
+			t.Errorf("got %q at %q", gitProv.Commit.Message, gitProv.BlobPath)
+		}
+		if wantBranch && gitProv.Commit.Branch != "main" {
+			t.Errorf("branch = %q", gitProv.Commit.Branch)
+		}
+	}
+
+	var native types.Provenance
+	var nativeOrder []string
+	err := enum.enumerateAllHistoryNative(context.Background(), func(content []byte, _ types.BlobID, prov types.Provenance) error {
+		if !strings.Contains(string(content), "titus-marker-not-a-secret") {
+			return nil
+		}
+		gitProv := prov.(types.GitProvenance)
+		nativeOrder = append(nativeOrder, commitSubject(gitProv.Commit.Message))
+		if string(content) == marker {
+			native = prov
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("native: %v", err)
+	}
+	assertIntro(t, native, true)
+	if strings.Join(nativeOrder, ",") != "add marker,later edit" {
+		t.Fatalf("native order %v", nativeOrder)
+	}
+
+	var fallback types.Provenance
+	var fallbackOrder []string
+	err = enum.enumerateAllHistory(context.Background(), func(content []byte, _ types.BlobID, prov types.Provenance) error {
+		if !strings.Contains(string(content), "titus-marker-not-a-secret") {
+			return nil
+		}
+		gitProv := prov.(types.GitProvenance)
+		fallbackOrder = append(fallbackOrder, commitSubject(gitProv.Commit.Message))
+		if string(content) == marker {
+			fallback = prov
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("fallback: %v", err)
+	}
+	assertIntro(t, fallback, false)
+	if strings.Join(fallbackOrder, ",") != "add marker,later edit" {
+		t.Fatalf("fallback order %v", fallbackOrder)
+	}
+}
+
+func gitHash(t *testing.T, content string) string {
+	t.Helper()
+	cmd := exec.Command("git", "hash-object", "--stdin")
+	cmd.Stdin = strings.NewReader(content)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git hash-object: %v", err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func commitSubject(message string) string {
+	message = strings.TrimSpace(message)
+	if i := strings.IndexByte(message, '\n'); i >= 0 {
+		return message[:i]
+	}
+	return message
 }
 
 func keys[K comparable, V any](m map[K]V) []K {

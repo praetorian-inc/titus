@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,4 +79,223 @@ func collectCommitMetadataForRepo(ctx context.Context, repoPath string, firstAdd
 	}
 
 	return result, nil
+}
+
+// blobIntroduction is the earliest commit that added a blob, and the path
+// the blob had in that commit. Same blob at a later path keeps the first one.
+type blobIntroduction struct {
+	Commit *types.CommitMetadata
+	Path   string
+	Order  int
+}
+
+// collectBlobIntroductions maps a full blob hash to the commit that introduced
+// it. git log is newest-first; --reverse --topo-order walks root-to-tip, which
+// is the practical form of Nosey Parker's first-sighting rule. The first time
+// a blob hash appears wins. --cc records a merge result that matches neither
+// parent; a blob brought in from one parent was already seen on that parent.
+func collectBlobIntroductions(ctx context.Context, repoPath string) (map[string]*blobIntroduction, error) {
+	args := []string{
+		"log", "--reverse", "--topo-order", "--all", "--source", "--cc",
+		"--raw", "--abbrev=40", "--diff-filter=AMRC",
+		"--format=%x01%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%S",
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("git log: pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("git log: start: %w", err)
+	}
+
+	defaultName, onDefault := defaultBranchCommits(ctx, repoPath)
+	result := make(map[string]*blobIntroduction)
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var current *types.CommitMetadata
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		if meta, ok := parseIntroCommit(line); ok {
+			meta.Branch = preferDefaultBranch(meta.CommitID, meta.Branch, defaultName, onDefault)
+			current = meta
+			continue
+		}
+		if current == nil || !strings.HasPrefix(line, ":") {
+			continue
+		}
+		hash, path, ok := parseRawDestination(line)
+		if !ok {
+			continue
+		}
+		if _, exists := result[hash]; exists {
+			continue
+		}
+		result[hash] = &blobIntroduction{Commit: current, Path: path, Order: len(result)}
+	}
+	if err := scanner.Err(); err != nil {
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("git log: scan: %w", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("git log: wait: %w", err)
+	}
+	return result, nil
+}
+
+func parseIntroCommit(line string) (*types.CommitMetadata, bool) {
+	if !strings.HasPrefix(line, "\x01") {
+		return nil, false
+	}
+	parts := strings.Split(line[1:], "\x00")
+	if len(parts) != 9 || len(parts[0]) != 40 {
+		return nil, false
+	}
+	authorTS, _ := time.Parse(time.RFC3339, parts[3])
+	committerTS, _ := time.Parse(time.RFC3339, parts[6])
+	return &types.CommitMetadata{
+		CommitID:           parts[0],
+		AuthorName:         parts[1],
+		AuthorEmail:        parts[2],
+		AuthorTimestamp:    authorTS,
+		CommitterName:      parts[4],
+		CommitterEmail:     parts[5],
+		CommitterTimestamp: committerTS,
+		Message:            parts[7],
+		Branch:             displayRef(parts[8]),
+	}, true
+}
+
+func parseRawDestination(line string) (hash, path string, ok bool) {
+	meta, paths, found := strings.Cut(line, "\t")
+	if !found {
+		return "", "", false
+	}
+	fields := strings.Fields(meta)
+	if len(fields) < 5 {
+		return "", "", false
+	}
+	// A combined merge line starts with "::" and carries one hash per parent
+	// plus the result. The result is the last hash.
+	if strings.HasPrefix(fields[0], "::") {
+		for _, field := range fields {
+			if fullBlobHash(field) {
+				hash = field
+			}
+		}
+		if hash == "" {
+			return "", "", false
+		}
+	} else {
+		hash = fields[3]
+		if !fullBlobHash(hash) {
+			return "", "", false
+		}
+	}
+	if i := strings.LastIndex(paths, "\t"); i >= 0 {
+		paths = paths[i+1:]
+	}
+	return hash, unquoteGitPath(paths), true
+}
+
+func fullBlobHash(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	nonzero := false
+	for _, c := range s {
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f':
+			if c != '0' {
+				nonzero = true
+			}
+		default:
+			return false
+		}
+	}
+	return nonzero
+}
+
+func unquoteGitPath(path string) string {
+	if len(path) < 2 || path[0] != '"' {
+		return path
+	}
+	s, err := strconv.Unquote(path)
+	if err != nil {
+		return path
+	}
+	return s
+}
+
+func preferDefaultBranch(commitID, source, defaultName string, onDefault map[string]struct{}) string {
+	if defaultName != "" {
+		if _, ok := onDefault[commitID]; ok {
+			return defaultName
+		}
+	}
+	return source
+}
+
+func defaultBranchCommits(ctx context.Context, repoPath string) (string, map[string]struct{}) {
+	refCmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "origin/HEAD")
+	refCmd.Dir = repoPath
+	out, err := refCmd.Output()
+	if err != nil {
+		return "", nil
+	}
+	ref := strings.TrimSpace(string(out))
+	remote, name, ok := strings.Cut(ref, "/")
+	if !ok || remote == "" || name == "" || name == "HEAD" {
+		return "", nil
+	}
+
+	list := exec.CommandContext(ctx, "git", "rev-list", ref)
+	list.Dir = repoPath
+	stdout, err := list.StdoutPipe()
+	if err != nil {
+		return "", nil
+	}
+	if err := list.Start(); err != nil {
+		return "", nil
+	}
+	set := make(map[string]struct{})
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		hash := scanner.Text()
+		if len(hash) == 40 {
+			set[hash] = struct{}{}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		_ = list.Wait()
+		return "", nil
+	}
+	if err := list.Wait(); err != nil {
+		return "", nil
+	}
+	return name, set
+}
+
+func displayRef(ref string) string {
+	switch {
+	case strings.HasPrefix(ref, "refs/heads/"):
+		return strings.TrimPrefix(ref, "refs/heads/")
+	case strings.HasPrefix(ref, "refs/remotes/"):
+		rest := strings.TrimPrefix(ref, "refs/remotes/")
+		if _, after, ok := strings.Cut(rest, "/"); ok {
+			return after
+		}
+	case strings.HasPrefix(ref, "refs/tags/"):
+		return strings.TrimPrefix(ref, "refs/tags/")
+	}
+	if ref == "HEAD" {
+		return ""
+	}
+	return ref
 }
