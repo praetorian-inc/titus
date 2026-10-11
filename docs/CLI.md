@@ -3,7 +3,7 @@
 # titus CLI reference
 
 Every command, alias and flag below is derived from the cobra command tree, not from prose.
-Schema version 1, surface hash `sha256:4d4da820671766fd35b8066eb3ac71db3ec866e2d13330488d29d7af05f8c5e5`.
+Schema version 1, surface hash `sha256:c70ecebb12298bda984002a9af12acc57402a35d6bcc8d663289a8ea6cc4483f`.
 
 Regenerate with `make cli-docs` after adding, removing or renaming a command or a flag.
 
@@ -1011,6 +1011,7 @@ Scan a target for secrets
 | Flag | Short | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `--accessibility` |  | string | `auto` | code accessibility: "public" (no penalty), "private" (-25 to all scores), or "auto" (detect via git remote/GitHub API, defaults to private if undetermined) |
+| `--ami` |  | bool | `false` | Treat target as an Amazon Machine Image (AMI ID or raw disk image) |
 | `--asana-attachment-max-size` |  | int64 | `52428800` | Maximum Asana attachment size in bytes to download |
 | `--asana-concurrency` |  | int | `0` | Number of workers processing tasks within a project (0 = use default of 5) |
 | `--asana-include-attachments` |  | bool | `false` | Download and scan Asana-hosted file attachments |
@@ -1031,6 +1032,7 @@ Scan a target for secrets
 | `--max-file-size` |  | int64 | `10485760` | Maximum file size to scan (bytes) |
 | `--output` |  | string | `titus.ds` | Output datastore path (:memory: for in-memory, :auto: to derive from target name) |
 | `--readers` |  | int | `0` | Number of parallel file readers (0 = NumCPU) |
+| `--region` |  | string |  | AWS region for AMI scans (ami://region/ami-id overrides this; otherwise the SDK default) |
 | `--rules` |  | string |  | Path to custom rules file or directory |
 | `--rules-exclude` |  | string |  | Exclude rules matching regex pattern (comma-separated) |
 | `--rules-include` |  | string |  | Include rules matching regex pattern (comma-separated) |

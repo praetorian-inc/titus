@@ -224,6 +224,16 @@ func TestResolveAutoOutput(t *testing.T) {
 			target:   "docker://registry.example.com/team/app:1.2.3",
 			expected: "registry.example.com_team_app_1.2.3.ds",
 		},
+		{
+			name:     "ami url with region",
+			target:   "ami://us-west-2/ami-0123456789abcdef0",
+			expected: "us-west-2_ami-0123456789abcdef0.ds",
+		},
+		{
+			name:     "ami url without region",
+			target:   "ami://ami-0123456789abcdef0",
+			expected: "ami-0123456789abcdef0.ds",
+		},
 	}
 
 	for _, tt := range tests {
@@ -238,6 +248,33 @@ func TestDockerAutoOutputName(t *testing.T) {
 	assert.Equal(t, "alpine_latest.ds", dockerAutoOutputName("alpine:latest"))
 	assert.Equal(t, "registry.example.com_team_app_1.2.3.ds", dockerAutoOutputName("docker://registry.example.com/team/app:1.2.3"))
 	assert.Equal(t, "registry.example.com_team_app.ds", dockerAutoOutputName("registry.example.com/team/app@sha256:abc123"))
+}
+func TestResolveSpecialTargetAMI(t *testing.T) {
+	_, ami, isDocker, isAMI, err := resolveSpecialTarget("ami://us-east-1/ami-0123456789abcdef0", false, false)
+	require.NoError(t, err)
+	assert.True(t, isAMI)
+	assert.False(t, isDocker)
+	assert.Equal(t, "ami-0123456789abcdef0", ami.ImageID)
+	assert.Equal(t, "us-east-1", ami.Region)
+
+	_, ami, _, isAMI, err = resolveSpecialTarget("ami-0123456789abcdef0", false, true)
+	require.NoError(t, err)
+	assert.True(t, isAMI)
+	assert.Equal(t, "ami-0123456789abcdef0", ami.ImageID)
+
+	_, ami, _, isAMI, err = resolveSpecialTarget("./disk.raw", false, true)
+	require.NoError(t, err)
+	assert.True(t, isAMI)
+	assert.Equal(t, "./disk.raw", ami.Path)
+
+	_, _, _, _, err = resolveSpecialTarget("ami://nope", false, false)
+	require.Error(t, err)
+
+	_, _, _, _, err = resolveSpecialTarget("ami://us-east-1/ami-0123456789abcdef0", true, false)
+	require.Error(t, err)
+
+	_, _, _, _, err = resolveSpecialTarget("disk.raw", true, true)
+	require.Error(t, err)
 }
 
 func init() {
