@@ -46,6 +46,7 @@ rulesets:
   - np.browserstack.1 # BrowserStack Access Key
   - np.calendly.1     # Calendly Personal Access Token
   - np.codeclimate.1  # CodeClimate
+  - np.coveo.1        # Coveo API Key
   - np.cratesio.1     # crates.io API Key
   - np.cypress.1      # Cypress Record Key
   - np.databricks.1   # Databricks Personal Access Token
