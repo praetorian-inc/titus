@@ -43,7 +43,7 @@ func TestFreshdeskValidator_Validate_Valid(t *testing.T) {
 		assert.Equal(t, "/api/v2/agents/me", r.URL.Path)
 		assert.NotEmpty(t, r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"id":1234,"contact":{"name":"Test Agent"}}`)
+		_, _ = fmt.Fprint(w, `{"id":1234,"contact":{"name":"Test Agent"}}`)
 	}))
 	defer srv.Close()
 
@@ -75,7 +75,7 @@ func TestFreshdeskValidator_Validate_NoDomain(t *testing.T) {
 	v := NewFreshdeskValidator()
 	match := &types.Match{
 		RuleID: "kingfisher.freshdesk.2",
-		Groups: [][]byte{nil, []byte("ABCDEFGHIJ1234567890")},
+		Groups: [][]byte{[]byte("ABCDEFGHIJ1234567890")},
 		Snippet: types.Snippet{
 			Before:   []byte("FRESHDESK_API_KEY="),
 			Matching: []byte("ABCDEFGHIJ1234567890"),
@@ -133,7 +133,7 @@ func freshdeskMatch(apiKey, serverURL string) *types.Match {
 	domain := "acme-support.freshdesk.com"
 	return &types.Match{
 		RuleID: "kingfisher.freshdesk.2",
-		Groups: [][]byte{nil, []byte(apiKey)},
+		Groups: [][]byte{[]byte(apiKey)},
 		Snippet: types.Snippet{
 			Before:   []byte(fmt.Sprintf("FRESHDESK_URL=https://%s\nFRESHDESK_API_KEY=", domain)),
 			Matching: []byte(apiKey),

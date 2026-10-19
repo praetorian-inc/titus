@@ -1,21 +1,5 @@
 validators:
 
-- name: posthog-project-api-key
-  rule_ids:
-    - kingfisher.posthog.1
-  http:
-    method: POST
-    url: "https://us.i.posthog.com/decide/?v=3"
-    fallback_urls:
-      - "https://eu.i.posthog.com/decide/?v=3"
-    headers:
-      - name: "Content-Type"
-        value: "application/json"
-    body: '{"api_key": "{{ token }}", "distinct_id": "titus_validation"}'
-    success_codes: [200]
-    failure_codes: [401, 403]
-    failure_body_contains: "Invalid"
-
 - name: posthog-personal-api-key
   rule_ids:
     - kingfisher.posthog.2
@@ -26,7 +10,7 @@ validators:
       - "https://eu.posthog.com/api/users/@me/"
     auth:
       type: bearer
-      secret_group: "token"
+      secret_group: "1"
     headers:
       - name: "Content-Type"
         value: "application/json"

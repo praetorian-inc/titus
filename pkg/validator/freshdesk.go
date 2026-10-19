@@ -13,8 +13,8 @@ import (
 )
 
 var freshdeskDomainPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`https?://([a-z0-9][a-z0-9\-]{0,62}\.freshdesk\.com)`),
-	regexp.MustCompile(`\b([a-z0-9][a-z0-9\-]{0,62}\.freshdesk\.com)\b`),
+	regexp.MustCompile(`(?i)https?://([a-z0-9][a-z0-9\-]{0,62}\.freshdesk\.com)`),
+	regexp.MustCompile(`(?i)\b([a-z0-9][a-z0-9\-]{0,62}\.freshdesk\.com)\b`),
 }
 
 type FreshdeskValidator struct {
@@ -73,8 +73,10 @@ func (v *FreshdeskValidator) validateAgainst(ctx context.Context, match *types.M
 	switch resp.StatusCode {
 	case http.StatusOK:
 		return types.NewValidationResult(types.StatusValid, 1.0, fmt.Sprintf("valid Freshdesk API key for %s", baseURL)), nil
-	case http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusUnauthorized:
 		return types.NewValidationResult(types.StatusInvalid, 1.0, fmt.Sprintf("credentials rejected: HTTP %d", resp.StatusCode)), nil
+	case http.StatusForbidden:
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("access denied: HTTP %d (valid key may lack permissions)", resp.StatusCode)), nil
 	default:
 		return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("unexpected status: HTTP %d", resp.StatusCode)), nil
 	}
@@ -88,8 +90,8 @@ func extractNamedGroup(match *types.Match, names ...string) string {
 			}
 		}
 	}
-	if len(match.Groups) > 1 && len(match.Groups[1]) > 0 {
-		return string(match.Groups[1])
+	if len(match.Groups) > 0 && len(match.Groups[0]) > 0 {
+		return string(match.Groups[0])
 	}
 	return ""
 }
