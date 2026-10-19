@@ -1,23 +1,7 @@
 validators:
-  - name: msteams-webhook-legacy
-    rule_ids:
-      - np.msteams.1
-    http:
-      method: POST
-      url: "{{webhook}}"
-      auth:
-        type: none
-        secret_group: "webhook"
-      headers:
-        - name: Content-Type
-          value: application/json
-      body: '{"text":""}'
-      success_codes: [400]
-      failure_codes: [404]
-      success_body_contains: "Text is required"
-
   - name: msteams-webhook
     rule_ids:
+      - np.msteams.1
       - kingfisher.microsoftteamswebhook.1
     http:
       method: POST

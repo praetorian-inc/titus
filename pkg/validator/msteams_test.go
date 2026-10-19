@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -34,8 +35,11 @@ func TestMSTeamsWebhook_Legacy_Valid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, `{"text":""}`, string(body))
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Text is required"))
+		_, _ = w.Write([]byte("Text is required"))
 	}))
 	defer server.Close()
 
@@ -73,8 +77,11 @@ func TestMSTeamsWebhook_Kingfisher_Valid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, `{"text":""}`, string(body))
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Text is required"))
+		_, _ = w.Write([]byte("Text is required"))
 	}))
 	defer server.Close()
 
@@ -130,7 +137,7 @@ func TestMSTeamsWebhook_CanValidate(t *testing.T) {
 func TestMSTeamsWebhook_BodyContainsCheck(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Something else entirely"))
+		_, _ = w.Write([]byte("Something else entirely"))
 	}))
 	defer server.Close()
 
