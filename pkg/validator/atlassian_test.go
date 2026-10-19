@@ -19,13 +19,15 @@ func TestAtlassianValidator_Name(t *testing.T) {
 func TestAtlassianValidator_CanValidate(t *testing.T) {
 	v := NewAtlassianValidator()
 
-	// Atlassian rule
+	// Atlassian rules
 	assert.True(t, v.CanValidate("np.atlassian.1"))
+	assert.True(t, v.CanValidate("kingfisher.jira.2"))
 
 	// Non-Atlassian rules
 	assert.False(t, v.CanValidate("np.github.1"))
 	assert.False(t, v.CanValidate("np.aws.1"))
 	assert.False(t, v.CanValidate("np.zendesk.1"))
+	assert.False(t, v.CanValidate("kingfisher.jira.1"))
 }
 
 func TestAtlassianValidator_ExtractCredentials_TokenFromNamedGroups(t *testing.T) {
@@ -324,6 +326,89 @@ func TestAtlassianValidator_Validate_PartialCredentials(t *testing.T) {
 			Before:   []byte("email = 'info@example.com'\n"),
 			Matching: []byte("api_token = 'ATATT3xFfGF0testEXAMPLEshort=ZZZZZZZZ'"),
 			After:    []byte("# no atlassian domain in context\n"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "cannot validate")
+}
+
+func TestAtlassianValidator_Validate_JiraToken_Valid(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username, password, ok := r.BasicAuth()
+		assert.True(t, ok, "Basic auth should be present")
+		assert.Equal(t, "dev@company.com", username)
+		assert.Equal(t, "VDOheDe1sSCeGkuTARhkFDE2", password)
+		assert.Equal(t, "/rest/api/3/myself", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	v := NewAtlassianValidatorWithClient(&http.Client{
+		Transport: &testTransport{url: server.URL},
+	})
+
+	match := &types.Match{
+		RuleID: "kingfisher.jira.2",
+		NamedGroups: map[string][]byte{
+			"token": []byte("VDOheDe1sSCeGkuTARhkFDE2"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("JIRA_USER=\"dev@company.com\"\n"),
+			Matching: []byte("JIRA_PASSWORD=\"VDOheDe1sSCeGkuTARhkFDE2\""),
+			After:    []byte("\nJIRA_HOST=https://myteam.atlassian.net\n"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusValid, result.Status)
+	assert.Equal(t, 1.0, result.Confidence)
+	assert.Contains(t, result.Message, "myteam.atlassian.net")
+}
+
+func TestAtlassianValidator_Validate_JiraToken_Invalid(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	v := NewAtlassianValidatorWithClient(&http.Client{
+		Transport: &testTransport{url: server.URL},
+	})
+
+	match := &types.Match{
+		RuleID: "kingfisher.jira.2",
+		NamedGroups: map[string][]byte{
+			"token": []byte("VDOheDe1sSCeGkuTARhkFDE2"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("JIRA_USER=\"dev@company.com\"\n"),
+			Matching: []byte("JIRA_PASSWORD=\"VDOheDe1sSCeGkuTARhkFDE2\""),
+			After:    []byte("\nJIRA_HOST=https://myteam.atlassian.net\n"),
+		},
+	}
+
+	result, err := v.Validate(context.Background(), match)
+	assert.NoError(t, err)
+	assert.Equal(t, types.StatusInvalid, result.Status)
+	assert.Contains(t, result.Message, "401")
+}
+
+func TestAtlassianValidator_Validate_JiraToken_NoDomain(t *testing.T) {
+	v := NewAtlassianValidator()
+
+	match := &types.Match{
+		RuleID: "kingfisher.jira.2",
+		NamedGroups: map[string][]byte{
+			"token": []byte("VDOheDe1sSCeGkuTARhkFDE2"),
+		},
+		Snippet: types.Snippet{
+			Before:   []byte("JIRA_USER=\"dev@company.com\"\n"),
+			Matching: []byte("JIRA_PASSWORD=\"VDOheDe1sSCeGkuTARhkFDE2\""),
+			After:    []byte("\n"),
 		},
 	}
 
