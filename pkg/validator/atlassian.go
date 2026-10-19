@@ -52,7 +52,7 @@ func (v *AtlassianValidator) Name() string {
 
 // CanValidate returns true for Atlassian-related rule IDs.
 func (v *AtlassianValidator) CanValidate(ruleID string) bool {
-	return ruleID == "np.atlassian.1"
+	return ruleID == "np.atlassian.1" || ruleID == "kingfisher.jira.2"
 }
 
 // Validate checks Atlassian credentials against the Jira REST API.
