@@ -28,8 +28,10 @@ func runJiraCassetteCase(t *testing.T, cassette string, want types.ValidationSta
 		if _, err := os.Stat(cassetteFile); os.IsNotExist(err) {
 			t.Skipf(
 				"cassette not recorded yet; run:\n"+
-					"  SECRET_PLAINTEXT=<token> JIRA_EMAIL=<email> JIRA_DOMAIN=<org>.atlassian.net "+
-					"RECORD=1 go test ./pkg/validator/ -run Test_jira_",
+					"  SECRET_PLAINTEXT=<valid-token> JIRA_EMAIL=<email> JIRA_DOMAIN=<org>.atlassian.net "+
+					"RECORD=1 go test ./pkg/validator/ -run Test_jira_Valid\n"+
+					"  SECRET_PLAINTEXT=<invalid-token> JIRA_EMAIL=<email> JIRA_DOMAIN=<org>.atlassian.net "+
+					"RECORD=1 go test ./pkg/validator/ -run Test_jira_Invalid",
 			)
 		}
 	}
@@ -70,7 +72,11 @@ func runJiraCassetteCase(t *testing.T, cassette string, want types.ValidationSta
 		},
 	}
 
-	client := vcrtest.Client(t, cassette)
+	var opts []vcrtest.Option
+	if isRecording && domain != "example.atlassian.net" {
+		opts = append(opts, vcrtest.WithExtraRedactions([2]string{domain, "example.atlassian.net"}))
+	}
+	client := vcrtest.Client(t, cassette, opts...)
 	v := NewAtlassianValidatorWithClient(client)
 
 	result, err := v.Validate(context.Background(), match)
