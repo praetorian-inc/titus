@@ -9,16 +9,22 @@ LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 # Vectorscan/Hyperscan acceleration (default: enabled)
 # Override with CGO_ENABLED=0 or make build-pure for pure-Go fallback
 CGO_ENABLED ?= 1
-GO_TAGS ?= vectorscan
+# netgo/osusergo drop the cgo (glibc) DNS and user resolvers from the binary.
+# The static release builds (-extldflags "-static") cannot use them safely:
+# getaddrinfo/getpwnam in a statically linked glibc process can SIGSEGV on NSS
+# lookups (golang/go#30310, sourceware#19341). Vectorscan keeps CGO; the tags
+# only select Go's built-in resolvers.
+GO_TAGS ?= vectorscan netgo osusergo
 
 # Clear vectorscan tag when CGO is disabled (vectorscan requires CGO)
 ifeq ($(CGO_ENABLED),0)
   GO_TAGS :=
 endif
 
-# Build -tags flag (empty when GO_TAGS is empty to avoid bare "-tags" argument)
+# Build -tags flag (empty when GO_TAGS is empty to avoid bare "-tags" argument;
+# quoted so a space-separated tag list reaches go as a single argument)
 ifneq ($(GO_TAGS),)
-  TAGS_FLAG := -tags $(GO_TAGS)
+  TAGS_FLAG := -tags "$(GO_TAGS)"
 else
   TAGS_FLAG :=
 endif
