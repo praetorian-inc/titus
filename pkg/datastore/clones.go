@@ -149,6 +149,15 @@ func (c *CloneCache) clonePath(repoURL string) (string, error) {
 		path = strings.TrimPrefix(parsed.Path, "/")
 	}
 
+	if err := validateCloneHost(host); err != nil {
+		return "", err
+	}
+	for seg := range strings.SplitSeq(path, "/") {
+		if seg == ".." {
+			return "", fmt.Errorf("invalid repository URL (path traversal): %s", repoURL)
+		}
+	}
+
 	// Strip .git suffix if present
 	path = strings.TrimSuffix(path, ".git")
 
@@ -157,8 +166,28 @@ func (c *CloneCache) clonePath(repoURL string) (string, error) {
 
 	// Construct full cache path
 	cachePath := filepath.Join(c.Root, host, path)
+	if !isStrictlyWithin(c.Root, cachePath) {
+		return "", fmt.Errorf("invalid repository URL (escapes clone cache): %s", repoURL)
+	}
 
 	return cachePath, nil
+}
+
+// validateCloneHost rejects hosts that would steer the cache path outside its host directory.
+func validateCloneHost(host string) error {
+	if host == "" || host == "." || host == ".." || strings.ContainsAny(host, `/\`) {
+		return fmt.Errorf("invalid repository host: %q", host)
+	}
+	return nil
+}
+
+// isStrictlyWithin reports whether target is inside root and is not root itself.
+func isStrictlyWithin(root, target string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(target))
+	if err != nil || rel == "." || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // isLocalPath checks if the path is a local filesystem path.

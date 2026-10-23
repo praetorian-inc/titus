@@ -29,6 +29,23 @@ type GitProvenance struct {
 	RepoPath string
 	Commit   *CommitMetadata // nil if not tracking commit info
 	BlobPath string          // path within repo at commit
+
+	// RepoRoot is the absolute working-tree root of the scanned repository.
+	RepoRoot string `json:",omitempty"`
+	// RemoteIdentity is true when RepoPath is a normalized remote identity
+	// (host/owner/repo) rather than a local folder.
+	RemoteIdentity bool `json:",omitempty"`
+	// Locations lists every location of the blob in this repository. When
+	// empty, the primary location (BlobPath, Commit) is the only one.
+	Locations []GitLocation `json:",omitempty"`
+}
+
+// GitLocation is one location of a blob within a repository: its path at its
+// earliest-seen commit, or its path in the working tree.
+type GitLocation struct {
+	Path        string
+	Commit      *CommitMetadata // nil for working-tree locations
+	WorkingTree bool
 }
 
 // Kind returns "git".
