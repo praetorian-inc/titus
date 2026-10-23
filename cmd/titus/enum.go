@@ -105,6 +105,9 @@ func runEnumScan(cmd *cobra.Command, enumerator enum.Enumerator, service string)
 		if err != nil {
 			return fmt.Errorf("matching content: %w", err)
 		}
+		if err := storeLocations(s, blobID, prov, len(matches) > 0); err != nil {
+			return err
+		}
 
 		for _, match := range matches {
 			startLine, startCol := types.ComputeLineColumn(content, int(match.Location.Offset.Start))
@@ -158,7 +161,7 @@ func runEnumScan(cmd *cobra.Command, enumerator enum.Enumerator, service string)
 		if err != nil {
 			return fmt.Errorf("retrieving matches: %w", err)
 		}
-		return outputMatches(cmd, matches)
+		return outputMatches(cmd, s, matches)
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s scan complete: %d matches, %d findings\n", service, matchCount, findingCount)

@@ -1,17 +1,29 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
+	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
+	"github.com/praetorian-inc/titus/pkg/sarif"
+	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestScanCommand_Exists(t *testing.T) {
@@ -438,4 +450,587 @@ func TestLoadRules_CustomRuleMissingBaseScore_Rejected(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for custom rule missing base_score, got nil")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// ENG-9178: every location of a matched blob in scan output
+// ---------------------------------------------------------------------------
+
+const (
+	locTestRuleID = "test.locations.1"
+	locTestSecret = "token: synthetic_1_AbCd1234\n"
+)
+
+// scanJSONMatchForTest is the subset of one `titus scan --format json` element that
+// the location tests read.
+type scanJSONMatchForTest struct {
+	RuleID    string
+	Locations []jsonLocation `json:"locations"`
+}
+
+// scanForTest runs `titus scan <target>` through runScan with only the
+// synthetic location rule enabled and returns stdout. Every scan global it
+// sets is restored when the test ends.
+func scanForTest(t *testing.T, target, output, format string, git bool) []byte {
+	t.Helper()
+	rulesFile := filepath.Join(t.TempDir(), "rules.yml")
+	writeRulesYAML(t, rulesFile, []ruleStub{{ID: locTestRuleID, BaseScore: 50}})
+
+	origRules, origInclude, origExclude := scanRulesPath, scanRulesInclude, scanRulesExclude
+	origRuleset, origOutput, origFormat, origGit := scanRuleset, scanOutputPath, scanOutputFormat, scanGit
+	origIgnore, origAccess := scanIgnoreFile, scanAccessibility
+	t.Cleanup(func() {
+		scanRulesPath, scanRulesInclude, scanRulesExclude = origRules, origInclude, origExclude
+		scanRuleset, scanOutputPath, scanOutputFormat, scanGit = origRuleset, origOutput, origFormat, origGit
+		scanIgnoreFile, scanAccessibility = origIgnore, origAccess
+	})
+	scanRulesPath = rulesFile
+	scanRulesInclude = `^test\.locations\.`
+	scanRulesExclude = ""
+	scanRuleset = "default"
+	scanOutputPath = output
+	scanOutputFormat = format
+	scanGit = git
+	scanIgnoreFile = ""
+	scanAccessibility = "private"
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	cmd.SetErr(io.Discard)
+	cmd.SetContext(context.Background())
+	require.NoError(t, runScan(cmd, []string{target}))
+	return out.Bytes()
+}
+
+// scanJSONMatches decodes `titus scan --format json` stdout.
+func scanJSONMatches(t *testing.T, out []byte) []scanJSONMatchForTest {
+	t.Helper()
+	var got []scanJSONMatchForTest
+	require.NoError(t, json.Unmarshal(out, &got), "scan stdout must be a JSON array: %s", out)
+	return got
+}
+
+func writeFileForTest(t *testing.T, path, content string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+// gitForTest runs git in dir with a fixed identity and fixed dates, isolated
+// from the user's git config, so identical trees give identical commits.
+func gitForTest(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=Titus Test", "GIT_AUTHOR_EMAIL=test@example.invalid",
+		"GIT_COMMITTER_NAME=Titus Test", "GIT_COMMITTER_EMAIL=test@example.invalid",
+		"GIT_AUTHOR_DATE=2024-01-02T03:04:05Z", "GIT_COMMITTER_DATE=2024-01-02T03:04:05Z",
+	)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
+}
+
+// gitRepoForTest creates a repository in dir with one commit holding files.
+func gitRepoForTest(t *testing.T, dir, origin string, files map[string]string) {
+	t.Helper()
+	for name, content := range files {
+		writeFileForTest(t, filepath.Join(dir, name), content)
+	}
+	gitForTest(t, dir, "init", "-q", "-b", "main")
+	if origin != "" {
+		gitForTest(t, dir, "remote", "add", "origin", origin)
+	}
+	gitForTest(t, dir, "add", "-A")
+	gitForTest(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "initial")
+}
+
+func locationPaths(locs []jsonLocation) []string {
+	paths := make([]string, len(locs))
+	for i, l := range locs {
+		paths[i] = l.Path
+	}
+	return paths
+}
+
+func strPtr(s string) *string { return &s }
+
+// tempDatastore returns a fresh --output path outside every scanned tree.
+// The tests use a datastore, as `titus scan` does by default, rather than
+// :memory:, because only the datastore deduplicates the matches of a blob
+// seen at several locations.
+func tempDatastore(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "out.ds")
+}
+
+// TestOutputMatches_AddsLocationsKeepsMatchFields covers C-SCANJSON-1 at the
+// encoder: every existing match field is unchanged and the locations key
+// lists every location of the blob.
+func TestOutputMatches_AddsLocationsKeepsMatchFields(t *testing.T) {
+	s := store.NewMemory()
+	blobID := types.ComputeBlobID([]byte(locTestSecret))
+	require.NoError(t, s.AddOccurrences(blobID, []types.Occurrence{
+		{Kind: "file", Path: "a/config.yml", AbsolutePath: "/x/a/config.yml", HostRecorded: true},
+		{Kind: "file", Path: "b/config.yml", AbsolutePath: "/x/b/config.yml", HostRecorded: true},
+	}))
+	match := &types.Match{
+		BlobID: blobID, StructuralID: "sid", FindingID: "fid", RuleID: locTestRuleID, RuleName: "Synthetic Rule 1",
+		Location: types.Location{Source: types.SourceSpan{
+			Start: types.SourcePoint{Line: 1, Column: 8}, End: types.SourcePoint{Line: 1, Column: 28},
+		}},
+		Groups:  [][]byte{[]byte("synthetic_1_AbCd1234")},
+		Snippet: types.Snippet{Matching: []byte("synthetic_1_AbCd1234")},
+	}
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	require.NoError(t, outputMatches(cmd, s, []*types.Match{match}))
+
+	var got []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	require.Len(t, got, 1)
+
+	var locs []jsonLocation
+	require.NoError(t, json.Unmarshal(got[0]["locations"], &locs))
+	assert.Equal(t, []string{"a/config.yml", "b/config.yml"}, locationPaths(locs))
+	assert.Equal(t, strPtr("/x/a/config.yml"), locs[0].AbsolutePath)
+	assert.Nil(t, locs[0].Repository)
+	assert.Equal(t, 1, locs[0].Range.Start.Line)
+	assert.Equal(t, 8, locs[0].Range.Start.Column)
+
+	// Compare decoded values, so the encoder's indentation does not count.
+	var gotFields []map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &gotFields))
+	delete(gotFields[0], "locations")
+	raw, err := json.Marshal(match)
+	require.NoError(t, err)
+	var want map[string]any
+	require.NoError(t, json.Unmarshal(raw, &want))
+	assert.Equal(t, want, gotFields[0], "existing match fields must be unchanged")
+}
+
+// TestOutputMatches_NoLocationIsEmptyArray: a blob with no recorded location
+// still gets a locations key, as [] rather than null.
+func TestOutputMatches_NoLocationIsEmptyArray(t *testing.T) {
+	s := store.NewMemory()
+	match := &types.Match{BlobID: types.ComputeBlobID([]byte("x")), RuleID: locTestRuleID}
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	require.NoError(t, outputMatches(cmd, s, []*types.Match{match}))
+
+	var got []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	require.Len(t, got, 1)
+	assert.JSONEq(t, `[]`, string(got[0]["locations"]))
+}
+
+// sarifDocForTest is the subset of a SARIF log the location tests read.
+type sarifDocForTest struct {
+	Runs []struct {
+		Results []struct {
+			Locations []struct {
+				PhysicalLocation struct {
+					ArtifactLocation struct {
+						URI string `json:"uri"`
+					} `json:"artifactLocation"`
+					Region struct {
+						StartLine int `json:"startLine"`
+					} `json:"region"`
+				} `json:"physicalLocation"`
+			} `json:"locations"`
+			Properties struct {
+				Repository string `json:"repository"`
+			} `json:"properties"`
+		} `json:"results"`
+	} `json:"runs"`
+}
+
+// TestOutputSARIF_OneResultPerLocation covers C-SARIF-1 through scan's
+// SARIF route: 3 locations give 3 results, each naming its repository.
+func TestOutputSARIF_OneResultPerLocation(t *testing.T) {
+	s := store.NewMemory()
+	blobID := types.ComputeBlobID([]byte(locTestSecret))
+	require.NoError(t, s.AddOccurrences(blobID, []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaa", HostRecorded: true},
+		{Kind: "git", Repository: "github.com/acme/web", Path: "config.yml", Commit: "bbbb", HostRecorded: true},
+		{Kind: "git", Repository: "github.com/acme/api", Path: "deploy/config.yml", Commit: "cccc", HostRecorded: true},
+	}))
+	match := &types.Match{BlobID: blobID, RuleID: locTestRuleID, RuleName: "Synthetic Rule 1",
+		Location: types.Location{Source: types.SourceSpan{
+			Start: types.SourcePoint{Line: 3, Column: 1}, End: types.SourcePoint{Line: 3, Column: 20},
+		}}}
+	rules := []*types.Rule{{ID: locTestRuleID, Name: "Synthetic Rule 1", StructuralID: "rsid"}}
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	require.NoError(t, outputSARIF(cmd, s, rules, []*types.Match{match}))
+
+	var doc sarifDocForTest
+	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
+	require.Len(t, doc.Runs, 1)
+	results := doc.Runs[0].Results
+	require.Len(t, results, 3)
+
+	var uris, pairs []string
+	for _, r := range results {
+		require.Len(t, r.Locations, 1)
+		uri := r.Locations[0].PhysicalLocation.ArtifactLocation.URI
+		assert.Equal(t, 3, r.Locations[0].PhysicalLocation.Region.StartLine)
+		assert.NotEmpty(t, r.Properties.Repository, "each result names its repository")
+		uris = append(uris, uri)
+		pairs = append(pairs, r.Properties.Repository+" "+uri)
+	}
+	assert.ElementsMatch(t, []string{"config.yml", "config.yml", "deploy/config.yml"}, uris)
+	assert.ElementsMatch(t, []string{
+		"github.com/acme/api config.yml",
+		"github.com/acme/web config.yml",
+		"github.com/acme/api deploy/config.yml",
+	}, pairs)
+}
+
+// TestSARIFOccurrence_SourceSeparatesResults: two extended locations that
+// differ only by source get distinct location fingerprints and each result
+// names its source.
+func TestSARIFOccurrence_SourceSeparatesResults(t *testing.T) {
+	match := &types.Match{BlobID: types.ComputeBlobID([]byte(locTestSecret)), RuleID: locTestRuleID}
+	report := sarif.NewReport()
+	report.AddResultForOccurrence(match, types.Occurrence{Kind: "extended", Source: "confluence", Path: "page/1"}, nil)
+	report.AddResultForOccurrence(match, types.Occurrence{Kind: "extended", Source: "jira", Path: "page/1"}, nil)
+
+	results := report.Runs[0].Results
+	require.Len(t, results, 2)
+	assert.NotEqual(t,
+		results[0].PartialFingerprints[sarif.LocationFingerprintKey],
+		results[1].PartialFingerprints[sarif.LocationFingerprintKey])
+
+	raw, err := report.ToJSON()
+	require.NoError(t, err)
+	var doc struct {
+		Runs []struct {
+			Results []struct {
+				Properties map[string]any `json:"properties"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	assert.Equal(t, "confluence", doc.Runs[0].Results[0].Properties["source"])
+	assert.Equal(t, "jira", doc.Runs[0].Results[1].Properties["source"])
+
+	report = sarif.NewReport()
+	report.AddResultForOccurrence(match, types.Occurrence{Kind: "file", Path: "a.yml"}, nil)
+	raw, err = report.ToJSON()
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), `"source"`, "source is omitted when empty")
+}
+
+// TestScanE2E_JSONListsEveryLocation covers C-SCANJSON-1 end to end:
+// `titus scan . --format json` over two identical files gives one match whose
+// locations name both files.
+func TestScanE2E_JSONListsEveryLocation(t *testing.T) {
+	dir := t.TempDir()
+	writeFileForTest(t, filepath.Join(dir, "a", "config.yml"), locTestSecret)
+	writeFileForTest(t, filepath.Join(dir, "b", "config.yml"), locTestSecret)
+	t.Chdir(dir)
+
+	got := scanJSONMatches(t, scanForTest(t, ".", tempDatastore(t), "json", false))
+	require.Len(t, got, 1)
+	assert.Equal(t, locTestRuleID, got[0].RuleID)
+	assert.Equal(t, []string{"a/config.yml", "b/config.yml"}, locationPaths(got[0].Locations))
+}
+
+// TestScanE2E_SARIFOneResultPerFile: scan's SARIF route reports each
+// identical file as its own result.
+func TestScanE2E_SARIFOneResultPerFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFileForTest(t, filepath.Join(dir, "a", "config.yml"), locTestSecret)
+	writeFileForTest(t, filepath.Join(dir, "b", "config.yml"), locTestSecret)
+	t.Chdir(dir)
+
+	var doc sarifDocForTest
+	require.NoError(t, json.Unmarshal(scanForTest(t, ".", tempDatastore(t), "sarif", false), &doc))
+	require.Len(t, doc.Runs, 1)
+	var uris []string
+	for _, r := range doc.Runs[0].Results {
+		require.Len(t, r.Locations, 1)
+		uris = append(uris, r.Locations[0].PhysicalLocation.ArtifactLocation.URI)
+	}
+	assert.Equal(t, []string{"a/config.yml", "b/config.yml"}, uris)
+}
+
+// TestScanE2E_PlainFolderLocation covers C-NOREMOTE-2: `titus scan e/f` over
+// a plain folder gives repository null and the path as typed.
+func TestScanE2E_PlainFolderLocation(t *testing.T) {
+	dir := t.TempDir()
+	writeFileForTest(t, filepath.Join(dir, "e", "f", "g", "h", "config.yml"), locTestSecret)
+	t.Chdir(dir)
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	got := scanJSONMatches(t, scanForTest(t, "e/f", tempDatastore(t), "json", false))
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Locations, 1)
+	loc := got[0].Locations[0]
+	assert.Nil(t, loc.Repository)
+	assert.Equal(t, "e/f/g/h/config.yml", loc.Path)
+	assert.Equal(t, strPtr(filepath.Join(cwd, "e", "f", "g", "h", "config.yml")), loc.AbsolutePath)
+	assert.Nil(t, loc.Commit)
+	assert.True(t, loc.HostRecorded)
+}
+
+// TestScanE2E_TwoFoldersOneDatastore covers C-FOLDERS-1: identical
+// config.yml in two folders, each scanned with `titus scan .` into one
+// datastore, gives two locations separated by their absolute paths.
+func TestScanE2E_TwoFoldersOneDatastore(t *testing.T) {
+	root := t.TempDir()
+	shared := filepath.Join(root, "shared.ds")
+	one, two := filepath.Join(root, "one"), filepath.Join(root, "two")
+	writeFileForTest(t, filepath.Join(one, "config.yml"), locTestSecret)
+	writeFileForTest(t, filepath.Join(two, "config.yml"), locTestSecret)
+
+	t.Chdir(one)
+	cwdOne, err := os.Getwd()
+	require.NoError(t, err)
+	scanForTest(t, ".", shared, "json", false)
+
+	t.Chdir(two)
+	cwdTwo, err := os.Getwd()
+	require.NoError(t, err)
+	got := scanJSONMatches(t, scanForTest(t, ".", shared, "json", false))
+
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Locations, 2)
+	for i, wantAbs := range []string{filepath.Join(cwdOne, "config.yml"), filepath.Join(cwdTwo, "config.yml")} {
+		assert.Equal(t, "config.yml", got[0].Locations[i].Path)
+		assert.Equal(t, strPtr(wantAbs), got[0].Locations[i].AbsolutePath)
+	}
+}
+
+// TestScanE2E_TwoGitFoldersOneDatastore covers C-FOLDERS-2: identical
+// remote-less repositories (identical commits) scanned with --git into one
+// datastore give two locations. Only the repository's absolute root
+// separates them, and the git enumerator records it from T004 on; today the
+// scan yields one location.
+func TestScanE2E_TwoGitFoldersOneDatastore(t *testing.T) {
+	t.Skip("needs T004")
+	root := t.TempDir()
+	shared := filepath.Join(root, "shared.ds")
+	for _, name := range []string{"one", "two"} {
+		gitRepoForTest(t, filepath.Join(root, name), "", map[string]string{"config.yml": locTestSecret})
+	}
+
+	t.Chdir(filepath.Join(root, "one"))
+	scanForTest(t, ".", shared, "json", true)
+	t.Chdir(filepath.Join(root, "two"))
+	got := scanJSONMatches(t, scanForTest(t, ".", shared, "json", true))
+
+	require.Len(t, got, 1)
+	assert.Len(t, got[0].Locations, 2)
+}
+
+// TestScanE2E_OnlyMatchedBlobsWriteLocationRows: the write hook stores
+// location rows for blobs with at least one match and for no other blob.
+func TestScanE2E_OnlyMatchedBlobsWriteLocationRows(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	writeFileForTest(t, filepath.Join(src, "config.yml"), locTestSecret)
+	writeFileForTest(t, filepath.Join(src, "clean.txt"), "nothing to see here\n")
+	writeFileForTest(t, filepath.Join(src, "other.txt"), "still nothing\n")
+	output := filepath.Join(dir, "out.ds")
+
+	scanForTest(t, src, output, "json", false)
+
+	db, err := sql.Open("sqlite", filepath.Join(output, "datastore.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	var blobs, rows int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM blobs`).Scan(&blobs))
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM blob_locations`).Scan(&rows))
+	assert.Equal(t, 3, blobs, "every scanned blob is stored")
+	assert.Equal(t, 1, rows, "only the matched blob gets a location row")
+
+	var path, abs string
+	require.NoError(t, db.QueryRow(`SELECT path, absolute_path FROM blob_locations`).Scan(&path, &abs))
+	assert.Equal(t, filepath.Join(src, "config.yml"), path)
+	assert.Equal(t, filepath.Join(src, "config.yml"), abs)
+}
+
+// The git-remote cases below need the origin-identity enumerator work
+// (T004). Their assertions are final; remove the Skip to run them.
+
+// TestScanE2E_OriginRemoteMergesWithAPI covers C-CLONEMERGE-1: a local
+// --git scan whose origin is git@github.com:acme/api.git and a GitHub API scan
+// of acme/api name one repository, and config.yml has one location.
+func TestScanE2E_OriginRemoteMergesWithAPI(t *testing.T) {
+	t.Skip("needs T004")
+	root := t.TempDir()
+	shared := filepath.Join(root, "shared.ds")
+	api := filepath.Join(root, "api")
+	content := "name: api\n" + locTestSecret
+	gitRepoForTest(t, api, "git@github.com:acme/api.git", map[string]string{"config.yml": content})
+	t.Chdir(root)
+	scanForTest(t, "./api", shared, "json", true)
+
+	// Stand-in for `titus github acme/api`: the API enumerator records a
+	// commitless occurrence of the same repository and path.
+	s, err := store.New(store.Config{Path: filepath.Join(shared, "datastore.db")})
+	require.NoError(t, err)
+	require.NoError(t, s.AddOccurrences(types.ComputeBlobID([]byte(content)), []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", HostRecorded: true},
+	}))
+	require.NoError(t, s.Close())
+
+	got := scanJSONMatches(t, scanForTest(t, "./api", shared, "json", true))
+	require.Len(t, got, 1)
+	repos := map[string]bool{}
+	configLocs := 0
+	for _, l := range got[0].Locations {
+		require.NotNil(t, l.Repository)
+		repos[*l.Repository] = true
+		if l.Path == "config.yml" {
+			configLocs++
+		}
+	}
+	assert.Equal(t, map[string]bool{"github.com/acme/api": true}, repos)
+	assert.Equal(t, 1, configLocs)
+}
+
+// TestScanE2E_OriginURLNormalized covers C-NORMALIZE-1: three spellings of
+// the same origin all record repository github.com/acme/api.
+func TestScanE2E_OriginURLNormalized(t *testing.T) {
+	t.Skip("needs T004")
+	for _, origin := range []string{
+		"git@github.com:acme/api.git",
+		"https://user:tok@GitHub.com/acme/api.git",
+		"ssh://git@github.com:22/acme/api",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			repo := filepath.Join(t.TempDir(), "api")
+			gitRepoForTest(t, repo, origin, map[string]string{"config.yml": locTestSecret})
+			got := scanJSONMatches(t, scanForTest(t, repo, tempDatastore(t), "json", true))
+			require.Len(t, got, 1)
+			require.NotEmpty(t, got[0].Locations)
+			for _, l := range got[0].Locations {
+				assert.Equal(t, strPtr("github.com/acme/api"), l.Repository)
+			}
+		})
+	}
+}
+
+// TestScanE2E_NoRemoteRepositoryAsTyped covers C-NOREMOTE-1: `titus scan e/f
+// --git` with no remote names the repository e/f and the path g/h/config.yml.
+func TestScanE2E_NoRemoteRepositoryAsTyped(t *testing.T) {
+	t.Skip("needs T004")
+	dir := t.TempDir()
+	gitRepoForTest(t, filepath.Join(dir, "e", "f"), "", map[string]string{"g/h/config.yml": locTestSecret})
+	t.Chdir(dir)
+
+	got := scanJSONMatches(t, scanForTest(t, "e/f", tempDatastore(t), "json", true))
+	require.Len(t, got, 1)
+	committed := 0
+	for _, l := range got[0].Locations {
+		if l.Commit == nil {
+			continue
+		}
+		committed++
+		assert.Equal(t, strPtr("e/f"), l.Repository)
+		assert.Equal(t, "g/h/config.yml", l.Path)
+	}
+	assert.Equal(t, 1, committed)
+}
+
+// retryingMatcherFake makes every blob time out on the parallel pass: it
+// returns no matches, reports the blob as queued for retry, and returns the
+// real matches only from DrainTimedOut, as a matcher does after a timeout.
+type retryingMatcherFake struct {
+	matcher.Matcher
+	mu      sync.Mutex
+	pending map[types.BlobID][]byte
+}
+
+func (f *retryingMatcherFake) MatchWithBlobID(content []byte, blobID types.BlobID) ([]*types.Match, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pending[blobID] = content
+	return nil, nil
+}
+
+func (f *retryingMatcherFake) HasPendingRetry(blobID types.BlobID) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.pending[blobID]
+	return ok
+}
+
+func (f *retryingMatcherFake) DrainTimedOut() ([]*types.Match, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*types.Match
+	for blobID, content := range f.pending {
+		matches, err := f.Matcher.MatchWithBlobID(content, blobID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, matches...)
+	}
+	f.pending = nil
+	return out, nil
+}
+
+// useRetryingMatcher makes runScan use retryingMatcherFake for this test.
+func useRetryingMatcher(t *testing.T) {
+	t.Helper()
+	orig := newMatcher
+	t.Cleanup(func() { newMatcher = orig })
+	newMatcher = func(cfg matcher.Config) (matcher.Matcher, error) {
+		inner, err := orig(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return &retryingMatcherFake{Matcher: inner, pending: map[types.BlobID][]byte{}}, nil
+	}
+}
+
+// TestScanE2E_RetriedMatchListsEveryLocation: a blob at 2 paths whose match
+// arrives only from the timeout-retry pass still shows both recorded
+// locations, with absolute paths, in the scan JSON and one SARIF result each.
+// Without the location rows, the JSON falls back to legacy provenance rows,
+// which have no absolute_path and host_recorded false.
+func TestScanE2E_RetriedMatchListsEveryLocation(t *testing.T) {
+	dir := t.TempDir()
+	writeFileForTest(t, filepath.Join(dir, "a", "config.yml"), locTestSecret)
+	writeFileForTest(t, filepath.Join(dir, "b", "config.yml"), locTestSecret)
+	t.Chdir(dir)
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	useRetryingMatcher(t)
+	ds := tempDatastore(t)
+
+	got := scanJSONMatches(t, scanForTest(t, ".", ds, "json", false))
+	require.Len(t, got, 1)
+	assert.Equal(t, locTestRuleID, got[0].RuleID)
+	require.Len(t, got[0].Locations, 2)
+	for i, want := range []string{"a/config.yml", "b/config.yml"} {
+		loc := got[0].Locations[i]
+		assert.Equal(t, want, loc.Path)
+		assert.Equal(t, strPtr(filepath.Join(cwd, want)), loc.AbsolutePath)
+		assert.True(t, loc.HostRecorded)
+	}
+
+	var doc sarifDocForTest
+	require.NoError(t, json.Unmarshal(scanForTest(t, ".", tempDatastore(t), "sarif", false), &doc))
+	require.Len(t, doc.Runs, 1)
+	var uris []string
+	for _, r := range doc.Runs[0].Results {
+		require.Len(t, r.Locations, 1)
+		uris = append(uris, r.Locations[0].PhysicalLocation.ArtifactLocation.URI)
+	}
+	assert.Equal(t, []string{"a/config.yml", "b/config.yml"}, uris)
 }

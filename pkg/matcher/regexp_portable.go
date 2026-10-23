@@ -49,8 +49,8 @@ type retryJob struct {
 // instance may race due to the shared dedup state.
 type PortableRegexpMatcher struct {
 	rules          []*types.Rule
-	regexCache     map[string]*regexp2.Regexp   // read-only after init, safe for concurrent reads
-	groupNameCache map[string][]string          // read-only after init, safe for concurrent reads
+	regexCache     map[string]*regexp2.Regexp // read-only after init, safe for concurrent reads
+	groupNameCache map[string][]string        // read-only after init, safe for concurrent reads
 	dedup          *Deduplicator
 	contextLines   int
 	warnf          func(string, ...any)
@@ -59,9 +59,10 @@ type PortableRegexpMatcher struct {
 	// retryMu protects retryJobs, retryDropped, and (together with blacklistMu)
 	// co-ordinates the cap check. retryJobs is written by parallel workers and
 	// drained single-threaded by DrainTimedOut after the main pass completes.
-	retryMu     sync.Mutex
-	retryJobs   []retryJob
-	retryDropped int // count of jobs dropped due to queue cap
+	retryMu      sync.Mutex
+	retryJobs    []retryJob
+	retryDropped int                       // count of jobs dropped due to queue cap
+	retryBlobs   map[types.BlobID]struct{} // blobs with a queued job; at most retryQueueCap entries
 
 	// blacklistMu protects blacklist, which tracks per-rule timeout counts.
 	blacklistMu sync.Mutex
@@ -380,10 +381,23 @@ func (m *PortableRegexpMatcher) enqueueOrBlacklist(j retryJob) {
 	m.retryMu.Lock()
 	if len(m.retryJobs) < retryQueueCap {
 		m.retryJobs = append(m.retryJobs, j)
+		if m.retryBlobs == nil {
+			m.retryBlobs = make(map[types.BlobID]struct{})
+		}
+		m.retryBlobs[j.blobID] = struct{}{}
 	} else {
 		m.retryDropped++
 	}
 	m.retryMu.Unlock()
+}
+
+// HasPendingRetry reports whether a retry job for blobID is queued for
+// DrainTimedOut.
+func (m *PortableRegexpMatcher) HasPendingRetry(blobID types.BlobID) bool {
+	m.retryMu.Lock()
+	defer m.retryMu.Unlock()
+	_, ok := m.retryBlobs[blobID]
+	return ok
 }
 
 // DrainTimedOut replays any blobs that timed out during the main parallel scan,
@@ -399,6 +413,7 @@ func (m *PortableRegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
 	m.retryMu.Lock()
 	jobs := m.retryJobs
 	m.retryJobs = nil
+	m.retryBlobs = nil
 	dropped := m.retryDropped
 	m.retryMu.Unlock()
 

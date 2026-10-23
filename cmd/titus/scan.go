@@ -19,7 +19,6 @@ import (
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
-	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/scoring"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -82,8 +81,8 @@ var (
 	scanAsanaConcurrency        int
 
 	// Google Drive flags.
-	scanGDriveRateLimit       float64
-	scanGDriveConcurrency     int
+	scanGDriveRateLimit   float64
+	scanGDriveConcurrency int
 )
 
 var scanCmd = &cobra.Command{
@@ -205,7 +204,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create matcher
-	m, err := matcher.New(matcher.Config{
+	m, err := newMatcher(matcher.Config{
 		Rules:        rules,
 		ContextLines: scanContextLines,
 		WarnFunc: func(format string, args ...any) {
@@ -333,6 +332,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 				prov    types.Provenance
 				size    int64
 				matches []*types.Match
+				// locate is true when the blob's locations must be stored: it
+				// matched, or a timed-out rule queued it for DrainTimedOut.
+				locate bool
 			}
 			var batch []batchItem
 
@@ -347,6 +349,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 						}
 						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
 							return fmt.Errorf("storing provenance: %w", err)
+						}
+						if err := storeLocations(tx, item.blobID, item.prov, item.locate); err != nil {
+							return err
 						}
 						for _, match := range item.matches {
 							if err := tx.AddMatch(match); err != nil {
@@ -409,6 +414,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 					prov:    job.prov,
 					size:    int64(len(job.content)),
 					matches: matches,
+					locate:  len(matches) > 0 || matcher.HasPendingRetry(m, job.blobID),
 				})
 				if len(batch) >= batchSize {
 					if err := flush(); err != nil {
@@ -656,7 +662,7 @@ func outputScanResults(cmd *cobra.Command, s store.Store, rules []*types.Rule, r
 		if err != nil {
 			return fmt.Errorf("retrieving matches: %w", err)
 		}
-		return outputMatches(cmd, matches)
+		return outputMatches(cmd, s, matches)
 	}
 
 	if scanOutputFormat == "sarif" {
@@ -877,7 +883,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 	}
 
 	// Create matcher
-	m, err := matcher.New(matcher.Config{
+	m, err := newMatcher(matcher.Config{
 		Rules:        rules,
 		ContextLines: scanContextLines,
 		WarnFunc: func(format string, args ...any) {
@@ -979,6 +985,9 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 				prov    types.Provenance
 				size    int64
 				matches []*types.Match
+				// locate is true when the blob's locations must be stored: it
+				// matched, or a timed-out rule queued it for DrainTimedOut.
+				locate bool
 			}
 			var batch []batchItem
 
@@ -993,6 +1002,9 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 						}
 						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
 							return fmt.Errorf("storing provenance: %w", err)
+						}
+						if err := storeLocations(tx, item.blobID, item.prov, item.locate); err != nil {
+							return err
 						}
 						for _, match := range item.matches {
 							if err := tx.AddMatch(match); err != nil {
@@ -1053,6 +1065,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 					prov:    job.prov,
 					size:    int64(len(job.content)),
 					matches: matches,
+					locate:  len(matches) > 0 || matcher.HasPendingRetry(m, job.blobID),
 				})
 				if len(batch) >= batchSize {
 					if err := flush(); err != nil {
@@ -1097,7 +1110,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 	}
 
 	// Create matcher
-	m, err := matcher.New(matcher.Config{
+	m, err := newMatcher(matcher.Config{
 		Rules:        rules,
 		ContextLines: scanContextLines,
 		WarnFunc: func(format string, args ...any) {
@@ -1228,6 +1241,9 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 				prov    types.Provenance
 				size    int64
 				matches []*types.Match
+				// locate is true when the blob's locations must be stored: it
+				// matched, or a timed-out rule queued it for DrainTimedOut.
+				locate bool
 			}
 			var batch []batchItem
 
@@ -1242,6 +1258,9 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 						}
 						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
 							return fmt.Errorf("storing provenance: %w", err)
+						}
+						if err := storeLocations(tx, item.blobID, item.prov, item.locate); err != nil {
+							return err
 						}
 						for _, match := range item.matches {
 							if err := tx.AddMatch(match); err != nil {
@@ -1303,6 +1322,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 					prov:    job.prov,
 					size:    int64(len(job.content)),
 					matches: matches,
+					locate:  len(matches) > 0 || matcher.HasPendingRetry(m, job.blobID),
 				})
 				if len(batch) >= batchSize {
 					if err := flush(); err != nil {
@@ -1355,7 +1375,7 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 		ruleMap[r.ID] = r
 	}
 
-	m, err := matcher.New(matcher.Config{
+	m, err := newMatcher(matcher.Config{
 		Rules:        rules,
 		ContextLines: scanContextLines,
 		WarnFunc: func(format string, args ...any) {
@@ -1508,6 +1528,9 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 				prov    types.Provenance
 				size    int64
 				matches []*types.Match
+				// locate is true when the blob's locations must be stored: it
+				// matched, or a timed-out rule queued it for DrainTimedOut.
+				locate bool
 			}
 			var batch []batchItem
 
@@ -1522,6 +1545,9 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 						}
 						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
 							return fmt.Errorf("storing provenance: %w", err)
+						}
+						if err := storeLocations(tx, item.blobID, item.prov, item.locate); err != nil {
+							return err
 						}
 						for _, match := range item.matches {
 							if err := tx.AddMatch(match); err != nil {
@@ -1583,6 +1609,7 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 					prov:    job.prov,
 					size:    int64(len(job.content)),
 					matches: matches,
+					locate:  len(matches) > 0 || matcher.HasPendingRetry(m, job.blobID),
 				})
 				if len(batch) >= batchSize {
 					if err := flush(); err != nil {
@@ -1640,7 +1667,7 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 	}
 
 	// Create matcher
-	m, err := matcher.New(matcher.Config{
+	m, err := newMatcher(matcher.Config{
 		Rules:        rules,
 		ContextLines: scanContextLines,
 		WarnFunc: func(format string, args ...any) {
@@ -1787,6 +1814,9 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 				prov    types.Provenance
 				size    int64
 				matches []*types.Match
+				// locate is true when the blob's locations must be stored: it
+				// matched, or a timed-out rule queued it for DrainTimedOut.
+				locate bool
 			}
 			var batch []batchItem
 
@@ -1801,6 +1831,9 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 						}
 						if err := tx.AddProvenance(item.blobID, item.prov); err != nil {
 							return fmt.Errorf("storing provenance: %w", err)
+						}
+						if err := storeLocations(tx, item.blobID, item.prov, item.locate); err != nil {
+							return err
 						}
 						for _, match := range item.matches {
 							if err := tx.AddMatch(match); err != nil {
@@ -1862,6 +1895,7 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 					prov:    job.prov,
 					size:    int64(len(job.content)),
 					matches: matches,
+					locate:  len(matches) > 0 || matcher.HasPendingRetry(m, job.blobID),
 				})
 				if len(batch) >= gdriveBatchSize {
 					if err := flush(); err != nil {
@@ -1952,14 +1986,49 @@ func outputNoseyParkerSummary(cmd *cobra.Command, findings []*types.Finding, rul
 	return nil
 }
 
+// newMatcher builds the scan matcher. Tests replace it to drive the
+// timeout-and-retry path deterministically.
+var newMatcher = matcher.New
+
+// storeLocations records the locations of a blob when locate is true: the
+// blob has a match, or a timed-out rule queued it for DrainTimedOut, whose
+// matches carry no provenance of their own. Other blobs get no location rows,
+// which keeps the blob_locations table proportional to findings rather than
+// to the tree.
+func storeLocations(tx store.Store, blobID types.BlobID, prov types.Provenance, locate bool) error {
+	if !locate {
+		return nil
+	}
+	if err := tx.AddOccurrences(blobID, types.OccurrencesOf(prov)); err != nil {
+		return fmt.Errorf("storing locations: %w", err)
+	}
+	return nil
+}
+
+// scanJSONMatch is one element of `titus scan --format=json` output: the
+// match with every existing field unchanged, plus every location of its blob.
+type scanJSONMatch struct {
+	*types.Match
+	Locations []jsonLocation `json:"locations"`
+}
+
 // outputMatches emits the scan's raw matches as JSON for `titus scan --format=json`.
-// This is NOT the score-bearing output — findings (with their Score) are persisted
-// in the datastore and surfaced via `titus report --format=json`. Downstream
-// consumers (Chariot, CI) that need severity should use the report output.
-func outputMatches(cmd *cobra.Command, matches []*types.Match) error {
+// Each match carries the locations of its blob. This is NOT the score-bearing
+// output — findings (with their Score) are persisted in the datastore and
+// surfaced via `titus report --format=json`. Downstream consumers (Chariot, CI)
+// that need severity should use the report output.
+func outputMatches(cmd *cobra.Command, s store.Store, matches []*types.Match) error {
+	out := make([]scanJSONMatch, 0, len(matches))
+	for _, m := range matches {
+		occs, err := matchLocations(s, m)
+		if err != nil {
+			return err
+		}
+		out = append(out, scanJSONMatch{Match: m, Locations: toJSONLocations(m, occs)})
+	}
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(matches)
+	return encoder.Encode(out)
 }
 
 func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {
@@ -1991,17 +2060,9 @@ func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {
 	}
 }
 
-// outputSARIF outputs matches in SARIF 2.1.0 format
+// outputSARIF outputs matches in SARIF 2.1.0 format, one result per
+// location of each match's blob.
 func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches []*types.Match) error {
-	// Create SARIF report
-	report := sarif.NewReport()
-
-	// Add all rules
-	for _, rule := range rules {
-		report.AddRule(rule)
-	}
-
-	// Build rule map for finding ID computation
 	ruleMap := make(map[string]*types.Rule, len(rules))
 	for _, r := range rules {
 		ruleMap[r.ID] = r
@@ -2015,49 +2076,17 @@ func outputSARIF(cmd *cobra.Command, s store.Store, rules []*types.Rule, matches
 		}
 	}
 
-	// Cache provenance by blob ID to avoid repeated queries
-	provenanceCache := make(map[types.BlobID]string)
-
-	// Get provenance for each match and add results
-	for _, match := range matches {
-		// Check cache first
-		filePath, ok := provenanceCache[match.BlobID]
+	scoreFor := func(m *types.Match) *types.Score {
+		r, ok := ruleMap[m.RuleID]
 		if !ok {
-			// Query provenance
-			prov, err := s.GetProvenance(match.BlobID)
-			if err != nil {
-				// If no provenance found, use blob ID as fallback
-				filePath = match.BlobID.Hex()
-			} else {
-				filePath = prov.Path()
-			}
-			provenanceCache[match.BlobID] = filePath
+			return nil
 		}
-
-		// Look up score from the corresponding finding
-		var score *types.Score
-		if r, ok := ruleMap[match.RuleID]; ok {
-			fid := types.ComputeFindingID(r.StructuralID, match.Groups)
-			if f, ok := findingByID[fid]; ok {
-				score = f.Score
-			}
+		if f, ok := findingByID[types.ComputeFindingID(r.StructuralID, m.Groups)]; ok {
+			return f.Score
 		}
-		report.AddResultWithScore(match, filePath, score)
+		return nil
 	}
-
-	// Serialize to JSON
-	jsonBytes, err := report.ToJSON()
-	if err != nil {
-		return fmt.Errorf("serializing SARIF: %w", err)
-	}
-
-	// Write to stdout
-	_, err = cmd.OutOrStdout().Write(jsonBytes)
-	if err != nil {
-		return fmt.Errorf("writing SARIF output: %w", err)
-	}
-
-	return nil
+	return writeSARIF(cmd.OutOrStdout(), s, rules, matches, scoreFor)
 }
 
 // initValidationEngine creates the validation engine if validation is enabled.

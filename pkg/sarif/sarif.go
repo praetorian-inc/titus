@@ -74,6 +74,7 @@ type ResultProperties struct {
 	// false marks a location read from a datastore that predates host
 	// identity.
 	Repository   string `json:"repository,omitempty"`
+	Source       string `json:"source,omitempty"` // extended locations, e.g. "confluence"
 	Commit       string `json:"commit,omitempty"`
 	CommitDate   string `json:"commit_date,omitempty"` // RFC 3339
 	AbsolutePath string `json:"absolute_path,omitempty"`
@@ -212,6 +213,7 @@ func (r *Report) AddResultForOccurrence(match *types.Match, o types.Occurrence, 
 		res.Properties = &ResultProperties{}
 	}
 	res.Properties.Repository = o.Repository
+	res.Properties.Source = o.Source
 	res.Properties.Commit = o.Commit
 	if !o.CommitDate.IsZero() {
 		res.Properties.CommitDate = o.CommitDate.UTC().Format(time.RFC3339)
@@ -272,7 +274,7 @@ func locationFingerprint(match *types.Match, o types.Occurrence) string {
 		match.RuleID, match.BlobID.Hex(),
 		strconv.Itoa(src.Start.Line), strconv.Itoa(src.Start.Column),
 		strconv.Itoa(src.End.Line), strconv.Itoa(src.End.Column),
-		o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit,
+		o.Kind, o.Source, o.Repository, o.Path, o.AbsolutePath, o.Commit,
 		strconv.FormatBool(o.WorkingTree),
 	} {
 		h.Write([]byte(f))
