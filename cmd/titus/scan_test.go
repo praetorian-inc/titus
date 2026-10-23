@@ -815,10 +815,8 @@ func TestScanE2E_TwoFoldersOneDatastore(t *testing.T) {
 // TestScanE2E_TwoGitFoldersOneDatastore covers C-FOLDERS-2: identical
 // remote-less repositories (identical commits) scanned with --git into one
 // datastore give two locations. Only the repository's absolute root
-// separates them, and the git enumerator records it from T004 on; today the
-// scan yields one location.
+// separates them.
 func TestScanE2E_TwoGitFoldersOneDatastore(t *testing.T) {
-	t.Skip("needs T004")
 	root := t.TempDir()
 	shared := filepath.Join(root, "shared.ds")
 	for _, name := range []string{"one", "two"} {
@@ -826,12 +824,23 @@ func TestScanE2E_TwoGitFoldersOneDatastore(t *testing.T) {
 	}
 
 	t.Chdir(filepath.Join(root, "one"))
+	cwdOne, err := os.Getwd()
+	require.NoError(t, err)
 	scanForTest(t, ".", shared, "json", true)
 	t.Chdir(filepath.Join(root, "two"))
+	cwdTwo, err := os.Getwd()
+	require.NoError(t, err)
 	got := scanJSONMatches(t, scanForTest(t, ".", shared, "json", true))
 
 	require.Len(t, got, 1)
-	assert.Len(t, got[0].Locations, 2)
+	require.Len(t, got[0].Locations, 2)
+	for i, wantAbs := range []string{filepath.Join(cwdOne, "config.yml"), filepath.Join(cwdTwo, "config.yml")} {
+		loc := got[0].Locations[i]
+		assert.Equal(t, strPtr("."), loc.Repository, "a remote-less repository keeps the root as typed")
+		assert.Equal(t, "config.yml", loc.Path)
+		assert.NotNil(t, loc.Commit)
+		assert.Equal(t, strPtr(wantAbs), loc.AbsolutePath, "only the absolute path separates the two folders")
+	}
 }
 
 // TestScanE2E_OnlyMatchedBlobsWriteLocationRows: the write hook stores
@@ -862,14 +871,10 @@ func TestScanE2E_OnlyMatchedBlobsWriteLocationRows(t *testing.T) {
 	assert.Equal(t, filepath.Join(src, "config.yml"), abs)
 }
 
-// The git-remote cases below need the origin-identity enumerator work
-// (T004). Their assertions are final; remove the Skip to run them.
-
 // TestScanE2E_OriginRemoteMergesWithAPI covers C-CLONEMERGE-1: a local
 // --git scan whose origin is git@github.com:acme/api.git and a GitHub API scan
 // of acme/api name one repository, and config.yml has one location.
 func TestScanE2E_OriginRemoteMergesWithAPI(t *testing.T) {
-	t.Skip("needs T004")
 	root := t.TempDir()
 	shared := filepath.Join(root, "shared.ds")
 	api := filepath.Join(root, "api")
@@ -905,7 +910,6 @@ func TestScanE2E_OriginRemoteMergesWithAPI(t *testing.T) {
 // TestScanE2E_OriginURLNormalized covers C-NORMALIZE-1: three spellings of
 // the same origin all record repository github.com/acme/api.
 func TestScanE2E_OriginURLNormalized(t *testing.T) {
-	t.Skip("needs T004")
 	for _, origin := range []string{
 		"git@github.com:acme/api.git",
 		"https://user:tok@GitHub.com/acme/api.git",
@@ -927,10 +931,11 @@ func TestScanE2E_OriginURLNormalized(t *testing.T) {
 // TestScanE2E_NoRemoteRepositoryAsTyped covers C-NOREMOTE-1: `titus scan e/f
 // --git` with no remote names the repository e/f and the path g/h/config.yml.
 func TestScanE2E_NoRemoteRepositoryAsTyped(t *testing.T) {
-	t.Skip("needs T004")
 	dir := t.TempDir()
 	gitRepoForTest(t, filepath.Join(dir, "e", "f"), "", map[string]string{"g/h/config.yml": locTestSecret})
 	t.Chdir(dir)
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
 
 	got := scanJSONMatches(t, scanForTest(t, "e/f", tempDatastore(t), "json", true))
 	require.Len(t, got, 1)
@@ -942,6 +947,7 @@ func TestScanE2E_NoRemoteRepositoryAsTyped(t *testing.T) {
 		committed++
 		assert.Equal(t, strPtr("e/f"), l.Repository)
 		assert.Equal(t, "g/h/config.yml", l.Path)
+		assert.Equal(t, strPtr(filepath.Join(cwd, "e", "f", "g", "h", "config.yml")), l.AbsolutePath)
 	}
 	assert.Equal(t, 1, committed)
 }

@@ -199,6 +199,35 @@ func TestBuildBlobIndex_ReAddKeepsEarliest(t *testing.T) {
 	}
 }
 
+// A `git mv` must not leave the post-rename path without a location: the blob
+// is found at both its original path (add commit) and its renamed path
+// (rename commit), and later content at the renamed path is attributed to the
+// commit that wrote it.
+func TestBuildBlobIndex_RenamedPath(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	writeFile(t, filepath.Join(dir, "old.txt"), "hello\n")
+	added := commitAt(t, dir, "add old.txt", "2026-01-01T00:00:00Z")
+	runGit(t, dir, "mv", "old.txt", "new.txt")
+	renamed := commitAt(t, dir, "rename to new.txt", "2026-02-01T00:00:00Z")
+	writeFile(t, filepath.Join(dir, "new.txt"), "hello world\n")
+	updated := commitAt(t, dir, "update new.txt", "2026-03-01T00:00:00Z")
+
+	idx := mustBuild(t, dir)
+	got := locsOf(idx.lookup(contentHash("hello\n")))
+	want := []locWant{{"new.txt", renamed}, {"old.txt", added}}
+	if !slices.Equal(got, want) {
+		t.Errorf("original blob locations = %+v, want %+v", got, want)
+	}
+	got = locsOf(idx.lookup(contentHash("hello world\n")))
+	want = []locWant{{"new.txt", updated}}
+	if !slices.Equal(got, want) {
+		t.Errorf("updated blob locations = %+v, want %+v", got, want)
+	}
+}
+
 // --- fixture coverage ------------------------------------------------------
 
 // A merged-in branch's blob is attributed to its own (earlier) branch commit,
@@ -572,8 +601,8 @@ func TestBuildBlobIndex_Errors(t *testing.T) {
 
 // SEC-10 regression (E4): a 70,000-char subject followed by thousands of
 // paths. The old reader stopped at the 64 KB line limit and then called Wait
-// on an undrained pipe, which hung forever. Both readers must return within
-// the bound, and the index must still record every path.
+// on an undrained pipe, which hung forever. buildBlobIndex must return within
+// the bound, and the index must still record every blob at its path.
 func TestCommitHistory_LongSubjectManyFilesNoHang(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
@@ -594,25 +623,25 @@ func TestCommitHistory_LongSubjectManyFilesNoHang(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	commitMap, err := collectCommitMetadataForRepo(ctx, dir, true)
-	if ctx.Err() != nil {
-		t.Fatal("collectCommitMetadataForRepo ran until the 30 s deadline (undrained pipe)")
-	}
-	if err != nil {
-		t.Fatalf("collectCommitMetadataForRepo: %v", err)
-	}
-	if len(commitMap) != nFiles+1 {
-		t.Errorf("commit map has %d paths, want %d", len(commitMap), nFiles+1)
-	}
-
 	idx, err := buildBlobIndex(ctx, dir)
+	if ctx.Err() != nil {
+		t.Fatal("buildBlobIndex ran until the 30 s deadline (undrained pipe)")
+	}
 	if err != nil {
 		t.Fatalf("buildBlobIndex: %v", err)
 	}
+	if len(idx.pairs) != nFiles+1 {
+		t.Errorf("index has %d pairs, want %d", len(idx.pairs), nFiles+1)
+	}
 	for i := range nFiles {
-		if got := idx.lookup(contentHash(fmt.Sprintf("c%d\n", i))); len(got) != 1 {
-			t.Fatalf("file %d: %+v", i, got)
+		want := fmt.Sprintf("file-with-a-longish-name-%05d.txt", i)
+		got := idx.lookup(contentHash(fmt.Sprintf("c%d\n", i)))
+		if len(got) != 1 || got[0].Path != want || got[0].Commit == nil || len(got[0].Commit.Message) != 70000 {
+			t.Fatalf("file %d: got %d locations, want one at %s with the 70,000-char subject", i, len(got), want)
 		}
+	}
+	if got := idx.lookup(contentHash("later\n")); len(got) != 1 || got[0].Path != "later.txt" {
+		t.Errorf("later.txt: %+v", got)
 	}
 }
 
