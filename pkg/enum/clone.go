@@ -254,8 +254,13 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 // from the decoded id when the index has it, else from the raw id. The raw
 // file is not read when nothing is marked and the decoded id has entries.
 // When the raw file cannot be read and the index marks any blob, the file is
-// marked: its raw id is unknown, so it cannot be shown to be unmarked.
+// marked: its raw id is unknown, so it cannot be shown to be unmarked. An
+// index that could not be built marks every blob and holds no commit, so the
+// file is marked without reading it.
 func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) (*types.CommitMetadata, bool) {
+	if idx.marksAll() {
+		return nil, true
+	}
 	truncated := idx.locationsTruncated(blobID)
 	locs := idx.lookup(blobID)
 	if len(locs) > 0 && (truncated || !idx.marksAny()) {

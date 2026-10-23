@@ -597,6 +597,12 @@ func (x *blobIndex) marksAny() bool {
 	return x != nil && (x.failed || len(x.truncatedBlobs) > 0)
 }
 
+// marksAll reports whether locationsTruncated is true for every blob: the
+// index could not be built (unavailableIndex), so lookup finds nothing.
+func (x *blobIndex) marksAll() bool {
+	return x != nil && x.failed
+}
+
 // writeWarnings prints one line per kind of record the index could not use.
 func (x *blobIndex) writeWarnings(w io.Writer) {
 	if x == nil {
