@@ -414,18 +414,20 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntr
 // blobProvenance builds the provenance for one blob. Locations is every
 // (path, earliest commit) the index recorded, sorted by path; the first is
 // the primary location. A blob the index does not know keeps its rev-list
-// path with no commit.
+// path with no commit. LocationsTruncated is set when the index dropped a
+// location of this blob at its size limit (R1), whether or not it kept any.
 func blobProvenance(blob blobEntry, idx *blobIndex, id repoIdentity) types.GitProvenance {
 	locs := idx.lookup(blob.hash)
 	if len(locs) == 0 {
 		locs = []types.GitLocation{{Path: blob.path}}
 	}
 	return types.GitProvenance{
-		RepoPath:       id.path,
-		Commit:         locs[0].Commit,
-		BlobPath:       locs[0].Path,
-		RepoRoot:       id.root,
-		RemoteIdentity: id.remote,
-		Locations:      locs,
+		RepoPath:           id.path,
+		Commit:             locs[0].Commit,
+		BlobPath:           locs[0].Path,
+		RepoRoot:           id.root,
+		RemoteIdentity:     id.remote,
+		Locations:          locs,
+		LocationsTruncated: idx.locationsTruncated(blob.hash),
 	}
 }

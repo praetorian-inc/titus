@@ -1,7 +1,6 @@
 package enum
 
 import (
-	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -17,83 +16,6 @@ import (
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
-
-// collectCommitMetadataForRepo runs git log to build a map of file path → commit metadata.
-// When firstAdded is true, uses --diff-filter=ARC to find the commit that first
-// introduced each path — this includes Adds, Renames, and Copies. Rename detection
-// is on by default in git's log machinery, so a `git mv old new` is recorded as an
-// `R` entry rather than a delete + add; filtering on `A` alone would miss the
-// post-rename path and leave its blobs without commit metadata.
-// When false, finds the most recent commit that touched each path.
-func collectCommitMetadataForRepo(ctx context.Context, repoPath string, firstAdded bool) (map[string]*types.CommitMetadata, error) {
-	args := []string{"log", "--all",
-		"--format=%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s", "--name-only"}
-	if firstAdded {
-		args = append(args, "--diff-filter=ARC")
-	}
-
-	cmd := hardenedGit(ctx, repoPath, args...)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("git log: pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("git log: start: %w", err)
-	}
-
-	result := make(map[string]*types.CommitMetadata)
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 64*1024), maxRecord)
-
-	var current *types.CommitMetadata
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		// Lines with 7 null-byte separators are commit headers
-		parts := strings.SplitN(line, "\x00", 8)
-		if len(parts) == 8 && len(parts[0]) == 40 {
-			authorTS, _ := time.Parse(time.RFC3339, parts[3])
-			committerTS, _ := time.Parse(time.RFC3339, parts[6])
-			current = &types.CommitMetadata{
-				CommitID:           parts[0],
-				AuthorName:         parts[1],
-				AuthorEmail:        parts[2],
-				AuthorTimestamp:    authorTS,
-				CommitterName:      parts[4],
-				CommitterEmail:     parts[5],
-				CommitterTimestamp: committerTS,
-				Message:            parts[7],
-			}
-			continue
-		}
-
-		// File path line — only record the first occurrence per path
-		if current != nil {
-			if _, exists := result[line]; !exists {
-				result[line] = current
-			}
-		}
-	}
-
-	// SEC-10: git blocks on a full pipe, so drain it before Wait whatever
-	// stopped the scanner.
-	scanErr := scanner.Err()
-	_, _ = io.Copy(io.Discard, stdout)
-	waitErr := cmd.Wait()
-	if scanErr != nil {
-		return result, fmt.Errorf("git log: read: %w", scanErr)
-	}
-	if waitErr != nil {
-		return result, fmt.Errorf("git log: wait: %w", waitErr)
-	}
-
-	return result, nil
-}
 
 // --- blob location index -----------------------------------------------------
 
@@ -154,6 +76,12 @@ type blobIndex struct {
 	arena   []byte      // hex commit ids and subjects
 	commits []commitRec
 	stats   indexStats
+
+	// truncatedBlobs holds every blob that lost a location when the index
+	// reached maxIndexPairs (R1). It is nil until then. Memory is one
+	// 20-byte key per distinct affected blob, bounded by the blobs in the
+	// history, never by the number of dropped pairs.
+	truncatedBlobs map[[20]byte]struct{}
 
 	mu   sync.Mutex
 	meta map[uint32]*types.CommitMetadata // materialized on lookup, shared
@@ -389,14 +317,14 @@ func (p *indexParser) internPath(b []byte) uint32 {
 func (p *indexParser) addPair(pair indexPair) {
 	x := &p.x
 	if p.full {
-		x.stats.droppedPairs++
+		x.drop(pair)
 		return
 	}
 	if len(x.pairs) >= maxIndexPairs {
 		x.compact()
 		if len(x.pairs) >= maxIndexPairs {
 			p.full = true
-			x.stats.droppedPairs++
+			x.drop(pair)
 			return
 		}
 	}
@@ -407,6 +335,33 @@ func (p *indexParser) addPair(pair indexPair) {
 		}
 	}
 	x.pairs = append(x.pairs, pair)
+}
+
+// drop counts a pair the full index cannot store and marks its blob when the
+// pair carried a location the index lacks: a (blob, path) it has not
+// recorded, or a recorded one first seen at an earlier commit than the one
+// it holds. A re-touch at a later commit loses nothing and marks nothing.
+// The index is full only right after compact, so pairs are sorted by (hash,
+// path, commit) and nothing is appended afterwards; path ids are still the
+// parse-time ids that the pairs carry.
+func (x *blobIndex) drop(pair indexPair) {
+	x.stats.droppedPairs++
+	if _, ok := x.truncatedBlobs[pair.hash]; ok {
+		return
+	}
+	i, found := slices.BinarySearchFunc(x.pairs, pair, func(e, t indexPair) int {
+		if c := bytes.Compare(e.hash[:], t.hash[:]); c != 0 {
+			return c
+		}
+		return cmp.Compare(e.path, t.path)
+	})
+	if found && x.compareCommits(x.pairs[i].commit, pair.commit) <= 0 {
+		return
+	}
+	if x.truncatedBlobs == nil {
+		x.truncatedBlobs = make(map[[20]byte]struct{})
+	}
+	x.truncatedBlobs[pair.hash] = struct{}{}
 }
 
 // finish sorts paths lexically, remaps pair path ids to match, deduplicates
@@ -547,6 +502,20 @@ func (x *blobIndex) commitMeta(id uint32) *types.CommitMetadata {
 // truncated reports whether the index dropped pairs at maxIndexPairs.
 func (x *blobIndex) truncated() bool {
 	return x != nil && x.stats.droppedPairs > 0
+}
+
+// locationsTruncated reports whether the index dropped a location of hash at
+// maxIndexPairs, so its lookup is incomplete by an unknown count (R1). This
+// includes a blob all of whose pairs were dropped, which lookup reports as
+// unknown. A blob with no dropped pair is not marked, even when the index is
+// truncated: none of its history locations were lost to the cap. A nil index
+// marks nothing.
+func (x *blobIndex) locationsTruncated(hash [20]byte) bool {
+	if x == nil {
+		return false
+	}
+	_, ok := x.truncatedBlobs[hash]
+	return ok
 }
 
 // writeWarnings prints one line per kind of record the index could not use.

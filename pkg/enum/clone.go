@@ -216,39 +216,45 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 			rel = fp.FilePath
 		}
 		rel = filepath.ToSlash(rel)
-		loc := types.GitLocation{Path: rel, Commit: committedAt(idx, blobID, fp.FilePath, rel)}
+		commit, truncated := committedAt(idx, blobID, fp.FilePath, rel)
+		loc := types.GitLocation{Path: rel, Commit: commit}
 		return callback(content, blobID, types.GitProvenance{
-			RepoPath:       id,
-			BlobPath:       rel,
-			Commit:         loc.Commit,
-			RemoteIdentity: remote,
-			Locations:      []types.GitLocation{loc},
+			RepoPath:           id,
+			BlobPath:           rel,
+			Commit:             loc.Commit,
+			RemoteIdentity:     remote,
+			Locations:          []types.GitLocation{loc},
+			LocationsTruncated: truncated,
 		})
 	})
 }
 
-// committedAt returns the commit recorded in idx for the blob at rel. The
-// scanned content may be a decoded form of the file (UTF-16), so when the
-// index has no entry for blobID at all the raw file is hashed and looked up
-// again. When it has entries but none at rel (a truncated index, or a path
-// not yet committed) the content is taken as the raw file and not re-read;
-// a decoded file whose text is also committed elsewhere as UTF-8 is the one
-// case that then goes without commit metadata.
-func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) *types.CommitMetadata {
+// committedAt returns the commit recorded in idx for the blob at rel, and
+// whether the index dropped a location of that blob at its size limit (R1),
+// in which case the commit may be missing or not the earliest. The scanned
+// content may be a decoded form of the file (UTF-16), so when the index has
+// no entry for blobID at all the raw file is hashed and looked up again, and
+// the mark is that of whichever id the index knows the file by. When it has
+// entries but none at rel (a truncated index, or a path not yet committed)
+// the content is taken as the raw file and not re-read; a decoded file whose
+// text is also committed elsewhere as UTF-8 is the one case that then goes
+// without commit metadata.
+func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) (*types.CommitMetadata, bool) {
 	if idx == nil {
-		return nil
+		return nil, false
 	}
+	truncated := idx.locationsTruncated(blobID)
 	if locs := idx.lookup(blobID); len(locs) > 0 {
-		return commitForPath(locs, rel)
+		return commitForPath(locs, rel), truncated
 	}
 	raw, err := os.ReadFile(file)
 	if err != nil {
-		return nil
+		return nil, truncated
 	}
 	if rawID := types.ComputeBlobID(raw); rawID != blobID {
-		return commitForPath(idx.lookup(rawID), rel)
+		return commitForPath(idx.lookup(rawID), rel), truncated || idx.locationsTruncated(rawID)
 	}
-	return nil
+	return nil, truncated
 }
 
 func commitForPath(locs []types.GitLocation, rel string) *types.CommitMetadata {

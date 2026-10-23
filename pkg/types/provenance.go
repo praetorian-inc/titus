@@ -38,6 +38,10 @@ type GitProvenance struct {
 	// Locations lists every location of the blob in this repository. When
 	// empty, the primary location (BlobPath, Commit) is the only one.
 	Locations []GitLocation `json:",omitempty"`
+	// LocationsTruncated is true when some locations of this blob were not
+	// recorded because the history index reached its size limit; the count
+	// of missing locations is unknown, so Locations is a lower bound.
+	LocationsTruncated bool `json:",omitempty"`
 }
 
 // GitLocation is one location of a blob within a repository: its path at its
