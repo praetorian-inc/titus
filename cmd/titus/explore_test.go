@@ -29,11 +29,23 @@ func TestExploreCommand_RejectsTooManyArgs(t *testing.T) {
 	assert.Error(t, cmd.Args(cmd, []string{"one", "two"}))
 }
 
-func TestExploreCommand_PositionalArgOverridesDefault(t *testing.T) {
-	old := exploreDatastore
-	defer func() { exploreDatastore = old }()
+// resetDatastoreFlag puts exploreCmd's --datastore flag (value and Changed
+// state) back to its default now and again when the test ends, so tests that
+// share the package-level command do not depend on run order or -count.
+func resetDatastoreFlag(t *testing.T) {
+	t.Helper()
+	flag := exploreCmd.Flags().Lookup("datastore")
+	require.NotNil(t, flag)
+	reset := func() {
+		require.NoError(t, flag.Value.Set(flag.DefValue))
+		flag.Changed = false
+	}
+	reset()
+	t.Cleanup(reset)
+}
 
-	exploreDatastore = "titus.ds"
+func TestExploreCommand_PositionalArgOverridesDefault(t *testing.T) {
+	resetDatastoreFlag(t)
 
 	err := runExplore(exploreCmd, []string{"/tmp/custom.ds"})
 	// runExplore will fail because the datastore doesn't exist,
@@ -43,8 +55,7 @@ func TestExploreCommand_PositionalArgOverridesDefault(t *testing.T) {
 }
 
 func TestExploreCommand_PositionalArgConflictsWithFlag(t *testing.T) {
-	old := exploreDatastore
-	defer func() { exploreDatastore = old }()
+	resetDatastoreFlag(t)
 
 	cmd, _, err := rootCmd.Find([]string{"explore"})
 	require.NoError(t, err)
