@@ -493,27 +493,37 @@ func formatSnippet(before, matching, after []byte, maxLen int) string {
 	return result
 }
 
-// sanitizeSnippetBytes replaces every byte other than '\n' and printable
-// ASCII (0x20-0x7E) with '.', matching Explore's sanitizeForDisplay. Snippet
-// bytes are raw scanned content, so this keeps ESC sequences and other control
-// bytes from reaching the terminal. The mapping is one byte to one byte, so
-// byte offsets computed on the result equal those on the input.
-func sanitizeSnippetBytes(b []byte) []byte {
-	out := make([]byte, len(b))
-	for i, c := range b {
-		if c == '\n' || (c >= 0x20 && c <= 0x7E) {
-			out[i] = c
-		} else {
-			out[i] = '.'
+// sanitizeSnippetText makes raw scanned content safe for a terminal. It keeps
+// '\n' and '\t' verbatim so code stays readable, and applies
+// types.SanitizeDisplay to the text between them, which escapes ESC sequences
+// and other control bytes while leaving printable Unicode unchanged.
+func sanitizeSnippetText(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for {
+		i := strings.IndexAny(s, "\n\t")
+		if i < 0 {
+			b.WriteString(types.SanitizeDisplay(s))
+			return b.String()
 		}
+		b.WriteString(types.SanitizeDisplay(s[:i]))
+		b.WriteByte(s[i])
+		s = s[i+1:]
 	}
-	return out
+}
+
+// sanitized returns p with its content parts made safe for a terminal.
+func (p snippetParts) sanitized() snippetParts {
+	p.before = sanitizeSnippetText(p.before)
+	p.matching = sanitizeSnippetText(p.matching)
+	p.after = sanitizeSnippetText(p.after)
+	return p
 }
 
 // formatSnippetWithParts separates snippet into parts for colored output.
-// Parts are sanitized for terminal display before truncation.
+// Truncation works on the raw bytes; each content part is sanitized for
+// terminal display afterwards.
 func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetParts {
-	before, matching, after = sanitizeSnippetBytes(before), sanitizeSnippetBytes(matching), sanitizeSnippetBytes(after)
 	full := string(before) + string(matching) + string(after)
 
 	// Short snippet - no truncation needed
@@ -524,7 +534,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 			matching: string(matching),
 			after:    string(after),
 			suffix:   "",
-		}
+		}.sanitized()
 	}
 
 	// Find where the match sits in the combined string
@@ -540,7 +550,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 			matching: string(matching[:maxLen-6]),
 			after:    "",
 			suffix:   "...",
-		}
+		}.sanitized()
 	}
 
 	// Calculate how much context we can show around the match
@@ -591,7 +601,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 		parts.suffix = "..."
 	}
 
-	return parts
+	return parts.sanitized()
 }
 
 // outputReportSARIF writes findings in SARIF 2.1.0 format with score metadata,
@@ -790,7 +800,7 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 		for j, group := range f.Groups {
 			_, _ = fmt.Fprintf(out, "%s %s\n",
 				st.heading.Sprintf("Group %d:", j+1),
-				st.match.Sprint(string(sanitizeSnippetBytes(group))))
+				st.match.Sprint(sanitizeSnippetText(string(group))))
 		}
 
 		// Matches for this finding: the first fullMatches in full, the rest as

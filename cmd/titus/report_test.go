@@ -1811,7 +1811,7 @@ func TestOutputReportSARIF_OneResultPerLocation(t *testing.T) {
 // Terminal-injection sanitization of snippets, groups, owner, and resources
 // =============================================================================
 
-func TestSanitizeSnippetBytes(t *testing.T) {
+func TestSanitizeSnippetText(t *testing.T) {
 	var printable []byte
 	for c := byte(0x20); c <= 0x7E; c++ {
 		printable = append(printable, c)
@@ -1819,29 +1819,27 @@ func TestSanitizeSnippetBytes(t *testing.T) {
 
 	tests := []struct {
 		name string
-		in   []byte
-		want []byte
+		in   string
+		want string
 	}{
-		{"nil", nil, []byte{}},
-		{"empty", []byte{}, []byte{}},
-		{"ESC sequence", []byte("a\x1b[2Jb"), []byte("a.[2Jb")},
-		{"tab", []byte("a\tb"), []byte("a.b")},
-		{"carriage return", []byte("a\rb"), []byte("a.b")},
-		{"NUL", []byte("a\x00b"), []byte("a.b")},
-		{"DEL", []byte("a\x7fb"), []byte("a.b")},
-		{"C1 CSI 0x9b", []byte("a\x9b2Jb"), []byte("a.2Jb")},
-		{"0x80 and 0xff", []byte{0x80, 'x', 0xff}, []byte(".x.")},
-		{"multibyte UTF-8 maps byte for byte", []byte("é"), []byte("..")},
-		{"newline kept", []byte("line1\nline2"), []byte("line1\nline2")},
-		{"all printable ASCII kept", printable, printable},
+		{"empty", "", ""},
+		{"ESC sequence escaped", "a\x1b[2Jb", `a\x1b[2Jb`},
+		{"tab kept", "a\tb", "a\tb"},
+		{"carriage return escaped", "a\rb", `a\x0db`},
+		{"NUL escaped", "a\x00b", `a\x00b`},
+		{"DEL escaped", "a\x7fb", `a\x7fb`},
+		{"raw C1 CSI byte 0x9b escaped", "a\x9b2Jb", `a\x9b2Jb`},
+		{"invalid UTF-8 bytes escaped", string([]byte{0x80, 'x', 0xff}), `\x80x\xff`},
+		{"multibyte UTF-8 kept", "é", "é"},
+		{"C1 rune U+009B escaped", "\u009b", `\u{009b}`},
+		{"bidi override U+202E escaped", string(rune(0x202e)), `\u{202e}`},
+		{"tab and newline kept around an escape", "a\t\x1b\nb", "a\t\\x1b\nb"},
+		{"newline kept", "line1\nline2", "line1\nline2"},
+		{"all printable ASCII kept", string(printable), string(printable)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			orig := slices.Clone(tt.in)
-			got := sanitizeSnippetBytes(tt.in)
-			assert.Equal(t, tt.want, got)
-			assert.Len(t, got, len(tt.in), "mapping must be length-preserving")
-			assert.Equal(t, orig, tt.in, "input must not be modified")
+			assert.Equal(t, tt.want, sanitizeSnippetText(tt.in))
 		})
 	}
 }
@@ -1855,15 +1853,15 @@ func TestFormatSnippetWithParts_SanitizesEachPart(t *testing.T) {
 	}{
 		{
 			name: "before", before: "pre" + esc + " ", matching: "tok", after: " post",
-			want: snippetParts{before: "pre.[2J ", matching: "tok", after: " post"},
+			want: snippetParts{before: `pre\x1b[2J `, matching: "tok", after: " post"},
 		},
 		{
 			name: "matching", before: "pre ", matching: "tok" + esc, after: " post",
-			want: snippetParts{before: "pre ", matching: "tok.[2J", after: " post"},
+			want: snippetParts{before: "pre ", matching: `tok\x1b[2J`, after: " post"},
 		},
 		{
 			name: "after", before: "pre ", matching: "tok", after: " " + esc + "post",
-			want: snippetParts{before: "pre ", matching: "tok", after: " .[2Jpost"},
+			want: snippetParts{before: "pre ", matching: "tok", after: ` \x1b[2Jpost`},
 		},
 		{
 			name: "benign unchanged", before: "pre ", matching: "tok", after: " post",
@@ -1878,43 +1876,84 @@ func TestFormatSnippetWithParts_SanitizesEachPart(t *testing.T) {
 	}
 }
 
-// Sanitizing before truncation must not move any cut: a hostile snippet
-// renders exactly like the all-printable snippet of equal length that has
-// '.' in place of each control byte.
-func TestFormatSnippetWithParts_TruncationOffsetsUnchangedBySanitizing(t *testing.T) {
+// Truncation cuts the raw bytes, and only then is each part sanitized. The
+// expected parts below are the raw window, worked out by hand from the
+// algorithm at maxLen 500, with each control byte written as its escape:
+//
+//	availableContext = 500 - len(matching) - 6
+//	halfContext      = availableContext / 2
+//	start            = len(before) - halfContext
+//	end              = len(before) + len(matching) + halfContext
+//
+// Escaping first would expand each ESC to four bytes and move every cut.
+func TestFormatSnippetWithParts_TruncatesRawBytesThenSanitizes(t *testing.T) {
 	const esc = "\x1b[2J"
-	dotted := func(s string) string { return strings.ReplaceAll(s, "\x1b", ".") }
+	const escShown = `\x1b[2J`
 	tests := []struct {
 		name                    string
 		before, matching, after string
-		wantPrefix, wantSuffix  string
+		want                    snippetParts
+		hostile                 bool
 	}{
 		{
-			name:       "long context on both sides",
-			before:     strings.Repeat("x", 396) + esc,
-			matching:   "MATCH" + esc,
-			after:      esc + strings.Repeat("y", 396),
-			wantPrefix: "...", wantSuffix: "...",
+			// len(before)=404, len(matching)=9: half=242, start=162, end=655.
+			// Shown: before[162:] (238 x + ESC), after[:242] (ESC + 238 y).
+			name:     "hostile context on both sides",
+			before:   strings.Repeat("x", 400) + esc,
+			matching: "MATCH" + esc,
+			after:    esc + strings.Repeat("y", 400),
+			want: snippetParts{
+				prefix:   "...",
+				before:   strings.Repeat("x", 238) + escShown,
+				matching: "MATCH" + escShown,
+				after:    escShown + strings.Repeat("y", 238),
+				suffix:   "...",
+			},
+			hostile: true,
 		},
 		{
-			name:       "match longer than maxLen",
-			before:     "pre",
-			matching:   strings.Repeat(esc, 200),
-			after:      "post",
-			wantPrefix: "...", wantSuffix: "...",
+			// len(matching)=800 >= 500: shown matching[:494], which is 123
+			// whole sequences (492 bytes) plus the first two bytes "\x1b[".
+			name:     "hostile match longer than maxLen",
+			before:   "pre",
+			matching: strings.Repeat(esc, 200),
+			after:    "post",
+			want: snippetParts{
+				prefix:   "...",
+				matching: strings.Repeat(escShown, 123) + `\x1b[`,
+				suffix:   "...",
+			},
+			hostile: true,
+		},
+		{
+			// "é" is 0xc3 0xa9. len(before)=400, len(matching)=4: half=245,
+			// start=155 (odd, so it lands on 0xa9), end=649 (after[:245]
+			// ends on 0xc3). Each split half renders as its byte escape.
+			name:     "multibyte character split at both cuts",
+			before:   strings.Repeat("é", 200),
+			matching: "MTCH",
+			after:    strings.Repeat("é", 200),
+			want: snippetParts{
+				prefix:   "...",
+				before:   `\xa9` + strings.Repeat("é", 122),
+				matching: "MTCH",
+				after:    strings.Repeat("é", 122) + `\xc3`,
+				suffix:   "...",
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := formatSnippetWithParts([]byte(tt.before), []byte(tt.matching), []byte(tt.after), 500)
-			want := formatSnippetWithParts([]byte(dotted(tt.before)), []byte(dotted(tt.matching)), []byte(dotted(tt.after)), 500)
 
-			assert.Equal(t, want, got)
-			assert.Equal(t, tt.wantPrefix, got.prefix)
-			assert.Equal(t, tt.wantSuffix, got.suffix)
+			assert.Equal(t, tt.want, got)
 			joined := got.prefix + got.before + got.matching + got.after + got.suffix
-			assert.NotContains(t, joined, "\x1b")
-			assert.Contains(t, joined, ".[2J", "the sanitized sequence must be inside the shown window")
+			assert.True(t, utf8.ValidString(joined), "a split character must not leave a raw partial rune")
+			assertNoTerminalControls(t, joined)
+			if tt.hostile {
+				assert.NotContains(t, joined, "\x1b")
+				assert.Contains(t, joined, escShown, "the escaped sequence must be inside the shown window")
+			}
 		})
 	}
 }
@@ -1963,8 +2002,8 @@ func sanitizeCases() []sanitizeCase {
 			owner:       &types.OwnerInfo{User: "alice\x1b[2J", Email: "a@x.io", AccountID: "1\x1b]0;t\x07"},
 			resources:   []types.ResourceInfo{{Service: "aws", Type: "s3\x1b[2J", Name: "prod\x1b[2J", Region: "us\x1b[2J"}},
 			message:     "key active\x1b[2J",
-			wantGroup:   "tok.[2J.2J",
-			wantSnippet: "pre.[2J tok.[2J.2J .[2Jpost",
+			wantGroup:   `tok\x1b[2J\x9b2J`,
+			wantSnippet: `pre\x1b[2J tok\x1b[2J\x9b2J \x1b[2Jpost`,
 			wantOwner:   `alice\x1b[2J (a@x.io) [1\x1b]0;t\x07]`,
 			wantSummary: `1 s3\x1b[2J`,
 			wantDetail:  `s3\x1b[2J: prod\x1b[2J [us\x1b[2J]`,
@@ -1987,19 +2026,41 @@ func sanitizeCases() []sanitizeCase {
 	}
 }
 
-// assertNoTerminalControls fails if out holds a C0 control other than '\n',
-// DEL, a C1 control rune, or a raw (non-UTF-8) byte in the C1 range, which
-// 8-bit terminals read as a control such as CSI (0x9b).
+// assertNoTerminalControls fails if out holds a C0 control other than '\n'
+// or '\t', DEL, a C1 control rune, or a raw (non-UTF-8) byte in the C1 range,
+// which 8-bit terminals read as a control such as CSI (0x9b). Tab only moves
+// the cursor to the next tab stop, so it is not an injection vector.
 func assertNoTerminalControls(t *testing.T, out string) {
 	t.Helper()
 	for i, r := range out {
 		if r == utf8.RuneError && out[i] >= 0x80 && out[i] <= 0x9f {
 			t.Fatalf("raw C1 byte 0x%02x at offset %d in output:\n%q", out[i], i, out)
 		}
-		if (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+		if (r < 0x20 && r != '\n' && r != '\t') || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
 			t.Fatalf("control rune %U at offset %d in output:\n%q", r, i, out)
 		}
 	}
+}
+
+// readableSnippet is Go source with tab indentation and a non-ASCII rune; the
+// group holds a tab. Human output must show both byte for byte.
+var (
+	readableGroups  = [][]byte{[]byte("ab\tcé")}
+	readableSnippet = types.Snippet{
+		Before:   []byte("func main() {\n\tkey := \""),
+		Matching: []byte("ab\tcé"),
+		After:    []byte("\" // café\n}"),
+	}
+)
+
+func TestOutputReportHuman_KeepsTabsAndUnicodeReadable(t *testing.T) {
+	s, findings, matches, ruleMap := sanitizeReportFixture(t, readableGroups, readableSnippet, nil, nil)
+	out := renderHuman(t, s, findings, matches, ruleMap)
+
+	assertNoTerminalControls(t, out)
+	assert.Contains(t, outputLines(out), "Group 1: ab\tcé")
+	assert.Contains(t, out, "\n        func main() {\n\tkey := \"ab\tcé\" // café\n}\n\n",
+		"snippet must render byte for byte, with tabs and é unchanged")
 }
 
 func TestOutputReportHuman_SanitizesFindingContent(t *testing.T) {

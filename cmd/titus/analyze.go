@@ -383,7 +383,7 @@ func outputAnalyzeHuman(cmd *cobra.Command, results []analyzedFinding, ruleMap m
 		for j, group := range f.Groups {
 			_, _ = fmt.Fprintf(out, "  %s %s\n",
 				s.heading.Sprintf("Group %d:", j+1),
-				s.match.Sprint(string(sanitizeSnippetBytes(group))))
+				s.match.Sprint(sanitizeSnippetText(string(group))))
 		}
 
 		if f.Score != nil && len(f.Score.Applied) > 0 {

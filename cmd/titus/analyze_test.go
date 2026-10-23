@@ -298,6 +298,21 @@ func TestOutputAnalyzeHuman_SanitizesFindingContent(t *testing.T) {
 	}
 }
 
+// A group with a tab and a non-ASCII rune renders byte for byte.
+func TestOutputAnalyzeHuman_KeepsTabsAndUnicodeReadable(t *testing.T) {
+	prev := reportColor
+	reportColor = "never"
+	t.Cleanup(func() { reportColor = prev })
+	ruleMap := map[string]*types.Rule{"np.test.1": {ID: "np.test.1", Name: "Test Rule"}}
+
+	cmd, buf := newAnalyzeCmd()
+	require.NoError(t, outputAnalyzeHuman(cmd, sanitizeAnalyzeResults(sanitizeCase{groups: readableGroups, message: "ok"}), ruleMap))
+	out := buf.String()
+
+	assertNoTerminalControls(t, out)
+	assert.Contains(t, outputLines(out), "  Group 1: ab\tcé")
+}
+
 // Analyze JSON keeps the exact bytes; encoding/json escapes ESC as \u001b.
 // Groups are strings here, so the group is valid UTF-8: encoding/json would
 // replace an invalid byte such as 0x9b with U+FFFD regardless of this change.
