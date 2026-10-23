@@ -2,6 +2,7 @@ package enum
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -68,6 +69,11 @@ type Config struct {
 func ValidateBaseURL(rawURL string) (insecure bool, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
+		// *url.Error quotes the whole URL, credentials included; keep only
+		// the reason.
+		if ue, ok := errors.AsType[*url.Error](err); ok {
+			err = ue.Err
+		}
 		return false, fmt.Errorf("invalid base URL: %w", err)
 	}
 

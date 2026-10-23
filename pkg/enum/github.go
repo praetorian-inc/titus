@@ -2,11 +2,11 @@ package enum
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
-	"strings"
-
+	"io"
+	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
@@ -30,6 +30,7 @@ type GitHubConfig struct {
 type GitHubEnumerator struct {
 	client *github.Client
 	config GitHubConfig
+	warn   io.Writer // enumeration warnings; nil means os.Stderr
 }
 
 // NewGitHubEnumerator creates a new GitHub API enumerator.
@@ -98,9 +99,9 @@ func (e *GitHubEnumerator) listRepos(ctx context.Context) ([]*github.Repository,
 			return nil, fmt.Errorf("owner required when repo specified")
 		}
 
-		repo, _, err := e.client.Repositories.Get(ctx, e.config.Owner, e.config.Repo)
+		repo, resp, err := e.client.Repositories.Get(ctx, e.config.Owner, e.config.Repo)
 		if err != nil {
-			return nil, fmt.Errorf("getting repository: %w", err)
+			return nil, apiError(ctx, "getting repository", githubHTTP(resp))
 		}
 		return []*github.Repository{repo}, nil
 	}
@@ -128,7 +129,7 @@ func (e *GitHubEnumerator) listOrgRepos(ctx context.Context) ([]*github.Reposito
 	for {
 		repos, resp, err := e.client.Repositories.ListByOrg(ctx, e.config.Org, opts)
 		if err != nil {
-			return nil, fmt.Errorf("listing org repositories: %w", err)
+			return nil, apiError(ctx, "listing org repositories", githubHTTP(resp))
 		}
 
 		allRepos = append(allRepos, repos...)
@@ -152,7 +153,7 @@ func (e *GitHubEnumerator) listUserRepos(ctx context.Context) ([]*github.Reposit
 		for {
 			repos, resp, err := e.client.Repositories.ListByUser(ctx, e.config.User, opts)
 			if err != nil {
-				return nil, fmt.Errorf("listing user repositories: %w", err)
+				return nil, apiError(ctx, "listing user repositories", githubHTTP(resp))
 			}
 			allRepos = append(allRepos, repos...)
 			if resp.NextPage == 0 {
@@ -167,7 +168,7 @@ func (e *GitHubEnumerator) listUserRepos(ctx context.Context) ([]*github.Reposit
 		for {
 			repos, resp, err := e.client.Repositories.ListByAuthenticatedUser(ctx, opts)
 			if err != nil {
-				return nil, fmt.Errorf("listing user repositories: %w", err)
+				return nil, apiError(ctx, "listing user repositories", githubHTTP(resp))
 			}
 			allRepos = append(allRepos, repos...)
 			if resp.NextPage == 0 {
@@ -209,9 +210,9 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 	}
 
 	// Get repository tree recursively
-	tree, _, err := e.client.Git.GetTree(ctx, repo.GetOwner().GetLogin(), repo.GetName(), branch, true)
+	tree, resp, err := e.client.Git.GetTree(ctx, repo.GetOwner().GetLogin(), repo.GetName(), branch, true)
 	if err != nil {
-		return fmt.Errorf("getting tree: %w", err)
+		return apiError(ctx, "getting tree", githubHTTP(resp))
 	}
 
 	// Warn if tree is truncated (>100K files) - secrets beyond limit will be missed
@@ -219,38 +220,33 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 		return fmt.Errorf("repository tree for %s is truncated (>100K files); clone locally and use 'titus scan' for complete coverage", repo.GetFullName())
 	}
 
-	// Process each entry in the tree
+	// Group paths by blob so each blob is fetched once and reported once,
+	// with every path it appears at.
+	var blobs blobPaths
 	for _, entry := range tree.Entries {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
 		// Skip non-blob entries (trees/submodules)
 		if entry.GetType() != "blob" {
 			continue
 		}
-
-		// Apply size limit
-		if e.config.MaxFileSize > 0 && int64(entry.GetSize()) > e.config.MaxFileSize {
+		// Apply size limit before fetching; re-checked on the content.
+		if overSizeLimit(entry.GetSize(), e.config.MaxFileSize) {
 			continue
 		}
+		blobs.add(entry.GetSHA(), entry.GetPath())
+	}
 
-		// Get file content
-		content, _, _, err := e.client.Repositories.GetContents(ctx, repo.GetOwner().GetLogin(), repo.GetName(), entry.GetPath(), nil)
+	id := apiRepoIdentity(e.config.BaseURL, "github.com", repo.GetFullName())
+	src := githubBlobSource{owner: repo.GetOwner().GetLogin(), name: repo.GetName(), ref: branch, id: id}
+	for paths := range blobs.all() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		data, ok, err := e.fetchBlob(ctx, src, paths)
 		if err != nil {
-			// Skip files we can't read (permissions, large files, etc.)
-			continue
+			return err
 		}
-
-		if content == nil || content.Content == nil {
-			continue
-		}
-
-		// Decode base64 content
-		data, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(*content.Content, "\n", ""))
-		if err != nil {
+		if !ok || overSizeLimit(len(data), e.config.MaxFileSize) {
 			continue
 		}
 
@@ -260,22 +256,56 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 			continue
 		}
 
-		// Compute blob ID
-		blobID := types.ComputeBlobID(data)
-
-		// Create Git provenance (GitHub is git-based)
-		prov := types.GitProvenance{
-			RepoPath: repo.GetFullName(),
-			BlobPath: entry.GetPath(),
-			// Commit metadata not available from tree API
-			Commit: nil,
-		}
-
-		// Yield to callback
-		if err := callback(data, blobID, prov); err != nil {
+		// Commit metadata is not available from the tree API.
+		if err := callback(data, types.ComputeBlobID(data), apiProvenance(id, paths)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// githubBlobSource is where enumerateRepo fetches blob content from.
+type githubBlobSource struct {
+	owner, name, ref string
+	id               string // repository identity, for warnings
+}
+
+// fetchBlob returns the content at the first of paths that can be read. When
+// none can (permissions, files over the contents API's 1 MB inline limit,
+// etc.) it warns and returns ok=false. err is non-nil only when ctx is done.
+func (e *GitHubEnumerator) fetchBlob(ctx context.Context, src githubBlobSource, paths []string) (data []byte, ok bool, err error) {
+	var reason string
+	for _, p := range paths {
+		file, _, resp, err := e.client.Repositories.GetContents(ctx, src.owner, src.name, p, &github.RepositoryContentGetOptions{Ref: src.ref})
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, false, ctxErr
+		}
+		if err != nil {
+			reason = httpFailure(githubHTTP(resp))
+			continue
+		}
+		if file == nil {
+			reason = "not a file"
+			continue
+		}
+		// GetContent decodes base64 (newlines included) and rejects the
+		// "none" encoding the API uses when it omits content.
+		s, err := file.GetContent()
+		if err != nil {
+			reason = fmt.Sprintf("content not returned (encoding %q)", file.GetEncoding())
+			continue
+		}
+		return []byte(s), true, nil
+	}
+	warnBlobSkipped(e.warn, src.id, paths, reason)
+	return nil, false, nil
+}
+
+// githubHTTP returns the HTTP response of a go-github call, or nil.
+func githubHTTP(resp *github.Response) *http.Response {
+	if resp == nil {
+		return nil
+	}
+	return resp.Response
 }

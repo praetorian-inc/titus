@@ -1,6 +1,7 @@
 package enum
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/praetorian-inc/titus/pkg/repoid"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -104,15 +106,29 @@ func (e *CloneEnumerator) Enumerate(ctx context.Context, callback func(content [
 		}
 
 		if err := e.cloneAndScan(ctx, repo, callback); err != nil {
-			// Log error and continue to next repo
-			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", repo.Name, err)
+			// Log error and continue to next repo. Never print CloneURL: it
+			// may carry a token.
+			id, _ := cloneIdentity(repo)
+			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", id, err)
 			continue
 		}
 	}
 	return nil
 }
 
+// cloneIdentity returns the repository value for a clone: the normalized
+// CloneURL when it is a network remote (credentials, port and ".git"
+// stripped), otherwise the listed name as typed. No host is guessed (SEC-3).
+func cloneIdentity(repo RepoInfo) (id string, remote bool) {
+	if id, ok := repoid.Normalize(repo.CloneURL); ok {
+		return id, true
+	}
+	return typedRepoIdentity(cmp.Or(repo.Name, repo.CloneURL)), false
+}
+
 func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	id, remote := cloneIdentity(repo)
+
 	tmpDir, err := os.MkdirTemp("", "titus-clone-*")
 	if err != nil {
 		return fmt.Errorf("creating temp dir: %w", err)
@@ -147,7 +163,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 	}
 	cloneArgs = append(cloneArgs, repo.CloneURL, clonePath)
 
-	fmt.Fprintf(os.Stderr, "Cloning %s...\n", repo.Name)
+	fmt.Fprintf(os.Stderr, "Cloning %s...\n", id)
 	cmd := exec.CommandContext(ctx, "git", cloneArgs...)
 	cmd.Stderr = os.Stderr
 
@@ -161,48 +177,83 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 		)
 	}
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cloning %s: %w", repo.Name, err)
+		return fmt.Errorf("cloning %s: %w", id, err)
 	}
 
 	cloneConfig := e.config
 	cloneConfig.Root = clonePath
 
 	if e.Git {
-		// Git history mode: walk all commits
+		// Git history mode: walk all commits. The native enumerator already
+		// reports every location of each blob; only the identity changes.
+		// RepoRoot is cleared because the temp clone is deleted.
 		gitEnum := NewGitEnumerator(cloneConfig)
 		if depth == 0 {
 			gitEnum.WalkAll = true
 		}
 		return gitEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 			if gp, ok := prov.(types.GitProvenance); ok {
-				gp.RepoPath = repo.Name
+				gp.RepoPath, gp.RemoteIdentity, gp.RepoRoot = id, remote, ""
 				return callback(content, blobID, gp)
 			}
 			return callback(content, blobID, prov)
 		})
 	}
 
-	// Filesystem mode (default): fast scan of working tree
-	// Collect commit metadata for current files (best-effort; nil map is safe)
-	commitMap, _ := collectCommitMetadataForRepo(ctx, clonePath, false)
+	// Filesystem mode (default): fast scan of the working tree. Commit
+	// metadata comes from the blob index (best effort; a nil index is safe).
+	idx, err := buildBlobIndex(ctx, clonePath)
+	if err != nil {
+		idx = nil
+	}
+	idx.writeWarnings(os.Stderr)
 
 	return NewFilesystemEnumerator(cloneConfig).Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		// Rewrite file provenance to include repo name
-		if fp, ok := prov.(types.FileProvenance); ok {
-			// Convert absolute temp path to repo-relative path
-			relPath, err := filepath.Rel(clonePath, fp.FilePath)
-			if err != nil {
-				relPath = fp.FilePath
-			}
-			gp := types.GitProvenance{
-				RepoPath: repo.Name,
-				BlobPath: relPath,
-			}
-			if commitMap != nil {
-				gp.Commit = commitMap[relPath]
-			}
-			return callback(content, blobID, gp)
+		fp, ok := prov.(types.FileProvenance)
+		if !ok {
+			return callback(content, blobID, prov)
 		}
-		return callback(content, blobID, prov)
+		rel, err := filepath.Rel(clonePath, fp.FilePath)
+		if err != nil {
+			rel = fp.FilePath
+		}
+		rel = filepath.ToSlash(rel)
+		loc := types.GitLocation{Path: rel, Commit: committedAt(idx, blobID, fp.FilePath, rel)}
+		return callback(content, blobID, types.GitProvenance{
+			RepoPath:       id,
+			BlobPath:       rel,
+			Commit:         loc.Commit,
+			RemoteIdentity: remote,
+			Locations:      []types.GitLocation{loc},
+		})
 	})
+}
+
+// committedAt returns the commit recorded in idx for the blob at rel. The
+// scanned content may be a decoded form of the file (UTF-16), so on a miss
+// the raw file is hashed and looked up again.
+func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) *types.CommitMetadata {
+	if idx == nil {
+		return nil
+	}
+	if c := commitForPath(idx.lookup(blobID), rel); c != nil {
+		return c
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return nil
+	}
+	if rawID := types.ComputeBlobID(raw); rawID != blobID {
+		return commitForPath(idx.lookup(rawID), rel)
+	}
+	return nil
+}
+
+func commitForPath(locs []types.GitLocation, rel string) *types.CommitMetadata {
+	for _, l := range locs {
+		if l.Path == rel {
+			return l.Commit
+		}
+	}
+	return nil
 }

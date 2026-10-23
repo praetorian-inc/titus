@@ -2,7 +2,10 @@ package enum
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 
 	"gitlab.com/gitlab-org/api/client-go"
 
@@ -23,6 +26,7 @@ type GitLabConfig struct {
 type GitLabEnumerator struct {
 	client *gitlab.Client
 	config GitLabConfig
+	warn   io.Writer // enumeration warnings; nil means os.Stderr
 }
 
 // NewGitLabEnumerator creates a new GitLab enumerator.
@@ -74,9 +78,9 @@ func (e *GitLabEnumerator) Enumerate(ctx context.Context, callback func(content 
 func (e *GitLabEnumerator) listProjects(ctx context.Context) ([]*gitlab.Project, error) {
 	// If single project specified
 	if e.config.Project != "" {
-		project, _, err := e.client.Projects.GetProject(e.config.Project, nil)
+		project, resp, err := e.client.Projects.GetProject(e.config.Project, nil, gitlab.WithContext(ctx))
 		if err != nil {
-			return nil, fmt.Errorf("getting project: %w", err)
+			return nil, apiError(ctx, "getting project", gitlabHTTP(resp))
 		}
 		return []*gitlab.Project{project}, nil
 	}
@@ -94,9 +98,9 @@ func (e *GitLabEnumerator) listProjects(ctx context.Context) ([]*gitlab.Project,
 				return nil, ctx.Err()
 			default:
 			}
-			projects, resp, err := e.client.Groups.ListGroupProjects(e.config.Group, opts)
+			projects, resp, err := e.client.Groups.ListGroupProjects(e.config.Group, opts, gitlab.WithContext(ctx))
 			if err != nil {
-				return nil, fmt.Errorf("listing group projects: %w", err)
+				return nil, apiError(ctx, "listing group projects", gitlabHTTP(resp))
 			}
 			allProjects = append(allProjects, projects...)
 			if resp.NextPage == 0 {
@@ -120,9 +124,9 @@ func (e *GitLabEnumerator) listProjects(ctx context.Context) ([]*gitlab.Project,
 				return nil, ctx.Err()
 			default:
 			}
-			projects, resp, err := e.client.Projects.ListUserProjects(e.config.User, opts)
+			projects, resp, err := e.client.Projects.ListUserProjects(e.config.User, opts, gitlab.WithContext(ctx))
 			if err != nil {
-				return nil, fmt.Errorf("listing user projects: %w", err)
+				return nil, apiError(ctx, "listing user projects", gitlabHTTP(resp))
 			}
 			allProjects = append(allProjects, projects...)
 			if resp.NextPage == 0 {
@@ -170,9 +174,9 @@ func (e *GitLabEnumerator) enumerateProject(ctx context.Context, project *gitlab
 		default:
 		}
 
-		nodes, resp, err := e.client.Repositories.ListTree(project.ID, opts)
+		nodes, resp, err := e.client.Repositories.ListTree(project.ID, opts, gitlab.WithContext(ctx))
 		if err != nil {
-			return fmt.Errorf("listing tree: %w", err)
+			return apiError(ctx, "listing tree", gitlabHTTP(resp))
 		}
 		allNodes = append(allNodes, nodes...)
 		if resp.NextPage == 0 {
@@ -181,27 +185,29 @@ func (e *GitLabEnumerator) enumerateProject(ctx context.Context, project *gitlab
 		opts.Page = resp.NextPage
 	}
 
-	// Process each file node
+	// Group paths by blob so each blob is fetched once and reported once,
+	// with every path it appears at.
+	var blobs blobPaths
 	for _, node := range allNodes {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
 		if node.Type != "blob" {
 			continue
 		}
+		blobs.add(node.ID, node.Path)
+	}
 
-		// Get file content
-		content, _, err := e.client.RepositoryFiles.GetRawFile(project.ID, node.Path, &gitlab.GetRawFileOptions{})
-		if err != nil {
-			// Skip files we can't read
-			continue
+	id := apiRepoIdentity(e.config.BaseURL, "gitlab.com", project.PathWithNamespace)
+	for paths := range blobs.all() {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
-		// Skip files over max size
-		if e.config.MaxFileSize > 0 && int64(len(content)) > e.config.MaxFileSize {
+		content, ok, err := e.fetchBlob(ctx, project.ID, id, paths)
+		if err != nil {
+			return err
+		}
+		// The tree listing carries no sizes, so the limit applies to the
+		// fetched content; only one blob is held at a time.
+		if !ok || overSizeLimit(len(content), e.config.MaxFileSize) {
 			continue
 		}
 
@@ -211,19 +217,62 @@ func (e *GitLabEnumerator) enumerateProject(ctx context.Context, project *gitlab
 			continue
 		}
 
-		// Create blob ID from content hash
-		blobID := types.ComputeBlobID(content)
-
-		// Create provenance
-		prov := types.GitProvenance{
-			RepoPath: project.PathWithNamespace,
-			BlobPath: node.Path,
-		}
-
-		if err := callback(content, blobID, prov); err != nil {
+		if err := callback(content, types.ComputeBlobID(content), apiProvenance(id, paths)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// fetchBlob returns the content at the first of paths that can be read. When
+// none can, or the content is over the size limit, it warns (id names the
+// project) and returns ok=false. err is non-nil only when ctx is done.
+func (e *GitLabEnumerator) fetchBlob(ctx context.Context, projectID int64, id string, paths []string) (content []byte, ok bool, err error) {
+	var reason string
+	for _, p := range paths {
+		content, resp, err := e.getRawFile(ctx, projectID, p)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, false, ctxErr
+		}
+		if err == nil {
+			return content, true, nil
+		}
+		if errors.Is(err, errOverSizeLimit) {
+			// Every path holds the same blob; the others are no smaller.
+			reason = errOverSizeLimit.Error()
+			break
+		}
+		reason = httpFailure(gitlabHTTP(resp))
+	}
+	warnBlobSkipped(e.warn, id, paths, reason)
+	return nil, false, nil
+}
+
+// getRawFile downloads one file. Unlike RepositoryFiles.GetRawFile, which
+// reads the whole body into memory, it reads at most the size limit plus
+// one byte (see cappedBuffer).
+func (e *GitLabEnumerator) getRawFile(ctx context.Context, projectID int64, path string) ([]byte, *gitlab.Response, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	u := fmt.Sprintf("projects/%d/repository/files/%s/raw", projectID, gitlab.PathEscape(path))
+	req, err := e.client.NewRequest(http.MethodGet, u, &gitlab.GetRawFileOptions{}, []gitlab.RequestOptionFunc{gitlab.WithContext(ctx)})
+	if err != nil {
+		return nil, nil, err
+	}
+	buf := &cappedBuffer{limit: e.config.MaxFileSize, stop: cancel}
+	resp, err := e.client.Do(req, buf)
+	if err != nil {
+		return nil, resp, err
+	}
+	return buf.buf.Bytes(), resp, nil
+}
+
+// gitlabHTTP returns the HTTP response of a GitLab client call, or nil.
+func gitlabHTTP(resp *gitlab.Response) *http.Response {
+	if resp == nil {
+		return nil
+	}
+	return resp.Response
 }
