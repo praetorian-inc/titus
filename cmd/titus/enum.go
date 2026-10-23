@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
@@ -91,22 +92,15 @@ func runEnumScan(cmd *cobra.Command, enumerator enum.Enumerator, service string)
 
 	matchCount := 0
 	findingCount := 0
+	// Enumerators may invoke the callback concurrently (the filesystem
+	// enumerator runs NumCPU readers). Matching runs unlocked; mu serializes
+	// the store writes, the finding exists/add decision, and the counters.
+	var mu sync.Mutex
 
 	err = enumerator.Enumerate(cmd.Context(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		if err := s.AddBlob(blobID, int64(len(content))); err != nil {
-			return fmt.Errorf("storing blob: %w", err)
-		}
-
-		if err := s.AddProvenance(blobID, prov); err != nil {
-			return fmt.Errorf("storing provenance: %w", err)
-		}
-
 		matches, err := m.MatchWithBlobID(content, blobID)
 		if err != nil {
 			return fmt.Errorf("matching content: %w", err)
-		}
-		if err := storeLocations(s, blobID, prov, len(matches) > 0); err != nil {
-			return err
 		}
 
 		for _, match := range matches {
@@ -116,6 +110,21 @@ func runEnumScan(cmd *cobra.Command, enumerator enum.Enumerator, service string)
 			match.Location.Source.Start.Column = startCol
 			match.Location.Source.End.Line = endLine
 			match.Location.Source.End.Column = endCol
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		if err := s.AddBlob(blobID, int64(len(content))); err != nil {
+			return fmt.Errorf("storing blob: %w", err)
+		}
+
+		if err := s.AddProvenance(blobID, prov); err != nil {
+			return fmt.Errorf("storing provenance: %w", err)
+		}
+
+		if err := storeLocations(s, blobID, prov, len(matches) > 0); err != nil {
+			return err
 		}
 
 		for _, match := range matches {
