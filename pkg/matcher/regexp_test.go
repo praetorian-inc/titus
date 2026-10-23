@@ -29,8 +29,9 @@ func TestMatchParallel_Correctness(t *testing.T) {
 	}
 
 	// Create content >10KB to trigger parallel path
+	const repeats = 500
 	var contentBuilder strings.Builder
-	for i := 0; i < 500; i++ {
+	for range repeats {
 		contentBuilder.WriteString(`password = "secret123"` + "\n")
 		contentBuilder.WriteString(`api_key = "key456"` + "\n")
 		contentBuilder.WriteString("some other line\n")
@@ -56,9 +57,22 @@ func TestMatchParallel_Correctness(t *testing.T) {
 	assert.Contains(t, ruleMatches, "test-rule-1", "Should match password pattern")
 	assert.Contains(t, ruleMatches, "test-rule-2", "Should match API key pattern")
 
-	// With content-based deduplication (NoseyParker behavior), same secret value = 1 finding
-	assert.Equal(t, 1, ruleMatches["test-rule-1"], "Should deduplicate identical password content")
-	assert.Equal(t, 1, ruleMatches["test-rule-2"], "Should deduplicate identical API key content")
+	// Every location is a finding: the same secret value on 500 lines is 500
+	// matches per rule, each at its own offset. Collapsing by content is the
+	// store's job (FindingID), not the matcher's.
+	assert.Equal(t, repeats, ruleMatches["test-rule-1"], "every password line must be reported")
+	assert.Equal(t, repeats, ruleMatches["test-rule-2"], "every api_key line must be reported")
+
+	seen := make(map[string]map[types.OffsetSpan]int)
+	for _, match := range matches {
+		if seen[match.RuleID] == nil {
+			seen[match.RuleID] = make(map[types.OffsetSpan]int)
+		}
+		seen[match.RuleID][match.Location.Offset]++
+	}
+	for ruleID, offsets := range seen {
+		assert.Len(t, offsets, repeats, "rule %s: every match must sit at a distinct location", ruleID)
+	}
 }
 
 // TestMatchParallel_vs_Sequential_Equivalence tests that parallel and sequential paths return same results
@@ -628,8 +642,8 @@ func TestMatchParallel_DeterministicOutputOrder(t *testing.T) {
 	}
 
 	// Build content >10KB so matchParallel is triggered.
-	// Each pattern appears once per line so that deduplication keeps a single match
-	// per rule and the sort key is unambiguous.
+	// Each pattern appears once per line at a distinct offset, so every match is
+	// kept and the (start, end, ruleID) sort key is unambiguous.
 	var sb strings.Builder
 	for sb.Len() < parallelThreshold+5000 {
 		sb.WriteString("ALPHA_ABCDE BETA_12345 GAMMA_abcde filler\n")
@@ -644,8 +658,7 @@ func TestMatchParallel_DeterministicOutputOrder(t *testing.T) {
 	const runs = 10
 	sequences := make([][]string, runs)
 	for i := range sequences {
-		// Reset the deduplicator between calls so each run is independent.
-		matcher.dedup.Reset()
+		// Each MatchWithBlobID call owns its deduplicator, so runs are independent.
 		matches, err := matcher.MatchWithBlobID(content, types.ComputeBlobID(content))
 		require.NoError(t, err)
 		ids := make([]string, len(matches))
@@ -664,7 +677,6 @@ func TestMatchParallel_DeterministicOutputOrder(t *testing.T) {
 
 	// Additionally assert that the output is sorted by (start, end, ruleID).
 	// Take the last run's result and verify structural ordering.
-	matcher.dedup.Reset()
 	finalMatches, err := matcher.MatchWithBlobID(content, types.ComputeBlobID(content))
 	require.NoError(t, err)
 	for i := 1; i < len(finalMatches); i++ {
