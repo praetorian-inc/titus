@@ -2,9 +2,10 @@ package explore
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/praetorian-inc/titus/pkg/rule"
 	"github.com/praetorian-inc/titus/pkg/store"
@@ -130,11 +131,10 @@ func groupMatchesByFinding(findings []*types.Finding, matches []*types.Match, ru
 // buildFindingRow creates a findingRow from a Finding and its matches.
 func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule, s store.Store) *findingRow {
 	row := &findingRow{
-		FindingID:  f.ID,
-		RuleID:     f.RuleID,
-		RuleName:   f.RuleID, // fallback
-		Groups:     f.Groups,
-		MatchCount: len(matches),
+		FindingID: f.ID,
+		RuleID:    f.RuleID,
+		RuleName:  f.RuleID, // fallback
+		Groups:    f.Groups,
 	}
 
 	// Populate rule metadata
@@ -190,28 +190,27 @@ func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[strin
 		row.Matches = append(row.Matches, mr)
 	}
 
-	// Extract unique repository paths from match provenance
-	repoSet := make(map[string]struct{})
-	for _, mr := range row.Matches {
-		for _, prov := range mr.Provenance {
-			if gp, ok := prov.(types.GitProvenance); ok && gp.RepoPath != "" {
-				repoSet[gp.RepoPath] = struct{}{}
-			}
-			if ep, ok := prov.(types.ExtendedProvenance); ok {
-				if source, _ := ep.Payload["source"].(string); source != "" {
-					repoSet[source] = struct{}{}
-				}
+	row.Repositories, row.MatchCount = summarizeOccurrences(row.Matches)
+
+	return row
+}
+
+// summarizeOccurrences returns the distinct non-empty facet keys of the
+// matches' occurrences, sorted, and the total number of occurrences. A facet
+// key is the occurrence's repository, or for an extended location its source
+// (see facetKey), so a facet value and a location cannot drift; a legacy row
+// keeps its stored repository string and is therefore a value of its own.
+func summarizeOccurrences(matches []*matchRow) (repos []string, locations int) {
+	set := make(map[string]struct{})
+	for _, mr := range matches {
+		locations += len(mr.Occurrences)
+		for _, o := range mr.Occurrences {
+			if k := facetKey(o); k != "" {
+				set[k] = struct{}{}
 			}
 		}
 	}
-	repos := make([]string, 0, len(repoSet))
-	for r := range repoSet {
-		repos = append(repos, r)
-	}
-	sort.Strings(repos)
-	row.Repositories = repos
-
-	return row
+	return slices.Sorted(maps.Keys(set)), locations
 }
 
 // buildMatchRow creates a matchRow from a Match.
@@ -237,6 +236,12 @@ func buildMatchRow(m *types.Match, s store.Store) *matchRow {
 		provs, err := s.GetAllProvenance(m.BlobID)
 		if err == nil {
 			mr.Provenance = provs
+		}
+
+		// Load locations (already merged, deduplicated and sorted by the store)
+		occs, err := s.GetOccurrences(m.BlobID)
+		if err == nil {
+			mr.Occurrences = occs
 		}
 
 		// Load match annotation

@@ -1,7 +1,8 @@
 package explore
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -89,8 +90,8 @@ func mapToFacetValues(id facetID, counts map[string]int) []*facetValue {
 	for v, c := range counts {
 		values = append(values, &facetValue{FacetID: id, Value: v, Count: c})
 	}
-	sort.Slice(values, func(i, j int) bool {
-		return values[i].Value < values[j].Value
+	slices.SortFunc(values, func(a, b *facetValue) int {
+		return cmp.Compare(a.Value, b.Value)
 	})
 	return values
 }
@@ -161,14 +162,10 @@ func (fs *facetState) matchesFinding(f *findingRow) bool {
 				return false
 			}
 		case facetRepository:
-			found := false
-			for _, repo := range f.Repositories {
-				if selected[repo] {
-					found = true
-					break
-				}
-			}
-			if !found {
+			// Repositories holds exactly the facet keys of the finding's
+			// occurrences, so this passes iff visibleOccurrences leaves at
+			// least one location of the finding.
+			if !slices.ContainsFunc(f.Repositories, func(repo string) bool { return selected[repo] }) {
 				return false
 			}
 		}
@@ -230,9 +227,9 @@ type findingRow struct {
 	RuleID           string
 	RuleName         string
 	Categories       []string
-	Repositories     []string // unique repo paths from match provenance
+	Repositories     []string // distinct non-empty facetKey values (repository, else extended source) across matches, sorted
 	Groups           [][]byte
-	MatchCount       int
+	MatchCount       int     // total locations (occurrences) across all matches, not the match count
 	ValidationStatus string  // aggregated: "valid", "invalid", "undetermined", or ""
 	Confidence       float64 // mean confidence across matches
 	AnnotationStatus string  // "accept", "reject", or ""
@@ -252,7 +249,32 @@ type matchRow struct {
 	ValidationStatus string
 	Confidence       float64
 	Message          string
-	Provenance       []types.Provenance
+	Provenance       []types.Provenance // raw rows, kept for actions that need full provenance
+	Occurrences      []types.Occurrence // every location, from store.GetOccurrences
 	AnnotationStatus string
 	Comment          string
+}
+
+// facetKey is an occurrence's Repository facet value: its repository, or for
+// an extended location its source (e.g. "confluence"). It is "" for a plain
+// file or a sourceless location, which have no facet value.
+func facetKey(o types.Occurrence) string {
+	return cmp.Or(o.Repository, o.Source)
+}
+
+// visibleOccurrences returns the occurrences shown under the Repository facet
+// selection. An empty selection shows all of them (the input slice itself). A
+// non-empty selection shows only occurrences whose facetKey is selected, so it
+// hides those with no facet key.
+func visibleOccurrences(occs []types.Occurrence, sel map[string]bool) []types.Occurrence {
+	if len(sel) == 0 {
+		return occs
+	}
+	var vis []types.Occurrence
+	for _, o := range occs {
+		if k := facetKey(o); k != "" && sel[k] {
+			vis = append(vis, o)
+		}
+	}
+	return vis
 }

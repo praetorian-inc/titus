@@ -89,6 +89,15 @@ func TestOccurrencesOf_ExtendedAndArchive(t *testing.T) {
 	require.Len(t, ext, 1)
 	assert.Equal(t, Occurrence{Kind: "extended", Path: "s3://b/k.env", HostRecorded: true}, ext[0])
 
+	src := OccurrencesOf(ExtendedProvenance{Payload: map[string]interface{}{"source": "confluence", "path": "SPACE/Page"}})
+	require.Len(t, src, 1)
+	assert.Equal(t, Occurrence{Kind: "extended", Source: "confluence", Path: "SPACE/Page", HostRecorded: true}, src[0])
+
+	nonString := OccurrencesOf(ExtendedProvenance{Payload: map[string]interface{}{"source": 42, "path": "p"}})
+	require.Len(t, nonString, 1)
+	assert.Empty(t, nonString[0].Source)
+	assert.Empty(t, nonString[0].Repository)
+
 	arc := OccurrencesOf(ArchiveProvenance{ArchivePath: "a.zip", MemberPath: "x/y.txt"})
 	require.Len(t, arc, 1)
 	assert.Equal(t, Occurrence{Kind: "archive", Path: "a.zip:x/y.txt", HostRecorded: true}, arc[0])
@@ -198,6 +207,15 @@ func TestMergeOccurrences_DeduplicatesAndSorts(t *testing.T) {
 	assert.Equal(t, []Occurrence{b, a}, got)
 }
 
+func TestMergeOccurrences_CoveredExtendedRowGetsSourceFromProvenance(t *testing.T) {
+	// A stored location row carries no Source (no column); the covering
+	// provenance row supplies it on read.
+	rows := []Occurrence{{Kind: "extended", Path: "SPACE/Page", HostRecorded: true}}
+	provs := []Provenance{ExtendedProvenance{Payload: map[string]interface{}{"source": "confluence", "path": "SPACE/Page"}}}
+	got := MergeOccurrences(rows, provs)
+	assert.Equal(t, []Occurrence{{Kind: "extended", Source: "confluence", Path: "SPACE/Page", HostRecorded: true}}, got)
+}
+
 func TestSortOccurrences_DeterministicOrder(t *testing.T) {
 	jun16 := jun15.AddDate(0, 0, 1)
 	in := []Occurrence{
@@ -246,6 +264,17 @@ func TestFormatLine_LegacyHostNotRecorded(t *testing.T) {
 	o := Occurrence{Kind: "git", Repository: "acme/api", Path: "config.yml",
 		Commit: "7d0e8150aaaa", CommitDate: jun15}
 	assert.Equal(t, "acme/api  config.yml:3  7d0e815  2026-06-15  host not recorded", FormatLine(o, 3, ""))
+}
+
+func TestFormatLine_ExtendedSourceLeads(t *testing.T) {
+	o := Occurrence{Kind: "extended", Source: "confluence", Path: "SPACE/Page", HostRecorded: true}
+	assert.Equal(t, "confluence  SPACE/Page:4", FormatLine(o, 4, ""))
+
+	o.Source = "conf\x1b[31mluence"
+	assert.NotContains(t, FormatLine(o, 4, ""), "\x1b")
+
+	// Repository wins over Source; a sourceless extended line is just the path.
+	assert.Equal(t, "SPACE/Page:4", FormatLine(Occurrence{Kind: "extended", Path: "SPACE/Page", HostRecorded: true}, 4, ""))
 }
 
 func TestFormatLine_UsesDisplayPath(t *testing.T) {

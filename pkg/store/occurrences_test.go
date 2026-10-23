@@ -126,6 +126,22 @@ func TestStore_Occurrences(t *testing.T) {
 			},
 		},
 		{
+			name: "extended row gets its source from provenance, not from storage",
+			provs: []types.Provenance{
+				types.ExtendedProvenance{Payload: map[string]any{"source": "confluence", "path": "SPACE/Page"}},
+			},
+			occs: [][]types.Occurrence{
+				types.OccurrencesOf(types.ExtendedProvenance{Payload: map[string]any{"source": "confluence", "path": "SPACE/Page"}}),
+				types.OccurrencesOf(types.ExtendedProvenance{Payload: map[string]any{"source": "confluence", "path": "SPACE/Page"}}),
+			},
+			want: []types.Occurrence{{Kind: "extended", Source: "confluence", Path: "SPACE/Page", HostRecorded: true}},
+		},
+		{
+			name: "extended row without provenance has no source in every store",
+			occs: [][]types.Occurrence{{{Kind: "extended", Source: "jira", Path: "PROJ-1", HostRecorded: true}}},
+			want: []types.Occurrence{{Kind: "extended", Path: "PROJ-1", HostRecorded: true}},
+		},
+		{
 			name: "SEC-15: hostile path bytes round-trip exactly",
 			occs: [][]types.Occurrence{{gitOcc("github.com/acme/api", "x'); DROP TABLE findings;--", commitA), gitOcc("github.com/acme/api", "a\nb", commitA)}},
 			want: []types.Occurrence{

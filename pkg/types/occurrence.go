@@ -19,6 +19,7 @@ import (
 type Occurrence struct {
 	Kind         string    // "git" | "file" | "extended" | "archive"
 	Repository   string    // git only; "" otherwise
+	Source       string    // extended only: Payload["source"] (e.g. "confluence"); derived from provenance, never stored
 	Path         string    // repo-relative (git) or as typed / source-native (others)
 	AbsolutePath string    // working tree, plain folder, and committed locations of remote-less repos
 	Commit       string    // full hash; "" = none
@@ -48,6 +49,9 @@ func OccurrencesOf(p Provenance) []Occurrence {
 			abs = ""
 		}
 		return []Occurrence{{Kind: v.Kind(), Path: v.FilePath, AbsolutePath: abs, HostRecorded: true}}
+	case ExtendedProvenance:
+		source, _ := v.Payload["source"].(string)
+		return []Occurrence{{Kind: v.Kind(), Source: source, Path: v.Path(), HostRecorded: true}}
 	default:
 		return []Occurrence{{Kind: p.Kind(), Path: p.Path(), HostRecorded: true}}
 	}
@@ -84,7 +88,9 @@ func gitOccurrences(g GitProvenance) []Occurrence {
 // MergeOccurrences reconciles location rows with provenance rows for one blob.
 // Every row is kept. A provenance row is added only when no row covers it; an
 // uncovered git provenance is a legacy row and is marked HostRecorded=false,
-// with any userinfo redacted from its stored repository. A commitless,
+// with any userinfo redacted from its stored repository. A covered extended
+// row takes its Source from the covering provenance, since location rows do
+// not store it. A commitless,
 // non-working-tree git occurrence is dropped when another occurrence of the
 // same (repository, path) has a commit. The result is deduplicated and sorted.
 func MergeOccurrences(rows []Occurrence, provs []Provenance) []Occurrence {
@@ -93,8 +99,13 @@ func MergeOccurrences(rows []Occurrence, provs []Provenance) []Occurrence {
 		covered[coverKeyOf(r)] = true
 	}
 	all := slices.Clone(rows)
+	sources := make(map[coverKey]string)
 	for _, p := range provs {
 		for _, o := range legacyOccurrencesOf(p) {
+			if o.Source != "" {
+				k := coverKeyOf(o)
+				sources[k] = cmp.Or(sources[k], o.Source)
+			}
 			if covered[coverKeyOf(o)] {
 				continue
 			}
@@ -103,6 +114,11 @@ func MergeOccurrences(rows []Occurrence, provs []Provenance) []Occurrence {
 				o.Repository = repoid.RedactUserinfo(o.Repository)
 			}
 			all = append(all, o)
+		}
+	}
+	for i := range all {
+		if all[i].Source == "" {
+			all[i].Source = sources[coverKeyOf(all[i])]
 		}
 	}
 	return sortedUnique(dropCommitlessDuplicates(all))
@@ -199,15 +215,17 @@ func compareDate(a, b time.Time) int {
 }
 
 // FormatLine renders one human location line, with two spaces between fields:
-// "<repository>  <path>:<line>  <short commit>  <commit date>". A missing
-// repository, commit or date is omitted; a working-tree location shows
+// "<repository>  <path>:<line>  <short commit>  <commit date>". An extended
+// location with no repository leads with its source instead, as in
+// "confluence  <path>:<line>". A missing repository or source, commit or date
+// is omitted; a working-tree location shows
 // "working tree" in place of the commit fields; a legacy git location ends
 // with "host not recorded". display replaces the path when non-empty (see
 // DisambiguateDisplay). Every field passes through SanitizeDisplay.
 func FormatLine(o Occurrence, line int, display string) string {
 	fields := make([]string, 0, 5)
-	if o.Repository != "" {
-		fields = append(fields, SanitizeDisplay(o.Repository))
+	if lead := cmp.Or(o.Repository, o.Source); lead != "" {
+		fields = append(fields, SanitizeDisplay(lead))
 	}
 	fields = append(fields, SanitizeDisplay(cmp.Or(display, o.Path))+":"+strconv.Itoa(line))
 	switch {

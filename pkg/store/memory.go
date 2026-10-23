@@ -151,6 +151,7 @@ func (m *MemoryStore) AddOccurrences(blobID types.BlobID, occs []types.Occurrenc
 		}
 		m.locationKeys[lk] = struct{}{}
 		o.HostRecorded = true
+		o.Source = "" // not stored, as in blob_locations; GetOccurrences derives it from provenance
 		if o.CommitDate.IsZero() {
 			o.CommitDate = time.Time{}
 		} else {
