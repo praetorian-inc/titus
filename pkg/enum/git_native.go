@@ -2,21 +2,35 @@ package enum
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
+	"github.com/praetorian-inc/titus/pkg/repoid"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// blobEntry holds a deduplicated blob hash and its first-seen path.
+// blobEntry holds a deduplicated blob hash and its first-seen rev-list path.
 type blobEntry struct {
 	hash [20]byte
 	path string
+}
+
+// repoIdentity is the repository identity stamped on every provenance record.
+type repoIdentity struct {
+	path   string // normalized remote identity, or the typed root
+	root   string // absolute working-tree root
+	remote bool   // path is a normalized remote identity
 }
 
 // gitBinaryAvailable returns true if the git binary is on PATH.
@@ -26,89 +40,230 @@ func gitBinaryAvailable() bool {
 }
 
 // enumerateAllHistoryNative uses native git commands for fast history enumeration.
-// Phase 1: git rev-list --all --objects → collect unique blob hashes with paths.
-// Phase 2: git log → collect commit metadata keyed by file path.
-// Phase 3: git cat-file --batch → stream content, filter, and invoke callback.
+//
+// Phase 1 runs three tasks concurrently:
+//   - git rev-list --all --objects: the scan set (the authority on which blobs
+//     are scanned). Its failure fails the enumeration and cancels the others.
+//   - git log --raw: the blob index, which gives each blob every path it had
+//     with the earliest commit for each path. Best effort: a failure falls back
+//     to the rev-list path with no commit, and never drops a blob.
+//   - git config remote.origin.url: the repository identity. Best effort.
+//
+// Phase 2 streams blob content through git cat-file --batch and invokes the
+// callback once per text blob.
 func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	blobs, err := e.collectBlobEntries(ctx)
-	if err != nil {
+	root := e.config.Root
+	var (
+		blobs       []blobEntry
+		revOverlong int
+		idx         *blobIndex
+		indexErr    error
+		remoteID    string
+		remoteOK    bool
+	)
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var err error
+		blobs, revOverlong, err = e.collectBlobEntries(gctx)
+		return err
+	})
+	g.Go(func() error {
+		idx, indexErr = e.indexBuilder()(gctx, root)
+		return nil
+	})
+	g.Go(func() error {
+		remoteID, remoteOK = originIdentity(gctx, root)
+		return nil
+	})
+	if err := g.Wait(); err != nil {
 		return err
 	}
 
-	commitMap, _ := e.collectCommitMetadata(ctx) // best-effort; nil map is safe
+	warn := e.warnWriter()
+	if indexErr != nil {
+		idx = nil
+		if ctx.Err() == nil {
+			fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path\n", indexErr)
+		}
+	}
+	writeEnumWarnings(warn, idx, revOverlong)
 
-	return e.streamBlobContentsWithMeta(ctx, blobs, commitMap, callback)
+	return e.streamBlobContents(ctx, blobs, idx, e.repoIdentity(remoteID, remoteOK), callback)
 }
 
-// collectBlobEntries runs git rev-list --all --objects and returns deduplicated blob entries.
-func (e *GitEnumerator) collectBlobEntries(ctx context.Context) ([]blobEntry, error) {
+// indexBuilder returns the blob index builder; tests inject their own.
+func (e *GitEnumerator) indexBuilder() func(context.Context, string) (*blobIndex, error) {
+	if e.buildIndex != nil {
+		return e.buildIndex
+	}
+	return buildBlobIndex
+}
+
+// warnWriter returns where enumeration warnings go (stderr by default).
+func (e *GitEnumerator) warnWriter() io.Writer {
+	if e.warn != nil {
+		return e.warn
+	}
+	return os.Stderr
+}
+
+// repoIdentity resolves the identity for the scanned root: the normalized
+// origin remote when there is one, otherwise the root as the user typed it.
+func (e *GitEnumerator) repoIdentity(remoteID string, remoteOK bool) repoIdentity {
+	root := e.config.Root
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = root
+	}
+	if remoteOK {
+		return repoIdentity{path: remoteID, root: abs, remote: true}
+	}
+	return repoIdentity{path: typedRepoIdentity(root), root: abs}
+}
+
+// typedRepoIdentity is the display-safe form of a root with no remote: the
+// value as typed, with URL credentials removed and control characters
+// escaped. No host is guessed (SEC-3).
+func typedRepoIdentity(root string) string {
+	return types.SanitizeDisplay(repoid.RedactUserinfo(root))
+}
+
+// originIdentity returns the normalized identity of the origin remote.
+func originIdentity(ctx context.Context, dir string) (string, bool) {
+	out, err := hardenedGit(ctx, dir, "config", "--get", "remote.origin.url").Output()
+	if err != nil {
+		return "", false
+	}
+	return repoid.Normalize(strings.TrimSpace(string(out)))
+}
+
+// writeEnumWarnings prints the index warnings, folding rev-list's over-long
+// records into the index's count so the user sees one over-long line. It
+// runs once, after the index is built, so updating its stats is safe.
+func writeEnumWarnings(w io.Writer, idx *blobIndex, revOverlong int) {
+	if idx == nil {
+		if revOverlong > 0 {
+			fmt.Fprintf(w, "titus: skipped %d over-long git records\n", revOverlong)
+		}
+		return
+	}
+	idx.stats.overlong += revOverlong
+	idx.writeWarnings(w)
+}
+
+// collectBlobEntries runs git rev-list --all --objects and returns
+// deduplicated blob entries and the number of over-long records.
+func (e *GitEnumerator) collectBlobEntries(ctx context.Context) ([]blobEntry, int, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	cmd := exec.CommandContext(ctx, "git", "rev-list", "--all", "--objects")
 	cmd.Dir = e.config.Root
+	stderr := &limitedBuffer{limit: 4 << 10}
+	cmd.Stderr = stderr
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("git rev-list: pipe: %w", err)
+		return nil, 0, fmt.Errorf("git rev-list: pipe: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("git rev-list: start: %w", err)
+		return nil, 0, fmt.Errorf("git rev-list: start: %w", err)
 	}
 
-	seen := make(map[[20]byte]bool)
-	var blobs []blobEntry
-
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Lines with a space at position 40 have a path: "<40-hex> <path>"
-		// Lines without are commits or root trees — skip them.
-		spaceIdx := strings.IndexByte(line, ' ')
-		if spaceIdx != 40 {
-			continue
-		}
-
-		hexStr := line[:40]
-		path := line[41:]
-
-		var hash [20]byte
-		decoded, err := hex.DecodeString(hexStr)
-		if err != nil {
-			continue
-		}
-		copy(hash[:], decoded)
-
-		if seen[hash] {
-			continue
-		}
-		seen[hash] = true
-
-		blobs = append(blobs, blobEntry{hash: hash, path: path})
-	}
-
-	if err := scanner.Err(); err != nil {
+	blobs, overlong, readErr := readRevList(stdout)
+	if readErr != nil {
+		// SEC-10: stop git, drain the pipe, then reap.
+		cancel()
+		_, _ = io.Copy(io.Discard, stdout)
 		_ = cmd.Wait()
-		return nil, fmt.Errorf("git rev-list: scan: %w", err)
+		return nil, 0, fmt.Errorf("git rev-list: read: %w", readErr)
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, 0, ctx.Err()
 		}
-		return nil, fmt.Errorf("git rev-list: %w", err)
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return nil, 0, fmt.Errorf("git rev-list: %w: %s", err, msg)
+		}
+		return nil, 0, fmt.Errorf("git rev-list: %w", err)
 	}
-
-	return blobs, nil
+	return blobs, overlong, nil
 }
 
-// collectCommitMetadata runs git log to build a map of file path → first commit metadata.
-func (e *GitEnumerator) collectCommitMetadata(ctx context.Context) (map[string]*types.CommitMetadata, error) {
-	return collectCommitMetadataForRepo(ctx, e.config.Root, true)
+// readRevList parses "git rev-list --objects" output. Lines with a space at
+// offset 40 are "<40-hex> <path>" objects; other lines are commits and are
+// skipped. A line longer than maxRecord keeps its hash, so the blob is still
+// scanned, but loses its path and is counted as over-long (SEC-9).
+func readRevList(r io.Reader) ([]blobEntry, int, error) {
+	br := bufio.NewReaderSize(r, 64<<10)
+	seen := make(map[[20]byte]struct{})
+	var (
+		blobs    []blobEntry
+		overlong int
+		long     []byte // a line that did not fit in the reader's buffer
+		tooLong  bool
+	)
+	for {
+		chunk, err := br.ReadSlice('\n')
+		if errors.Is(err, bufio.ErrBufferFull) {
+			if len(long)+len(chunk) > maxRecord {
+				tooLong = true
+				if len(long) == 0 {
+					long = append(long, chunk[:min(len(chunk), 41)]...)
+				}
+				continue
+			}
+			long = append(long, chunk...)
+			continue
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, 0, err
+		}
+		line := chunk
+		if len(long) > 0 {
+			if !tooLong {
+				long = append(long, chunk...)
+			}
+			line = long
+		}
+		line = bytes.TrimSuffix(line, []byte{'\n'})
+		if tooLong {
+			overlong++
+		}
+		if b, ok := parseRevListLine(line, tooLong); ok {
+			if _, dup := seen[b.hash]; !dup {
+				seen[b.hash] = struct{}{}
+				blobs = append(blobs, b)
+			}
+		}
+		long, tooLong = long[:0], false
+		if err != nil { // io.EOF
+			return blobs, overlong, nil
+		}
+	}
 }
 
-// streamBlobContentsWithMeta feeds hashes to git cat-file --batch and invokes callback for text blobs.
-// If commitMap is non-nil, attaches commit metadata to git provenance records.
-func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []blobEntry, commitMap map[string]*types.CommitMetadata, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+// parseRevListLine decodes "<40-hex> <path>". When dropPath is set only the
+// hash is kept.
+func parseRevListLine(line []byte, dropPath bool) (blobEntry, bool) {
+	if len(line) < 41 || line[40] != ' ' {
+		return blobEntry{}, false
+	}
+	var b blobEntry
+	if _, err := hex.Decode(b.hash[:], line[:40]); err != nil {
+		return blobEntry{}, false
+	}
+	if !dropPath {
+		b.path = string(line[41:])
+	}
+	return b, true
+}
+
+// streamBlobContents feeds hashes to git cat-file --batch and invokes the
+// callback once per text blob, with every location the index knows for it.
+func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntry, idx *blobIndex, id repoIdentity, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	if len(blobs) == 0 {
 		return nil
 	}
@@ -236,13 +391,7 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 		var blobID types.BlobID
 		copy(blobID[:], blob.hash[:])
 
-		prov := types.GitProvenance{
-			RepoPath: e.config.Root,
-			Commit:   commitMap[blob.path],
-			BlobPath: blob.path,
-		}
-
-		if err := callback(content, blobID, prov); err != nil {
+		if err := callback(content, blobID, blobProvenance(blob, idx, id)); err != nil {
 			_ = stdin.Close()
 			_ = cmd.Wait()
 			return err
@@ -259,4 +408,23 @@ func (e *GitEnumerator) streamBlobContentsWithMeta(ctx context.Context, blobs []
 	}
 
 	return nil
+}
+
+// blobProvenance builds the provenance for one blob. Locations is every
+// (path, earliest commit) the index recorded, sorted by path; the first is
+// the primary location. A blob the index does not know keeps its rev-list
+// path with no commit.
+func blobProvenance(blob blobEntry, idx *blobIndex, id repoIdentity) types.GitProvenance {
+	locs := idx.lookup(blob.hash)
+	if len(locs) == 0 {
+		locs = []types.GitLocation{{Path: blob.path}}
+	}
+	return types.GitProvenance{
+		RepoPath:       id.path,
+		Commit:         locs[0].Commit,
+		BlobPath:       locs[0].Path,
+		RepoRoot:       id.root,
+		RemoteIdentity: id.remote,
+		Locations:      locs,
+	}
 }

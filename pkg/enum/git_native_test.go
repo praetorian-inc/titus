@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -139,10 +140,12 @@ func TestNativeGitEnumerator_Deduplication(t *testing.T) {
 	enumerator.WalkAll = true
 
 	var callCount int
-	blobIDs := make(map[types.BlobID]int)
+	var locations []string
 	err := enumerator.enumerateAllHistoryNative(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		callCount++
-		blobIDs[blobID]++
+		for _, l := range prov.(types.GitProvenance).Locations {
+			locations = append(locations, l.Path)
+		}
 		return nil
 	})
 
@@ -150,14 +153,12 @@ func TestNativeGitEnumerator_Deduplication(t *testing.T) {
 		t.Fatalf("enumerate failed: %v", err)
 	}
 
+	// One callback for the shared blob, carrying both of its paths.
 	if callCount != 1 {
 		t.Errorf("expected callback called 1 time (deduplication), got %d", callCount)
 	}
-
-	for id, count := range blobIDs {
-		if count > 1 {
-			t.Errorf("blob ID %s appeared %d times, expected 1", id.Hex(), count)
-		}
+	if want := []string{"file1.txt", "file2.txt"}; !slices.Equal(locations, want) {
+		t.Errorf("locations = %v, want %v", locations, want)
 	}
 }
 

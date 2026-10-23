@@ -3,6 +3,7 @@ package enum
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -18,6 +19,11 @@ type GitEnumerator struct {
 	CommitRef string
 	// WalkAll when true walks all commits from all refs instead of single commit
 	WalkAll bool
+
+	// buildIndex builds the history blob index; nil means buildBlobIndex.
+	buildIndex func(context.Context, string) (*blobIndex, error)
+	// warn receives enumeration warnings; nil means os.Stderr.
+	warn io.Writer
 }
 
 // NewGitEnumerator creates a new git enumerator.

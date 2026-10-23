@@ -129,7 +129,7 @@ type indexPair struct {
 // commitRec is a compact commit header. Strings live in the index's arena
 // (id, subject) or its interned names table; no pointers.
 type commitRec struct {
-	id, subj, subjLen                                     uint32
+	id, subj, subjLen                                      uint32
 	authorName, authorEmail, committerName, committerEmail uint32
 	authorUnix, committerUnix                              int64
 	authorOff, committerOff                                int32
