@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
@@ -905,7 +910,7 @@ func TestOutputReportHuman_ShowsScoreBadge(t *testing.T) {
 		},
 	}
 	require.NoError(t, s.AddFinding(finding))
-	require.NoError(t, s.Close())
+	defer func() { _ = s.Close() }()
 
 	findings := []*types.Finding{finding}
 	var matches []*types.Match
@@ -917,7 +922,7 @@ func TestOutputReportHuman_ShowsScoreBadge(t *testing.T) {
 	cmd := &cobra.Command{}
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
-	require.NoError(t, outputReportHuman(cmd, findings, matches, dbPath, ruleMap))
+	require.NoError(t, outputReportHuman(cmd, s, findings, matches, ruleMap))
 
 	output := buf.String()
 	assert.Contains(t, output, "Score:", "expected 'Score:' label in output")
@@ -1399,12 +1404,404 @@ func TestLegacyDatastore_NilScore_RendersCleanly(t *testing.T) {
 	var humanBuf bytes.Buffer
 	humanCmd.SetOut(&humanBuf)
 	require.NotPanics(t, func() {
-		err = outputReportHuman(humanCmd, findings, allMatches, tmpDir, ruleMap)
+		err = outputReportHuman(humanCmd, s, findings, allMatches, ruleMap)
 	}, "outputReportHuman must not panic on nil Score finding")
-	// Human output may error (e.g., store open fails on tmpDir path) but must NOT panic.
-	// If it succeeded, the output must contain the finding ID.
-	if err == nil {
-		assert.Contains(t, humanBuf.String(), legacyFinding.ID,
-			"human report must contain the finding ID")
+	require.NoError(t, err)
+	assert.Contains(t, humanBuf.String(), legacyFinding.ID,
+		"human report must contain the finding ID")
+}
+
+// =============================================================================
+// ENG-9178: every format lists every location (store.GetOccurrences)
+// =============================================================================
+
+var reportCommitDate = time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC)
+
+// reportFixture builds one finding whose matches each sit in their own blob,
+// with the given locations recorded in a memory store. Every match is on
+// line 3, columns 7-27.
+func reportFixture(t *testing.T, locs ...[]types.Occurrence) (store.Store, []*types.Finding, []*types.Match, map[string]*types.Rule) {
+	t.Helper()
+	s := store.NewMemory()
+	r := &types.Rule{ID: "np.test.1", Name: "Test Rule", Pattern: "tok_.*"}
+	r.StructuralID = r.ComputeStructuralID()
+	groups := [][]byte{[]byte("tok_shared")}
+	f := &types.Finding{ID: types.ComputeFindingID(r.StructuralID, groups), RuleID: r.ID, Groups: groups}
+	matches := make([]*types.Match, 0, len(locs))
+	for i, occs := range locs {
+		m := &types.Match{
+			StructuralID: fmt.Sprintf("sm-%d", i+1),
+			RuleID:       r.ID,
+			BlobID:       types.ComputeBlobID(fmt.Appendf(nil, "blob-%d", i)),
+			Groups:       groups,
+			Location: types.Location{Source: types.SourceSpan{
+				Start: types.SourcePoint{Line: 3, Column: 7},
+				End:   types.SourcePoint{Line: 3, Column: 27},
+			}},
+			Snippet: types.Snippet{Matching: []byte("tok_shared")},
+		}
+		require.NoError(t, s.AddOccurrences(m.BlobID, occs))
+		matches = append(matches, m)
 	}
+	return s, []*types.Finding{f}, matches, map[string]*types.Rule{r.ID: r}
+}
+
+// legacyFixture builds one finding with one match whose blob has only the
+// given provenance rows (no blob_locations rows), in a SQLite datastore.
+func legacyFixture(t *testing.T, provs ...types.Provenance) (store.Store, []*types.Finding, []*types.Match, map[string]*types.Rule) {
+	t.Helper()
+	s, err := store.New(store.Config{Path: filepath.Join(t.TempDir(), "legacy.db")})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	r := &types.Rule{ID: "np.test.1", Name: "Test Rule", Pattern: "tok_.*"}
+	r.StructuralID = r.ComputeStructuralID()
+	require.NoError(t, s.AddRule(r))
+	groups := [][]byte{[]byte("tok_legacy")}
+	require.NoError(t, s.AddFinding(&types.Finding{ID: types.ComputeFindingID(r.StructuralID, groups), RuleID: r.ID, Groups: groups}))
+
+	blobID := types.ComputeBlobID([]byte("TOKEN=tok_legacy"))
+	require.NoError(t, s.AddBlob(blobID, 16))
+	for _, p := range provs {
+		require.NoError(t, s.AddProvenance(blobID, p))
+	}
+	require.NoError(t, s.AddMatch(&types.Match{
+		StructuralID: "sm-legacy",
+		RuleID:       r.ID,
+		BlobID:       blobID,
+		Groups:       groups,
+		Location: types.Location{Source: types.SourceSpan{
+			Start: types.SourcePoint{Line: 3, Column: 7},
+			End:   types.SourcePoint{Line: 3, Column: 27},
+		}},
+		Snippet: types.Snippet{Matching: []byte("tok_legacy")},
+	}))
+
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	return s, findings, matches, map[string]*types.Rule{r.ID: r}
+}
+
+func renderHuman(t *testing.T, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) string {
+	t.Helper()
+	prev := reportColor
+	reportColor = "never"
+	t.Cleanup(func() { reportColor = prev })
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportHuman(cmd, s, findings, matches, ruleMap))
+	return buf.String()
+}
+
+func renderJSON(t *testing.T, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) []byte {
+	t.Helper()
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportJSON(cmd, s, findings, matches, ruleMap))
+	return buf.Bytes()
+}
+
+func renderSARIF(t *testing.T, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) []byte {
+	t.Helper()
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	require.NoError(t, outputReportSARIF(cmd, s, findings, matches, ruleMap))
+	return buf.Bytes()
+}
+
+// humanLocationLines returns the location lines of a human report: lines
+// indented by exactly four spaces that are not a match header or Blob line.
+func humanLocationLines(out string) []string {
+	var lines []string
+	for l := range strings.Lines(out) {
+		l = strings.TrimSuffix(l, "\n")
+		rest, ok := strings.CutPrefix(l, "    ")
+		if !ok || rest == "" || strings.HasPrefix(rest, " ") ||
+			strings.HasPrefix(rest, "Match ") || strings.HasPrefix(rest, "Blob:") {
+			continue
+		}
+		lines = append(lines, l)
+	}
+	return lines
+}
+
+// lineFields splits one human location line into its fields.
+func lineFields(line string) []string {
+	return strings.Split(strings.TrimPrefix(line, "    "), "  ")
+}
+
+// reportJSONLocations decodes the locations of every match of every finding.
+type reportJSONMatch struct {
+	FilePath  string         `json:"file_path"`
+	Locations []jsonLocation `json:"locations"`
+}
+
+type reportJSONFinding struct {
+	Matches []reportJSONMatch `json:"Matches"`
+}
+
+func decodeReportJSON(t *testing.T, data []byte) []reportJSONFinding {
+	t.Helper()
+	var out []reportJSONFinding
+	require.NoError(t, json.Unmarshal(data, &out))
+	return out
+}
+
+// C-HUMANLINE-1
+func TestOutputReportHuman_LineFieldsGit(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
+		Kind: "git", Repository: "github.com/acme/api", Path: "config.yml",
+		Commit: "7d0e8150aaaa", CommitDate: reportCommitDate, HostRecorded: true,
+	}})
+	lines := humanLocationLines(renderHuman(t, s, findings, matches, ruleMap))
+	require.Len(t, lines, 1)
+	assert.Equal(t, []string{"github.com/acme/api", "config.yml:3", "7d0e815", "2026-06-15"}, lineFields(lines[0]))
+}
+
+// C-HUMANLINE-2
+func TestOutputReportHuman_LineFieldsNoRepoNoCommit(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
+		Kind: "file", Path: "e/f/config.yml", HostRecorded: true,
+	}})
+	lines := humanLocationLines(renderHuman(t, s, findings, matches, ruleMap))
+	require.Len(t, lines, 1)
+	assert.Equal(t, []string{"e/f/config.yml:3"}, lineFields(lines[0]))
+}
+
+// C-LINEONLY-1: human shows the line only; JSON keeps the full range.
+func TestOutputReport_LineOnlyHumanFullRangeJSON(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
+		Kind: "file", Path: "config.yml", HostRecorded: true,
+	}})
+	matches[0].Location.Source = types.SourceSpan{
+		Start: types.SourcePoint{Line: 2, Column: 8},
+		End:   types.SourcePoint{Line: 2, Column: 48},
+	}
+
+	human := renderHuman(t, s, findings, matches, ruleMap)
+	assert.Contains(t, human, "config.yml:2")
+	assert.NotContains(t, human, "2:8-2:48")
+	assert.NotContains(t, human, "Lines:")
+
+	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Matches, 1)
+	require.Len(t, out[0].Matches[0].Locations, 1)
+	assert.Equal(t, jsonRange{Start: jsonPos{Line: 2, Column: 8}, End: jsonPos{Line: 2, Column: 48}},
+		out[0].Matches[0].Locations[0].Range)
+}
+
+// C-OVER3-1: the first 3 matches print in full, the rest print only their
+// location lines, and nothing is truncated.
+func TestOutputReportHuman_AfterThirdMatchLocationsOnly(t *testing.T) {
+	var locs [][]types.Occurrence
+	for i := 1; i <= 5; i++ {
+		locs = append(locs, []types.Occurrence{{Kind: "file", Path: fmt.Sprintf("a%d.env", i), HostRecorded: true}})
+	}
+	s, findings, matches, ruleMap := reportFixture(t, locs...)
+	out := renderHuman(t, s, findings, matches, ruleMap)
+
+	assert.NotContains(t, out, "Showing 3/5")
+	assert.NotContains(t, out, "more")
+	for k := 1; k <= 3; k++ {
+		assert.Contains(t, out, fmt.Sprintf("Match %d/5 (id sm-%d)", k, k))
+	}
+	assert.NotContains(t, out, "Match 4/5")
+	assert.NotContains(t, out, "Match 5/5")
+	assert.Equal(t, 3, strings.Count(out, "Blob:"), "full matches printed")
+	assert.Equal(t, 1+3, strings.Count(out, "tok_shared"), "group line plus one snippet per full match")
+	assert.Equal(t, []string{
+		"    a1.env:3", "    a2.env:3", "    a3.env:3", "    a4.env:3", "    a5.env:3",
+	}, humanLocationLines(out), "every match's location is printed")
+}
+
+// C-MULTIREPO-1: one blob found in two repositories is one finding with
+// both locations, in JSON and in human output.
+func TestOutputReport_MultiRepoLocations(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/web", Path: "deploy/config.yml", Commit: "bbbbbbbbbb", CommitDate: reportCommitDate, HostRecorded: true},
+		{Kind: "git", Repository: "github.com/acme/api", Path: "deploy/config.yml", Commit: "aaaaaaaaaa", CommitDate: reportCommitDate, HostRecorded: true},
+	})
+
+	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
+	require.Len(t, out, 1, "findings")
+	require.Len(t, out[0].Matches, 1)
+	type loc struct {
+		Repository, Path string
+		Line             int
+	}
+	var got []loc
+	for _, l := range out[0].Matches[0].Locations {
+		require.NotNil(t, l.Repository)
+		got = append(got, loc{*l.Repository, l.Path, l.Range.Start.Line})
+	}
+	assert.Equal(t, []loc{
+		{"github.com/acme/api", "deploy/config.yml", 3},
+		{"github.com/acme/web", "deploy/config.yml", 3},
+	}, got)
+
+	assert.Equal(t, []string{
+		"    github.com/acme/api  deploy/config.yml:3  aaaaaaa  2026-06-15",
+		"    github.com/acme/web  deploy/config.yml:3  bbbbbbb  2026-06-15",
+	}, humanLocationLines(renderHuman(t, s, findings, matches, ruleMap)))
+}
+
+// C-REPORTJSON-1: file_path is kept, locations has every location, and each
+// location has exactly the 7 keys.
+func TestOutputReportJSON_LocationsKeysAndFilePath(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaaaaaaaa", CommitDate: reportCommitDate, HostRecorded: true},
+		{Kind: "git", Repository: "github.com/acme/web", Path: "deploy/config.yml", WorkingTree: true, HostRecorded: true},
+	})
+
+	var raw []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(renderJSON(t, s, findings, matches, ruleMap), &raw))
+	require.Len(t, raw, 1)
+	var ms []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw[0]["Matches"], &ms))
+	require.Len(t, ms, 1)
+
+	filePath, hasFilePath := ms[0]["file_path"]
+	require.True(t, hasFilePath, "file_path is kept")
+	assert.JSONEq(t, `"config.yml"`, string(filePath), "file_path is the first sorted location's path")
+
+	var locs []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(ms[0]["locations"], &locs))
+	require.Len(t, locs, 2)
+	for _, l := range locs {
+		keys := slices.Sorted(maps.Keys(l))
+		assert.Equal(t, []string{"absolute_path", "commit", "commit_date", "host_recorded", "path", "range", "repository"}, keys)
+	}
+}
+
+// A blob with no recorded location still emits "locations": [] (never null)
+// and falls back to the blob id for file_path.
+func TestOutputReportJSON_NoLocationsIsEmptyArray(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, nil)
+
+	var raw []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(renderJSON(t, s, findings, matches, ruleMap), &raw))
+	var ms []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw[0]["Matches"], &ms))
+	require.Len(t, ms, 1)
+	assert.JSONEq(t, `[]`, string(ms[0]["locations"]))
+	assert.JSONEq(t, `"`+matches[0].BlobID.Hex()+`"`, string(ms[0]["file_path"]))
+}
+
+// SEC-7: hostile repository and path bytes are sanitized in human output.
+func TestOutputReportHuman_SanitizesLocations(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
+		Kind: "git", Repository: "github.com/acme/\x1b[31mapi", Path: "\u202eevil\x1b]0;pwn\x07.yml",
+		Commit: "aaaaaaaaaa", CommitDate: reportCommitDate, HostRecorded: true,
+	}})
+	out := renderHuman(t, s, findings, matches, ruleMap)
+
+	assert.NotContains(t, out, "\x1b", "no raw escape byte")
+	assert.NotContains(t, out, "\x07", "no raw BEL byte")
+	assert.NotContains(t, out, "\u202e", "no raw bidi override")
+	lines := humanLocationLines(out)
+	require.Len(t, lines, 1)
+	assert.Contains(t, lines[0], `github.com/acme/\x1b[31mapi`)
+}
+
+// SEC-7b: JSON keeps the exact bytes, escaped by encoding/json.
+func TestOutputReportJSON_ExactBytesRoundTrip(t *testing.T) {
+	paths := []string{"a\nb.yml", "x\x1b[31mRED\x1b[0m.yml"}
+	var occs []types.Occurrence
+	for _, p := range paths {
+		occs = append(occs, types.Occurrence{Kind: "file", Path: p, HostRecorded: true})
+	}
+	s, findings, matches, ruleMap := reportFixture(t, occs)
+
+	data := renderJSON(t, s, findings, matches, ruleMap)
+	assert.NotContains(t, string(data), "\x1b", "raw escape byte must be JSON-escaped")
+
+	out := decodeReportJSON(t, data)
+	require.Len(t, out[0].Matches, 1)
+	var got []string
+	for _, l := range out[0].Matches[0].Locations {
+		got = append(got, l.Path)
+	}
+	assert.ElementsMatch(t, paths, got)
+}
+
+// C-OLDDS-1: a datastore written before blob_locations existed still reports
+// its git provenance, labelled "host not recorded".
+func TestOutputReport_LegacyDatastoreHostNotRecorded(t *testing.T) {
+	s, findings, matches, ruleMap := legacyFixture(t, types.GitProvenance{RepoPath: "acme/api", BlobPath: "config.yml"})
+
+	assert.Equal(t, []string{"    acme/api  config.yml:3  host not recorded"},
+		humanLocationLines(renderHuman(t, s, findings, matches, ruleMap)))
+
+	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Matches, 1)
+	m := out[0].Matches[0]
+	assert.Equal(t, "config.yml", m.FilePath)
+	require.Len(t, m.Locations, 1)
+	require.NotNil(t, m.Locations[0].Repository)
+	assert.Equal(t, "acme/api", *m.Locations[0].Repository)
+	assert.False(t, m.Locations[0].HostRecorded)
+
+	var rep sarif.Report
+	require.NoError(t, json.Unmarshal(renderSARIF(t, s, findings, matches, ruleMap), &rep))
+	require.Len(t, rep.Runs[0].Results, 1)
+	assert.Equal(t, "config.yml", rep.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI)
+}
+
+// SEC-5: a legacy repository URL with userinfo never shows the credential in
+// any format.
+func TestOutputReport_LegacyUserinfoRedactedEverywhere(t *testing.T) {
+	s, findings, matches, ruleMap := legacyFixture(t, types.GitProvenance{RepoPath: "https://u:SECRET@h/o/r", BlobPath: "config.yml"})
+
+	human := renderHuman(t, s, findings, matches, ruleMap)
+	assert.NotContains(t, human, "SECRET")
+	assert.Equal(t, []string{"    https://h/o/r  config.yml:3  host not recorded"}, humanLocationLines(human))
+	assert.NotContains(t, string(renderJSON(t, s, findings, matches, ruleMap)), "SECRET")
+	assert.NotContains(t, string(renderSARIF(t, s, findings, matches, ruleMap)), "SECRET")
+}
+
+// C-NONGIT-1: identical content in two S3 objects lists both objects.
+func TestOutputReportJSON_NonGitEveryLocation(t *testing.T) {
+	s, findings, matches, ruleMap := legacyFixture(t,
+		types.ExtendedProvenance{Payload: map[string]any{"path": "s3://b/one.env"}},
+		types.ExtendedProvenance{Payload: map[string]any{"path": "s3://b/two.env"}},
+	)
+
+	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Matches, 1)
+	var got []string
+	for _, l := range out[0].Matches[0].Locations {
+		got = append(got, l.Path)
+	}
+	assert.Equal(t, []string{"s3://b/one.env", "s3://b/two.env"}, got)
+}
+
+// SARIF: one result per location, each carrying the finding's score.
+func TestOutputReportSARIF_OneResultPerLocation(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "deploy/config.yml", Commit: "aaaaaaaaaa", CommitDate: reportCommitDate, HostRecorded: true},
+		{Kind: "git", Repository: "github.com/acme/web", Path: "deploy/config.yml", Commit: "bbbbbbbbbb", CommitDate: reportCommitDate, HostRecorded: true},
+	})
+	findings[0].Score = &types.Score{Final: 75, Base: 75, SuggestedSeverity: "high", Applied: []types.ScoreModifier{}}
+
+	var rep sarif.Report
+	require.NoError(t, json.Unmarshal(renderSARIF(t, s, findings, matches, ruleMap), &rep))
+	require.Len(t, rep.Runs, 1)
+	results := rep.Runs[0].Results
+	require.Len(t, results, 2)
+	var repos []string
+	for _, r := range results {
+		assert.Equal(t, "error", r.Level)
+		assert.Equal(t, "deploy/config.yml", r.Locations[0].PhysicalLocation.ArtifactLocation.URI)
+		require.NotNil(t, r.Properties)
+		repos = append(repos, r.Properties.Repository)
+	}
+	assert.Equal(t, []string{"github.com/acme/api", "github.com/acme/web"}, repos)
 }
