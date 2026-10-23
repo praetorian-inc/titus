@@ -20,7 +20,8 @@ type blobRecord struct {
 type MemoryStore struct {
 	mu         sync.RWMutex
 	blobs      map[string]blobRecord         // keyed by BlobID.Hex()
-	matches    []*types.Match                // all matches
+	matches    []*types.Match                // all matches, in insertion order
+	matchIDs   map[string]struct{}           // stored match StructuralIDs; mirrors matches.structural_id UNIQUE
 	findings   map[string]*types.Finding     // keyed by structural_id
 	provenance map[string][]types.Provenance // keyed by BlobID.Hex()
 	provKeys   map[provenanceKey]struct{}    // mirrors the SQLite provenance UNIQUE key
@@ -46,6 +47,7 @@ func NewMemory() *MemoryStore {
 	return &MemoryStore{
 		blobs:        make(map[string]blobRecord),
 		matches:      make([]*types.Match, 0),
+		matchIDs:     make(map[string]struct{}),
 		findings:     make(map[string]*types.Finding),
 		provenance:   make(map[string][]types.Provenance),
 		provKeys:     make(map[provenanceKey]struct{}),
@@ -78,11 +80,18 @@ func (m *MemoryStore) AddRule(r *types.Rule) error {
 	return nil
 }
 
-// AddMatch stores a match record.
+// AddMatch stores a match record, ignoring a match whose StructuralID is
+// already stored. This mirrors the SQLite store's INSERT OR IGNORE on
+// matches.structural_id UNIQUE: the first write wins, so a blob yielded at
+// several paths contributes its matches once.
 func (m *MemoryStore) AddMatch(match *types.Match) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if _, exists := m.matchIDs[match.StructuralID]; exists {
+		return nil
+	}
+	m.matchIDs[match.StructuralID] = struct{}{}
 	m.matches = append(m.matches, match)
 	return nil
 }
