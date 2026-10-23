@@ -67,23 +67,62 @@ func FromBaseURL(baseURL, defaultHost, fullPath string) string {
 	return id
 }
 
-// RedactUserinfo removes the userinfo ("user:pass@") from a "scheme://" URL
-// and returns every other input unchanged. It is the display-safe form of a
-// stored repository value that predates Normalize.
+// RedactUserinfo is the display-safe form of a stored repository value that
+// predates Normalize. It applies to a value that contains "://", has an '@'
+// before its first '/' (the scp-like "user:token@host:org/repo"), or starts
+// with "//" and has an '@' in the authority that follows. It then:
+//   - cuts the value at the first '?' or '#' (query and fragment);
+//   - drops everything up to and including the last '@' in its lead: the text
+//     before the first "://" when there is one, else the text before the
+//     first '/'. This removes scp-like userinfo and userinfo in text that
+//     only looks like a scheme, as in "u:token@h/x://y";
+//   - drops the userinfo from the authority after the first "://", or after a
+//     leading "//" when there is no "://".
+//
+// Every other value (a local path or "owner/repo") is returned byte-for-byte
+// unchanged, including any '?' or '#' it contains.
 func RedactUserinfo(s string) string {
-	scheme, rest, found := strings.Cut(s, "://")
+	if !strings.Contains(s, "://") && !strings.Contains(leadOf(s), "@") && !strings.Contains(netAuthority(s), "@") {
+		return s
+	}
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		s = s[:i]
+	}
+	if at := strings.LastIndexByte(leadOf(s), '@'); at >= 0 {
+		s = s[at+1:]
+	}
+	start := len("//")
+	if i := strings.Index(s, "://"); i >= 0 {
+		start = i + len("://")
+	} else if !strings.HasPrefix(s, "//") {
+		return s
+	}
+	authority, _, _ := strings.Cut(s[start:], "/")
+	if at := strings.LastIndexByte(authority, '@'); at >= 0 {
+		s = s[:start] + s[start+at+1:]
+	}
+	return s
+}
+
+// leadOf returns the text of s before its first "://", or before its first
+// '/' when s has no "://".
+func leadOf(s string) string {
+	if i := strings.Index(s, "://"); i >= 0 {
+		return s[:i]
+	}
+	lead, _, _ := strings.Cut(s, "/")
+	return lead
+}
+
+// netAuthority returns the authority of a network-path reference
+// ("//authority/path"), or "" when s does not start with "//".
+func netAuthority(s string) string {
+	rest, found := strings.CutPrefix(s, "//")
 	if !found {
-		return s
+		return ""
 	}
-	end := strings.IndexAny(rest, "/?#")
-	if end < 0 {
-		end = len(rest)
-	}
-	at := strings.LastIndexByte(rest[:end], '@')
-	if at < 0 {
-		return s
-	}
-	return scheme + "://" + rest[at+1:]
+	authority, _, _ := strings.Cut(rest, "/")
+	return authority
 }
 
 // hasTransportPrefix reports whether remote uses git's "<transport>::<address>"

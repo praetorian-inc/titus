@@ -183,10 +183,43 @@ func TestRedactUserinfo(t *testing.T) {
 		{"at sign in password", "https://u:p@ss@h/o/r", "https://h/o/r"},
 		{"no userinfo", "https://github.com/acme/api", "https://github.com/acme/api"},
 		{"no path", "https://u:SECRET@h", "https://h"},
-		{"query ends authority", "https://u:SECRET@h?x=1", "https://h?x=1"},
+		{"query ends authority", "https://u:SECRET@h?x=1", "https://h"},
+		{"query", "https://h/o/r.git?private_token=SECRET", "https://h/o/r.git"},
+		{"fragment", "https://h/o/r.git#SECRET", "https://h/o/r.git"},
+		{"query and fragment", "https://h/o/r.git?private_token=SECRET#x", "https://h/o/r.git"},
+		{"query and userinfo", "https://u:SECRET@h/o/r?t=SECRET#SECRET", "https://h/o/r"},
+		{"query no path", "https://h?t=SECRET", "https://h"},
+		{"fragment no path", "https://h#SECRET", "https://h"},
+		{"fragment before query", "https://h/o#SECRET?x", "https://h/o"},
+		{"at sign in query", "https://h/o/r?t=a@SECRET", "https://h/o/r"},
+		{"query before scheme separator", "x?SECRET://h", "x"},
+		{"fragment before scheme separator", "x#SECRET://h", "x"},
 		{"at sign after authority kept", "https://h/o/r@v1", "https://h/o/r@v1"},
 		{"ssh", "ssh://git@github.com:22/acme/api", "ssh://github.com:22/acme/api"},
 		{"bare owner/repo", "acme/api", "acme/api"},
+		{"scp user and token", "user:SECRET@host:org/repo", "host:org/repo"},
+		{"scp git user", "git@github.com:acme/api.git", "github.com:acme/api.git"},
+		{"scp query", "git@host:org/repo?private_token=SECRET", "host:org/repo"},
+		{"scp fragment", "git@host:org/repo#SECRET", "host:org/repo"},
+		{"scp at sign in password", "u:p@SECRET@host:org/repo", "host:org/repo"},
+		{"scp query before at sign", "h?SECRET@x", "h"},
+		{"scp no path", "u:SECRET@host", "host"},
+		{"scp ipv6", "u:SECRET@[2001:db8::1]:org/repo", "[2001:db8::1]:org/repo"},
+		{"scp at sign in path kept", "host:org/repo@v1", "host:org/repo@v1"},
+		{"invalid scheme with userinfo", "u:SECRET@h/x://y", "h/x://y"},
+		{"invalid scheme userinfo on both sides", "u:SECRET@h/x://v:SECRET@y/z", "h/x://y/z"},
+		{"at sign before valid scheme", "u@x://v:SECRET@h/p", "x://h/p"},
+		{"empty scheme", "://u:SECRET@h/x", "://h/x"},
+		{"path as scheme", "/://u:SECRET@h", "/://h"},
+		{"digit-led scheme", "1x://u:SECRET@h/p", "1x://h/p"},
+		{"network-path lead before scheme separator", "//u:SECRET@://h", "://h"},
+		{"at sign after slash before scheme separator", "a/u:SECRET@b://h/p", "b://h/p"},
+		{"network-path reference", "//u:SECRET@h/o/r?t=SECRET", "//h/o/r"},
+		{"network-path reference after query cut", "//u:SECRET@h#SECRET://x", "//h"},
+		{"network-path local share kept", "//srv/share/a?b", "//srv/share/a?b"},
+		{"local path with query-like char", "/srv/git/a?b#c", "/srv/git/a?b#c"},
+		{"local path with at sign after slash", "/home/u@host/repo", "/home/u@host/repo"},
+		{"windows path", `C:\repos\api`, `C:\repos\api`},
 		{"local path", "/srv/git/api", "/srv/git/api"},
 		{"empty", "", ""},
 	}
@@ -282,6 +315,108 @@ func FuzzNormalize(f *testing.F) {
 					continue
 				}
 				assert.NotContains(t, lowerID, w, "input %q leaked %q", remote, w)
+			}
+		}
+	})
+}
+
+func FuzzRedactUserinfo(f *testing.F) {
+	for _, seed := range []string{
+		"https://user:tok@GitHub.com/acme/api.git",
+		"https://oauth2:glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag",
+		"https://h/o/r.git?private_token=SECRET#x",
+		"https://h#SECRET",
+		"https://u:p@ss@h/o/r",
+		"ssh://git@[2001:db8::1]:2222/o/r",
+		"git@github.com:acme/api.git",
+		"acme/api",
+		"user:tok@host:org/repo",
+		"git@host:org/repo?private_token=Y#frag",
+		"u:SECRET@h/x://y",
+		"://u:SECRET@h/x",
+		"/srv/git/a?b#c",
+		"//0000@://",
+		"A://0/%000\xe7#000\xe7",
+		"A://8000@%8000",
+		"//0000@0#://",
+		"//@0",
+		"A://\xc8%80#://\xc8",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		out := RedactUserinfo(s)
+		lead, _, _ := strings.Cut(s, "/")
+		netAuth := ""
+		if rest, ok := strings.CutPrefix(s, "//"); ok {
+			netAuth, _, _ = strings.Cut(rest, "/")
+		}
+		if !strings.Contains(s, "://") && !strings.Contains(lead, "@") && !strings.Contains(netAuth, "@") {
+			// A plain value (no "://", no '@' before the first '/', no '@' in
+			// a leading "//" authority) is a local path or bare owner/repo
+			// and is returned byte-for-byte.
+			assert.Equal(t, s, out)
+			return
+		}
+		assert.Equal(t, out, RedactUserinfo(out), "not idempotent for input %q", s)
+		assert.NotContains(t, out, "?", "input %q", s)
+		assert.NotContains(t, out, "#", "input %q", s)
+		// No '@' survives in the lead (the text before the first "://", else
+		// before the first '/') or in the authority after the first "://" (or
+		// after a leading "//" when there is no "://").
+		if before, after, found := strings.Cut(out, "://"); found {
+			authority, _, _ := strings.Cut(after, "/")
+			assert.NotContains(t, before, "@", "input %q: userinfo before the scheme separator", s)
+			assert.NotContains(t, authority, "@", "input %q: userinfo in the authority", s)
+		} else {
+			outLead, _, _ := strings.Cut(out, "/")
+			assert.NotContains(t, outLead, "@", "input %q: userinfo before the first '/'", s)
+			if rest, ok := strings.CutPrefix(out, "//"); ok {
+				authority, _, _ := strings.Cut(rest, "/")
+				assert.NotContains(t, authority, "@", "input %q: userinfo in the network-path authority", s)
+			}
+		}
+		if !strings.Contains(s, "://") {
+			// Without "://" the rules only drop a leading userinfo, the
+			// userinfo after a leading "//", and a trailing query or
+			// fragment, so the output past any leading "//" is a substring
+			// of the input.
+			assert.Contains(t, s, strings.TrimPrefix(out, "//"), "input %q", s)
+			return
+		}
+
+		// No 4+ rune piece of the userinfo, query or fragment may reach the
+		// output unless it also appears in the scheme, host or path the output
+		// is built from.
+		u, err := url.Parse(s)
+		if err != nil || u.Host == "" {
+			return
+		}
+		// The output keeps the input's raw host and path text, which url.Parse
+		// may unescape ("%80" in a host) or re-escape (a raw byte >= 0x80
+		// becomes "%XX" in EscapedPath).
+		cut := s
+		if i := strings.IndexAny(cut, "?#"); i >= 0 {
+			cut = cut[:i]
+		}
+		_, afterScheme, _ := strings.Cut(cut, "://")
+		rawAuthority, rawPath, _ := strings.Cut(afterScheme, "/")
+		rawHost := rawAuthority[strings.LastIndexByte(rawAuthority, '@')+1:]
+		prefix := u.Scheme + "://" + u.Host
+		source := strings.ToLower(prefix + u.EscapedPath() + " " + prefix + u.Path + " " + u.Scheme + "://" + rawHost + "/" + rawPath)
+		var secrets []string
+		if u.User != nil {
+			pw, _ := u.User.Password()
+			secrets = append(secrets, u.User.Username(), pw)
+		}
+		secrets = append(secrets, u.RawQuery, u.Fragment)
+		lowerOut := strings.ToLower(out)
+		for _, secret := range secrets {
+			for _, w := range secretWindows(strings.ToLower(secret)) {
+				if strings.Contains(source, w) {
+					continue
+				}
+				assert.NotContains(t, lowerOut, w, "input %q leaked %q", s, w)
 			}
 		}
 	})

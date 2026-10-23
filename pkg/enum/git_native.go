@@ -44,9 +44,10 @@ func gitBinaryAvailable() bool {
 // Phase 1 runs three tasks concurrently:
 //   - git rev-list --all --objects: the scan set (the authority on which blobs
 //     are scanned). Its failure fails the enumeration and cancels the others.
-//   - git log --raw: the blob index, which gives each blob every path it had
-//     with the earliest commit for each path. Best effort: a failure falls back
-//     to the rev-list path with no commit, and never drops a blob.
+//   - git log with raw diff output: the blob index, which gives each blob
+//     every path it had with the earliest commit for each path. Best effort:
+//     a failure falls back to the rev-list path with no commit, and never
+//     drops a blob.
 //   - git config remote.origin.url: the repository identity. Best effort.
 //
 // Phase 2 streams blob content through git cat-file --batch and invokes the
