@@ -1,10 +1,15 @@
 package sarif
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -63,15 +68,32 @@ type ResultProperties struct {
 	SecuritySeverity string `json:"security-severity,omitempty"`
 	// TitusScore is the full Score object for consumers that want the breakdown.
 	TitusScore *types.Score `json:"titus_score,omitempty"`
+
+	// Location fields, set by AddResultForOccurrence. Repository is
+	// credential-free (repoid). HostRecorded is set for git locations only;
+	// false marks a location read from a datastore that predates host
+	// identity.
+	Repository   string `json:"repository,omitempty"`
+	Commit       string `json:"commit,omitempty"`
+	CommitDate   string `json:"commit_date,omitempty"` // RFC 3339
+	AbsolutePath string `json:"absolute_path,omitempty"`
+	WorkingTree  bool   `json:"working_tree,omitempty"`
+	HostRecorded *bool  `json:"host_recorded,omitempty"`
 }
+
+// LocationFingerprintKey names the partialFingerprints entry that identifies
+// a result's location, so per-location results are not deduplicated.
+const LocationFingerprintKey = "titusLocation/v1"
 
 // Result represents a single finding
 type Result struct {
-	RuleID     string            `json:"ruleId"`
-	Level      string            `json:"level"`
-	Message    Message           `json:"message"`
-	Locations  []Location        `json:"locations"`
-	Properties *ResultProperties `json:"properties,omitempty"`
+	RuleID    string     `json:"ruleId"`
+	Level     string     `json:"level"`
+	Message   Message    `json:"message"`
+	Locations []Location `json:"locations"`
+	// PartialFingerprints is set by AddResultForOccurrence.
+	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
+	Properties          *ResultProperties `json:"properties,omitempty"`
 }
 
 // Message contains the result message
@@ -149,43 +171,7 @@ func (r *Report) AddRule(rule *types.Rule) {
 
 // AddResult adds a finding result to the report
 func (r *Report) AddResult(match *types.Match, filePath string) {
-	// Convert file path to URI format
-	uri := formatFileURI(filePath)
-
-	// Create region with line/column information
-	region := Region{
-		StartLine:   match.Location.Source.Start.Line,
-		StartColumn: match.Location.Source.Start.Column,
-		EndLine:     match.Location.Source.End.Line,
-		EndColumn:   match.Location.Source.End.Column,
-	}
-
-	// Add snippet if available
-	if len(match.Snippet.Matching) > 0 {
-		region.Snippet = Snippet{
-			Text: string(match.Snippet.Matching),
-		}
-	}
-
-	result := Result{
-		RuleID: match.RuleID,
-		Level:  "warning",
-		Message: Message{
-			Text: match.RuleName,
-		},
-		Locations: []Location{
-			{
-				PhysicalLocation: PhysicalLocation{
-					ArtifactLocation: ArtifactLocation{
-						URI: uri,
-					},
-					Region: region,
-				},
-			},
-		},
-	}
-
-	r.Runs[0].Results = append(r.Runs[0].Results, result)
+	r.Runs[0].Results = append(r.Runs[0].Results, newResult(match, filePath, nil))
 }
 
 // ToJSON serializes the report to JSON bytes
@@ -211,8 +197,37 @@ func LevelForScore(score int) string {
 // AddResult when a Score is available — level is band-mapped from score, and
 // properties carry the full Score object for downstream consumers.
 func (r *Report) AddResultWithScore(match *types.Match, filePath string, score *types.Score) {
-	uri := formatFileURI(filePath)
+	r.Runs[0].Results = append(r.Runs[0].Results, newResult(match, filePath, score))
+}
 
+// AddResultForOccurrence adds one result for one location of a match. Call it
+// once per occurrence: N locations give N results (SARIF §3.27.12). The URI is
+// the occurrence path (repository-relative for git); the repository, commit,
+// commit date, absolute path and working-tree flag go in result.properties,
+// and partialFingerprints carries a location hash so that consumers such as
+// GitHub Code Scanning do not dedupe the locations away.
+func (r *Report) AddResultForOccurrence(match *types.Match, o types.Occurrence, score *types.Score) {
+	res := newResult(match, o.Path, score)
+	if res.Properties == nil {
+		res.Properties = &ResultProperties{}
+	}
+	res.Properties.Repository = o.Repository
+	res.Properties.Commit = o.Commit
+	if !o.CommitDate.IsZero() {
+		res.Properties.CommitDate = o.CommitDate.UTC().Format(time.RFC3339)
+	}
+	res.Properties.AbsolutePath = o.AbsolutePath
+	res.Properties.WorkingTree = o.WorkingTree
+	if o.Kind == "git" {
+		res.Properties.HostRecorded = &o.HostRecorded
+	}
+	res.PartialFingerprints = map[string]string{LocationFingerprintKey: locationFingerprint(match, o)}
+	r.Runs[0].Results = append(r.Runs[0].Results, res)
+}
+
+// newResult builds a single-location result. A nil score gives level
+// "warning" and no properties.
+func newResult(match *types.Match, filePath string, score *types.Score) Result {
 	region := Region{
 		StartLine:   match.Location.Source.Start.Line,
 		StartColumn: match.Location.Source.Start.Column,
@@ -233,33 +248,61 @@ func (r *Report) AddResultWithScore(match *types.Match, filePath string, score *
 		}
 	}
 
-	result := Result{
+	return Result{
 		RuleID:  match.RuleID,
 		Level:   level,
-		Message: Message{Text: match.RuleName},
+		Message: Message{Text: types.SanitizeDisplay(match.RuleName)},
 		Locations: []Location{{
 			PhysicalLocation: PhysicalLocation{
-				ArtifactLocation: ArtifactLocation{URI: uri},
+				ArtifactLocation: ArtifactLocation{URI: formatFileURI(filePath)},
 				Region:           region,
 			},
 		}},
 		Properties: props,
 	}
-	r.Runs[0].Results = append(r.Runs[0].Results, result)
 }
 
-// formatFileURI converts a file path to SARIF URI format
-// Absolute paths get file:// prefix, relative paths stay as-is
+// locationFingerprint hashes the rule, the matched span and every field that
+// identifies the location. Fields are NUL-separated, so no two distinct
+// locations share an input.
+func locationFingerprint(match *types.Match, o types.Occurrence) string {
+	src := match.Location.Source
+	h := sha256.New()
+	for _, f := range []string{
+		match.RuleID, match.BlobID.Hex(),
+		strconv.Itoa(src.Start.Line), strconv.Itoa(src.Start.Column),
+		strconv.Itoa(src.End.Line), strconv.Itoa(src.End.Column),
+		o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit,
+		strconv.FormatBool(o.WorkingTree),
+	} {
+		h.Write([]byte(f))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// formatFileURI converts a file path to an RFC 3986 URI reference. An absolute
+// path becomes a file:// URI; a relative path stays a relative reference with
+// each segment percent-encoded. Control bytes and invalid UTF-8 are
+// percent-encoded, never dropped.
 func formatFileURI(path string) string {
 	if filepath.IsAbs(path) {
-		// Normalize path separators for URI format
 		path = filepath.ToSlash(path)
-		// Ensure path starts with /
 		if !strings.HasPrefix(path, "/") {
-			path = "/" + path
+			path = "/" + path // Windows drive path: C:/x -> /C:/x
 		}
-		return "file://" + path
+		return (&url.URL{Scheme: "file", Path: path}).String()
 	}
-	// Relative paths stay as-is
-	return filepath.ToSlash(path)
+	if path == "*" {
+		// net/url reserves the lone asterisk (the "OPTIONS *" request
+		// target) and renders it unescaped; it is a valid path segment.
+		return path
+	}
+	segments := strings.Split(filepath.ToSlash(path), "/")
+	for i, seg := range segments {
+		// PathEscape keeps ':', which would turn a first segment such as
+		// "a:b" into a URI scheme.
+		segments[i] = strings.ReplaceAll(url.PathEscape(seg), ":", "%3A")
+	}
+	return strings.Join(segments, "/")
 }
