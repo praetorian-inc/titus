@@ -2144,7 +2144,7 @@ func validateMatches(ctx context.Context, engine *validator.Engine, matches []*t
 		matches[i].ValidationResult = result
 		if verbose {
 			fmt.Fprintf(os.Stderr, "[validate] Result %d: rule=%s status=%s confidence=%.1f message=%s\n",
-				i+1, matches[i].RuleID, result.Status, result.Confidence, result.Message)
+				i+1, matches[i].RuleID, result.Status, result.Confidence, types.SanitizeDisplay(result.Message))
 		}
 	}
 

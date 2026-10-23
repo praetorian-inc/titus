@@ -493,8 +493,27 @@ func formatSnippet(before, matching, after []byte, maxLen int) string {
 	return result
 }
 
-// formatSnippetWithParts separates snippet into parts for colored output
+// sanitizeSnippetBytes replaces every byte other than '\n' and printable
+// ASCII (0x20-0x7E) with '.', matching Explore's sanitizeForDisplay. Snippet
+// bytes are raw scanned content, so this keeps ESC sequences and other control
+// bytes from reaching the terminal. The mapping is one byte to one byte, so
+// byte offsets computed on the result equal those on the input.
+func sanitizeSnippetBytes(b []byte) []byte {
+	out := make([]byte, len(b))
+	for i, c := range b {
+		if c == '\n' || (c >= 0x20 && c <= 0x7E) {
+			out[i] = c
+		} else {
+			out[i] = '.'
+		}
+	}
+	return out
+}
+
+// formatSnippetWithParts separates snippet into parts for colored output.
+// Parts are sanitized for terminal display before truncation.
 func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetParts {
+	before, matching, after = sanitizeSnippetBytes(before), sanitizeSnippetBytes(matching), sanitizeSnippetBytes(after)
 	full := string(before) + string(matching) + string(after)
 
 	// Short snippet - no truncation needed
@@ -738,7 +757,7 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 			}
 			_, _ = fmt.Fprintf(out, "%s %s\n",
 				st.heading.Sprint("Owner:"),
-				st.metadata.Sprint(ownerStr))
+				st.metadata.Sprint(types.SanitizeDisplay(ownerStr)))
 		}
 
 		if len(f.Resources) > 0 {
@@ -756,7 +775,7 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 				if r.Region != "" {
 					detail += " [" + r.Region + "]"
 				}
-				_, _ = fmt.Fprintf(out, "  %s\n", st.metadata.Sprint(detail))
+				_, _ = fmt.Fprintf(out, "  %s\n", st.metadata.Sprint(types.SanitizeDisplay(detail)))
 			}
 		}
 
@@ -771,7 +790,7 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 		for j, group := range f.Groups {
 			_, _ = fmt.Fprintf(out, "%s %s\n",
 				st.heading.Sprintf("Group %d:", j+1),
-				st.match.Sprint(string(group)))
+				st.match.Sprint(string(sanitizeSnippetBytes(group))))
 		}
 
 		// Matches for this finding: the first fullMatches in full, the rest as
@@ -839,5 +858,6 @@ func formatResourceSummary(resources []types.ResourceInfo) string {
 		parts = append(parts, fmt.Sprintf("%d %s", n, typ))
 	}
 	sort.Strings(parts)
-	return strings.Join(parts, ", ")
+	// Resource types come from remote APIs; sanitize for terminal display.
+	return types.SanitizeDisplay(strings.Join(parts, ", "))
 }

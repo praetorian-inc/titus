@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
@@ -1804,4 +1805,245 @@ func TestOutputReportSARIF_OneResultPerLocation(t *testing.T) {
 		repos = append(repos, r.Properties.Repository)
 	}
 	assert.Equal(t, []string{"github.com/acme/api", "github.com/acme/web"}, repos)
+}
+
+// =============================================================================
+// Terminal-injection sanitization of snippets, groups, owner, and resources
+// =============================================================================
+
+func TestSanitizeSnippetBytes(t *testing.T) {
+	var printable []byte
+	for c := byte(0x20); c <= 0x7E; c++ {
+		printable = append(printable, c)
+	}
+
+	tests := []struct {
+		name string
+		in   []byte
+		want []byte
+	}{
+		{"nil", nil, []byte{}},
+		{"empty", []byte{}, []byte{}},
+		{"ESC sequence", []byte("a\x1b[2Jb"), []byte("a.[2Jb")},
+		{"tab", []byte("a\tb"), []byte("a.b")},
+		{"carriage return", []byte("a\rb"), []byte("a.b")},
+		{"NUL", []byte("a\x00b"), []byte("a.b")},
+		{"DEL", []byte("a\x7fb"), []byte("a.b")},
+		{"C1 CSI 0x9b", []byte("a\x9b2Jb"), []byte("a.2Jb")},
+		{"0x80 and 0xff", []byte{0x80, 'x', 0xff}, []byte(".x.")},
+		{"multibyte UTF-8 maps byte for byte", []byte("é"), []byte("..")},
+		{"newline kept", []byte("line1\nline2"), []byte("line1\nline2")},
+		{"all printable ASCII kept", printable, printable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			orig := slices.Clone(tt.in)
+			got := sanitizeSnippetBytes(tt.in)
+			assert.Equal(t, tt.want, got)
+			assert.Len(t, got, len(tt.in), "mapping must be length-preserving")
+			assert.Equal(t, orig, tt.in, "input must not be modified")
+		})
+	}
+}
+
+func TestFormatSnippetWithParts_SanitizesEachPart(t *testing.T) {
+	const esc = "\x1b[2J"
+	tests := []struct {
+		name                    string
+		before, matching, after string
+		want                    snippetParts
+	}{
+		{
+			name: "before", before: "pre" + esc + " ", matching: "tok", after: " post",
+			want: snippetParts{before: "pre.[2J ", matching: "tok", after: " post"},
+		},
+		{
+			name: "matching", before: "pre ", matching: "tok" + esc, after: " post",
+			want: snippetParts{before: "pre ", matching: "tok.[2J", after: " post"},
+		},
+		{
+			name: "after", before: "pre ", matching: "tok", after: " " + esc + "post",
+			want: snippetParts{before: "pre ", matching: "tok", after: " .[2Jpost"},
+		},
+		{
+			name: "benign unchanged", before: "pre ", matching: "tok", after: " post",
+			want: snippetParts{before: "pre ", matching: "tok", after: " post"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatSnippetWithParts([]byte(tt.before), []byte(tt.matching), []byte(tt.after), 500)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Sanitizing before truncation must not move any cut: a hostile snippet
+// renders exactly like the all-printable snippet of equal length that has
+// '.' in place of each control byte.
+func TestFormatSnippetWithParts_TruncationOffsetsUnchangedBySanitizing(t *testing.T) {
+	const esc = "\x1b[2J"
+	dotted := func(s string) string { return strings.ReplaceAll(s, "\x1b", ".") }
+	tests := []struct {
+		name                    string
+		before, matching, after string
+		wantPrefix, wantSuffix  string
+	}{
+		{
+			name:       "long context on both sides",
+			before:     strings.Repeat("x", 396) + esc,
+			matching:   "MATCH" + esc,
+			after:      esc + strings.Repeat("y", 396),
+			wantPrefix: "...", wantSuffix: "...",
+		},
+		{
+			name:       "match longer than maxLen",
+			before:     "pre",
+			matching:   strings.Repeat(esc, 200),
+			after:      "post",
+			wantPrefix: "...", wantSuffix: "...",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatSnippetWithParts([]byte(tt.before), []byte(tt.matching), []byte(tt.after), 500)
+			want := formatSnippetWithParts([]byte(dotted(tt.before)), []byte(dotted(tt.matching)), []byte(dotted(tt.after)), 500)
+
+			assert.Equal(t, want, got)
+			assert.Equal(t, tt.wantPrefix, got.prefix)
+			assert.Equal(t, tt.wantSuffix, got.suffix)
+			joined := got.prefix + got.before + got.matching + got.after + got.suffix
+			assert.NotContains(t, joined, "\x1b")
+			assert.Contains(t, joined, ".[2J", "the sanitized sequence must be inside the shown window")
+		})
+	}
+}
+
+// sanitizeReportFixture is reportFixture with one plain file location, whose
+// finding and match carry the given groups and snippet, and whose finding
+// carries the given owner and resources.
+func sanitizeReportFixture(t *testing.T, groups [][]byte, snip types.Snippet, owner *types.OwnerInfo, resources []types.ResourceInfo) (store.Store, []*types.Finding, []*types.Match, map[string]*types.Rule) {
+	t.Helper()
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{Kind: "file", Path: "config.yml", HostRecorded: true}})
+	f, m := findings[0], matches[0]
+	f.Groups, m.Groups = groups, groups
+	f.ID = types.ComputeFindingID(ruleMap[f.RuleID].StructuralID, groups)
+	f.Owner, f.Resources = owner, resources
+	m.Snippet = snip
+	return s, findings, matches, ruleMap
+}
+
+// outputLines splits rendered output into lines without their newline.
+func outputLines(out string) []string {
+	return strings.Split(out, "\n")
+}
+
+// sanitizeCase is shared by the report and analyze human-output tests.
+type sanitizeCase struct {
+	name      string
+	groups    [][]byte
+	snippet   types.Snippet
+	owner     *types.OwnerInfo
+	resources []types.ResourceInfo
+	message   string
+	// Expected rendered values.
+	wantGroup, wantSnippet, wantOwner, wantSummary, wantDetail, wantMessage string
+}
+
+func sanitizeCases() []sanitizeCase {
+	return []sanitizeCase{
+		{
+			name:   "hostile",
+			groups: [][]byte{[]byte("tok\x1b[2J\x9b2J")},
+			snippet: types.Snippet{
+				Before:   []byte("pre\x1b[2J "),
+				Matching: []byte("tok\x1b[2J\x9b2J"),
+				After:    []byte(" \x1b[2Jpost"),
+			},
+			owner:       &types.OwnerInfo{User: "alice\x1b[2J", Email: "a@x.io", AccountID: "1\x1b]0;t\x07"},
+			resources:   []types.ResourceInfo{{Service: "aws", Type: "s3\x1b[2J", Name: "prod\x1b[2J", Region: "us\x1b[2J"}},
+			message:     "key active\x1b[2J",
+			wantGroup:   "tok.[2J.2J",
+			wantSnippet: "pre.[2J tok.[2J.2J .[2Jpost",
+			wantOwner:   `alice\x1b[2J (a@x.io) [1\x1b]0;t\x07]`,
+			wantSummary: `1 s3\x1b[2J`,
+			wantDetail:  `s3\x1b[2J: prod\x1b[2J [us\x1b[2J]`,
+			wantMessage: `key active\x1b[2J`,
+		},
+		{
+			name:        "benign",
+			groups:      [][]byte{[]byte("tok_plain")},
+			snippet:     types.Snippet{Before: []byte("before "), Matching: []byte("tok_plain"), After: []byte(" after")},
+			owner:       &types.OwnerInfo{User: "alice", Email: "alice@example.com", AccountID: "123"},
+			resources:   []types.ResourceInfo{{Service: "aws", Type: "s3_bucket", Name: "prod-data", Region: "us-east-1"}},
+			message:     "key is active",
+			wantGroup:   "tok_plain",
+			wantSnippet: "before tok_plain after",
+			wantOwner:   "alice (alice@example.com) [123]",
+			wantSummary: "1 s3_bucket",
+			wantDetail:  "s3_bucket: prod-data [us-east-1]",
+			wantMessage: "key is active",
+		},
+	}
+}
+
+// assertNoTerminalControls fails if out holds a C0 control other than '\n',
+// DEL, a C1 control rune, or a raw (non-UTF-8) byte in the C1 range, which
+// 8-bit terminals read as a control such as CSI (0x9b).
+func assertNoTerminalControls(t *testing.T, out string) {
+	t.Helper()
+	for i, r := range out {
+		if r == utf8.RuneError && out[i] >= 0x80 && out[i] <= 0x9f {
+			t.Fatalf("raw C1 byte 0x%02x at offset %d in output:\n%q", out[i], i, out)
+		}
+		if (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			t.Fatalf("control rune %U at offset %d in output:\n%q", r, i, out)
+		}
+	}
+}
+
+func TestOutputReportHuman_SanitizesFindingContent(t *testing.T) {
+	for _, tc := range sanitizeCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			s, findings, matches, ruleMap := sanitizeReportFixture(t, tc.groups, tc.snippet, tc.owner, tc.resources)
+			out := renderHuman(t, s, findings, matches, ruleMap)
+
+			assertNoTerminalControls(t, out)
+			lines := outputLines(out)
+			assert.Contains(t, lines, "Group 1: "+tc.wantGroup)
+			assert.Contains(t, lines, "        "+tc.wantSnippet)
+			assert.Contains(t, lines, "Owner: "+tc.wantOwner)
+			assert.Contains(t, lines, "Resources: "+tc.wantSummary)
+			assert.Contains(t, lines, "  "+tc.wantDetail)
+		})
+	}
+}
+
+// JSON keeps the exact stored bytes of groups, snippet, owner, and resources:
+// sanitizing is for human output only.
+func TestOutputReportJSON_KeepsRawFindingContent(t *testing.T) {
+	tc := sanitizeCases()[0]
+	s, findings, matches, ruleMap := sanitizeReportFixture(t, tc.groups, tc.snippet, tc.owner, tc.resources)
+	data := renderJSON(t, s, findings, matches, ruleMap)
+
+	assert.NotContains(t, string(data), "\x1b", "raw escape byte must be JSON-escaped")
+	assert.Contains(t, string(data), `alice\u001b[2J`, "owner string is JSON-escaped, not display-sanitized")
+
+	var out []struct {
+		Groups    [][]byte             `json:"Groups"`
+		Owner     *types.OwnerInfo     `json:"owner"`
+		Resources []types.ResourceInfo `json:"resources"`
+		Matches   []struct {
+			Groups  [][]byte      `json:"Groups"`
+			Snippet types.Snippet `json:"Snippet"`
+		} `json:"Matches"`
+	}
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Len(t, out, 1)
+	assert.Equal(t, tc.groups, out[0].Groups)
+	assert.Equal(t, tc.owner, out[0].Owner)
+	assert.Equal(t, tc.resources, out[0].Resources)
+	require.Len(t, out[0].Matches, 1)
+	assert.Equal(t, tc.groups, out[0].Matches[0].Groups)
+	assert.Equal(t, tc.snippet, out[0].Matches[0].Snippet)
 }
