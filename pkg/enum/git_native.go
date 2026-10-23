@@ -83,9 +83,11 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 
 	warn := e.warnWriter()
 	if indexErr != nil {
-		idx = nil
+		// Each blob falls back to its one rev-list path, marked as possibly
+		// missing others (R1).
+		idx = unavailableIndex()
 		if ctx.Err() == nil {
-			fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path\n", indexErr)
+			fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path and is marked as possibly missing locations\n", indexErr)
 		}
 	}
 	writeEnumWarnings(warn, idx, revOverlong)

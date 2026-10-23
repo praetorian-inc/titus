@@ -34,6 +34,10 @@ type CloneEnumerator struct {
 	Delay  time.Duration // minimum delay between clones (from --rate-limit)
 	Jitter time.Duration // maximum delay between clones (from --jitter); actual delay is random(Delay, Jitter)
 	Token  string        // API token for authenticated cloning (passed via ephemeral credential helper)
+
+	// buildIndex builds the filesystem-mode history index; nil means
+	// buildBlobIndex. Tests replace it to force an index failure.
+	buildIndex func(context.Context, string) (*blobIndex, error)
 }
 
 // NewCloneEnumerator creates a new clone-based enumerator.
@@ -201,9 +205,20 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 	}
 
 	// Filesystem mode (default): fast scan of the working tree. Commit
-	// metadata comes from the blob index, best effort: on error the index is
-	// nil, which every lookup treats as empty.
-	idx, _ := buildBlobIndex(ctx, clonePath)
+	// metadata comes from the blob index, best effort: on error every file is
+	// still scanned, without commit metadata, and marked as possibly missing
+	// locations (R1).
+	build := e.buildIndex
+	if build == nil {
+		build = buildBlobIndex
+	}
+	idx, err := build(ctx, clonePath)
+	if err != nil {
+		idx = unavailableIndex()
+		if ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "titus: git history index unavailable: %v; files are scanned without commit metadata and marked as possibly missing locations\n", err)
+		}
+	}
 	idx.writeWarnings(os.Stderr)
 
 	return NewFilesystemEnumerator(cloneConfig).Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
@@ -230,31 +245,33 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 }
 
 // committedAt returns the commit recorded in idx for the blob at rel, and
-// whether the index dropped a location of that blob at its size limit (R1),
-// in which case the commit may be missing or not the earliest. The scanned
-// content may be a decoded form of the file (UTF-16), so when the index has
-// no entry for blobID at all the raw file is hashed and looked up again, and
-// the mark is that of whichever id the index knows the file by. When it has
-// entries but none at rel (a truncated index, or a path not yet committed)
-// the content is taken as the raw file and not re-read; a decoded file whose
-// text is also committed elsewhere as UTF-8 is the one case that then goes
-// without commit metadata.
+// whether the index dropped a location of that blob at its size limit or
+// could not be built (R1), in which case the commit may be missing or not
+// the earliest. The scanned content may be a decoded form of the file
+// (UTF-16), whose raw bytes are a different blob, so the file is marked when
+// either id is marked: the raw file is hashed whenever the index marks any
+// blob and the decoded id alone does not settle it. Commit metadata comes
+// from the decoded id when the index has it, else from the raw id. The raw
+// file is not read when nothing is marked and the decoded id has entries.
+// When the raw file cannot be read and the index marks any blob, the file is
+// marked: its raw id is unknown, so it cannot be shown to be unmarked.
 func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) (*types.CommitMetadata, bool) {
-	if idx == nil {
-		return nil, false
-	}
 	truncated := idx.locationsTruncated(blobID)
-	if locs := idx.lookup(blobID); len(locs) > 0 {
+	locs := idx.lookup(blobID)
+	if len(locs) > 0 && (truncated || !idx.marksAny()) {
 		return commitForPath(locs, rel), truncated
 	}
 	raw, err := os.ReadFile(file)
 	if err != nil {
-		return nil, truncated
+		return commitForPath(locs, rel), truncated || idx.marksAny()
 	}
 	if rawID := types.ComputeBlobID(raw); rawID != blobID {
-		return commitForPath(idx.lookup(rawID), rel), truncated || idx.locationsTruncated(rawID)
+		truncated = truncated || idx.locationsTruncated(rawID)
+		if len(locs) == 0 {
+			locs = idx.lookup(rawID)
+		}
 	}
-	return nil, truncated
+	return commitForPath(locs, rel), truncated
 }
 
 func commitForPath(locs []types.GitLocation, rel string) *types.CommitMetadata {

@@ -280,7 +280,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 				p.x.stats.overlong++
 				continue
 			}
-			p.addPair(indexPair{hash: hash, path: p.internPath([]byte(to.Name)), commit: uint32(p.cur)})
+			p.addEntry(hash, []byte(to.Name))
 		}
 	}
 	return blobs, p.finish(), nil
@@ -371,10 +371,16 @@ func firstParentChanges(ctx context.Context, c *object.Commit, root bool) (objec
 }
 
 // goGitHeader records c as the current commit, as header does for a git log
-// record: the same interning, time rules and %s subject.
+// record: the same interning, time rules and %s subject. Once the index is
+// full it keeps only the commit's ordering key, as header does.
 func (p *indexParser) goGitHeader(c *object.Commit) {
 	x := &p.x
 	hexID := []byte(c.Hash.String())
+	if p.full {
+		unix, _, ok := goGitTime(c.Committer.When)
+		p.setCurKey(hexID, !ok || unix == 0, unix)
+		return
+	}
 	r := commitRec{idLen: uint8(len(hexID)), id: x.appendArena(hexID)}
 	r.authorName = p.intern([]byte(c.Author.Name))
 	r.authorEmail = p.intern([]byte(c.Author.Email))
@@ -395,6 +401,7 @@ func (p *indexParser) goGitHeader(c *object.Commit) {
 
 	x.commits = append(x.commits, r)
 	p.cur = len(x.commits) - 1
+	p.setCurKey(hexID, r.flags&commitTimeUnusable != 0, r.committerUnix)
 }
 
 // goGitTime splits a signature time into unix seconds and zone offset; go-git

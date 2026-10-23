@@ -83,6 +83,11 @@ type blobIndex struct {
 	// history, never by the number of dropped pairs.
 	truncatedBlobs map[[20]byte]struct{}
 
+	// failed marks an index that could not be built: it records no
+	// location, so every blob's locations are incomplete. An index built
+	// from an empty history is not failed.
+	failed bool
+
 	mu   sync.Mutex
 	meta map[uint32]*types.CommitMetadata // materialized on lookup, shared
 }
@@ -131,6 +136,13 @@ func buildBlobIndex(ctx context.Context, repoPath string) (*blobIndex, error) {
 	return idx, nil
 }
 
+// unavailableIndex stands in for an index that could not be built. Every
+// lookup is empty and every blob is marked LocationsTruncated, so a blob
+// that falls back to one path says that others may be missing (R1).
+func unavailableIndex() *blobIndex {
+	return &blobIndex{failed: true}
+}
+
 // parseBlobIndex builds an index from the output of blobIndexLogArgs.
 func parseBlobIndex(r io.Reader) (*blobIndex, error) {
 	p := &indexParser{
@@ -154,6 +166,12 @@ type indexParser struct {
 	nameIDs map[string]uint32
 	cur     int // index of the current commit, -1 before the first header
 	full    bool
+
+	// curKey orders the current commit for drop. Once the index is full a
+	// header is reduced to this key and nothing else is stored, so memory
+	// stops growing with the history; curID backs curKey.id.
+	curKey commitKey
+	curID  []byte
 }
 
 func (p *indexParser) run() error {
@@ -185,11 +203,17 @@ func (p *indexParser) run() error {
 	}
 }
 
-// header reads the seven fields that follow a commit id.
+// header reads the seven fields that follow a commit id. Once the index is
+// full it keeps only the commit's ordering key: no interning, no arena
+// growth, no commit record.
 func (p *indexParser) header(id []byte) error {
 	x := &p.x
-	c := commitRec{idLen: uint8(len(id))}
-	c.id = x.appendArena(id)
+	store := !p.full
+	var c commitRec
+	if store {
+		c = commitRec{idLen: uint8(len(id)), id: x.appendArena(id)}
+	}
+	p.setCurKey(id, false, 0)
 
 	for field := range 7 {
 		tok, overlong, err := p.z.next()
@@ -204,33 +228,44 @@ func (p *indexParser) header(id []byte) error {
 			x.stats.overlong++
 			tok = nil
 		}
-		switch field {
-		case 0:
-			c.authorName = p.intern(tok)
-		case 1:
-			c.authorEmail = p.intern(tok)
-		case 2:
-			var ok bool
-			if c.authorUnix, c.authorOff, ok = parseGitTime(tok); !ok {
-				c.flags |= authorTimeUnusable
-			}
-		case 3:
-			c.committerName = p.intern(tok)
-		case 4:
-			c.committerEmail = p.intern(tok)
-		case 5:
+		switch {
+		case field == 5:
 			var ok bool
 			if c.committerUnix, c.committerOff, ok = parseGitTime(tok); !ok || c.committerUnix == 0 {
 				c.flags |= commitTimeUnusable
 			}
-		case 6:
+			p.setCurKey(id, c.flags&commitTimeUnusable != 0, c.committerUnix)
+		case !store:
+		case field == 0:
+			c.authorName = p.intern(tok)
+		case field == 1:
+			c.authorEmail = p.intern(tok)
+		case field == 2:
+			var ok bool
+			if c.authorUnix, c.authorOff, ok = parseGitTime(tok); !ok {
+				c.flags |= authorTimeUnusable
+			}
+		case field == 3:
+			c.committerName = p.intern(tok)
+		case field == 4:
+			c.committerEmail = p.intern(tok)
+		case field == 6:
 			c.subj = x.appendArena(tok)
 			c.subjLen = uint32(len(tok))
 		}
 	}
-	x.commits = append(x.commits, c)
-	p.cur = len(x.commits) - 1
+	if store {
+		x.commits = append(x.commits, c)
+		p.cur = len(x.commits) - 1
+	}
 	return nil
+}
+
+// setCurKey records the ordering key of the commit being parsed. The id is
+// copied: the reader reuses its buffer.
+func (p *indexParser) setCurKey(id []byte, unusable bool, unix int64) {
+	p.curID = append(p.curID[:0], id...)
+	p.curKey = commitKey{id: p.curID, unusable: unusable, unix: unix}
 }
 
 // rawEntry handles one ":srcmode dstmode srcid dstid status" token and always
@@ -252,9 +287,26 @@ func (p *indexParser) rawEntry(meta []byte) error {
 	case malformed || p.cur < 0:
 		p.x.stats.malformed++
 	case keep:
-		p.addPair(indexPair{hash: dst, path: p.internPath(path), commit: uint32(p.cur)})
+		p.addEntry(dst, path)
 	}
 	return nil
+}
+
+// addEntry records that blob hash is stored at path in the current commit.
+// Once the index is full nothing is interned: a path the index has never
+// seen means the (hash, path) pair is new, so its location is lost.
+func (p *indexParser) addEntry(hash [20]byte, path []byte) {
+	if !p.full {
+		p.addPair(indexPair{hash: hash, path: p.internPath(path), commit: uint32(p.cur)})
+		return
+	}
+	p.x.stats.droppedPairs++
+	id, ok := p.pathIDs[string(path)]
+	if !ok {
+		p.x.markTruncated(hash)
+		return
+	}
+	p.drop(hash, id)
 }
 
 // parseMeta reports the destination blob of a raw entry and whether it is a
@@ -316,15 +368,12 @@ func (p *indexParser) internPath(b []byte) uint32 {
 // long history of re-touched files does not grow memory with commit count.
 func (p *indexParser) addPair(pair indexPair) {
 	x := &p.x
-	if p.full {
-		x.drop(pair)
-		return
-	}
 	if len(x.pairs) >= maxIndexPairs {
 		x.compact()
 		if len(x.pairs) >= maxIndexPairs {
 			p.full = true
-			x.drop(pair)
+			x.stats.droppedPairs++
+			p.drop(pair.hash, pair.path)
 			return
 		}
 	}
@@ -337,31 +386,37 @@ func (p *indexParser) addPair(pair indexPair) {
 	x.pairs = append(x.pairs, pair)
 }
 
-// drop counts a pair the full index cannot store and marks its blob when the
-// pair carried a location the index lacks: a (blob, path) it has not
-// recorded, or a recorded one first seen at an earlier commit than the one
-// it holds. A re-touch at a later commit loses nothing and marks nothing.
-// The index is full only right after compact, so pairs are sorted by (hash,
-// path, commit) and nothing is appended afterwards; path ids are still the
-// parse-time ids that the pairs carry.
-func (x *blobIndex) drop(pair indexPair) {
-	x.stats.droppedPairs++
-	if _, ok := x.truncatedBlobs[pair.hash]; ok {
+// drop marks the blob of a pair the full index cannot store when the pair,
+// seen in the current commit, carried a location the index lacks: a (blob,
+// path) it has not recorded, or a recorded one first seen at an earlier
+// commit than the one it holds. A re-touch at the same or a later commit
+// loses nothing and marks nothing. The comparison uses the current commit's
+// key with the same order as compact, so it holds whatever order commits
+// arrive in. The index is full only right after compact, so pairs are
+// sorted by (hash, path, commit) and nothing is appended afterwards; path
+// ids are still the parse-time ids that the pairs carry.
+func (p *indexParser) drop(hash [20]byte, path uint32) {
+	x := &p.x
+	if _, ok := x.truncatedBlobs[hash]; ok {
 		return
 	}
-	i, found := slices.BinarySearchFunc(x.pairs, pair, func(e, t indexPair) int {
+	i, found := slices.BinarySearchFunc(x.pairs, indexPair{hash: hash, path: path}, func(e, t indexPair) int {
 		if c := bytes.Compare(e.hash[:], t.hash[:]); c != 0 {
 			return c
 		}
 		return cmp.Compare(e.path, t.path)
 	})
-	if found && x.compareCommits(x.pairs[i].commit, pair.commit) <= 0 {
+	if found && compareCommitKeys(x.commitKey(x.pairs[i].commit), p.curKey) <= 0 {
 		return
 	}
+	x.markTruncated(hash)
+}
+
+func (x *blobIndex) markTruncated(hash [20]byte) {
 	if x.truncatedBlobs == nil {
 		x.truncatedBlobs = make(map[[20]byte]struct{})
 	}
-	x.truncatedBlobs[pair.hash] = struct{}{}
+	x.truncatedBlobs[hash] = struct{}{}
 }
 
 // finish sorts paths lexically, remaps pair path ids to match, deduplicates
@@ -420,20 +475,35 @@ func (x *blobIndex) compareCommits(a, b uint32) int {
 	if a == b {
 		return 0
 	}
-	ca, cb := &x.commits[a], &x.commits[b]
-	ua, ub := ca.flags&commitTimeUnusable != 0, cb.flags&commitTimeUnusable != 0
-	if ua != ub {
-		if ua {
+	return compareCommitKeys(x.commitKey(a), x.commitKey(b))
+}
+
+// commitKey is what orders a commit: its committer time, whether that time
+// is usable, and its id.
+type commitKey struct {
+	id       []byte
+	unix     int64
+	unusable bool
+}
+
+func (x *blobIndex) commitKey(i uint32) commitKey {
+	c := &x.commits[i]
+	return commitKey{id: x.commitID(c), unix: c.committerUnix, unusable: c.flags&commitTimeUnusable != 0}
+}
+
+func compareCommitKeys(a, b commitKey) int {
+	if a.unusable != b.unusable {
+		if a.unusable {
 			return 1
 		}
 		return -1
 	}
-	if !ua {
-		if c := cmp.Compare(ca.committerUnix, cb.committerUnix); c != 0 {
+	if !a.unusable {
+		if c := cmp.Compare(a.unix, b.unix); c != 0 {
 			return c
 		}
 	}
-	return bytes.Compare(x.commitID(ca), x.commitID(cb))
+	return bytes.Compare(a.id, b.id)
 }
 
 func (x *blobIndex) commitID(c *commitRec) []byte {
@@ -508,14 +578,23 @@ func (x *blobIndex) truncated() bool {
 // maxIndexPairs, so its lookup is incomplete by an unknown count (R1). This
 // includes a blob all of whose pairs were dropped, which lookup reports as
 // unknown. A blob with no dropped pair is not marked, even when the index is
-// truncated: none of its history locations were lost to the cap. A nil index
+// truncated: none of its history locations were lost to the cap. An index
+// that could not be built (unavailableIndex) marks every blob; a nil index
 // marks nothing.
 func (x *blobIndex) locationsTruncated(hash [20]byte) bool {
 	if x == nil {
 		return false
 	}
+	if x.failed {
+		return true
+	}
 	_, ok := x.truncatedBlobs[hash]
 	return ok
+}
+
+// marksAny reports whether locationsTruncated can be true for some blob.
+func (x *blobIndex) marksAny() bool {
+	return x != nil && (x.failed || len(x.truncatedBlobs) > 0)
 }
 
 // writeWarnings prints one line per kind of record the index could not use.
