@@ -326,6 +326,15 @@ func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
 			lines = append(lines, indent+fieldValueStyle.Render(part))
 		}
 	}
+	if types.LocationsTruncated(m.Provenance) {
+		for j, part := range wrapLine(types.LocationsTruncatedNotice, wrapWidth) {
+			indent := "      "
+			if j == 0 {
+				indent = "    "
+			}
+			lines = append(lines, indent+fieldValueStyle.Render(part))
+		}
+	}
 	return lines
 }
 

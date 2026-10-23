@@ -80,6 +80,9 @@ type ResultProperties struct {
 	AbsolutePath string `json:"absolute_path,omitempty"`
 	WorkingTree  bool   `json:"working_tree,omitempty"`
 	HostRecorded *bool  `json:"host_recorded,omitempty"`
+	// LocationsTruncated is set on the last result of a match whose blob has
+	// more locations than the git history index recorded.
+	LocationsTruncated bool `json:"locationsTruncated,omitempty"`
 }
 
 // LocationFingerprintKey names the partialFingerprints entry that identifies
@@ -225,6 +228,21 @@ func (r *Report) AddResultForOccurrence(match *types.Match, o types.Occurrence, 
 	}
 	res.PartialFingerprints = map[string]string{LocationFingerprintKey: locationFingerprint(match, o)}
 	r.Runs[0].Results = append(r.Runs[0].Results, res)
+}
+
+// MarkLocationsTruncated flags the most recently added result as the last of
+// a match whose location list is truncated. It does nothing when the report
+// has no results.
+func (r *Report) MarkLocationsTruncated() {
+	results := r.Runs[0].Results
+	if len(results) == 0 {
+		return
+	}
+	last := &results[len(results)-1]
+	if last.Properties == nil {
+		last.Properties = &ResultProperties{}
+	}
+	last.Properties.LocationsTruncated = true
 }
 
 // newResult builds a single-location result. A nil score gives level

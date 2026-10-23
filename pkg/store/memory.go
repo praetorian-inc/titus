@@ -113,11 +113,32 @@ func (m *MemoryStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	key := blobID.Hex()
 	pk := provenanceKey{blob: key, provenanceRowKey: rowKey}
 	if _, exists := m.provKeys[pk]; exists {
+		m.markLocationsTruncated(key, rowKey, prov)
 		return nil
 	}
 	m.provKeys[pk] = struct{}{}
 	m.provenance[key] = append(m.provenance[key], storedProvenance(prov))
 	return nil
+}
+
+// markLocationsTruncated sets the sticky LocationsTruncated flag on the stored
+// row with rowKey when a later write of that row is truncated, matching the
+// SQLite store. Callers hold m.mu.
+func (m *MemoryStore) markLocationsTruncated(blob string, rowKey provenanceRowKey, prov types.Provenance) {
+	if g, ok := prov.(types.GitProvenance); !ok || !g.LocationsTruncated {
+		return
+	}
+	for i, stored := range m.provenance[blob] {
+		g, ok := stored.(types.GitProvenance)
+		if !ok {
+			continue
+		}
+		if k, err := provenanceKeyOf(g); err == nil && k == rowKey {
+			g.LocationsTruncated = true
+			m.provenance[blob][i] = g
+			return
+		}
+	}
 }
 
 // storedProvenance drops the GitProvenance fields the SQLite provenance table

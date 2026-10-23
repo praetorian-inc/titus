@@ -85,6 +85,19 @@ func gitOccurrences(g GitProvenance) []Occurrence {
 	return out
 }
 
+// LocationsTruncatedNotice is the marker every output shows for a blob whose
+// git history index stopped recording locations at its limit.
+const LocationsTruncatedNotice = "locations truncated: history index limit reached; more locations exist"
+
+// LocationsTruncated reports whether any git provenance of a blob records that
+// its location list was truncated.
+func LocationsTruncated(provs []Provenance) bool {
+	return slices.ContainsFunc(provs, func(p Provenance) bool {
+		g, ok := p.(GitProvenance)
+		return ok && g.LocationsTruncated
+	})
+}
+
 // MergeOccurrences reconciles location rows with provenance rows for one blob.
 // Every row is kept. A provenance row is added only when no row covers it; an
 // uncovered git provenance is a legacy row and is marked HostRecorded=false,

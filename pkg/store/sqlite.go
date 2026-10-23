@@ -248,6 +248,10 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	var authorName, authorEmail, authorTimestamp string
 	var committerName, committerEmail, committerTimestamp string
 	var commitMessage string
+	var truncated bool
+	if p, ok := prov.(types.GitProvenance); ok {
+		truncated = p.LocationsTruncated
+	}
 	if p, ok := prov.(types.GitProvenance); ok && p.Commit != nil {
 		authorName = p.Commit.AuthorName
 		authorEmail = p.Commit.AuthorEmail
@@ -262,12 +266,20 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 		commitMessage = p.Commit.Message
 	}
 	_, err = s.e.Exec(`INSERT OR IGNORE INTO provenance
-		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message, locations_truncated)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		blobID.Hex(), key.kind, key.path, key.repoPath, key.commitHash,
 		authorName, authorEmail, authorTimestamp,
 		committerName, committerEmail, committerTimestamp,
-		commitMessage)
+		commitMessage, truncated)
+	if err != nil || !truncated {
+		return err
+	}
+	// INSERT OR IGNORE keeps an existing row unchanged; the flag is sticky,
+	// so a truncated write marks an existing row and nothing clears it.
+	_, err = s.e.Exec(`UPDATE provenance SET locations_truncated = 1
+		WHERE blob_id = ? AND type = ? AND path = ? AND repo_path = ? AND commit_hash = ?`,
+		blobID.Hex(), key.kind, key.path, key.repoPath, key.commitHash)
 	return err
 }
 
@@ -285,7 +297,7 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 	rows, err := s.e.Query(`SELECT type, path, repo_path, commit_hash,
 		author_name, author_email, author_timestamp,
 		committer_name, committer_email, committer_timestamp,
-		commit_message FROM provenance WHERE blob_id = ?`, blobID.Hex())
+		commit_message, locations_truncated FROM provenance WHERE blob_id = ?`, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -297,17 +309,22 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 		var authorName, authorEmail, authorTS sql.NullString
 		var committerName, committerEmail, committerTS sql.NullString
 		var commitMessage sql.NullString
+		var truncated sql.NullInt64
 		if err := rows.Scan(&provType, &path, &repoPath, &commitHash,
 			&authorName, &authorEmail, &authorTS,
 			&committerName, &committerEmail, &committerTS,
-			&commitMessage); err != nil {
+			&commitMessage, &truncated); err != nil {
 			return nil, err
 		}
 		switch provType {
 		case "file":
 			result = append(result, types.FileProvenance{FilePath: path.String})
 		case "git":
-			prov := types.GitProvenance{RepoPath: repoPath.String, BlobPath: path.String}
+			prov := types.GitProvenance{
+				RepoPath:           repoPath.String,
+				BlobPath:           path.String,
+				LocationsTruncated: truncated.Int64 != 0,
+			}
 			if commitHash.Valid && commitHash.String != "" {
 				meta := &types.CommitMetadata{
 					CommitID:       commitHash.String,

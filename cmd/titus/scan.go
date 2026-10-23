@@ -2010,6 +2010,8 @@ func storeLocations(tx store.Store, blobID types.BlobID, prov types.Provenance, 
 type scanJSONMatch struct {
 	*types.Match
 	Locations []jsonLocation `json:"locations"`
+	// LocationsTruncated marks a blob with more locations than were recorded.
+	LocationsTruncated bool `json:"locations_truncated,omitempty"`
 }
 
 // outputMatches emits the scan's raw matches as JSON for `titus scan --format=json`.
@@ -2020,11 +2022,15 @@ type scanJSONMatch struct {
 func outputMatches(cmd *cobra.Command, s store.Store, matches []*types.Match) error {
 	out := make([]scanJSONMatch, 0, len(matches))
 	for _, m := range matches {
-		occs, err := matchLocations(s, m)
+		locs, err := loadBlobLocations(s, m)
 		if err != nil {
 			return err
 		}
-		out = append(out, scanJSONMatch{Match: m, Locations: toJSONLocations(m, occs)})
+		out = append(out, scanJSONMatch{
+			Match:              m,
+			Locations:          toJSONLocations(m, locs.occs),
+			LocationsTruncated: locs.truncated,
+		})
 	}
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")

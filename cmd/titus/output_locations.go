@@ -46,6 +46,27 @@ func matchLocations(s store.Store, m *types.Match) ([]types.Occurrence, error) {
 	return occs, nil
 }
 
+// blobLocations is every location of a blob plus whether the git history
+// index recorded only some of them.
+type blobLocations struct {
+	occs      []types.Occurrence
+	truncated bool
+}
+
+// loadBlobLocations reads the locations of a match's blob and its truncation
+// flag, which lives on the blob's git provenance rows.
+func loadBlobLocations(s store.Store, m *types.Match) (blobLocations, error) {
+	occs, err := matchLocations(s, m)
+	if err != nil {
+		return blobLocations{}, err
+	}
+	provs, err := s.GetAllProvenance(m.BlobID)
+	if err != nil {
+		return blobLocations{}, fmt.Errorf("reading provenance of blob %s: %w", m.BlobID.Hex(), err)
+	}
+	return blobLocations{occs: occs, truncated: types.LocationsTruncated(provs)}, nil
+}
+
 // toJSONLocations converts occurrences to JSON locations, each carrying the
 // match's range. It never returns nil, so JSON shows [] rather than null.
 func toJSONLocations(m *types.Match, occs []types.Occurrence) []jsonLocation {
@@ -88,27 +109,29 @@ func writeSARIF(w io.Writer, s store.Store, rules []*types.Rule, matches []*type
 		report.AddRule(r)
 	}
 
-	cache := make(map[types.BlobID][]types.Occurrence)
+	cache := make(map[types.BlobID]blobLocations)
 	for _, m := range matches {
-		occs, ok := cache[m.BlobID]
+		locs, ok := cache[m.BlobID]
 		if !ok {
 			var err error
-			if occs, err = matchLocations(s, m); err != nil {
+			if locs, err = loadBlobLocations(s, m); err != nil {
 				return err
 			}
-			cache[m.BlobID] = occs
+			cache[m.BlobID] = locs
 		}
 
 		var score *types.Score
 		if scoreFor != nil {
 			score = scoreFor(m)
 		}
-		if len(occs) == 0 {
+		if len(locs.occs) == 0 {
 			report.AddResultWithScore(m, m.BlobID.Hex(), score)
-			continue
 		}
-		for _, o := range occs {
+		for _, o := range locs.occs {
 			report.AddResultForOccurrence(m, o, score)
+		}
+		if locs.truncated {
+			report.MarkLocationsTruncated()
 		}
 	}
 
@@ -134,4 +157,17 @@ func writeLocationLines(w io.Writer, line int, occs []types.Occurrence, style *c
 		}
 		_, _ = fmt.Fprintf(w, "    %s\n", text)
 	}
+}
+
+// writeLocationsTruncated writes the truncation marker line after a location
+// list, and nothing when truncated is false. style may be nil for plain text.
+func writeLocationsTruncated(w io.Writer, truncated bool, style *color.Color) {
+	if !truncated {
+		return
+	}
+	text := types.LocationsTruncatedNotice
+	if style != nil {
+		text = style.Sprint(text)
+	}
+	_, _ = fmt.Fprintf(w, "    %s\n", text)
 }

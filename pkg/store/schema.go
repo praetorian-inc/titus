@@ -190,6 +190,8 @@ func createProvenanceTable(db *sql.DB) error {
 		"committer_email TEXT",
 		"committer_timestamp TEXT",
 		"commit_message TEXT",
+		// NULL in rows written before the flag existed reads as false.
+		"locations_truncated INTEGER",
 	} {
 		_, _ = db.Exec("ALTER TABLE provenance ADD COLUMN " + col)
 	}

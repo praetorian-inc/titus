@@ -611,6 +611,8 @@ type jsonMatch struct {
 	*types.Match
 	FilePath  string         `json:"file_path"`
 	Locations []jsonLocation `json:"locations"`
+	// LocationsTruncated marks a blob with more locations than were recorded.
+	LocationsTruncated bool `json:"locations_truncated,omitempty"`
 }
 
 // jsonFinding is a shadow type for types.Finding that replaces the Matches
@@ -628,7 +630,7 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 
 	// Cache location lookups per blob to avoid redundant store queries.
-	locationCache := make(map[types.BlobID][]types.Occurrence)
+	locationCache := make(map[types.BlobID]blobLocations)
 
 	// Build the output slice using the shadow types so we don't mutate
 	// the shared types.Finding/types.Match structs.
@@ -637,19 +639,24 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 		ms := matchesByFinding[f.ID]
 		jms := make([]jsonMatch, 0, len(ms))
 		for _, m := range ms {
-			occs, ok := locationCache[m.BlobID]
+			locs, ok := locationCache[m.BlobID]
 			if !ok {
 				var err error
-				if occs, err = matchLocations(s, m); err != nil {
+				if locs, err = loadBlobLocations(s, m); err != nil {
 					return err
 				}
-				locationCache[m.BlobID] = occs
+				locationCache[m.BlobID] = locs
 			}
 			filePath := m.BlobID.Hex()
-			if len(occs) > 0 {
-				filePath = occs[0].Path
+			if len(locs.occs) > 0 {
+				filePath = locs.occs[0].Path
 			}
-			jms = append(jms, jsonMatch{Match: m, FilePath: filePath, Locations: toJSONLocations(m, occs)})
+			jms = append(jms, jsonMatch{
+				Match:              m,
+				FilePath:           filePath,
+				Locations:          toJSONLocations(m, locs.occs),
+				LocationsTruncated: locs.truncated,
+			})
 		}
 		out = append(out, jsonFinding{Finding: f, Matches: jms})
 	}
@@ -771,13 +778,14 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 		// location lines only. Nothing is truncated.
 		findingMatches := matchesByFinding[f.ID]
 		for k, match := range findingMatches {
-			occs, err := matchLocations(s, match)
+			locs, err := loadBlobLocations(s, match)
 			if err != nil {
 				return err
 			}
 			line := match.Location.Source.Start.Line
 			if k >= fullMatches {
-				writeLocationLines(out, line, occs, st.metadata)
+				writeLocationLines(out, line, locs.occs, st.metadata)
+				writeLocationsTruncated(out, locs.truncated, st.metadata)
 				continue
 			}
 
@@ -803,7 +811,8 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 					parts.suffix)
 			}
 
-			writeLocationLines(out, line, occs, st.metadata)
+			writeLocationLines(out, line, locs.occs, st.metadata)
+			writeLocationsTruncated(out, locs.truncated, st.metadata)
 		}
 
 		_, _ = fmt.Fprintf(out, "\n\n")
