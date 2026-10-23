@@ -236,13 +236,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyFilters()
 			return m, cmd
 		case paneFindings:
-			prevCursor := m.findings.cursor
+			// Compare findings, not cursor indexes: a re-sort can move a
+			// different finding under an unchanged cursor.
+			prev := m.findings.selectedFinding()
 			var cmd tea.Cmd
 			m.findings, cmd = m.findings.Update(msg)
-			if m.findings.cursor != prevCursor {
-				if f := m.findings.selectedFinding(); f != nil {
-					m.details.setFinding(f)
-				}
+			if f := m.findings.selectedFinding(); f != nil && f != prev {
+				m.details.setFinding(f)
 			}
 			return m, cmd
 		case paneDetails:
@@ -623,7 +623,7 @@ func (m *Model) handleMouseScroll(x, y int, up bool) {
 
 	switch pane {
 	case paneFilters:
-		for i := 0; i < scrollLines; i++ {
+		for range scrollLines {
 			if up {
 				if m.filters.cursor > 0 {
 					m.filters.cursor--
@@ -638,7 +638,7 @@ func (m *Model) handleMouseScroll(x, y int, up bool) {
 
 	case paneFindings:
 		prevCursor := m.findings.cursor
-		for i := 0; i < scrollLines; i++ {
+		for range scrollLines {
 			if up {
 				if m.findings.cursor > 0 {
 					m.findings.cursor--
@@ -657,13 +657,14 @@ func (m *Model) handleMouseScroll(x, y int, up bool) {
 		}
 
 	case paneDetails:
-		for i := 0; i < scrollLines; i++ {
+		// Clamp the same way as the keyboard Up/Down keys, so a stale offset
+		// past the end never needs extra scrolls to take effect.
+		maxOff := m.details.maxOffset()
+		for range scrollLines {
 			if up {
-				if m.details.offset > 0 {
-					m.details.offset--
-				}
+				m.details.offset = max(0, min(m.details.offset, maxOff)-1)
 			} else {
-				m.details.offset++
+				m.details.offset = min(m.details.offset+1, maxOff)
 			}
 		}
 	}
@@ -689,6 +690,12 @@ func (m *Model) hitTestPane(x, y, contentHeight int) focusedPane {
 }
 
 func (m *Model) applyFilters() {
+	// The Repository facet narrows locations as well as findings. Both panes
+	// take the selection before the rows and the finding are set.
+	sel := m.filters.facets.selectedValues(facetRepository)
+	m.findings.setRepoFilter(sel)
+	m.details.setRepoFilter(sel)
+
 	var filtered []*findingRow
 	for _, f := range m.data.findings {
 		if m.filters.facets.hasActiveFilters() && !m.filters.facets.matchesFinding(f) {
@@ -729,10 +736,8 @@ func (m *Model) copySecretToClipboard() tea.Cmd {
 	var secret string
 
 	// If viewing a match in details, copy the match's highlighted value
-	if m.focus == paneDetails && m.details.finding != nil {
-		matches := m.details.finding.Matches
-		if m.details.matchCursor < len(matches) {
-			match := matches[m.details.matchCursor]
+	if m.focus == paneDetails {
+		if match := m.details.selectedMatch(); match != nil {
 			secret = string(match.Snippet.Matching)
 		}
 	}
@@ -801,14 +806,11 @@ func (m *Model) moveNext() {
 			}
 		}
 	case paneDetails:
-		if m.finding() != nil && m.details.matchCursor < len(m.finding().Matches)-1 {
+		if m.details.matchCursor < len(m.details.visibleMatchIdx)-1 {
 			m.details.matchCursor++
+			m.details.offset = 0
 		}
 	}
-}
-
-func (m *Model) finding() *findingRow {
-	return m.findings.selectedFinding()
 }
 
 func (m *Model) startComment() {

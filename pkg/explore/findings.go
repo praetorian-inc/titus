@@ -1,7 +1,9 @@
 package explore
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,7 +23,7 @@ const (
 )
 
 var sortFieldNames = [sortFieldCount]string{
-	"Rule Name", "Matches", "Validation", "Confidence", "Status",
+	"Rule Name", "Locations", "Validation", "Confidence", "Status",
 }
 
 // findingsPane is the top-right findings table.
@@ -35,6 +37,9 @@ type findingsPane struct {
 	focused bool
 	sortBy  sortField
 	sortAsc bool
+	// repoFilter is the Repository facet selection; the count column and its
+	// sort count only locations visible under it.
+	repoFilter map[string]bool
 
 	// Column widths
 	colRuleName   int
@@ -55,9 +60,38 @@ func newFindingsPane(rows []*findingRow) findingsPane {
 	return fp
 }
 
+// setRepoFilter sets the Repository facet selection that the count column
+// counts under. Call it before setFilteredRows when the selection changes.
+func (fp *findingsPane) setRepoFilter(sel map[string]bool) {
+	fp.repoFilter = sel
+}
+
+// locationCount is the number of the finding's locations visible under the
+// repo filter, summed over its matches. It is the count cell and its sort key.
+func (fp findingsPane) locationCount(f *findingRow) int {
+	n := 0
+	for _, mr := range f.Matches {
+		n += len(visibleOccurrences(mr.Occurrences, fp.repoFilter))
+	}
+	return n
+}
+
+// setFilteredRows replaces the shown rows and re-sorts them, because the
+// location count, and so the order, depends on the current repo filter. The
+// cursor follows the selected finding when it is still shown.
 func (fp *findingsPane) setFilteredRows(rows []*findingRow) {
+	sel := fp.selectedFinding()
 	fp.rows = rows
-	if fp.cursor >= len(fp.rows) {
+	fp.sort()
+	fp.restoreCursor(sel)
+}
+
+// restoreCursor puts the cursor on sel if it is among the rows, otherwise
+// clamps it into range.
+func (fp *findingsPane) restoreCursor(sel *findingRow) {
+	if i := slices.Index(fp.rows, sel); sel != nil && i >= 0 {
+		fp.cursor = i
+	} else if fp.cursor >= len(fp.rows) {
 		fp.cursor = max(0, len(fp.rows)-1)
 	}
 	fp.ensureVisible()
@@ -101,43 +135,45 @@ func (fp findingsPane) Update(msg tea.Msg) (findingsPane, tea.Cmd) {
 			fp.cursor = max(fp.cursor-fp.visibleRows(), 0)
 			fp.ensureVisible()
 		case keyMatches(msg, defaultKeys.SortNext):
+			sel := fp.selectedFinding()
 			fp.sortBy = (fp.sortBy + 1) % sortFieldCount
 			fp.sort()
+			fp.restoreCursor(sel)
 		}
 	}
 
 	return fp, nil
 }
 
+// sort orders the rows by the current field and direction. It is stable, so
+// rows with equal keys keep their relative order.
 func (fp *findingsPane) sort() {
+	var compare func(a, b *findingRow) int
 	switch fp.sortBy {
 	case sortByRuleName:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.RuleName < b.RuleName }, fp.sortAsc)
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.RuleName, b.RuleName) }
 	case sortByMatches:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.MatchCount < b.MatchCount }, fp.sortAsc)
-	case sortByValidation:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.ValidationStatus < b.ValidationStatus }, fp.sortAsc)
-	case sortByConfidence:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.Confidence < b.Confidence }, fp.sortAsc)
-	case sortByStatus:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.AnnotationStatus < b.AnnotationStatus }, fp.sortAsc)
-	}
-}
-
-func sortSlice[T any](s []T, less func(a, b T) bool, asc bool) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0; j-- {
-			if asc {
-				if less(s[j], s[j-1]) {
-					s[j], s[j-1] = s[j-1], s[j]
-				}
-			} else {
-				if less(s[j-1], s[j]) {
-					s[j], s[j-1] = s[j-1], s[j]
-				}
-			}
+		// Count each row's visible locations once; locationCount allocates
+		// under a repo filter, so it must stay out of the comparator.
+		counts := make(map[*findingRow]int, len(fp.rows))
+		for _, r := range fp.rows {
+			counts[r] = fp.locationCount(r)
 		}
+		compare = func(a, b *findingRow) int { return cmp.Compare(counts[a], counts[b]) }
+	case sortByValidation:
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.ValidationStatus, b.ValidationStatus) }
+	case sortByConfidence:
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.Confidence, b.Confidence) }
+	case sortByStatus:
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.AnnotationStatus, b.AnnotationStatus) }
+	default:
+		return
 	}
+	if !fp.sortAsc {
+		asc := compare
+		compare = func(a, b *findingRow) int { return asc(b, a) }
+	}
+	slices.SortStableFunc(fp.rows, compare)
 }
 
 func (fp findingsPane) View() string {
@@ -173,7 +209,7 @@ func (fp findingsPane) View() string {
 	header := fmt.Sprintf(" %-*s %-*s %*s %-*s %*s %-*s",
 		fp.colRuleName, "Rule Name"+sortIndicator(sortByRuleName),
 		fp.colGroups, "Groups",
-		fp.colMatches, "Matches"+sortIndicator(sortByMatches),
+		fp.colMatches, "Locs"+sortIndicator(sortByMatches),
 		fp.colValidation, "Valid"+sortIndicator(sortByValidation),
 		fp.colConfidence, "Conf"+sortIndicator(sortByConfidence),
 		fp.colStatus, "Status"+sortIndicator(sortByStatus),
@@ -202,7 +238,7 @@ func (fp findingsPane) View() string {
 		line := fmt.Sprintf(" %-*s %-*s %*d %-*s %*s %-*s",
 			fp.colRuleName, truncateString(row.RuleName, fp.colRuleName),
 			fp.colGroups, groupStr,
-			fp.colMatches, row.MatchCount,
+			fp.colMatches, fp.locationCount(row),
 			fp.colValidation, valStr,
 			fp.colConfidence, confStr,
 			fp.colStatus, statusStr,
