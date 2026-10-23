@@ -86,8 +86,10 @@ func gitOccurrences(g GitProvenance) []Occurrence {
 }
 
 // LocationsTruncatedNotice is the marker every output shows for a blob whose
-// git history index stopped recording locations at its limit.
-const LocationsTruncatedNotice = "locations truncated: history index limit reached; more locations exist"
+// git history index did not record every location: either the index stopped
+// at its pair limit, or it failed to build and every git blob is marked. The
+// text holds for both cases, so it claims only that more locations may exist.
+const LocationsTruncatedNotice = "locations truncated: the git history index did not record every location; more may exist"
 
 // LocationsTruncated reports whether any git provenance of a blob records that
 // its location list was truncated.

@@ -171,5 +171,5 @@ func runEnumScan(cmd *cobra.Command, enumerator enum.Enumerator, service string)
 	if err != nil {
 		return fmt.Errorf("retrieving findings: %w", err)
 	}
-	return outputFindings(cmd, findings)
+	return outputFindings(cmd, s, ruleMap, findings)
 }

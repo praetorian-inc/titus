@@ -31,5 +31,5 @@ func TestLocationsTruncated(t *testing.T) {
 
 // The notice is the user-visible marker every output shows verbatim.
 func TestLocationsTruncatedNotice_ExactText(t *testing.T) {
-	assert.Equal(t, "locations truncated: history index limit reached; more locations exist", LocationsTruncatedNotice)
+	assert.Equal(t, "locations truncated: the git history index did not record every location; more may exist", LocationsTruncatedNotice)
 }

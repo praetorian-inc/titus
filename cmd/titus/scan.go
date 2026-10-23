@@ -2037,33 +2037,49 @@ func outputMatches(cmd *cobra.Command, s store.Store, matches []*types.Match) er
 	return encoder.Encode(out)
 }
 
-func outputFindings(cmd *cobra.Command, findings []*types.Finding) error {
-	switch scanOutputFormat {
-	case "json":
-		encoder := json.NewEncoder(cmd.OutOrStdout())
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(findings)
-	case "human":
-		if len(findings) == 0 {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nNo findings.\n")
-			return nil
-		}
-
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nFindings:\n")
-		for i, f := range findings {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d. Rule: %s", i+1, f.RuleID)
-
-			// Show validation status if available
-			if len(f.Matches) > 0 && f.Matches[0].ValidationResult != nil {
-				vr := f.Matches[0].ValidationResult
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), " [%s]", vr.Status)
-			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout())
-		}
+// outputFindings writes `titus enum` human output: one line per finding, then
+// every location of every match of that finding and the truncation marker.
+// runEnumScan validates its own --format and handles json before calling
+// this, so the output is always human; it must not read scan's
+// scanOutputFormat, which belongs to another command.
+func outputFindings(cmd *cobra.Command, s store.Store, ruleMap map[string]*types.Rule, findings []*types.Finding) error {
+	out := cmd.OutOrStdout()
+	if len(findings) == 0 {
+		_, _ = fmt.Fprintf(out, "\nNo findings.\n")
 		return nil
-	default:
-		return fmt.Errorf("unknown output format: %s", scanOutputFormat)
 	}
+
+	matches, err := s.GetAllMatches()
+	if err != nil {
+		return fmt.Errorf("retrieving matches: %w", err)
+	}
+	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
+	cache := make(map[types.BlobID]blobLocations)
+
+	_, _ = fmt.Fprintf(out, "\nFindings:\n")
+	for i, f := range findings {
+		_, _ = fmt.Fprintf(out, "%d. Rule: %s", i+1, f.RuleID)
+
+		// Show validation status if available
+		if len(f.Matches) > 0 && f.Matches[0].ValidationResult != nil {
+			vr := f.Matches[0].ValidationResult
+			_, _ = fmt.Fprintf(out, " [%s]", vr.Status)
+		}
+		_, _ = fmt.Fprintln(out)
+
+		for _, m := range matchesByFinding[f.ID] {
+			locs, ok := cache[m.BlobID]
+			if !ok {
+				if locs, err = loadBlobLocations(s, m); err != nil {
+					return err
+				}
+				cache[m.BlobID] = locs
+			}
+			writeLocationLines(out, m.Location.Source.Start.Line, locs.occs, nil)
+			writeLocationsTruncated(out, locs.truncated, nil)
+		}
+	}
+	return nil
 }
 
 // outputSARIF outputs matches in SARIF 2.1.0 format, one result per
