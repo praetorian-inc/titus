@@ -15,7 +15,7 @@ import (
 func TestVectorscan_HasPendingRetryTracksQueue(t *testing.T) {
 	m, err := NewVectorscan([]*types.Rule{retryPendingRule}, 0, nil)
 	require.NoError(t, err)
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	content := []byte("SECRET_KEY=ABCDEFGHIJ1234567890\n")
 	id := types.ComputeBlobID(content)

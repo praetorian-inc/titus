@@ -133,11 +133,17 @@ func hasTransportPrefix(remote string) bool {
 		return false
 	}
 	for _, r := range name {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '+' || r == '-' || r == '.') {
+		if !isTransportNameRune(r) {
 			return false
 		}
 	}
 	return true
+}
+
+// isTransportNameRune reports whether r may appear in a remote-helper
+// transport name: an ASCII letter, digit, '+', '-' or '.'.
+func isTransportNameRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '+' || r == '-' || r == '.'
 }
 
 // parseURL splits a "scheme://[userinfo@]host[:port]/path" remote. Query,
@@ -199,11 +205,17 @@ func cleanHost(h string) (string, bool) {
 		return "[" + h + "]", true
 	}
 	for _, r := range h {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_') {
+		if !isHostRune(r) {
 			return "", false
 		}
 	}
 	return h, true
+}
+
+// isHostRune reports whether r may appear in an already-lowercased DNS host:
+// a lowercase ASCII letter, digit, '.', '-' or '_'.
+func isHostRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_'
 }
 
 // cleanPath trims a decoded repository path and rejects traversal, empty

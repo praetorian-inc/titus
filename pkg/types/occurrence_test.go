@@ -283,12 +283,12 @@ func TestFormatLine_UsesDisplayPath(t *testing.T) {
 }
 
 func TestFormatLine_SanitizesEveryField(t *testing.T) {
-	o := Occurrence{Kind: "git", Repository: "evil\x1b]52;c;x\x07", Path: "a\nb‮.yml",
+	o := Occurrence{Kind: "git", Repository: "evil\x1b]52;c;x\x07", Path: "a\nb\u202e.yml",
 		Commit: "\x1b[31mabcdef0", HostRecorded: true}
 	got := FormatLine(o, 1, "")
 	assert.NotContains(t, got, "\x1b")
 	assert.NotContains(t, got, "\n")
-	assert.NotContains(t, got, "‮")
+	assert.NotContains(t, got, "\u202e")
 }
 
 func TestDisambiguateDisplay_FoldersCollision(t *testing.T) {
@@ -317,8 +317,8 @@ func TestSanitizeDisplay(t *testing.T) {
 		{"a\nb.yml", `a\x0ab.yml`},
 		{"a\tb\r", `a\x09b\x0d`},
 		{"del\x7f", `del\x7f`},
-		{"‮evil.yml", `\u{202e}evil.yml`},
-		{"⁦i⁩‎‏؜", `\u{2066}i\u{2069}\u{200e}\u{200f}\u{061c}`},
+		{"\u202eevil.yml", `\u{202e}evil.yml`},
+		{"\u2066i\u2069\u200e\u200f\u061c", `\u{2066}i\u{2069}\u{200e}\u{200f}\u{061c}`},
 		{"c1\u0085", `c1\u{0085}`},
 		{"caf\xe9.yml", `caf\xe9.yml`},
 	}

@@ -205,7 +205,7 @@ func TestRenderLocations_SameTextPairShowsAbsolutePaths(t *testing.T) {
 
 // Design §7 test 4 (SEC-6, SEC-7).
 func TestRenderLocations_SanitizesControlAndBidi(t *testing.T) {
-	rawPath := "evil\x1b[2J\rname‮txt.yml"
+	rawPath := "evil\x1b[2J\rname\u202etxt.yml"
 	o := types.Occurrence{Kind: "file", Path: rawPath, HostRecorded: true}
 	m := matchWith(5, o)
 	raw := strings.Join(renderMatchDetails(m, nil, 500), "\n")

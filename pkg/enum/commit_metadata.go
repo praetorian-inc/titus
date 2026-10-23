@@ -610,16 +610,16 @@ func (x *blobIndex) writeWarnings(w io.Writer) {
 	}
 	s := x.stats
 	if s.overlong > 0 {
-		fmt.Fprintf(w, "titus: skipped %d over-long git records\n", s.overlong)
+		_, _ = fmt.Fprintf(w, "titus: skipped %d over-long git records\n", s.overlong)
 	}
 	if s.droppedPairs > 0 {
-		fmt.Fprintf(w, "titus: git history index reached %d locations; %d more were not recorded, so location lists may be incomplete\n", len(x.pairs), s.droppedPairs)
+		_, _ = fmt.Fprintf(w, "titus: git history index reached %d locations; %d more were not recorded, so location lists may be incomplete\n", len(x.pairs), s.droppedPairs)
 	}
 	if s.malformed > 0 {
-		fmt.Fprintf(w, "titus: skipped %d malformed git records\n", s.malformed)
+		_, _ = fmt.Fprintf(w, "titus: skipped %d malformed git records\n", s.malformed)
 	}
 	if s.unsupportedOID > 0 {
-		fmt.Fprintf(w, "titus: %d SHA-256 git objects have no recorded location (only SHA-1 repositories are indexed)\n", s.unsupportedOID)
+		_, _ = fmt.Fprintf(w, "titus: %d SHA-256 git objects have no recorded location (only SHA-1 repositories are indexed)\n", s.unsupportedOID)
 	}
 }
 
@@ -653,7 +653,7 @@ func isObjectID(b []byte) bool {
 
 func isHex(b []byte) bool {
 	for _, c := range b {
-		if !('0' <= c && c <= '9' || 'a' <= c && c <= 'f') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

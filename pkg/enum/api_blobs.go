@@ -152,5 +152,5 @@ func warnBlobSkipped(w io.Writer, id string, paths []string, reason string) {
 	if w == nil {
 		w = os.Stderr
 	}
-	fmt.Fprintf(w, "warning: skipping %s: %s: %s\n", id, types.SanitizeDisplay(paths[0]), reason)
+	_, _ = fmt.Fprintf(w, "warning: skipping %s: %s: %s\n", id, types.SanitizeDisplay(paths[0]), reason)
 }

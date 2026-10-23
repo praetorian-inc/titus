@@ -87,7 +87,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		// missing others (R1).
 		idx = unavailableIndex()
 		if ctx.Err() == nil {
-			fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path and is marked as possibly missing locations\n", indexErr)
+			_, _ = fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path and is marked as possibly missing locations\n", indexErr)
 		}
 	}
 	writeEnumWarnings(warn, idx, revOverlong)
@@ -147,7 +147,7 @@ func originIdentity(ctx context.Context, dir string) (string, bool) {
 func writeEnumWarnings(w io.Writer, idx *blobIndex, revOverlong int) {
 	if idx == nil {
 		if revOverlong > 0 {
-			fmt.Fprintf(w, "titus: skipped %d over-long git records\n", revOverlong)
+			_, _ = fmt.Fprintf(w, "titus: skipped %d over-long git records\n", revOverlong)
 		}
 		return
 	}

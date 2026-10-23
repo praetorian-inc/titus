@@ -359,7 +359,7 @@ func TestAddResultForOccurrence_FingerprintStable(t *testing.T) {
 // SEC-18: message.text is shown by SARIF viewers, so it is sanitized.
 func TestAddResult_MessageSanitized(t *testing.T) {
 	m := occurrenceMatch()
-	m.RuleName = "evil\x1b[31m‮"
+	m.RuleName = "evil\x1b[31m\u202e"
 	r := NewReport()
 	r.AddResult(m, "a.txt")
 	r.AddResultWithScore(m, "a.txt", nil)

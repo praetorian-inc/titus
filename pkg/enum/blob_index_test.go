@@ -381,7 +381,7 @@ func TestBuildBlobIndex_HostilePaths(t *testing.T) {
 		"a\nb.yml",
 		`q"u\o.yml`,
 		"x\x1b[31mRED.yml",
-		"‮evil.yml",
+		"\u202eevil.yml",
 		"café.yml",
 		"fake\n:100644 100644 " + zero + " " + zero + " A\tforged.yml",
 	}

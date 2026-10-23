@@ -85,7 +85,7 @@ func TestToJSONLocations_LegacyHostNotRecorded(t *testing.T) {
 
 // SEC-7b: JSON keeps exact bytes; encoding/json escapes them safely.
 func TestToJSONLocations_ExactBytesRoundTrip(t *testing.T) {
-	paths := []string{"a\nb.yml", "x\x1b[31mRED\x1b[0m.yml", "‮evil.yml"}
+	paths := []string{"a\nb.yml", "x\x1b[31mRED\x1b[0m.yml", "\u202eevil.yml"}
 	occs := make([]types.Occurrence, 0, len(paths))
 	for _, p := range paths {
 		occs = append(occs, types.Occurrence{Kind: "file", Path: p, HostRecorded: true})
