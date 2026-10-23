@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -18,19 +19,38 @@ type blobRecord struct {
 // Originally used only for WASM builds, but now the default for non-CGO builds.
 type MemoryStore struct {
 	mu         sync.RWMutex
-	blobs      map[string]blobRecord        // keyed by BlobID.Hex()
-	matches    []*types.Match               // all matches
-	findings   map[string]*types.Finding    // keyed by structural_id
+	blobs      map[string]blobRecord         // keyed by BlobID.Hex()
+	matches    []*types.Match                // all matches
+	findings   map[string]*types.Finding     // keyed by structural_id
 	provenance map[string][]types.Provenance // keyed by BlobID.Hex()
+	provKeys   map[provenanceKey]struct{}    // mirrors the SQLite provenance UNIQUE key
+
+	occurrences  map[string][]types.Occurrence // keyed by BlobID.Hex()
+	locationKeys map[locationKey]struct{}      // mirrors the blob_locations UNIQUE key
+}
+
+// provenanceKey is the in-memory twin of the provenance table's UNIQUE key.
+type provenanceKey struct {
+	blob string
+	provenanceRowKey
+}
+
+// locationKey is the in-memory twin of the blob_locations UNIQUE key.
+type locationKey struct {
+	blob, kind, repository, path, absolutePath, commit string
+	workingTree                                        bool
 }
 
 // NewMemory creates a new in-memory store.
 func NewMemory() *MemoryStore {
 	return &MemoryStore{
-		blobs:      make(map[string]blobRecord),
-		matches:    make([]*types.Match, 0),
-		findings:   make(map[string]*types.Finding),
-		provenance: make(map[string][]types.Provenance),
+		blobs:        make(map[string]blobRecord),
+		matches:      make([]*types.Match, 0),
+		findings:     make(map[string]*types.Finding),
+		provenance:   make(map[string][]types.Provenance),
+		provKeys:     make(map[provenanceKey]struct{}),
+		occurrences:  make(map[string][]types.Occurrence),
+		locationKeys: make(map[locationKey]struct{}),
 	}
 }
 
@@ -86,20 +106,71 @@ func (m *MemoryStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := blobID.Hex()
-
-	// Check for duplicate provenance (simple deduplication)
-	existing := m.provenance[key]
-	for _, p := range existing {
-		// Check if this provenance is already stored
-		// This is a simplified check - in production you might want more sophisticated comparison
-		if fmt.Sprintf("%#v", p) == fmt.Sprintf("%#v", prov) {
-			return nil
-		}
+	rowKey, err := provenanceKeyOf(prov)
+	if err != nil {
+		return err
 	}
-
-	m.provenance[key] = append(m.provenance[key], prov)
+	key := blobID.Hex()
+	pk := provenanceKey{blob: key, provenanceRowKey: rowKey}
+	if _, exists := m.provKeys[pk]; exists {
+		return nil
+	}
+	m.provKeys[pk] = struct{}{}
+	m.provenance[key] = append(m.provenance[key], storedProvenance(prov))
 	return nil
+}
+
+// storedProvenance drops the GitProvenance fields the SQLite provenance table
+// does not persist, so both stores return the same rows. Locations now live in
+// the occurrence rows.
+func storedProvenance(prov types.Provenance) types.Provenance {
+	g, ok := prov.(types.GitProvenance)
+	if !ok {
+		return prov
+	}
+	g.Locations = nil
+	g.RepoRoot = ""
+	g.RemoteIdentity = false
+	return g
+}
+
+// AddOccurrences stores every occurrence of a blob, ignoring duplicates of the
+// blob_locations UNIQUE key.
+func (m *MemoryStore) AddOccurrences(blobID types.BlobID, occs []types.Occurrence) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := blobID.Hex()
+	for _, o := range occs {
+		lk := locationKey{
+			blob: key, kind: o.Kind, repository: o.Repository, path: o.Path,
+			absolutePath: o.AbsolutePath, commit: o.Commit, workingTree: o.WorkingTree,
+		}
+		if _, exists := m.locationKeys[lk]; exists {
+			continue
+		}
+		m.locationKeys[lk] = struct{}{}
+		o.HostRecorded = true
+		if o.CommitDate.IsZero() {
+			o.CommitDate = time.Time{}
+		} else {
+			o.CommitDate = time.Unix(o.CommitDate.Unix(), 0).UTC()
+		}
+		m.occurrences[key] = append(m.occurrences[key], o)
+	}
+	return nil
+}
+
+// GetOccurrences returns the stored occurrences of a blob merged with its
+// legacy provenance rows, deduplicated and sorted.
+func (m *MemoryStore) GetOccurrences(blobID types.BlobID) ([]types.Occurrence, error) {
+	m.mu.RLock()
+	key := blobID.Hex()
+	rows := append([]types.Occurrence(nil), m.occurrences[key]...)
+	provs := append([]types.Provenance(nil), m.provenance[key]...)
+	m.mu.RUnlock()
+
+	return mergedOccurrences(rows, provs), nil
 }
 
 // GetAllProvenance retrieves all provenance records for a blob.

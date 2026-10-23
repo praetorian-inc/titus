@@ -19,6 +19,7 @@ type dbLike interface {
 	Exec(query string, args ...any) (sql.Result, error)
 	QueryRow(query string, args ...any) *sql.Row
 	Query(query string, args ...any) (*sql.Rows, error)
+	Prepare(query string) (*sql.Stmt, error)
 }
 
 type SQLiteStore struct {
@@ -240,42 +241,30 @@ func (s *SQLiteStore) FindingExists(structuralID string) (bool, error) {
 }
 
 func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) error {
-	var provType, path, repoPath, commitHash string
+	key, err := provenanceKeyOf(prov)
+	if err != nil {
+		return err
+	}
 	var authorName, authorEmail, authorTimestamp string
 	var committerName, committerEmail, committerTimestamp string
 	var commitMessage string
-	switch p := prov.(type) {
-	case types.FileProvenance:
-		provType, path = "file", p.FilePath
-	case types.GitProvenance:
-		provType, path, repoPath = "git", p.BlobPath, p.RepoPath
-		if p.Commit != nil {
-			commitHash = p.Commit.CommitID
-			authorName = p.Commit.AuthorName
-			authorEmail = p.Commit.AuthorEmail
-			if !p.Commit.AuthorTimestamp.IsZero() {
-				authorTimestamp = p.Commit.AuthorTimestamp.Format(time.RFC3339)
-			}
-			committerName = p.Commit.CommitterName
-			committerEmail = p.Commit.CommitterEmail
-			if !p.Commit.CommitterTimestamp.IsZero() {
-				committerTimestamp = p.Commit.CommitterTimestamp.Format(time.RFC3339)
-			}
-			commitMessage = p.Commit.Message
+	if p, ok := prov.(types.GitProvenance); ok && p.Commit != nil {
+		authorName = p.Commit.AuthorName
+		authorEmail = p.Commit.AuthorEmail
+		if !p.Commit.AuthorTimestamp.IsZero() {
+			authorTimestamp = p.Commit.AuthorTimestamp.Format(time.RFC3339)
 		}
-	case types.ExtendedProvenance:
-		provType = "extended"
-		payloadJSON, _ := json.Marshal(p.Payload)
-		path = string(payloadJSON)
-	case types.ArchiveProvenance:
-		provType, path, repoPath = "archive", p.ArchivePath, p.MemberPath
-	default:
-		return fmt.Errorf("unknown provenance type: %T", prov)
+		committerName = p.Commit.CommitterName
+		committerEmail = p.Commit.CommitterEmail
+		if !p.Commit.CommitterTimestamp.IsZero() {
+			committerTimestamp = p.Commit.CommitterTimestamp.Format(time.RFC3339)
+		}
+		commitMessage = p.Commit.Message
 	}
-	_, err := s.e.Exec(`INSERT OR IGNORE INTO provenance
+	_, err = s.e.Exec(`INSERT OR IGNORE INTO provenance
 		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		blobID.Hex(), provType, path, repoPath, commitHash,
+		blobID.Hex(), key.kind, key.path, key.repoPath, key.commitHash,
 		authorName, authorEmail, authorTimestamp,
 		committerName, committerEmail, committerTimestamp,
 		commitMessage)
@@ -395,6 +384,92 @@ func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Prove
 		return []types.Provenance{}, nil
 	}
 	return result, rows.Err()
+}
+
+const insertBlobLocation = `INSERT OR IGNORE INTO blob_locations
+	(blob_id, kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+
+const selectBlobLocations = `SELECT kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree
+	FROM blob_locations WHERE blob_id = ?
+	ORDER BY blob_id, repository, path, commit_hash, absolute_path, working_tree`
+
+// AddOccurrences inserts every occurrence with one prepared statement. On a
+// root store it opens its own transaction; on a txStore (inside ExecBatch) it
+// joins the caller's.
+func (s *SQLiteStore) AddOccurrences(blobID types.BlobID, occs []types.Occurrence) error {
+	if len(occs) == 0 {
+		return nil
+	}
+	if s.db == nil {
+		return s.insertOccurrences(blobID, occs)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	if err := (&SQLiteStore{e: tx}).insertOccurrences(blobID, occs); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *SQLiteStore) insertOccurrences(blobID types.BlobID, occs []types.Occurrence) error {
+	stmt, err := s.e.Prepare(insertBlobLocation)
+	if err != nil {
+		return fmt.Errorf("preparing location insert: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+	blob := blobID.Hex()
+	for _, o := range occs {
+		var commitTS int64
+		if !o.CommitDate.IsZero() {
+			commitTS = o.CommitDate.Unix()
+		}
+		var workingTree int64
+		if o.WorkingTree {
+			workingTree = 1
+		}
+		if _, err := stmt.Exec(blob, o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit, commitTS, workingTree); err != nil {
+			return fmt.Errorf("storing location: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetOccurrences(blobID types.BlobID) ([]types.Occurrence, error) {
+	rows, err := s.getLocations(blobID)
+	if err != nil {
+		return nil, fmt.Errorf("reading locations: %w", err)
+	}
+	provs, err := s.GetAllProvenance(blobID)
+	if err != nil {
+		return nil, fmt.Errorf("reading provenance: %w", err)
+	}
+	return mergedOccurrences(rows, provs), nil
+}
+
+func (s *SQLiteStore) getLocations(blobID types.BlobID) ([]types.Occurrence, error) {
+	rows, err := s.e.Query(selectBlobLocations, blobID.Hex())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []types.Occurrence
+	for rows.Next() {
+		o := types.Occurrence{HostRecorded: true}
+		var commitTS, workingTree int64
+		if err := rows.Scan(&o.Kind, &o.Repository, &o.Path, &o.AbsolutePath, &o.Commit, &commitTS, &workingTree); err != nil {
+			return nil, err
+		}
+		if commitTS != 0 {
+			o.CommitDate = time.Unix(commitTS, 0).UTC()
+		}
+		o.WorkingTree = workingTree != 0
+		out = append(out, o)
+	}
+	return out, rows.Err()
 }
 
 func (s *SQLiteStore) GetProvenance(blobID types.BlobID) (types.Provenance, error) {

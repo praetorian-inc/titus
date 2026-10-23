@@ -37,6 +37,10 @@ func CreateSchema(db *sql.DB) error {
 		return fmt.Errorf("creating provenance table: %w", err)
 	}
 
+	if err := createBlobLocationsTable(db); err != nil {
+		return fmt.Errorf("creating blob_locations table: %w", err)
+	}
+
 	if err := createAnnotationsTable(db); err != nil {
 		return fmt.Errorf("creating annotations table: %w", err)
 	}
@@ -194,6 +198,32 @@ func createProvenanceTable(db *sql.DB) error {
 	_, err = db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_provenance_blob_id ON provenance(blob_id)
 	`)
+	return err
+}
+
+// createBlobLocationsTable adds the table of every location of a matched
+// blob. It is additive and idempotent, so an older datastore gains it on its
+// next open and SchemaVersion is unchanged. Every UNIQUE column is NOT NULL
+// with an empty-string or 0 default, because SQLite treats NULLs as distinct and the key
+// must be total for INSERT OR IGNORE to deduplicate.
+func createBlobLocationsTable(db *sql.DB) error {
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS blob_locations (
+			id            INTEGER PRIMARY KEY,
+			blob_id       TEXT    NOT NULL REFERENCES blobs(id),
+			kind          TEXT    NOT NULL,
+			repository    TEXT    NOT NULL DEFAULT '',
+			path          TEXT    NOT NULL,
+			absolute_path TEXT    NOT NULL DEFAULT '',
+			commit_hash   TEXT    NOT NULL DEFAULT '',
+			commit_ts     INTEGER NOT NULL DEFAULT 0,
+			working_tree  INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(blob_id, kind, repository, path, absolute_path, commit_hash, working_tree)
+		)
+	`); err != nil {
+		return err
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_blob_locations_blob_id ON blob_locations(blob_id)`)
 	return err
 }
 
