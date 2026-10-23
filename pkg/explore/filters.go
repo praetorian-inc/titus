@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 // filterPane is the left-side faceted search tree.
@@ -169,7 +171,7 @@ func (fp filterPane) View() string {
 					marker = " "
 				}
 			}
-			label := truncateString(item.Label, fp.width-12)
+			label := truncateString(types.SanitizeDisplay(item.Label), fp.width-12)
 			countStr := facetCountStyle.Render(fmt.Sprintf("(%d)", count))
 			if marker == "+" {
 				line = fmt.Sprintf("   %s %s %s", facetSelectedStyle.Render(marker), facetSelectedStyle.Render(label), countStr)
@@ -246,13 +248,13 @@ func truncateString(s string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
 	}
-	if len(s) <= maxLen {
+	if ansi.StringWidth(s) <= maxLen {
 		return s
 	}
 	if maxLen <= 3 {
-		return s[:maxLen]
+		return ansi.Truncate(s, maxLen, "")
 	}
-	return s[:maxLen-3] + "..."
+	return ansi.Truncate(s, maxLen, "...")
 }
 
 func padRight(s string, width int) string {
