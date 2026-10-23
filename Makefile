@@ -1,7 +1,7 @@
 # Titus Makefile
 # Build automation for secrets scanner
 
-.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint test-validators record-fixtures scan-fixtures cli-docs
+.PHONY: all build build-pure build-static build-wasm build-extension test test-race vet lint clean integration-test static-test build-burp install-burp clean-burp clean-extension check-vectorscan build-migrate-scores migrate-scores-dryrun migrate-scores-apply score-lint test-validators test-orcarouter record-fixtures scan-fixtures cli-docs
 
 VERSION ?= dev
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
@@ -256,6 +256,16 @@ static-test: build-static
 # Validator test targets
 test-validators:            ## Replay validator tests (no network)
 	GOWORK=off CGO_ENABLED=0 go test ./pkg/validator/... -count=1
+
+# OrcaRouter Cyber Inference provider tests — the detection rule, the live
+# validator and the catalog scorer. Packages and extra `go test` flags are
+# parameters so a caller can scope the run without editing the Makefile:
+#   make test-orcarouter ORCA_TEST_PKGS=./pkg/scoring ORCA_TEST_ARGS='-run TestOrcaRouter'
+ORCA_TEST_PKGS ?= ./pkg/rule ./pkg/validator ./pkg/scoring
+ORCA_TEST_ARGS ?= -count=1
+
+test-orcarouter:            ## Run the OrcaRouter Cyber Inference provider tests
+	GOWORK=off CGO_ENABLED=0 go test $(ORCA_TEST_ARGS) $(ORCA_TEST_PKGS)
 
 record-fixtures:            ## Re-record cassettes (needs creds + RECORD=1). Usage: SECRET_PLAINTEXT=<key> make record-fixtures SVC=huggingface
 	# Tests must follow the naming convention Test_<Service>_<case> (e.g. Test_Huggingface_valid).
