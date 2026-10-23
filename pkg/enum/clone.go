@@ -201,11 +201,9 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 	}
 
 	// Filesystem mode (default): fast scan of the working tree. Commit
-	// metadata comes from the blob index (best effort; a nil index is safe).
-	idx, err := buildBlobIndex(ctx, clonePath)
-	if err != nil {
-		idx = nil
-	}
+	// metadata comes from the blob index, best effort: on error the index is
+	// nil, which every lookup treats as empty.
+	idx, _ := buildBlobIndex(ctx, clonePath)
 	idx.writeWarnings(os.Stderr)
 
 	return NewFilesystemEnumerator(cloneConfig).Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
@@ -230,14 +228,18 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 }
 
 // committedAt returns the commit recorded in idx for the blob at rel. The
-// scanned content may be a decoded form of the file (UTF-16), so on a miss
-// the raw file is hashed and looked up again.
+// scanned content may be a decoded form of the file (UTF-16), so when the
+// index has no entry for blobID at all the raw file is hashed and looked up
+// again. When it has entries but none at rel (a truncated index, or a path
+// not yet committed) the content is taken as the raw file and not re-read;
+// a decoded file whose text is also committed elsewhere as UTF-8 is the one
+// case that then goes without commit metadata.
 func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) *types.CommitMetadata {
 	if idx == nil {
 		return nil
 	}
-	if c := commitForPath(idx.lookup(blobID), rel); c != nil {
-		return c
+	if locs := idx.lookup(blobID); len(locs) > 0 {
+		return commitForPath(locs, rel)
 	}
 	raw, err := os.ReadFile(file)
 	if err != nil {

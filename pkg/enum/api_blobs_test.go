@@ -11,8 +11,10 @@ import (
 	"net/url"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v57/github"
 	"github.com/stretchr/testify/assert"
@@ -31,6 +33,8 @@ type apiEntry struct {
 	status             int
 	size               int // GitHub tree size; 0 means len(content)
 	encoding           string
+	kind               string // GitHub contents "type"; "" means "file"
+	truncated          bool   // GitLab raw body declares more bytes than it sends
 }
 
 func entryAt(entries []apiEntry, p string) (apiEntry, bool) {
@@ -68,6 +72,11 @@ func newGitLabTreeServer(t *testing.T, entries []apiEntry, onRaw func()) *httpte
 				w.WriteHeader(e.status)
 				_, _ = w.Write([]byte(`{"message":"denied"}`))
 				return
+			}
+			if e.truncated {
+				// net/http closes the connection after a short write, so
+				// the client sees 200 and then io.ErrUnexpectedEOF.
+				w.Header().Set("Content-Length", strconv.Itoa(len(e.content)+100))
 			}
 			_, _ = w.Write([]byte(e.content))
 		case strings.HasPrefix(p, "/api/v4/projects/"):
@@ -130,7 +139,7 @@ func newGitHubTreeServer(t *testing.T, entries []apiEntry, onContents func()) *h
 			_, _ = w.Write([]byte(`{"message":"denied"}`))
 			return
 		}
-		body := map[string]any{"type": "file", "path": e.path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(e.content))}
+		body := map[string]any{"type": cmp.Or(e.kind, "file"), "path": e.path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(e.content))}
 		if e.encoding != "" {
 			body["encoding"], body["content"] = e.encoding, ""
 		}
@@ -274,4 +283,38 @@ func TestGitHubEnumerator_SizeLimitAppliesToFetchedContent(t *testing.T) {
 	e := githubEnumWithCreds(t, newGitHubTreeServer(t, entries, nil), GitHubConfig{Config: Config{MaxFileSize: 5}}, &bytes.Buffer{})
 	calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
 	assert.Equal(t, map[string][]string{"ok": {"s.txt"}}, pathsByContent(t, calls))
+}
+
+// The contents API answers a symlink (or submodule) path with a non-file
+// entry whose GetContent is "", nil. That must be a warned skip, not an
+// empty blob reported at the entry's paths; a sibling file is still reported.
+func TestGitHubEnumerator_NonFileContentWarnedNotEmptyBlob(t *testing.T) {
+	var warn bytes.Buffer
+	entries := []apiEntry{
+		{sha: blobSHA("real.txt"), path: "link", content: "real.txt", kind: "symlink"},
+		{sha: blobSHA("token-REAL"), path: "real.txt", content: "token-REAL"},
+	}
+	e := githubEnumWithCreds(t, newGitHubTreeServer(t, entries, nil), GitHubConfig{}, &warn)
+	calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
+	assert.Equal(t, map[string][]string{"token-REAL": {"real.txt"}}, pathsByContent(t, calls))
+	assert.Contains(t, warn.String(), "link")
+	assert.NotContains(t, warn.String(), "secret")
+	assert.NotContains(t, warn.String(), "http")
+}
+
+// A raw-file body cut off mid-read is a read failure, not "HTTP 200", and
+// the warning does not echo the error's request URL.
+func TestGitLabEnumerator_TruncatedBodyWarnedAsReadFailure(t *testing.T) {
+	var warn bytes.Buffer
+	entries := []apiEntry{{sha: blobSHA("token-CUT"), path: "cut.txt", content: "token-CUT", truncated: true}}
+	e := gitlabEnumWithCreds(t, newGitLabTreeServer(t, entries, nil), GitLabConfig{Project: "grp/api"}, &warn)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(ctx, cb) })
+	assert.Empty(t, calls)
+	assert.Contains(t, warn.String(), "cut.txt")
+	assert.Contains(t, warn.String(), "read failed")
+	assert.NotContains(t, warn.String(), "HTTP 200")
+	assert.NotContains(t, warn.String(), "secret")
+	assert.NotContains(t, warn.String(), "http")
 }

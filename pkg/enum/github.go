@@ -55,11 +55,11 @@ func NewGitHubEnumerator(cfg GitHubConfig) (*GitHubEnumerator, error) {
 		}
 		baseURL, err := url.Parse(strings.TrimSuffix(cfg.BaseURL, "/") + "/api/v3/")
 		if err != nil {
-			return nil, fmt.Errorf("parsing GitHub Enterprise URL: %w", err)
+			return nil, fmt.Errorf("parsing GitHub Enterprise URL: %w", withoutURL(err))
 		}
 		uploadURL, err := url.Parse(strings.TrimSuffix(cfg.BaseURL, "/") + "/api/uploads/")
 		if err != nil {
-			return nil, fmt.Errorf("parsing GitHub Enterprise upload URL: %w", err)
+			return nil, fmt.Errorf("parsing GitHub Enterprise upload URL: %w", withoutURL(err))
 		}
 		client.BaseURL = baseURL
 		client.UploadURL = uploadURL
@@ -285,7 +285,9 @@ func (e *GitHubEnumerator) fetchBlob(ctx context.Context, src githubBlobSource, 
 			reason = httpFailure(githubHTTP(resp))
 			continue
 		}
-		if file == nil {
+		// A symlink or submodule entry decodes to "", nil below; reporting
+		// it would put a phantom empty blob at its paths.
+		if file == nil || file.GetType() != "file" {
 			reason = "not a file"
 			continue
 		}

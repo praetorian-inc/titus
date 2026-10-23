@@ -243,6 +243,12 @@ func (e *GitLabEnumerator) fetchBlob(ctx context.Context, projectID int64, id st
 			reason = errOverSizeLimit.Error()
 			break
 		}
+		if r := gitlabHTTP(resp); r != nil && r.StatusCode >= 200 && r.StatusCode < 300 {
+			// The status was fine and the body read failed; the error
+			// itself may quote the request URL.
+			reason = "read failed"
+			continue
+		}
 		reason = httpFailure(gitlabHTTP(resp))
 	}
 	warnBlobSkipped(e.warn, id, paths, reason)
