@@ -4,12 +4,20 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
+
+// maxGitLogLineSize bounds how long a single git log line may be while still
+// being read into the commit map. A commit subject or author name is repo
+// data and can be arbitrarily long, so no fixed cap is "correct"; a line past
+// this size stops the scan early (with an error) instead of wedging the git
+// child against a pipe that nobody drains.
+const maxGitLogLineSize = 1 << 20 // 1 MiB
 
 // collectCommitMetadataForRepo runs git log to build a map of file path → commit metadata.
 // When firstAdded is true, uses --diff-filter=ARC to find the commit that first
@@ -39,6 +47,7 @@ func collectCommitMetadataForRepo(ctx context.Context, repoPath string, firstAdd
 
 	result := make(map[string]*types.CommitMetadata)
 	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), maxGitLogLineSize)
 
 	var current *types.CommitMetadata
 	for scanner.Scan() {
@@ -71,6 +80,15 @@ func collectCommitMetadataForRepo(ctx context.Context, repoPath string, firstAdd
 				result[line] = current
 			}
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		// The scan stopped before EOF (a line longer than maxGitLogLineSize).
+		// Drain the rest of stdout so git is never blocked on a full pipe and
+		// can exit, and keep the metadata gathered so far.
+		_, _ = io.Copy(io.Discard, stdout)
+		_ = cmd.Wait()
+		return result, fmt.Errorf("git log: scan: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
