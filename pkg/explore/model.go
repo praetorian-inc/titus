@@ -755,10 +755,12 @@ func (m *Model) copySecretToClipboard() tea.Cmd {
 	// Set clipboard via OSC 52 (written to terminal on next render)
 	m.pendingClipboard = secret
 
-	// Flash message
-	display := secret
-	if len(display) > 40 {
-		display = display[:40] + "..."
+	// Flash message: sanitize repo-controlled bytes before they reach the
+	// terminal, flatten newlines (the flash is a single line), and truncate
+	// by display width so a multibyte rune is never split.
+	display := strings.ReplaceAll(sanitizeForDisplay([]byte(secret)), "\n", ".")
+	if ansi.StringWidth(display) > 40 {
+		display = ansi.Truncate(display, 40, "...")
 	}
 	m.flashMsg = fmt.Sprintf("Copied: %s", display)
 
