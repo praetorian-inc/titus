@@ -210,7 +210,8 @@ func (p *indexParser) header(id []byte) error {
 	store := !p.full
 	var c commitRec
 	if store {
-		c = commitRec{idLen: uint8(len(id)), id: x.appendArena(id)}
+		off, n := x.appendArena(id)
+		c = commitRec{idLen: uint8(n), id: off}
 	}
 	p.setCurKey(id, false, 0)
 
@@ -249,8 +250,7 @@ func (p *indexParser) header(id []byte) error {
 		case field == 4:
 			c.committerEmail = p.intern(tok)
 		case field == 6:
-			c.subj = x.appendArena(tok)
-			c.subjLen = uint32(len(tok))
+			c.subj, c.subjLen = x.appendArena(tok)
 		}
 	}
 	if store {
@@ -503,15 +503,16 @@ func (x *blobIndex) commitID(c *commitRec) []byte {
 	return x.arena[c.id : c.id+uint32(c.idLen)]
 }
 
-// appendArena copies b into the arena and returns its offset. A string that
-// would overflow 32-bit offsets is stored empty.
-func (x *blobIndex) appendArena(b []byte) uint32 {
+// appendArena copies b into the arena and returns its offset and the length
+// to store with it. A string that would overflow 32-bit offsets is stored
+// empty: length 0, so it never reads back another string's bytes (M2).
+func (x *blobIndex) appendArena(b []byte) (off, n uint32) {
 	if len(x.arena)+len(b) > math.MaxUint32 {
-		return 0
+		return 0, 0
 	}
-	off := uint32(len(x.arena))
+	off = uint32(len(x.arena))
 	x.arena = append(x.arena, b...)
-	return off
+	return off, uint32(len(b))
 }
 
 // lookup returns every location of hash, sorted by path, or nil when the

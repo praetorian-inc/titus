@@ -114,3 +114,37 @@ func TestGoGitHistory_Cancelled(t *testing.T) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
+
+// M4: tags that point at a tree or a blob, not a commit, are part of --all.
+// The go-git walk must scan what they reach, exactly as the native walk does.
+func TestGoGitHistory_TagsToTreesAndBlobs(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "base.txt"), "base\n")
+	commitAt(t, dir, "base", "2026-01-01T00:00:00Z")
+
+	const (
+		inTree      = "TREE_TAGGED=reachable-only-through-a-tagged-tree\n"
+		annotated   = "BLOB_TAGGED=reachable-only-through-an-annotated-tag\n"
+		lightweight = "LIGHT_TAGGED=reachable-only-through-a-lightweight-tag\n"
+	)
+	tree := gitInput(t, dir, []byte("100644 blob "+hashBlob(t, dir, inTree)+"\tinner.env\n"), "mktree")
+	runGit(t, dir, "-c", "tag.gpgSign=false", "tag", "-a", "-m", "t", "tree-tag", tree)
+	runGit(t, dir, "-c", "tag.gpgSign=false", "tag", "-a", "-m", "b", "blob-tag", hashBlob(t, dir, annotated))
+	runGit(t, dir, "tag", "light-blob", hashBlob(t, dir, lightweight))
+
+	// Fixture shape: two annotated tags (to a tree and a blob) and one
+	// lightweight tag to a blob; no commit reaches any of the three blobs.
+	for tag, want := range map[string]string{"tree-tag": "tree", "blob-tag": "blob", "light-blob": "blob"} {
+		if got := gitOutput(t, dir, "cat-file", "-t", tag+"^{}"); got != want {
+			t.Fatalf("%s peels to %q, want %q", tag, got, want)
+		}
+	}
+
+	assertGoGitMatchesNative(t, dir, map[string]string{
+		"tagged tree's inner.env": inTree,
+		"annotated-tag blob":      annotated,
+		"lightweight-tag blob":    lightweight,
+	})
+}

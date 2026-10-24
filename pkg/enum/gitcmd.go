@@ -19,6 +19,13 @@ var hardenedGitConfig = []string{
 	"-c", "i18n.logOutputEncoding=UTF-8",
 	"-c", "diff.external=",
 	"-c", "core.hooksPath=/dev/null",
+	// A partial clone fetches missing objects on demand through the
+	// repository's remote, whose uploadpack/sshCommand it controls (V1).
+	// Lazy fetch is off (GIT_NO_LAZY_FETCH, GIT_ALLOW_PROTOCOL below);
+	// these also stop git spawning detached maintenance or gc children.
+	"-c", "protocol.allow=never",
+	"-c", "maintenance.auto=false",
+	"-c", "gc.auto=0",
 }
 
 // hardenedGitEnv is appended after the inherited environment; exec keeps the
@@ -29,6 +36,13 @@ var hardenedGitEnv = []string{
 	"GIT_CONFIG_NOSYSTEM=1",
 	"GIT_TERMINAL_PROMPT=0",
 	"GIT_PAGER=cat",
+	// V1: never fetch a missing object from the scanned repository's
+	// promisor remote (git 2.45+). GIT_ALLOW_PROTOCOL set to the empty list
+	// allows no transport at all and, unlike -c protocol.allow=never,
+	// overrides a repository's own protocol.<name>.allow=always, so it also
+	// covers older git.
+	"GIT_NO_LAZY_FETCH=1",
+	"GIT_ALLOW_PROTOCOL=",
 	"LC_ALL=C",
 }
 

@@ -94,7 +94,18 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 	idx.stats.malformed += rl.malformed
 	writeEnumWarnings(warn, idx, rl.overlong)
 
-	return e.streamBlobContents(ctx, &rl, idx, e.repoIdentity(remoteID, remoteOK), callback)
+	err := e.streamBlobContents(ctx, &rl, idx, e.repoIdentity(remoteID, remoteOK), callback)
+	writeMissingWarning(warn, rl.missing)
+	return err
+}
+
+// writeMissingWarning reports objects the repository lacks, which were
+// therefore not scanned. Titus never fetches them: a lazy fetch runs the
+// scanned repository's own remote configuration (V1).
+func writeMissingWarning(w io.Writer, missing int) {
+	if missing > 0 {
+		_, _ = fmt.Fprintf(w, "titus: %d git objects are missing from the repository (for example, not fetched by a partial clone) and were not scanned; fetch the full history to scan them\n", missing)
+	}
 }
 
 // indexBuilder returns the blob index builder; tests inject their own.
@@ -163,7 +174,9 @@ func (e *GitEnumerator) collectBlobEntries(ctx context.Context) (revList, error)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	cmd := hardenedGit(ctx, e.config.Root, "rev-list", "--all", "--objects")
+	// rev-list's missing=print mode lists objects a partial clone lacks as "?<id>"
+	// instead of failing or lazily fetching them (V1).
+	cmd := hardenedGit(ctx, e.config.Root, "rev-list", "--all", "--objects", "--missing=print")
 	stderr := &limitedBuffer{limit: 4 << 10}
 	cmd.Stderr = stderr
 
@@ -205,6 +218,10 @@ type revList struct {
 	tails     [][12]byte
 	overlong  int // lines over maxRecord: id kept, path dropped (SEC-9)
 	malformed int // lines that are not "<id>" or "<id> <path>" (SEC-8)
+	// missing counts objects git could not read: "?<id>" lines from
+	// rev-list's missing=print mode (a partial clone's unfetched objects) and
+	// cat-file "missing" answers. None of them is scanned (V1, V2).
+	missing int
 }
 
 // sha256 reports whether the repository uses SHA-256 object ids.
@@ -217,13 +234,6 @@ func (rl *revList) objectHex(dst []byte, i int) []byte {
 		dst = hex.AppendEncode(dst, rl.tails[i][:])
 	}
 	return dst
-}
-
-// readRevList parses rev-list output and returns its blob entries and the
-// number of over-long lines.
-func readRevList(r io.Reader) ([]blobEntry, int, error) {
-	rl, err := parseRevList(r)
-	return rl.blobs, rl.overlong, err
 }
 
 // parseRevList parses "git rev-list --objects" output. Lines "<id> <path>"
@@ -310,6 +320,17 @@ func (s revListSeen) firstSight(key [20]byte, tail [12]byte, sha256 bool) bool {
 
 // add records one rev-list line.
 func (rl *revList) add(line []byte, dropPath bool, width *int, seen revListSeen) {
+	if id, ok := bytes.CutPrefix(line, []byte{'?'}); ok {
+		// A "?" line (missing=print mode): an object the repository lacks. Titus never
+		// fetches it (that would run the repository's remote config), so
+		// it is counted and reported instead of being scanned.
+		if n := revListIDWidth(id); n != 0 && n == len(id) {
+			rl.missing++
+		} else {
+			rl.malformed++
+		}
+		return
+	}
 	n := revListIDWidth(line)
 	switch {
 	case n == 0 || (*width != 0 && n != *width):
@@ -363,10 +384,14 @@ func parseRevListLine(line []byte, n int, dropPath bool) (blobEntry, [12]byte, b
 
 // streamBlobContents feeds hashes to git cat-file --batch and invokes the
 // callback once per text blob, with every location the index knows for it.
+// An object cat-file reports missing is counted in rl.missing (V2).
 func (e *GitEnumerator) streamBlobContents(ctx context.Context, rl *revList, idx *blobIndex, id repoIdentity, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	if len(rl.blobs) == 0 {
 		return nil
 	}
+	parent := ctx
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	cmd := hardenedGit(ctx, e.config.Root, "cat-file", "--batch")
 
@@ -384,73 +409,52 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, rl *revList, idx
 		return fmt.Errorf("git cat-file: start: %w", err)
 	}
 
+	// abort stops git, drains its stdout so it cannot block on a full pipe,
+	// reaps it, and returns err; the caller's cancellation wins (SEC-10, M1).
+	abort := func(err error) error {
+		cancel()
+		_ = stdin.Close()
+		_, _ = io.Copy(io.Discard, stdout)
+		_ = cmd.Wait()
+		if parent.Err() != nil {
+			return parent.Err()
+		}
+		return err
+	}
+
 	reader := bufio.NewReaderSize(stdout, 256*1024)
 
 	// Interleave writes and reads to avoid pipe deadlocks.
 	var req []byte
 	for i, blob := range rl.blobs {
-		if i%1000 == 0 {
-			select {
-			case <-ctx.Done():
-				_ = stdin.Close()
-				_ = cmd.Wait()
-				return ctx.Err()
-			default:
-			}
+		if i%1000 == 0 && parent.Err() != nil {
+			return abort(parent.Err())
 		}
 
 		req = append(rl.objectHex(req[:0], i), '\n')
 		if _, err := stdin.Write(req); err != nil {
-			_ = stdin.Close()
-			_ = cmd.Wait()
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return fmt.Errorf("git cat-file: write: %w", err)
+			return abort(fmt.Errorf("git cat-file: write: %w", err))
 		}
 
 		// Read response header: "<hash> <type> <size>\n"
 		headerLine, err := reader.ReadString('\n')
 		if err != nil {
-			_ = stdin.Close()
-			_ = cmd.Wait()
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return fmt.Errorf("git cat-file: read header: %w", err)
+			return abort(fmt.Errorf("git cat-file: read header: %w", err))
 		}
 		objType, size, missing, err := parseCatFileHeader(headerLine, req[:len(req)-1])
 		if err != nil {
-			_ = stdin.Close()
-			_ = cmd.Wait()
-			return fmt.Errorf("git cat-file: %w", err)
+			return abort(fmt.Errorf("git cat-file: %w", err))
 		}
 		if missing {
+			rl.missing++
 			continue
 		}
 
-		// Non-blob objects: discard content + trailing newline.
-		if objType != "blob" {
+		// Non-blob objects and oversized blobs: discard content + trailing
+		// newline.
+		if objType != "blob" || (e.config.MaxFileSize > 0 && size > e.config.MaxFileSize) {
 			if _, err := io.CopyN(io.Discard, reader, size+1); err != nil {
-				_ = stdin.Close()
-				_ = cmd.Wait()
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				return fmt.Errorf("git cat-file: discard non-blob: %w", err)
-			}
-			continue
-		}
-
-		// Oversized blobs: discard.
-		if e.config.MaxFileSize > 0 && size > e.config.MaxFileSize {
-			if _, err := io.CopyN(io.Discard, reader, size+1); err != nil {
-				_ = stdin.Close()
-				_ = cmd.Wait()
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				return fmt.Errorf("git cat-file: discard oversized: %w", err)
+				return abort(fmt.Errorf("git cat-file: discard %s: %w", objType, err))
 			}
 			continue
 		}
@@ -458,22 +462,12 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, rl *revList, idx
 		// Read blob content.
 		content := make([]byte, size)
 		if _, err := io.ReadFull(reader, content); err != nil {
-			_ = stdin.Close()
-			_ = cmd.Wait()
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return fmt.Errorf("git cat-file: read content: %w", err)
+			return abort(fmt.Errorf("git cat-file: read content: %w", err))
 		}
 
 		// Consume trailing newline.
 		if _, err := reader.ReadByte(); err != nil {
-			_ = stdin.Close()
-			_ = cmd.Wait()
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return fmt.Errorf("git cat-file: read trailing newline: %w", err)
+			return abort(fmt.Errorf("git cat-file: read trailing newline: %w", err))
 		}
 
 		var isText bool
@@ -490,17 +484,15 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, rl *revList, idx
 		}
 
 		if err := callback(content, blobID, blobProvenance(blob, idx, id)); err != nil {
-			_ = stdin.Close()
-			_ = cmd.Wait()
-			return err
+			return abort(err)
 		}
 	}
 
 	_ = stdin.Close()
 
 	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if parent.Err() != nil {
+			return parent.Err()
 		}
 		return fmt.Errorf("git cat-file: %w", err)
 	}

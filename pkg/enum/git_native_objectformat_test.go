@@ -127,12 +127,13 @@ func TestReadRevList_SHA256IDs(t *testing.T) {
 		strings.Repeat("f", 64) + " " + hugePath,      // over the cap: id kept, path dropped
 	}, "\n") + "\n"
 
-	got, overlong, err := readRevList(strings.NewReader(in))
+	rl, err := parseRevList(strings.NewReader(in))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if overlong != 1 {
-		t.Errorf("overlong = %d, want 1", overlong)
+	got := rl.blobs
+	if rl.overlong != 1 {
+		t.Errorf("overlong = %d, want 1", rl.overlong)
 	}
 	var paths []string
 	for _, b := range got {

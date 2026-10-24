@@ -266,12 +266,13 @@ func TestReadRevList(t *testing.T) {
 		"zz bad line",
 	}, "\n") + "\n"
 
-	got, overlong, err := readRevList(strings.NewReader(in))
+	rl, err := parseRevList(strings.NewReader(in))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if overlong != 1 {
-		t.Errorf("overlong = %d, want 1", overlong)
+	got := rl.blobs
+	if rl.overlong != 1 {
+		t.Errorf("overlong = %d, want 1", rl.overlong)
 	}
 	type row struct {
 		hash, path string

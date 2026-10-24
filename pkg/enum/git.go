@@ -177,13 +177,16 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 	writeEnumWarnings(e.warnWriter(), idx, 0)
 	id := e.repoIdentity(goGitOriginIdentity(repo))
 
+	missing := 0
+	defer func() { writeMissingWarning(e.warnWriter(), missing) }()
 	for _, b := range blobs {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		content, ok, err := readGoGitBlob(repo, plumbing.Hash(b.hash), e.config.MaxFileSize)
 		if errors.Is(err, plumbing.ErrObjectNotFound) {
-			continue // missing objects are skipped, as streamBlobContents does
+			missing++ // counted and reported, as streamBlobContents does (V2)
+			continue
 		}
 		if err != nil {
 			return fmt.Errorf("failed to get contents of blob %s: %w", plumbing.Hash(b.hash), err)
@@ -213,7 +216,7 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 // commit already seen (so a merge's other parents behind it are never
 // reached), and drops iterator errors.
 func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, *blobIndex, error) {
-	stack, err := goGitTips(repo)
+	stack, others, err := goGitTips(repo)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -283,14 +286,78 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 			p.addEntry(hash, []byte(to.Name))
 		}
 	}
+	// Trees and blobs a ref reaches only through a tag (M4). rev-list --all
+	// --objects lists them with their path inside the tagged tree, or an
+	// empty path for a tagged blob, and git log never sees them, so they
+	// join the scan set with that path and no commit, as on the native path.
+	for _, o := range others {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		blobs, err = appendTaggedBlobs(repo, o, blobs, seen)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	return blobs, p.finish(), nil
 }
 
+// appendTaggedBlobs appends the blobs of the tagged object o (a tree or a
+// blob) not already in seen, each with its path inside the tree as rev-list
+// reports it.
+func appendTaggedBlobs(repo *git.Repository, o taggedObject, blobs []blobEntry, seen map[[20]byte]struct{}) ([]blobEntry, error) {
+	add := func(h plumbing.Hash, path string) {
+		hash := [20]byte(h)
+		if _, ok := seen[hash]; ok {
+			return
+		}
+		seen[hash] = struct{}{}
+		if len(path) > maxRecord { // dropped, as rev-list does (SEC-9)
+			path = ""
+		}
+		blobs = append(blobs, blobEntry{hash: hash, path: path})
+	}
+	if o.typ == plumbing.BlobObject {
+		add(o.hash, "")
+		return blobs, nil
+	}
+	tree, err := repo.TreeObject(o.hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tagged tree %s: %w", o.hash, err)
+	}
+	w := object.NewTreeWalker(tree, true, nil)
+	defer w.Close()
+	for {
+		name, entry, err := w.Next()
+		if errors.Is(err, io.EOF) {
+			return blobs, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to walk tagged tree %s: %w", o.hash, err)
+		}
+		if entry.Mode == filemode.Dir || entry.Mode == filemode.Submodule {
+			continue
+		}
+		add(entry.Hash, name)
+	}
+}
+
+// taggedObject is a tree or blob that a ref points at, directly or through
+// annotated tags.
+type taggedObject struct {
+	hash plumbing.Hash
+	typ  plumbing.ObjectType
+}
+
 // goGitTips returns the commits that HEAD and every ref point at, the tips of
-// rev-list --all. Annotated tags are peeled; refs to a tree or blob, an unborn
-// HEAD and refs to a missing object are skipped, as git skips broken refs.
-func goGitTips(repo *git.Repository) ([]plumbing.Hash, error) {
-	var tips []plumbing.Hash
+// rev-list --all, and the trees and blobs refs point at. Annotated tags are
+// peeled; an unborn HEAD and refs to a missing object are skipped, as git
+// skips broken refs.
+func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, error) {
+	var (
+		tips   []plumbing.Hash
+		others []taggedObject
+	)
 	add := func(ref *plumbing.Reference) error {
 		name := ref.Name()
 		resolved, err := storer.ResolveReference(repo.Storer, name)
@@ -300,45 +367,49 @@ func goGitTips(repo *git.Repository) ([]plumbing.Hash, error) {
 		if err != nil {
 			return fmt.Errorf("failed to resolve ref %s: %w", name, err)
 		}
-		h, ok, err := peelToCommit(repo, resolved.Hash())
+		h, typ, err := peelRef(repo, resolved.Hash())
 		if err != nil {
 			return fmt.Errorf("failed to peel ref %s: %w", name, err)
 		}
-		if ok {
+		switch typ {
+		case plumbing.CommitObject:
 			tips = append(tips, h)
+		case plumbing.TreeObject, plumbing.BlobObject:
+			others = append(others, taggedObject{hash: h, typ: typ})
 		}
 		return nil
 	}
 	if err := add(plumbing.NewSymbolicReference(plumbing.HEAD, "")); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	refs, err := repo.Storer.IterReferences()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list refs: %w", err)
+		return nil, nil, fmt.Errorf("failed to list refs: %w", err)
 	}
 	if err := refs.ForEach(add); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return tips, nil
+	return tips, others, nil
 }
 
-// peelToCommit follows annotated tags from h. ok is false when h is missing or
-// the chain ends at something other than a commit.
-func peelToCommit(repo *git.Repository, h plumbing.Hash) (plumbing.Hash, bool, error) {
+// peelRef follows annotated tags from h and returns the object the chain
+// ends at and its type. The type is plumbing.InvalidObject when an object on
+// the chain is missing.
+func peelRef(repo *git.Repository, h plumbing.Hash) (plumbing.Hash, plumbing.ObjectType, error) {
 	for {
 		obj, err := repo.Storer.EncodedObject(plumbing.AnyObject, h)
 		if errors.Is(err, plumbing.ErrObjectNotFound) {
-			return h, false, nil
+			return h, plumbing.InvalidObject, nil
 		}
 		if err != nil {
-			return h, false, err
+			return h, plumbing.InvalidObject, err
 		}
 		if obj.Type() != plumbing.TagObject {
-			return h, obj.Type() == plumbing.CommitObject, nil
+			return h, obj.Type(), nil
 		}
 		tag, err := object.DecodeTag(repo.Storer, obj)
 		if err != nil {
-			return h, false, err
+			return h, plumbing.InvalidObject, err
 		}
 		h = tag.Target
 	}
@@ -381,7 +452,8 @@ func (p *indexParser) goGitHeader(c *object.Commit) {
 		p.setCurKey(hexID, !ok || unix == 0, unix)
 		return
 	}
-	r := commitRec{idLen: uint8(len(hexID)), id: x.appendArena(hexID)}
+	off, n := x.appendArena(hexID)
+	r := commitRec{idLen: uint8(n), id: off}
 	r.authorName = p.intern([]byte(c.Author.Name))
 	r.authorEmail = p.intern([]byte(c.Author.Email))
 	r.committerName = p.intern([]byte(c.Committer.Name))
@@ -396,8 +468,7 @@ func (p *indexParser) goGitHeader(c *object.Commit) {
 	}
 
 	subj := []byte(gitSubject(c.Message))
-	r.subj = x.appendArena(subj)
-	r.subjLen = uint32(len(subj))
+	r.subj, r.subjLen = x.appendArena(subj)
 
 	x.commits = append(x.commits, r)
 	p.cur = len(x.commits) - 1

@@ -25,6 +25,9 @@ func TestHardenedGit_ArgvAndEnv(t *testing.T) {
 		"-c", "i18n.logOutputEncoding=UTF-8",
 		"-c", "diff.external=",
 		"-c", "core.hooksPath=/dev/null",
+		"-c", "protocol.allow=never",
+		"-c", "maintenance.auto=false",
+		"-c", "gc.auto=0",
 		"log", "--all",
 	}
 	if !slices.Equal(cmd.Args, wantArgs) {
@@ -39,6 +42,10 @@ func TestHardenedGit_ArgvAndEnv(t *testing.T) {
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_PAGER=cat",
+		// V1: no lazy fetch from a partial clone's promisor remote, and an
+		// empty transport allow-list (the value is empty, not unset).
+		"GIT_NO_LAZY_FETCH=1",
+		"GIT_ALLOW_PROTOCOL=",
 		"LC_ALL=C",
 	} {
 		if !slices.Contains(cmd.Env, kv) {
