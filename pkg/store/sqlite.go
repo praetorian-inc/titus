@@ -293,11 +293,19 @@ func (s *SQLiteStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance,
 	return result, nil
 }
 
+// provenanceOrder is the deterministic order of a blob's provenance rows
+// (SEC-15). It is a compile-time constant, never built from data. The columns
+// are the provenance UNIQUE key, so the order is total; type comes last as the
+// tiebreaker. BINARY collation compares bytes, as cmp.Compare does on Go
+// strings, so sortProvenance in the memory store yields the same order.
+const provenanceOrder = "blob_id, repo_path, path, commit_hash, type"
+
 func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provenance, error) {
 	rows, err := s.e.Query(`SELECT type, path, repo_path, commit_hash,
 		author_name, author_email, author_timestamp,
 		committer_name, committer_email, committer_timestamp,
-		commit_message, locations_truncated FROM provenance WHERE blob_id = ?`, blobID.Hex())
+		commit_message, locations_truncated FROM provenance WHERE blob_id = ?
+		ORDER BY `+provenanceOrder, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +371,7 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 }
 
 func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Provenance, error) {
-	rows, err := s.e.Query("SELECT type, path, repo_path, commit_hash FROM provenance WHERE blob_id = ?", blobID.Hex())
+	rows, err := s.e.Query("SELECT type, path, repo_path, commit_hash FROM provenance WHERE blob_id = ? ORDER BY "+provenanceOrder, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}

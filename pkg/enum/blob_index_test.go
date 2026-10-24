@@ -540,9 +540,8 @@ func TestBlobIndex_CommitMetadataShared(t *testing.T) {
 	}
 }
 
-// A SHA-256 repository parses cleanly. Its 64-hex object ids are recognized
-// (not counted as malformed) but not indexed, because types.BlobID and the
-// rev-list scan path are SHA-1 only.
+// SEC-8: a SHA-256 repository parses cleanly and its blob is indexed at its
+// path under its 64-hex commit.
 func TestBuildBlobIndex_SHA256Repo(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
@@ -558,11 +557,8 @@ func TestBuildBlobIndex_SHA256Repo(t *testing.T) {
 	if idx.stats.malformed != 0 {
 		t.Errorf("malformed = %d, want 0", idx.stats.malformed)
 	}
-	if idx.stats.unsupportedOID != 1 {
-		t.Errorf("unsupportedOID = %d, want 1", idx.stats.unsupportedOID)
-	}
-	if len(idx.pairs) != 0 {
-		t.Errorf("pairs = %d, want 0", len(idx.pairs))
+	if len(idx.pairs) != 1 {
+		t.Errorf("pairs = %d, want 1", len(idx.pairs))
 	}
 	if len(idx.commits) != 1 || idx.commits[0].idLen != 64 {
 		t.Errorf("commits = %+v, want one 64-hex commit", idx.commits)

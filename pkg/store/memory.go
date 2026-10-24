@@ -1,7 +1,9 @@
 package store
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -209,16 +211,39 @@ func (m *MemoryStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance,
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	key := blobID.Hex()
-	provs := m.provenance[key]
+	provs := m.provenance[blobID.Hex()]
 	if provs == nil {
 		return []types.Provenance{}, nil
 	}
+	return sortedProvenance(provs), nil
+}
 
-	// Return a copy to avoid external modifications
-	result := make([]types.Provenance, len(provs))
-	copy(result, provs)
-	return result, nil
+// sortedProvenance returns a sorted copy of one blob's provenance rows, in
+// the SQLite store's provenanceOrder: repo_path, path, commit_hash, type. The
+// caller's slice is not modified.
+func sortedProvenance(provs []types.Provenance) []types.Provenance {
+	type keyed struct {
+		key  provenanceRowKey
+		prov types.Provenance
+	}
+	rows := make([]keyed, len(provs))
+	for i, p := range provs {
+		k, _ := provenanceKeyOf(p) // stored rows passed provenanceKeyOf in AddProvenance
+		rows[i] = keyed{k, p}
+	}
+	slices.SortFunc(rows, func(a, b keyed) int {
+		return cmp.Or(
+			cmp.Compare(a.key.repoPath, b.key.repoPath),
+			cmp.Compare(a.key.path, b.key.path),
+			cmp.Compare(a.key.commitHash, b.key.commitHash),
+			cmp.Compare(a.key.kind, b.key.kind),
+		)
+	})
+	result := make([]types.Provenance, len(rows))
+	for i, r := range rows {
+		result[i] = r.prov
+	}
+	return result
 }
 
 // GetMatches retrieves matches for a blob.
@@ -292,8 +317,8 @@ func (m *MemoryStore) GetProvenance(blobID types.BlobID) (types.Provenance, erro
 		return nil, fmt.Errorf("no provenance found for blob %s", key)
 	}
 
-	// Return the first provenance record
-	return provs[0], nil
+	// The first row in provenanceOrder, as the SQLite store returns.
+	return sortedProvenance(provs)[0], nil
 }
 
 func (s *MemoryStore) ExecBatch(fn func(Store) error) error {

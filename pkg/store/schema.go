@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // SchemaVersion is the current database schema version (compatible with NoseyParker v70).
@@ -172,6 +173,7 @@ func createProvenanceTable(db *sql.DB) error {
 			committer_email TEXT,
 			committer_timestamp TEXT,
 			commit_message TEXT,
+			locations_truncated INTEGER NOT NULL DEFAULT 0,
 			UNIQUE(blob_id, type, path, repo_path, commit_hash)
 		)
 	`)
@@ -190,10 +192,11 @@ func createProvenanceTable(db *sql.DB) error {
 		"committer_email TEXT",
 		"committer_timestamp TEXT",
 		"commit_message TEXT",
-		// NULL in rows written before the flag existed reads as false.
-		"locations_truncated INTEGER",
 	} {
 		_, _ = db.Exec("ALTER TABLE provenance ADD COLUMN " + col)
+	}
+	if err := addLocationsTruncatedColumn(db); err != nil {
+		return err
 	}
 
 	// Create index for efficient provenance lookup by blob_id
@@ -201,6 +204,19 @@ func createProvenanceTable(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_provenance_blob_id ON provenance(blob_id)
 	`)
 	return err
+}
+
+// addLocationsTruncatedColumn adds provenance.locations_truncated to a
+// datastore created before the column existed. Existing rows read 0 (false).
+// Only SQLite's "duplicate column name" error, which means the column is
+// already there, is ignored; any other error fails the schema setup.
+func addLocationsTruncatedColumn(db *sql.DB) error {
+	const alter = "ALTER TABLE provenance ADD COLUMN locations_truncated INTEGER NOT NULL DEFAULT 0"
+	_, err := db.Exec(alter)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		return fmt.Errorf("adding provenance.locations_truncated: %w", err)
+	}
+	return nil
 }
 
 // createBlobLocationsTable adds the table of every location of a matched

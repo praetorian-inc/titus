@@ -20,7 +20,9 @@ import (
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// blobEntry holds a deduplicated blob hash and its first-seen rev-list path.
+// blobEntry holds a deduplicated blob and its first-seen rev-list path. hash
+// is the blob's index key (see objectKey): the object id in a SHA-1
+// repository, the first 20 bytes of it in a SHA-256 one.
 type blobEntry struct {
 	hash [20]byte
 	path string
@@ -55,18 +57,17 @@ func gitBinaryAvailable() bool {
 func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	root := e.config.Root
 	var (
-		blobs       []blobEntry
-		revOverlong int
-		idx         *blobIndex
-		indexErr    error
-		remoteID    string
-		remoteOK    bool
+		rl       revList
+		idx      *blobIndex
+		indexErr error
+		remoteID string
+		remoteOK bool
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		var err error
-		blobs, revOverlong, err = e.collectBlobEntries(gctx)
+		rl, err = e.collectBlobEntries(gctx)
 		return err
 	})
 	g.Go(func() error {
@@ -90,9 +91,10 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 			_, _ = fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path and is marked as possibly missing locations\n", indexErr)
 		}
 	}
-	writeEnumWarnings(warn, idx, revOverlong)
+	idx.stats.malformed += rl.malformed
+	writeEnumWarnings(warn, idx, rl.overlong)
 
-	return e.streamBlobContents(ctx, blobs, idx, e.repoIdentity(remoteID, remoteOK), callback)
+	return e.streamBlobContents(ctx, &rl, idx, e.repoIdentity(remoteID, remoteOK), callback)
 }
 
 // indexBuilder returns the blob index builder; tests inject their own.
@@ -155,58 +157,92 @@ func writeEnumWarnings(w io.Writer, idx *blobIndex, revOverlong int) {
 	idx.writeWarnings(w)
 }
 
-// collectBlobEntries runs git rev-list --all --objects and returns
-// deduplicated blob entries and the number of over-long records.
-func (e *GitEnumerator) collectBlobEntries(ctx context.Context) ([]blobEntry, int, error) {
+// collectBlobEntries runs git rev-list --all --objects and returns its
+// deduplicated blob entries and record counts.
+func (e *GitEnumerator) collectBlobEntries(ctx context.Context) (revList, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", "rev-list", "--all", "--objects")
-	cmd.Dir = e.config.Root
+	cmd := hardenedGit(ctx, e.config.Root, "rev-list", "--all", "--objects")
 	stderr := &limitedBuffer{limit: 4 << 10}
 	cmd.Stderr = stderr
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, 0, fmt.Errorf("git rev-list: pipe: %w", err)
+		return revList{}, fmt.Errorf("git rev-list: pipe: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, 0, fmt.Errorf("git rev-list: start: %w", err)
+		return revList{}, fmt.Errorf("git rev-list: start: %w", err)
 	}
 
-	blobs, overlong, readErr := readRevList(stdout)
+	rl, readErr := parseRevList(stdout)
 	if readErr != nil {
 		// SEC-10: stop git, drain the pipe, then reap.
 		cancel()
 		_, _ = io.Copy(io.Discard, stdout)
 		_ = cmd.Wait()
-		return nil, 0, fmt.Errorf("git rev-list: read: %w", readErr)
+		return revList{}, fmt.Errorf("git rev-list: read: %w", readErr)
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
-			return nil, 0, ctx.Err()
+			return revList{}, ctx.Err()
 		}
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return nil, 0, fmt.Errorf("git rev-list: %w: %s", err, msg)
+			return revList{}, fmt.Errorf("git rev-list: %w: %s", err, msg)
 		}
-		return nil, 0, fmt.Errorf("git rev-list: %w", err)
+		return revList{}, fmt.Errorf("git rev-list: %w", err)
 	}
-	return blobs, overlong, nil
+	return rl, nil
 }
 
-// readRevList parses "git rev-list --objects" output. Lines with a space at
-// offset 40 are "<40-hex> <path>" objects; other lines are commits and are
-// skipped. A line longer than maxRecord keeps its hash, so the blob is still
-// scanned, but loses its path and is counted as over-long (SEC-9).
+// revList is the parsed output of git rev-list --objects.
+type revList struct {
+	blobs []blobEntry
+	// tails holds bytes 20-31 of each SHA-256 object id, parallel to blobs,
+	// so cat-file can be given the full id. It is nil in a SHA-1
+	// repository, which therefore pays nothing for SHA-256 support.
+	tails     [][12]byte
+	overlong  int // lines over maxRecord: id kept, path dropped (SEC-9)
+	malformed int // lines that are not "<id>" or "<id> <path>" (SEC-8)
+}
+
+// sha256 reports whether the repository uses SHA-256 object ids.
+func (rl *revList) sha256() bool { return rl.tails != nil }
+
+// objectHex returns the full hex object id of blobs[i].
+func (rl *revList) objectHex(dst []byte, i int) []byte {
+	dst = hex.AppendEncode(dst, rl.blobs[i].hash[:])
+	if rl.sha256() {
+		dst = hex.AppendEncode(dst, rl.tails[i][:])
+	}
+	return dst
+}
+
+// readRevList parses rev-list output and returns its blob entries and the
+// number of over-long lines.
 func readRevList(r io.Reader) ([]blobEntry, int, error) {
+	rl, err := parseRevList(r)
+	return rl.blobs, rl.overlong, err
+}
+
+// parseRevList parses "git rev-list --objects" output. Lines "<id> <path>"
+// are objects; lines "<id>" are commits and are skipped. The id width (40
+// for SHA-1, 64 for SHA-256) is fixed by the first valid line; a line of the
+// other width, or that is not lowercase hex, is skipped and counted as
+// malformed. A line longer than maxRecord keeps its id, so the blob is still
+// scanned, but loses its path and is counted as over-long (SEC-9).
+func parseRevList(r io.Reader) (revList, error) {
 	br := bufio.NewReaderSize(r, 64<<10)
-	seen := make(map[[20]byte]struct{})
+	seen := revListSeen{
+		sha1:   make(map[[20]byte]struct{}),
+		sha256: make(map[[32]byte]struct{}),
+	}
 	var (
-		blobs    []blobEntry
-		overlong int
-		long     []byte // a line that did not fit in the reader's buffer
-		tooLong  bool
+		rl      revList
+		width   int
+		long    []byte // a line that did not fit in the reader's buffer
+		tooLong bool
 	)
 	for {
 		chunk, err := br.ReadSlice('\n')
@@ -214,7 +250,7 @@ func readRevList(r io.Reader) ([]blobEntry, int, error) {
 			if len(long)+len(chunk) > maxRecord {
 				tooLong = true
 				if len(long) == 0 {
-					long = append(long, chunk[:min(len(chunk), 41)]...)
+					long = append(long, chunk[:min(len(chunk), sha256HexLen+1)]...)
 				}
 				continue
 			}
@@ -222,7 +258,7 @@ func readRevList(r io.Reader) ([]blobEntry, int, error) {
 			continue
 		}
 		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, 0, err
+			return revList{}, err
 		}
 		line := chunk
 		if len(long) > 0 {
@@ -233,46 +269,106 @@ func readRevList(r io.Reader) ([]blobEntry, int, error) {
 		}
 		line = bytes.TrimSuffix(line, []byte{'\n'})
 		if tooLong {
-			overlong++
+			rl.overlong++
 		}
-		if b, ok := parseRevListLine(line, tooLong); ok {
-			if _, dup := seen[b.hash]; !dup {
-				seen[b.hash] = struct{}{}
-				blobs = append(blobs, b)
-			}
+		if len(line) > 0 || err == nil {
+			rl.add(line, tooLong, &width, seen)
 		}
 		long, tooLong = long[:0], false
 		if err != nil { // io.EOF
-			return blobs, overlong, nil
+			return rl, nil
 		}
 	}
 }
 
-// parseRevListLine decodes "<40-hex> <path>". When dropPath is set only the
-// hash is kept.
-func parseRevListLine(line []byte, dropPath bool) (blobEntry, bool) {
-	if len(line) < 41 || line[40] != ' ' {
-		return blobEntry{}, false
+// revListSeen deduplicates rev-list objects on their full id. SHA-256 ids
+// are keyed on all 32 bytes, so two blobs that share the 20-byte index key
+// are both scanned rather than one being dropped as a duplicate.
+type revListSeen struct {
+	sha1   map[[20]byte]struct{}
+	sha256 map[[32]byte]struct{}
+}
+
+// firstSight records id and reports whether it had not been seen before.
+func (s revListSeen) firstSight(key [20]byte, tail [12]byte, sha256 bool) bool {
+	if !sha256 {
+		if _, dup := s.sha1[key]; dup {
+			return false
+		}
+		s.sha1[key] = struct{}{}
+		return true
 	}
+	var full [32]byte
+	copy(full[:20], key[:])
+	copy(full[20:], tail[:])
+	if _, dup := s.sha256[full]; dup {
+		return false
+	}
+	s.sha256[full] = struct{}{}
+	return true
+}
+
+// add records one rev-list line.
+func (rl *revList) add(line []byte, dropPath bool, width *int, seen revListSeen) {
+	n := revListIDWidth(line)
+	switch {
+	case n == 0 || (*width != 0 && n != *width):
+		rl.malformed++
+		return
+	case *width == 0:
+		*width = n
+	}
+	if len(line) == n { // a commit
+		return
+	}
+	b, tail, ok := parseRevListLine(line, n, dropPath)
+	if !ok {
+		rl.malformed++
+		return
+	}
+	if !seen.firstSight(b.hash, tail, n == sha256HexLen) {
+		return
+	}
+	rl.blobs = append(rl.blobs, b)
+	if n == sha256HexLen {
+		rl.tails = append(rl.tails, tail)
+	}
+}
+
+// revListIDWidth returns the length of the lowercase hex object id that
+// starts line and is followed by the end of the line or a space, or 0.
+func revListIDWidth(line []byte) int {
+	for _, n := range [...]int{sha256HexLen, sha1HexLen} {
+		if len(line) >= n && (len(line) == n || line[n] == ' ') && isHex(line[:n]) {
+			return n
+		}
+	}
+	return 0
+}
+
+// parseRevListLine decodes "<id> <path>" where the id is n hex characters.
+// When dropPath is set only the id is kept.
+func parseRevListLine(line []byte, n int, dropPath bool) (blobEntry, [12]byte, bool) {
 	var b blobEntry
-	if _, err := hex.Decode(b.hash[:], line[:40]); err != nil {
-		return blobEntry{}, false
+	hash, tail, ok := objectKey(line[:n])
+	if !ok {
+		return blobEntry{}, tail, false
 	}
+	b.hash = hash
 	if !dropPath {
-		b.path = string(line[41:])
+		b.path = string(line[n+1:])
 	}
-	return b, true
+	return b, tail, true
 }
 
 // streamBlobContents feeds hashes to git cat-file --batch and invokes the
 // callback once per text blob, with every location the index knows for it.
-func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntry, idx *blobIndex, id repoIdentity, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	if len(blobs) == 0 {
+func (e *GitEnumerator) streamBlobContents(ctx context.Context, rl *revList, idx *blobIndex, id repoIdentity, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	if len(rl.blobs) == 0 {
 		return nil
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "cat-file", "--batch")
-	cmd.Dir = e.config.Root
+	cmd := hardenedGit(ctx, e.config.Root, "cat-file", "--batch")
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -291,7 +387,8 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntr
 	reader := bufio.NewReaderSize(stdout, 256*1024)
 
 	// Interleave writes and reads to avoid pipe deadlocks.
-	for i, blob := range blobs {
+	var req []byte
+	for i, blob := range rl.blobs {
 		if i%1000 == 0 {
 			select {
 			case <-ctx.Done():
@@ -302,8 +399,8 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntr
 			}
 		}
 
-		hexStr := hex.EncodeToString(blob.hash[:])
-		if _, err := fmt.Fprintf(stdin, "%s\n", hexStr); err != nil {
+		req = append(rl.objectHex(req[:0], i), '\n')
+		if _, err := stdin.Write(req); err != nil {
 			_ = stdin.Close()
 			_ = cmd.Wait()
 			if ctx.Err() != nil {
@@ -322,20 +419,14 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntr
 			}
 			return fmt.Errorf("git cat-file: read header: %w", err)
 		}
-		headerLine = strings.TrimSuffix(headerLine, "\n")
-
-		// Parse: "<hash> <type> <size>" or "<hash> missing"
-		parts := strings.SplitN(headerLine, " ", 3)
-		if len(parts) < 3 || parts[1] == "missing" {
-			continue
-		}
-
-		objType := parts[1]
-		size, err := strconv.ParseInt(parts[2], 10, 64)
+		objType, size, missing, err := parseCatFileHeader(headerLine, req[:len(req)-1])
 		if err != nil {
 			_ = stdin.Close()
 			_ = cmd.Wait()
-			return fmt.Errorf("git cat-file: parse size %q: %w", parts[2], err)
+			return fmt.Errorf("git cat-file: %w", err)
+		}
+		if missing {
+			continue
 		}
 
 		// Non-blob objects: discard content + trailing newline.
@@ -390,9 +481,13 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntr
 			continue
 		}
 
-		// Git blob hash IS the BlobID — both use SHA-1("blob {len}\0{content}").
-		var blobID types.BlobID
-		copy(blobID[:], blob.hash[:])
+		// In a SHA-1 repository the git blob id IS the BlobID: both are
+		// SHA-1("blob {len}\0{content}"). A SHA-256 id is not, so the BlobID
+		// is computed as the filesystem enumerator computes it.
+		blobID := types.BlobID(blob.hash)
+		if rl.sha256() {
+			blobID = types.ComputeBlobID(content)
+		}
 
 		if err := callback(content, blobID, blobProvenance(blob, idx, id)); err != nil {
 			_ = stdin.Close()
@@ -411,6 +506,33 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, blobs []blobEntr
 	}
 
 	return nil
+}
+
+// parseCatFileHeader parses a git cat-file --batch header, "<id> <type>
+// <size>" or "<id> missing", for the request id want. A header for another
+// id, or one that does not fit the grammar, is an error: the stream can no
+// longer be framed, so nothing after it can be trusted.
+func parseCatFileHeader(line string, want []byte) (objType string, size int64, missing bool, err error) {
+	line = strings.TrimSuffix(line, "\n")
+	id, rest, _ := strings.Cut(line, " ")
+	if id != string(want) { // want is always a well-formed id (objectHex)
+		return "", 0, false, fmt.Errorf("unexpected header %q for %s", line, want)
+	}
+	if rest == "missing" {
+		return "", 0, true, nil
+	}
+	objType, sizeStr, ok := strings.Cut(rest, " ")
+	if !ok {
+		return "", 0, false, fmt.Errorf("malformed header %q", line)
+	}
+	size, err = strconv.ParseInt(sizeStr, 10, 64)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("parse size %q: %w", sizeStr, err)
+	}
+	if size < 0 {
+		return "", 0, false, fmt.Errorf("negative size in header %q", line)
+	}
+	return objType, size, false, nil
 }
 
 // blobProvenance builds the provenance for one blob. Locations is every

@@ -60,10 +60,9 @@ type commitRec struct {
 }
 
 type indexStats struct {
-	overlong       int // records over maxRecord, skipped (SEC-9)
-	malformed      int // records that do not fit the log grammar (SEC-8)
-	unsupportedOID int // SHA-256 blob ids, not indexable as types.BlobID
-	droppedPairs   int // pairs not stored after maxIndexPairs (R1)
+	overlong     int // records over maxRecord, skipped (SEC-9)
+	malformed    int // records that do not fit the log grammar (SEC-8)
+	droppedPairs int // pairs not stored after maxIndexPairs (R1)
 }
 
 // blobIndex maps a blob to every path it was stored at in history and the
@@ -329,14 +328,8 @@ func (p *indexParser) parseMeta(meta []byte) (dst [20]byte, keep, malformed bool
 	if string(f[1]) == "160000" { // submodule commit, not a blob
 		return dst, false, false
 	}
-	switch {
-	case len(f[3]) == 64 && isHex(f[3]):
-		p.x.stats.unsupportedOID++
-		return dst, false, false
-	case len(f[3]) != 40:
-		return dst, false, true
-	}
-	if _, err := hex.Decode(dst[:], f[3]); err != nil || dst == ([20]byte{}) {
+	dst, tail, ok := objectKey(f[3])
+	if !ok || (dst == [20]byte{} && tail == [12]byte{}) {
 		return dst, false, true
 	}
 	return dst, true, false
@@ -618,9 +611,6 @@ func (x *blobIndex) writeWarnings(w io.Writer) {
 	if s.malformed > 0 {
 		_, _ = fmt.Fprintf(w, "titus: skipped %d malformed git records\n", s.malformed)
 	}
-	if s.unsupportedOID > 0 {
-		_, _ = fmt.Fprintf(w, "titus: %d SHA-256 git objects have no recorded location (only SHA-1 repositories are indexed)\n", s.unsupportedOID)
-	}
 }
 
 // parseGitTime parses git's strict ISO 8601 date (%aI, %cI).
@@ -646,9 +636,34 @@ func gitTime(unix int64, offset int32, unusable bool) time.Time {
 	return t.In(time.FixedZone("", int(offset)))
 }
 
+// Hex lengths of SHA-1 and SHA-256 git object ids.
+const (
+	sha1HexLen   = 40
+	sha256HexLen = 64
+)
+
 // isObjectID reports whether b is a 40- (SHA-1) or 64- (SHA-256) hex id.
 func isObjectID(b []byte) bool {
-	return (len(b) == 40 || len(b) == 64) && isHex(b)
+	return (len(b) == sha1HexLen || len(b) == sha256HexLen) && isHex(b)
+}
+
+// objectKey decodes a lowercase hex object id into the key the blob index
+// and the rev-list dedup use: the whole id for SHA-1, and its first 20
+// bytes for SHA-256, whose remaining 12 bytes are returned as tail. A
+// 160-bit prefix of SHA-256 keeps a 2^80 collision bound, the strength
+// SHA-1 was designed for, and keeps the key one fixed width, so a SHA-1
+// repository pays nothing for SHA-256 support.
+func objectKey(id []byte) (key [20]byte, tail [12]byte, ok bool) {
+	if !isObjectID(id) {
+		return key, tail, false
+	}
+	var full [32]byte
+	if _, err := hex.Decode(full[:len(id)/2], id); err != nil {
+		return key, tail, false
+	}
+	copy(key[:], full[:20])
+	copy(tail[:], full[20:])
+	return key, tail, true
 }
 
 func isHex(b []byte) bool {
