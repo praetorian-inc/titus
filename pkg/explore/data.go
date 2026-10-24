@@ -68,11 +68,13 @@ func loadData(storePath string) (*exploreData, error) {
 	// not present in ruleMap. See groupMatchesByFinding for details.
 	matchesByFinding := groupMatchesByFinding(findings, matches, ruleMap)
 
-	// Build view models
+	// Build view models. One blob cache serves every finding, so matches of
+	// the same blob share one copy of its locations.
+	blobs := make(blobCache)
 	rows := make([]*findingRow, 0, len(findings))
 	for _, f := range findings {
 		fMatches := matchesByFinding[f.ID]
-		row := buildFindingRow(f, fMatches, ruleMap, s)
+		row := buildFindingRowWith(f, fMatches, ruleMap, s, blobs)
 		rows = append(rows, row)
 	}
 
@@ -130,6 +132,11 @@ func groupMatchesByFinding(findings []*types.Finding, matches []*types.Match, ru
 
 // buildFindingRow creates a findingRow from a Finding and its matches.
 func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule, s store.Store) *findingRow {
+	return buildFindingRowWith(f, matches, ruleMap, s, make(blobCache))
+}
+
+// buildFindingRowWith is buildFindingRow reading blob data through blobs.
+func buildFindingRowWith(f *types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule, s store.Store, blobs blobCache) *findingRow {
 	row := &findingRow{
 		FindingID: f.ID,
 		RuleID:    f.RuleID,
@@ -186,7 +193,7 @@ func buildFindingRow(f *types.Finding, matches []*types.Match, ruleMap map[strin
 	// Build match rows
 	row.Matches = make([]*matchRow, 0, len(matches))
 	for _, m := range matches {
-		mr := buildMatchRow(m, s)
+		mr := buildMatchRowWith(m, s, blobs)
 		row.Matches = append(row.Matches, mr)
 	}
 
@@ -213,8 +220,38 @@ func summarizeOccurrences(matches []*matchRow) (repos []string, locations int) {
 	return slices.Sorted(maps.Keys(set)), locations
 }
 
+// blobData is the provenance and locations of one blob, as loaded from the
+// store, with the error of each load.
+type blobData struct {
+	provs   []types.Provenance
+	provErr error
+	occs    []types.Occurrence
+	occErr  error
+}
+
+// blobCache loads each blob's data once, so every match in a blob shares one
+// slice of its locations instead of holding a copy of it.
+type blobCache map[types.BlobID]*blobData
+
+func (c blobCache) get(s store.Store, id types.BlobID) *blobData {
+	if d, ok := c[id]; ok {
+		return d
+	}
+	d := &blobData{}
+	d.provs, d.provErr = s.GetAllProvenance(id)
+	// Locations are already merged, deduplicated and sorted by the store.
+	d.occs, d.occErr = s.GetOccurrences(id)
+	c[id] = d
+	return d
+}
+
 // buildMatchRow creates a matchRow from a Match.
 func buildMatchRow(m *types.Match, s store.Store) *matchRow {
+	return buildMatchRowWith(m, s, make(blobCache))
+}
+
+// buildMatchRowWith is buildMatchRow reading blob data through blobs.
+func buildMatchRowWith(m *types.Match, s store.Store, blobs blobCache) *matchRow {
 	mr := &matchRow{
 		StructuralID: m.StructuralID,
 		BlobID:       m.BlobID,
@@ -233,15 +270,17 @@ func buildMatchRow(m *types.Match, s store.Store) *matchRow {
 
 	// Load provenance
 	if s != nil {
-		provs, err := s.GetAllProvenance(m.BlobID)
-		if err == nil {
-			mr.Provenance = provs
+		d := blobs.get(s, m.BlobID)
+		if d.provErr == nil {
+			mr.Provenance = d.provs
 		}
 
-		// Load locations (already merged, deduplicated and sorted by the store)
-		occs, err := s.GetOccurrences(m.BlobID)
-		if err == nil {
-			mr.Occurrences = occs
+		// A failed location load is kept on the row, so the details pane says
+		// the locations are unavailable instead of showing none.
+		if d.occErr == nil {
+			mr.Occurrences = d.occs
+		} else {
+			mr.LocationsErr = d.occErr
 		}
 
 		// Load match annotation

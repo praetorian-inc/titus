@@ -250,7 +250,8 @@ type matchRow struct {
 	Confidence       float64
 	Message          string
 	Provenance       []types.Provenance // raw rows, kept for actions that need full provenance
-	Occurrences      []types.Occurrence // every location, from store.GetOccurrences
+	Occurrences      []types.Occurrence // every location, from store.GetOccurrences; shared by the matches of one blob, do not modify
+	LocationsErr     error              // why Occurrences could not be loaded; nil when they were
 	AnnotationStatus string
 	Comment          string
 }

@@ -2,6 +2,8 @@ package explore
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,12 +25,30 @@ type detailsPane struct {
 	height          int
 	offset          int // scroll offset for content
 	focused         bool
+	// cache holds the rendered location block of the selected match. It is a
+	// pointer so the copies bubbletea makes of the pane share one cache.
+	cache *locationsCache
+}
+
+// locationsCache holds the rendered location and source lines of one match:
+// the only part of the pane whose size grows with the data. Every input the
+// lines depend on is part of the key, so in-place edits elsewhere in the pane
+// (annotations, comments, the match cursor) need no invalidation. The filter
+// is keyed by value, not by a counter, so pane copies that share the cache
+// can never read lines rendered under another copy's filter.
+type locationsCache struct {
+	match  *matchRow
+	filter map[string]bool // a private clone of the repo filter
+	width  int
+	lines  []string
 }
 
 func newDetailsPane() detailsPane {
-	return detailsPane{}
+	return detailsPane{cache: &locationsCache{}}
 }
 
+// setFinding shows f under the current repo filter, starting on its first
+// visible match.
 func (dp *detailsPane) setFinding(f *findingRow) {
 	dp.finding = f
 	dp.matchCursor = 0
@@ -37,11 +57,14 @@ func (dp *detailsPane) setFinding(f *findingRow) {
 }
 
 // setRepoFilter sets the Repository facet selection used to narrow locations
-// and match navigation. Call it before setFinding when the selection changes.
+// and match navigation. Like setFinding, it returns the pane to the first
+// visible match at the top, so the two calls give the same result in either
+// order.
 func (dp *detailsPane) setRepoFilter(sel map[string]bool) {
 	dp.repoFilter = sel
+	dp.matchCursor = 0
+	dp.offset = 0
 	dp.recomputeVisibleMatches()
-	dp.matchCursor = max(0, min(dp.matchCursor, len(dp.visibleMatchIdx)-1))
 }
 
 // recomputeVisibleMatches lists the matches h/l can visit: every match when no
@@ -52,10 +75,22 @@ func (dp *detailsPane) recomputeVisibleMatches() {
 		return
 	}
 	for i, m := range dp.finding.Matches {
-		if len(dp.repoFilter) == 0 || len(visibleOccurrences(m.Occurrences, dp.repoFilter)) > 0 {
+		if dp.hasVisibleLocation(m) {
 			dp.visibleMatchIdx = append(dp.visibleMatchIdx, i)
 		}
 	}
+}
+
+// hasVisibleLocation reports whether m is navigable under repoFilter, without
+// copying its occurrences.
+func (dp *detailsPane) hasVisibleLocation(m *matchRow) bool {
+	if len(dp.repoFilter) == 0 {
+		return true
+	}
+	return slices.ContainsFunc(m.Occurrences, func(o types.Occurrence) bool {
+		k := facetKey(o)
+		return k != "" && dp.repoFilter[k]
+	})
 }
 
 func (dp detailsPane) selectedMatch() *matchRow {
@@ -104,7 +139,7 @@ func (dp detailsPane) Update(msg tea.Msg) (detailsPane, tea.Cmd) {
 // maxOffset is the largest scroll offset that still fills the pane, so
 // scrolling past the end never accumulates hidden offset.
 func (dp detailsPane) maxOffset() int {
-	return max(0, len(dp.contentLines())-dp.visibleRows())
+	return max(0, dp.content().len()-dp.visibleRows())
 }
 
 func (dp detailsPane) View() string {
@@ -113,19 +148,11 @@ func (dp detailsPane) View() string {
 	}
 
 	contentWidth := dp.width - 4
-	lines := dp.contentLines()
+	c := dp.content()
 
 	// Apply scroll offset
-	if dp.offset >= len(lines) {
-		dp.offset = max(0, len(lines)-1)
-	}
-	visibleLines := lines
-	if dp.offset < len(visibleLines) {
-		visibleLines = visibleLines[dp.offset:]
-	}
-	if len(visibleLines) > dp.visibleRows() {
-		visibleLines = visibleLines[:dp.visibleRows()]
-	}
+	offset := min(dp.offset, max(0, c.len()-1))
+	visibleLines := c.window(offset, dp.visibleRows())
 
 	var b strings.Builder
 	for i, line := range visibleLines {
@@ -157,25 +184,89 @@ func (dp detailsPane) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, title, content)
 }
 
+// paneContent is the pane's lines before scrolling and clipping, kept in
+// parts so the large cached location block is never copied.
+type paneContent [][]string
+
+func (c paneContent) len() int {
+	n := 0
+	for _, part := range c {
+		n += len(part)
+	}
+	return n
+}
+
+// window returns at most n lines starting at line off.
+func (c paneContent) window(off, n int) []string {
+	var out []string
+	for _, part := range c {
+		if off >= len(part) {
+			off -= len(part)
+			continue
+		}
+		take := part[off:min(len(part), off+n-len(out))]
+		out = append(out, take...)
+		off = 0
+		if len(out) == n {
+			break
+		}
+	}
+	return out
+}
+
 // contentLines renders every line of the pane before scrolling and clipping.
 func (dp detailsPane) contentLines() []string {
+	return slices.Concat(dp.content()...)
+}
+
+// content returns the pane's lines in parts. Only the location block is
+// cached; the parts around it are bounded in size and rebuilt per call so
+// in-place edits (annotations, comments) show at once.
+func (dp detailsPane) content() paneContent {
 	if dp.finding == nil {
-		return []string{"  No finding selected"}
+		return paneContent{{"  No finding selected"}}
 	}
 
 	contentWidth := dp.width - 4
-	f := dp.finding
+	head := renderFindingHeader(dp.finding, contentWidth)
+
+	m := dp.selectedMatch()
+	if m == nil {
+		return paneContent{append(head, "  No matches")}
+	}
+	head = append(head,
+		fmt.Sprintf("  %s", headerRowStyle.Render(fmt.Sprintf("Match %d/%d (h/l to navigate)", dp.matchCursor+1, len(dp.visibleMatchIdx)))),
+		"  "+strings.Repeat("─", min(40, contentWidth-4)))
+	return paneContent{head, dp.matchBody(m, contentWidth), renderMatchTail(m, contentWidth)}
+}
+
+// matchBody returns the cached location and source lines of m, rendering them
+// only when the match, the repo filter or the width changed.
+func (dp detailsPane) matchBody(m *matchRow, width int) []string {
+	c := dp.cache
+	if c == nil {
+		return renderMatchBody(m, dp.repoFilter, width)
+	}
+	if c.match != m || c.width != width || !maps.Equal(c.filter, dp.repoFilter) {
+		*c = locationsCache{match: m, filter: maps.Clone(dp.repoFilter), width: width,
+			lines: renderMatchBody(m, dp.repoFilter, width)}
+	}
+	return c.lines
+}
+
+// renderFindingHeader renders the finding-level lines above the match.
+func renderFindingHeader(f *findingRow, contentWidth int) []string {
 	var lines []string
 
 	// Finding header
 	lines = append(lines, fmt.Sprintf("  %s %s",
 		fieldLabelStyle.Render("Rule:"),
-		fieldValueStyle.Render(fmt.Sprintf("%s (%s)", f.RuleName, f.RuleID))))
+		fieldValueStyle.Render(types.SanitizeDisplay(fmt.Sprintf("%s (%s)", f.RuleName, f.RuleID)))))
 
 	if len(f.Categories) > 0 {
 		lines = append(lines, fmt.Sprintf("  %s %s",
 			fieldLabelStyle.Render("Categories:"),
-			fieldValueStyle.Render(strings.Join(f.Categories, ", "))))
+			fieldValueStyle.Render(types.SanitizeDisplay(strings.Join(f.Categories, ", ")))))
 	}
 
 	// Groups with named groups if available
@@ -202,25 +293,25 @@ func (dp detailsPane) contentLines() []string {
 	if f.Comment != "" {
 		lines = append(lines, fmt.Sprintf("  %s %s",
 			fieldLabelStyle.Render("Comment:"),
-			fieldValueStyle.Render(f.Comment)))
+			fieldValueStyle.Render(types.SanitizeDisplay(f.Comment))))
 	}
 
-	lines = append(lines, "")
-
-	// Match details
-	m := dp.selectedMatch()
-	if m == nil {
-		return append(lines, "  No matches")
-	}
-	lines = append(lines, fmt.Sprintf("  %s",
-		headerRowStyle.Render(fmt.Sprintf("Match %d/%d (h/l to navigate)", dp.matchCursor+1, len(dp.visibleMatchIdx)))))
-	lines = append(lines, "  "+strings.Repeat("─", min(40, contentWidth-4)))
-	return append(lines, renderMatchDetails(m, dp.repoFilter, contentWidth)...)
+	return append(lines, "")
 }
 
 func renderMatchDetails(m *matchRow, sel map[string]bool, maxWidth int) []string {
-	lines := renderLocations(m, sel, maxWidth)
-	lines = append(lines, renderSourceDetails(m.Provenance, sel)...)
+	return slices.Concat(renderMatchBody(m, sel, maxWidth), renderMatchTail(m, maxWidth))
+}
+
+// renderMatchBody renders the parts of a match that grow with the data: its
+// locations and the details of its extended sources.
+func renderMatchBody(m *matchRow, sel map[string]bool, maxWidth int) []string {
+	return append(renderLocations(m, sel, maxWidth), renderSourceDetails(m.Provenance, sel)...)
+}
+
+// renderMatchTail renders the bounded per-match lines below the locations.
+func renderMatchTail(m *matchRow, maxWidth int) []string {
+	var lines []string
 
 	// Blob
 	lines = append(lines, fmt.Sprintf("  %s %s",
@@ -245,7 +336,7 @@ func renderMatchDetails(m *matchRow, sel map[string]bool, maxWidth int) []string
 			valLine += fmt.Sprintf(" (%.2f)", m.Confidence)
 		}
 		if m.Message != "" {
-			valLine += " - " + m.Message
+			valLine += " - " + types.SanitizeDisplay(m.Message)
 		}
 		lines = append(lines, valLine)
 	}
@@ -254,9 +345,9 @@ func renderMatchDetails(m *matchRow, sel map[string]bool, maxWidth int) []string
 	if len(m.NamedGroups) > 0 {
 		lines = append(lines, fmt.Sprintf("  %s", fieldLabelStyle.Render("Named Groups:")))
 		for name, val := range m.NamedGroups {
-			label := name + ":"
+			label := types.SanitizeDisplay(name) + ":"
 			sanitized := sanitizeForDisplay(val)
-			labelWidth := len(label) + 5 // "    " + label + " "
+			labelWidth := ansi.StringWidth(label) + 5 // "    " + label + " "
 			wrapped := wrapLine(sanitized, max(20, maxWidth-labelWidth))
 			indent := strings.Repeat(" ", labelWidth)
 			for j, line := range wrapped {
@@ -278,7 +369,7 @@ func renderMatchDetails(m *matchRow, sel map[string]bool, maxWidth int) []string
 	if m.Comment != "" {
 		lines = append(lines, fmt.Sprintf("  %s %s",
 			fieldLabelStyle.Render("Comment:"),
-			fieldValueStyle.Render(m.Comment)))
+			fieldValueStyle.Render(types.SanitizeDisplay(m.Comment))))
 	}
 
 	// Snippet
@@ -310,14 +401,12 @@ func renderMatchDetails(m *matchRow, sel map[string]bool, maxWidth int) []string
 
 // renderLocations renders the "Locations N:" heading and one line per location
 // visible under sel, using the shared human line format. Each line is
-// sanitized, then wrapped with a 6-space continuation indent.
+// sanitized, then wrapped with a 6-space continuation indent. When the
+// locations could not be loaded, it says so instead of showing a count.
 func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
-	vis := visibleOccurrences(m.Occurrences, sel)
-	disp := types.DisambiguateDisplay(vis)
-	lines := []string{"  " + fieldLabelStyle.Render(fmt.Sprintf("Locations %d:", len(vis)))}
 	wrapWidth := max(20, maxWidth-6)
-	for i, o := range vis {
-		text := types.SanitizeDisplay(types.FormatLine(o, m.Location.Source.Start.Line, disp[i]))
+	var lines []string
+	appendWrapped := func(text string) {
 		for j, part := range wrapLine(text, wrapWidth) {
 			indent := "      "
 			if j == 0 {
@@ -326,14 +415,20 @@ func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
 			lines = append(lines, indent+fieldValueStyle.Render(part))
 		}
 	}
-	if types.LocationsTruncated(m.Provenance) {
-		for j, part := range wrapLine(types.LocationsTruncatedNotice, wrapWidth) {
-			indent := "      "
-			if j == 0 {
-				indent = "    "
-			}
-			lines = append(lines, indent+fieldValueStyle.Render(part))
+
+	if m.LocationsErr != nil {
+		lines = append(lines, "  "+fieldLabelStyle.Render("Locations unavailable:"))
+		appendWrapped(types.SanitizeDisplay(m.LocationsErr.Error()))
+	} else {
+		vis := visibleOccurrences(m.Occurrences, sel)
+		disp := types.DisambiguateDisplay(vis)
+		lines = append(lines, "  "+fieldLabelStyle.Render(fmt.Sprintf("Locations %d:", len(vis))))
+		for i, o := range vis {
+			appendWrapped(types.SanitizeDisplay(types.FormatLine(o, m.Location.Source.Start.Line, disp[i])))
 		}
+	}
+	if types.LocationsTruncated(m.Provenance) {
+		appendWrapped(types.LocationsTruncatedNotice)
 	}
 	return lines
 }
@@ -400,24 +495,15 @@ func extendedIDLabel(entityType any) string {
 	}
 }
 
-// wrapLine splits a string into lines of at most maxWidth runes. Existing
-// newlines in the input are respected. Splitting by rune keeps multi-byte
-// characters whole; wide characters may still exceed maxWidth cells, which
-// the pane's final ansi.Truncate clips.
+// wrapLine splits a string into lines of at most maxWidth terminal cells.
+// Existing newlines in the input are respected. Wrapping by display width,
+// not by rune, keeps wide characters (CJK, emoji) from overflowing the pane,
+// where the final clip would otherwise drop the end of the line.
 func wrapLine(s string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		return []string{s}
 	}
-	var result []string
-	for _, line := range strings.Split(s, "\n") {
-		runes := []rune(line)
-		for len(runes) > maxWidth {
-			result = append(result, string(runes[:maxWidth]))
-			runes = runes[maxWidth:]
-		}
-		result = append(result, string(runes))
-	}
-	return result
+	return strings.Split(ansi.Hardwrap(s, maxWidth, true), "\n")
 }
 
 func (dp detailsPane) visibleRows() int {

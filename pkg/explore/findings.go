@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 // sortField defines which column to sort by.
@@ -206,13 +207,13 @@ func (fp findingsPane) View() string {
 		return ""
 	}
 
-	header := fmt.Sprintf(" %-*s %-*s %*s %-*s %*s %-*s",
-		fp.colRuleName, "Rule Name"+sortIndicator(sortByRuleName),
-		fp.colGroups, "Groups",
+	header := fmt.Sprintf(" %s %s %*s %s %*s %s",
+		cell("Rule Name"+sortIndicator(sortByRuleName), fp.colRuleName),
+		cell("Groups", fp.colGroups),
 		fp.colMatches, "Locs"+sortIndicator(sortByMatches),
-		fp.colValidation, "Valid"+sortIndicator(sortByValidation),
+		cell("Valid"+sortIndicator(sortByValidation), fp.colValidation),
 		fp.colConfidence, "Conf"+sortIndicator(sortByConfidence),
-		fp.colStatus, "Status"+sortIndicator(sortByStatus),
+		cell("Status"+sortIndicator(sortByStatus), fp.colStatus),
 	)
 	b.WriteString(headerRowStyle.Width(contentWidth).Render(truncateString(header, contentWidth)))
 	b.WriteString("\n")
@@ -235,13 +236,13 @@ func (fp findingsPane) View() string {
 		}
 		statusStr := renderAnnotationStatus(row.AnnotationStatus)
 
-		line := fmt.Sprintf(" %-*s %-*s %*d %-*s %*s %-*s",
-			fp.colRuleName, truncateString(row.RuleName, fp.colRuleName),
-			fp.colGroups, groupStr,
+		line := fmt.Sprintf(" %s %s %*d %s %*s %s",
+			cell(types.SanitizeDisplay(row.RuleName), fp.colRuleName),
+			cell(groupStr, fp.colGroups),
 			fp.colMatches, fp.locationCount(row),
-			fp.colValidation, valStr,
+			cell(valStr, fp.colValidation),
 			fp.colConfidence, confStr,
-			fp.colStatus, statusStr,
+			cell(statusStr, fp.colStatus),
 		)
 
 		if isCurrent && fp.focused {
@@ -305,4 +306,11 @@ func formatGroups(groups [][]byte) string {
 		parts[i] = sanitizeForDisplay(g)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// cell fits s to a column of width terminal cells: truncated when wider, padded
+// when narrower. It measures display width, so wide or styled text keeps the
+// columns after it aligned, where a %-*s verb would pad by bytes.
+func cell(s string, width int) string {
+	return padRight(truncateString(s, width), width)
 }

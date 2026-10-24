@@ -80,10 +80,12 @@ func TestWrapLine(t *testing.T) {
 			want:     []string{"abc", ""},
 		},
 		{
-			name:     "multibyte runes stay whole",
+			// Wrapping is by display width: each CJK rune is two cells, so a
+			// 3-cell line holds "ab" or one CJK rune plus one ASCII rune.
+			name:     "wide runes wrap by display width",
 			input:    "ab日本語cd",
 			maxWidth: 3,
-			want:     []string{"ab日", "本語c", "d"},
+			want:     []string{"ab", "日", "本", "語c", "d"},
 		},
 	}
 

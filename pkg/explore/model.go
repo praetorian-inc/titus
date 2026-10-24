@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -475,7 +476,7 @@ func (m *Model) renderOverlay() string {
 		title = " Comment (enter to save, esc to cancel) "
 		overlayWidth = min(60, m.width-4)
 		overlayHeight = 5
-		content = fmt.Sprintf("\n  > %s_\n", m.commentInput)
+		content = fmt.Sprintf("\n  > %s_\n", types.SanitizeDisplay(m.commentInput))
 	case overlayExclude:
 		title = " Exclude Patterns (esc to close) "
 		overlayWidth = min(70, m.width-4)
@@ -690,8 +691,9 @@ func (m *Model) hitTestPane(x, y, contentHeight int) focusedPane {
 }
 
 func (m *Model) applyFilters() {
-	// The Repository facet narrows locations as well as findings. Both panes
-	// take the selection before the rows and the finding are set.
+	// The Repository facet narrows locations as well as findings. The
+	// findings pane takes the selection before its rows are set; the details
+	// pane accepts it in either order with setFinding.
 	sel := m.filters.facets.selectedValues(facetRepository)
 	m.findings.setRepoFilter(sel)
 	m.details.setRepoFilter(sel)
@@ -891,9 +893,19 @@ func (m *Model) openInPager(filePath string, line int) tea.Cmd {
 		pager = "less"
 	}
 
+	// An absolute path cannot start with "-" or "+", so no pager reads it as
+	// an option or an initial command. less also gets "--" to end its options.
+	if abs, err := filepath.Abs(filePath); err == nil {
+		filePath = abs
+	} else if !filepath.IsAbs(filePath) {
+		filePath = "." + string(filepath.Separator) + filePath
+	}
 	var args []string
-	if line > 0 && pager == "less" {
-		args = append(args, fmt.Sprintf("+%d", line))
+	if pager == "less" {
+		if line > 0 {
+			args = append(args, fmt.Sprintf("+%d", line))
+		}
+		args = append(args, "--")
 	}
 	args = append(args, filePath)
 
