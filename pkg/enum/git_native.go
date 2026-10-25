@@ -272,6 +272,11 @@ func parseRevList(r io.Reader) (revList, error) {
 		}
 		line := chunk
 		if len(long) > 0 {
+			// The line's last chunk is bounded too: without this check a
+			// line up to one buffer over maxRecord kept its path (R2).
+			if !tooLong && len(long)+len(bytes.TrimSuffix(chunk, []byte{'\n'})) > maxRecord {
+				tooLong = true
+			}
 			if !tooLong {
 				long = append(long, chunk...)
 			}

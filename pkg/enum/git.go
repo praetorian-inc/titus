@@ -170,14 +170,15 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 		return fmt.Errorf("failed to open git repository: %w", err)
 	}
 
-	blobs, idx, err := goGitHistoryIndex(ctx, repo)
+	// missing starts at the tagged-tree subtrees the index walk could not
+	// read, so one warning reports them with the missing blobs (N2).
+	blobs, idx, missing, err := goGitHistoryIndex(ctx, repo)
 	if err != nil {
 		return err
 	}
 	writeEnumWarnings(e.warnWriter(), idx, 0)
 	id := e.repoIdentity(goGitOriginIdentity(repo))
 
-	missing := 0
 	defer func() { writeMissingWarning(e.warnWriter(), missing) }()
 	for _, b := range blobs {
 		if err := ctx.Err(); err != nil {
@@ -209,20 +210,21 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 // goGitHistoryIndex diffs every commit reachable from HEAD or any ref against
 // its first parent (no rename detection), the go-git equivalent of
 // blobIndexLogArgs. It returns the scan set, deduplicated by blob in
-// first-seen order, and the blob index. Only two trees are held at a time.
+// first-seen order, the blob index, and the number of tagged-tree subtrees
+// missing from the repository. Only two trees are held at a time.
 //
 // It walks the commit graph itself rather than with repo.Log(All): that
 // iterator skips refs to annotated tags, stops each ref's walk at the first
 // commit already seen (so a merge's other parents behind it are never
 // reached), and drops iterator errors.
-func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, *blobIndex, error) {
+func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, *blobIndex, int, error) {
 	stack, others, err := goGitTips(repo)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	shallowList, err := repo.Storer.Shallow()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read shallow commits: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to read shallow commits: %w", err)
 	}
 	shallow := make(map[plumbing.Hash]struct{}, len(shallowList))
 	for _, h := range shallowList {
@@ -240,7 +242,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 
 	for len(stack) > 0 {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 		h := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -251,7 +253,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 
 		c, err := repo.CommitObject(h)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get commit %s: %w", h, err)
+			return nil, nil, 0, fmt.Errorf("failed to get commit %s: %w", h, err)
 		}
 		// A shallow commit's parents are not in the repository: git treats
 		// it as a root.
@@ -261,7 +263,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 		}
 		changes, err := firstParentChanges(ctx, c, isShallow)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 		p.goGitHeader(c)
 		for _, ch := range changes {
@@ -290,57 +292,107 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 	// --objects lists them with their path inside the tagged tree, or an
 	// empty path for a tagged blob, and git log never sees them, so they
 	// join the scan set with that path and no commit, as on the native path.
+	tw := newTaggedWalk(repo, blobs, seen, &p.x.stats)
 	for _, o := range others {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		blobs, err = appendTaggedBlobs(repo, o, blobs, seen)
-		if err != nil {
-			return nil, nil, err
+		if err := tw.add(ctx, o); err != nil {
+			return nil, nil, 0, err
 		}
 	}
-	return blobs, p.finish(), nil
+	return tw.blobs, p.finish(), tw.missing, nil
 }
 
-// appendTaggedBlobs appends the blobs of the tagged object o (a tree or a
-// blob) not already in seen, each with its path inside the tree as rev-list
-// reports it.
-func appendTaggedBlobs(repo *git.Repository, o taggedObject, blobs []blobEntry, seen map[[20]byte]struct{}) ([]blobEntry, error) {
-	add := func(h plumbing.Hash, path string) {
-		hash := [20]byte(h)
-		if _, ok := seen[hash]; ok {
-			return
-		}
-		seen[hash] = struct{}{}
-		if len(path) > maxRecord { // dropped, as rev-list does (SEC-9)
-			path = ""
-		}
-		blobs = append(blobs, blobEntry{hash: hash, path: path})
-	}
-	if o.typ == plumbing.BlobObject {
-		add(o.hash, "")
-		return blobs, nil
-	}
-	tree, err := repo.TreeObject(o.hash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tagged tree %s: %w", o.hash, err)
-	}
-	w := object.NewTreeWalker(tree, true, nil)
-	defer w.Close()
-	for {
-		name, entry, err := w.Next()
-		if errors.Is(err, io.EOF) {
-			return blobs, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to walk tagged tree %s: %w", o.hash, err)
-		}
-		if entry.Mode == filemode.Dir || entry.Mode == filemode.Submodule {
-			continue
-		}
-		add(entry.Hash, name)
+// taggedWalk collects the blobs of tagged trees and blobs as rev-list
+// --objects lists them: each object once, a blob with the first path it is
+// reached at in a pre-order walk, in tree-entry order. Every tree is read
+// once across all tagged roots, so a tree that names one subtree many
+// times costs one read per distinct tree, not one per path (N1).
+type taggedWalk struct {
+	repo    *git.Repository
+	blobs   []blobEntry
+	seen    map[[20]byte]struct{}      // blobs, shared with the commit walk
+	trees   map[plumbing.Hash]struct{} // trees already walked, across roots
+	stats   *indexStats                // receives over-long paths (R2)
+	missing int                        // subtrees missing from the repository
+}
+
+func newTaggedWalk(repo *git.Repository, blobs []blobEntry, seen map[[20]byte]struct{}, stats *indexStats) *taggedWalk {
+	return &taggedWalk{
+		repo:  repo,
+		blobs: blobs,
+		seen:  seen,
+		trees: make(map[plumbing.Hash]struct{}),
+		stats: stats,
 	}
 }
+
+// add walks the tagged object o, a tree or a blob.
+func (w *taggedWalk) add(ctx context.Context, o taggedObject) error {
+	if o.typ == plumbing.BlobObject {
+		w.addBlob(o.hash, "")
+		return nil
+	}
+	return w.walkTree(ctx, o.hash, "", 0)
+}
+
+// walkTree adds the blobs under the tree h, whose path is prefix. A tree
+// missing from the repository is counted, as rev-list's missing=print mode
+// reports it, and its siblings are still walked (N2).
+func (w *taggedWalk) walkTree(ctx context.Context, h plumbing.Hash, prefix string, depth int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, ok := w.trees[h]; ok {
+		return nil
+	}
+	w.trees[h] = struct{}{}
+	if depth > maxTaggedTreeDepth {
+		return fmt.Errorf("failed to walk tagged tree %s: %w", h, object.ErrMaxTreeDepth)
+	}
+	tree, err := w.repo.TreeObject(h)
+	if errors.Is(err, plumbing.ErrObjectNotFound) {
+		w.missing++
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get tagged tree %s: %w", h, err)
+	}
+	for _, entry := range tree.Entries {
+		path := entry.Name
+		if prefix != "" {
+			path = prefix + "/" + entry.Name
+		}
+		switch entry.Mode {
+		case filemode.Submodule:
+			continue // a gitlink, not an object in this repository
+		case filemode.Dir:
+			if err := w.walkTree(ctx, entry.Hash, path, depth+1); err != nil {
+				return err
+			}
+		default:
+			w.addBlob(entry.Hash, path)
+		}
+	}
+	return nil
+}
+
+// addBlob adds h with path unless it was already seen. A path over
+// maxRecord is dropped and counted, as rev-list's is (SEC-9, R2).
+func (w *taggedWalk) addBlob(h plumbing.Hash, path string) {
+	hash := [20]byte(h)
+	if _, ok := w.seen[hash]; ok {
+		return
+	}
+	w.seen[hash] = struct{}{}
+	if len(path) > maxRecord {
+		w.stats.overlong++
+		path = ""
+	}
+	w.blobs = append(w.blobs, blobEntry{hash: hash, path: path})
+}
+
+// maxTaggedTreeDepth bounds tagged-tree nesting as go-git bounds its own
+// tree walks.
+const maxTaggedTreeDepth = 1024
 
 // taggedObject is a tree or blob that a ref points at, directly or through
 // annotated tags.

@@ -1,10 +1,18 @@
 package enum
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -147,4 +155,188 @@ func TestGoGitHistory_TagsToTreesAndBlobs(t *testing.T) {
 		"annotated-tag blob":      annotated,
 		"lightweight-tag blob":    lightweight,
 	})
+}
+
+// treeBomb writes a tree of depth levels in which each level names the level
+// below twice, so depth+1 tree objects expand to 2^depth paths, and tags it.
+// It returns the content of the one blob at the bottom.
+func treeBomb(t *testing.T, dir string, depth int) string {
+	t.Helper()
+	const leaf = "BOMB_LEAF=one-blob-under-every-path\n"
+	tree := gitInput(t, dir, []byte("100644 blob "+hashBlob(t, dir, leaf)+"\tf\n"), "mktree")
+	for range depth {
+		tree = gitInput(t, dir, []byte("040000 tree "+tree+"\tx\n040000 tree "+tree+"\ty\n"), "mktree")
+	}
+	runGit(t, dir, "tag", "bomb", tree)
+	return leaf
+}
+
+// N1: a tagged tree that names the same subtree many times is walked once
+// per distinct tree, as rev-list --objects does, not once per path. A
+// depth-20 bomb (2^20 paths, 21 tree objects) must finish at once.
+func TestGoGitHistory_TaggedTreeBomb(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "base.txt"), "base\n")
+	commitAt(t, dir, "base", "2026-01-01T00:00:00Z")
+	leaf := treeBomb(t, dir, 20)
+
+	repo, err := git.PlainOpen(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		blobs []blobEntry
+		err   error
+	}
+	done := make(chan result, 1)
+	start := time.Now()
+	go func() {
+		blobs, _, _, err := goGitHistoryIndex(context.Background(), repo)
+		done <- result{blobs, err}
+	}()
+	var r result
+	select {
+	case r = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("go-git walk of a depth-20 tagged tree bomb did not finish in 5 s: subtrees are walked per path")
+	}
+	elapsed := time.Since(start)
+	if r.err != nil {
+		t.Fatalf("goGitHistoryIndex: %v", r.err)
+	}
+	if elapsed > time.Second {
+		t.Errorf("walk took %v, want well under 1 s", elapsed)
+	}
+	want := strings.Repeat("x/", 20) + "f"
+	leafHash := contentHash(leaf)
+	found := false
+	for _, b := range r.blobs {
+		if b.hash == leafHash {
+			found = true
+			if b.path != want {
+				t.Errorf("leaf path = %q, want %q (rev-list's first path)", b.path, want)
+			}
+		}
+	}
+	if !found {
+		t.Error("the bomb's leaf blob was not scanned")
+	}
+	assertGoGitMatchesNative(t, dir, map[string]string{"bomb leaf": leaf})
+}
+
+// N1: the tagged-tree walk checks the context itself, not only between
+// tagged roots.
+func TestGoGitHistory_TaggedTreeWalkCancelled(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	treeBomb(t, dir, 2)
+	repo, err := git.PlainOpen(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, typ, err := peelRef(repo, plumbing.NewHash(gitOutput(t, dir, "rev-parse", "bomb")))
+	if err != nil || typ != plumbing.TreeObject {
+		t.Fatalf("fixture: peel bomb = %v, %v", typ, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	w := newTaggedWalk(repo, nil, map[[20]byte]struct{}{}, &indexStats{})
+	if err := w.add(ctx, taggedObject{hash: h, typ: typ}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
+// enumWalks are the two history walks, keyed by name, for tests that
+// assert the same behavior on both.
+var enumWalks = map[string]func(*GitEnumerator) func(context.Context, func([]byte, types.BlobID, types.Provenance) error) error{
+	"native": func(e *GitEnumerator) func(context.Context, func([]byte, types.BlobID, types.Provenance) error) error {
+		return e.enumerateAllHistoryNative
+	},
+	"go-git": func(e *GitEnumerator) func(context.Context, func([]byte, types.BlobID, types.Provenance) error) error {
+		return e.enumerateAllHistory
+	},
+}
+
+// runWalkWarn runs one walk over dir and returns the scanned contents and
+// the warnings.
+func runWalkWarn(t *testing.T, dir string, walk func(*GitEnumerator) func(context.Context, func([]byte, types.BlobID, types.Provenance) error) error) (map[string]bool, string) {
+	t.Helper()
+	e := nativeEnum(dir)
+	var warn bytes.Buffer
+	e.warn = &warn
+	seen := map[string]bool{}
+	err := walk(e)(context.Background(), func(content []byte, _ types.BlobID, _ types.Provenance) error {
+		seen[string(content)] = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v (warnings %q)", err, warn.String())
+	}
+	return seen, warn.String()
+}
+
+// N2: a subtree missing from the repository is counted and reported, and
+// the tagged tree's other entries are still scanned, on both walks.
+func TestGoGitHistory_TaggedTreeMissingSubtree(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "base.txt"), "base\n")
+	commitAt(t, dir, "base", "2026-01-01T00:00:00Z")
+
+	const (
+		lost    = "LOST=under-a-missing-subtree\n"
+		sibling = "SIBLING=after-the-missing-subtree\n"
+	)
+	sub := gitInput(t, dir, []byte("100644 blob "+hashBlob(t, dir, lost)+"\tlost.env\n"), "mktree")
+	tree := gitInput(t, dir, []byte("040000 tree "+sub+"\ta\n100644 blob "+hashBlob(t, dir, sibling)+"\tb.env\n"), "mktree")
+	runGit(t, dir, "tag", "partial", tree)
+	if err := os.Remove(filepath.Join(dir, ".git", "objects", sub[:2], sub[2:])); err != nil {
+		t.Fatalf("fixture: remove subtree object: %v", err)
+	}
+
+	for name, walk := range enumWalks {
+		t.Run(name, func(t *testing.T) {
+			seen, warn := runWalkWarn(t, dir, walk)
+			if !seen[sibling] {
+				t.Error("b.env, the missing subtree's sibling, was not scanned")
+			}
+			if want := "titus: 1 git objects are missing"; !strings.Contains(warn, want) {
+				t.Errorf("warnings = %q, want %q", warn, want)
+			}
+		})
+	}
+}
+
+// R2: a tagged-tree path over maxRecord is dropped and counted in the
+// over-long warning on both walks; the blob is still scanned.
+func TestGoGitHistory_TaggedTreeOverlongPath(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "base.txt"), "base\n")
+	commitAt(t, dir, "base", "2026-01-01T00:00:00Z")
+
+	const content = "LONG=path-over-max-record\n"
+	id, err := hex.DecodeString(hashBlob(t, dir, content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "100644 " + strings.Repeat("p", maxRecord+1) + "\x00" + string(id)
+	runGit(t, dir, "tag", "long", hashObjectLiterally(t, dir, "tree", body))
+
+	for name, walk := range enumWalks {
+		t.Run(name, func(t *testing.T) {
+			seen, warn := runWalkWarn(t, dir, walk)
+			if !seen[content] {
+				t.Error("the blob at the over-long path was not scanned")
+			}
+			if want := "titus: skipped 1 over-long git records"; !strings.Contains(warn, want) {
+				t.Errorf("warnings = %q, want %q", warn, want)
+			}
+		})
+	}
 }

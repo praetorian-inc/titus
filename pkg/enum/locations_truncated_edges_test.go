@@ -497,7 +497,7 @@ func TestHistoryIndex_PostCapEarlierRetouchMarksKeptBlob(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, idx, err := goGitHistoryIndex(context.Background(), repo)
+			_, idx, _, err := goGitHistoryIndex(context.Background(), repo)
 			if err != nil {
 				t.Fatal(err)
 			}

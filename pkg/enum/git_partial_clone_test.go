@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -218,4 +219,88 @@ func TestGoGitHistory_MissingBlobReported(t *testing.T) {
 	if want := "titus: 1 git objects are missing"; !strings.Contains(warn.String(), want) {
 		t.Errorf("warnings = %q, want %q", warn.String(), want)
 	}
+}
+
+// firstMissing returns one object id the partial clone lacks.
+func (pc partialClone) firstMissing(t *testing.T) string {
+	t.Helper()
+	for _, line := range strings.Split(gitOutput(t, pc.dir, "rev-list", "--all", "--objects", "--missing=print"), "\n") {
+		if id, ok := strings.CutPrefix(line, "?"); ok {
+			return id
+		}
+	}
+	t.Fatal("fixture: no missing object")
+	return ""
+}
+
+// R1: hardenedGit itself never lazily fetches. Reading a missing object
+// directly, which rev-list's missing=print mode otherwise keeps away from
+// cat-file, must not
+// run the scanned repository's uploadpack. The control proves the fixture is
+// live: the same command through plain git runs it.
+func TestHardenedGit_CatFileMissingNoLazyFetch(t *testing.T) {
+	pc := newPartialClone(t)
+	missing := pc.firstMissing(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_ = hardenedGit(ctx, pc.dir, "cat-file", "-p", missing).Run() // fails: the object is absent
+	pc.assertNoFetch(t)
+
+	control := exec.CommandContext(ctx, "git", "cat-file", "-p", missing)
+	control.Dir = pc.dir
+	control.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=0")
+	_ = control.Run() // the fetch's outcome is irrelevant; the marker is the signal
+	if _, err := os.Stat(pc.marker); err != nil {
+		t.Fatalf("fixture is not live: plain git cat-file did not run remote.origin.uploadpack: %v", err)
+	}
+}
+
+// R1 / V1 on git older than 2.45: with GIT_NO_LAZY_FETCH unset and without
+// -c protocol.allow=never (which the repository's own
+// protocol.file.allow=always overrides), the GIT_ALLOW_PROTOCOL= entry of
+// hardenedGitEnv alone stops the lazy fetch.
+func TestHardenedGit_AllowProtocolAloneBlocksLazyFetch(t *testing.T) {
+	pc := newPartialClone(t)
+	missing := pc.firstMissing(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := hardenedGit(ctx, pc.dir, "cat-file", "-p", missing)
+	cmd.Env = slices.DeleteFunc(cmd.Env, func(kv string) bool {
+		return strings.HasPrefix(kv, "GIT_NO_LAZY_FETCH=")
+	})
+	cmd.Args = withoutConfig(cmd.Args, "protocol.allow=never")
+	if slices.Contains(cmd.Args, "protocol.allow=never") || slices.ContainsFunc(cmd.Env, func(kv string) bool {
+		return strings.HasPrefix(kv, "GIT_NO_LAZY_FETCH=")
+	}) {
+		t.Fatal("fixture: the other two layers are still present")
+	}
+	_ = cmd.Run() // fails: the object is absent
+	pc.assertNoFetch(t)
+
+	// Control: the same command without GIT_ALLOW_PROTOCOL= does fetch, so
+	// the entry is what blocked it.
+	cmd = hardenedGit(ctx, pc.dir, "cat-file", "-p", missing)
+	cmd.Env = append(slices.DeleteFunc(cmd.Env, func(kv string) bool {
+		return strings.HasPrefix(kv, "GIT_NO_LAZY_FETCH=") || strings.HasPrefix(kv, "GIT_ALLOW_PROTOCOL=")
+	}), "GIT_NO_LAZY_FETCH=0")
+	cmd.Args = withoutConfig(cmd.Args, "protocol.allow=never")
+	_ = cmd.Run()
+	if _, err := os.Stat(pc.marker); err != nil {
+		t.Fatalf("fixture is not live: without GIT_ALLOW_PROTOCOL= the uploadpack did not run: %v", err)
+	}
+}
+
+// withoutConfig returns args without the "-c kv" pair.
+func withoutConfig(args []string, kv string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-c" && i+1 < len(args) && args[i+1] == kv {
+			i++
+			continue
+		}
+		out = append(out, args[i])
+	}
+	return out
 }
