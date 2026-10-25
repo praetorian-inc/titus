@@ -7,6 +7,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -340,3 +342,79 @@ func TestGoGitHistory_TaggedTreeOverlongPath(t *testing.T) {
 		})
 	}
 }
+
+// R2b: both walks apply one over-long predicate, the path's own length, so
+// a path up to maxRecord keeps its location on both and a longer one is
+// dropped and counted on both. The object id's length plays no part.
+func TestGitHistory_OverlongPathBoundAgrees(t *testing.T) {
+	skipIfNoGit(t)
+	for _, n := range []int{maxRecord - 41, maxRecord - 1, maxRecord, maxRecord + 1} {
+		t.Run(strconv.Itoa(n), func(t *testing.T) {
+			dir := t.TempDir()
+			initGitRepo(t, dir)
+			writeFile(t, filepath.Join(dir, "base.txt"), "base\n")
+			commitAt(t, dir, "base", "2026-01-01T00:00:00Z")
+
+			const content = "LONG=path-near-max-record\n"
+			id, err := hex.DecodeString(hashBlob(t, dir, content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := strings.Repeat("p", n)
+			runGit(t, dir, "tag", "long", hashObjectLiterally(t, dir, "tree", "100644 "+path+"\x00"+string(id)))
+
+			wantKept, wantOverlong := n <= maxRecord, 0
+			if !wantKept {
+				wantOverlong = 1
+			}
+			for name, walk := range enumWalks {
+				kept, overlong := walkPathKept(t, dir, walk, content, path)
+				if kept != wantKept {
+					t.Errorf("%s: path of %d bytes kept = %v, want %v", name, n, kept, wantKept)
+				}
+				if overlong != wantOverlong {
+					t.Errorf("%s: over-long count = %d, want %d", name, overlong, wantOverlong)
+				}
+			}
+		})
+	}
+}
+
+// walkPathKept runs one walk over dir and reports whether the blob with
+// content was scanned with path among its locations, and the over-long
+// count from the warnings.
+func walkPathKept(t *testing.T, dir string, walk func(*GitEnumerator) func(context.Context, func([]byte, types.BlobID, types.Provenance) error) error, content, path string) (bool, int) {
+	t.Helper()
+	e := nativeEnum(dir)
+	var warn bytes.Buffer
+	e.warn = &warn
+	scanned, kept := false, false
+	err := walk(e)(context.Background(), func(c []byte, _ types.BlobID, prov types.Provenance) error {
+		if string(c) != content {
+			return nil
+		}
+		scanned = true
+		gp, ok := prov.(types.GitProvenance)
+		if !ok {
+			return nil
+		}
+		kept = kept || gp.BlobPath == path
+		for _, loc := range gp.Locations {
+			kept = kept || loc.Path == path
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v (warnings %q)", err, warn.String())
+	}
+	if !scanned {
+		t.Fatal("the blob was not scanned")
+	}
+	overlong := 0
+	if m := overlongWarning.FindStringSubmatch(warn.String()); m != nil {
+		overlong, _ = strconv.Atoi(m[1])
+	}
+	return kept, overlong
+}
+
+var overlongWarning = regexp.MustCompile(`skipped (\d+) over-long git records`)

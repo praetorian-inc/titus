@@ -216,7 +216,7 @@ type revList struct {
 	// so cat-file can be given the full id. It is nil in a SHA-1
 	// repository, which therefore pays nothing for SHA-256 support.
 	tails     [][12]byte
-	overlong  int // lines over maxRecord: id kept, path dropped (SEC-9)
+	overlong  int // paths over maxRecord: id kept, path dropped (SEC-9)
 	malformed int // lines that are not "<id>" or "<id> <path>" (SEC-8)
 	// missing counts objects git could not read: "?<id>" lines from
 	// rev-list's missing=print mode (a partial clone's unfetched objects) and
@@ -240,8 +240,10 @@ func (rl *revList) objectHex(dst []byte, i int) []byte {
 // are objects; lines "<id>" are commits and are skipped. The id width (40
 // for SHA-1, 64 for SHA-256) is fixed by the first valid line; a line of the
 // other width, or that is not lowercase hex, is skipped and counted as
-// malformed. A line longer than maxRecord keeps its id, so the blob is still
-// scanned, but loses its path and is counted as over-long (SEC-9).
+// malformed. A path longer than maxRecord is dropped and counted as
+// over-long, as the go-git walk drops it (SEC-9, R2); its id is kept, so the
+// blob is still scanned. A line is buffered up to maxRevListLine, so memory
+// per line stays bounded whatever the id width.
 func parseRevList(r io.Reader) (revList, error) {
 	br := bufio.NewReaderSize(r, 64<<10)
 	seen := revListSeen{
@@ -257,7 +259,7 @@ func parseRevList(r io.Reader) (revList, error) {
 	for {
 		chunk, err := br.ReadSlice('\n')
 		if errors.Is(err, bufio.ErrBufferFull) {
-			if len(long)+len(chunk) > maxRecord {
+			if len(long)+len(chunk) > maxRevListLine {
 				tooLong = true
 				if len(long) == 0 {
 					long = append(long, chunk[:min(len(chunk), sha256HexLen+1)]...)
@@ -273,8 +275,8 @@ func parseRevList(r io.Reader) (revList, error) {
 		line := chunk
 		if len(long) > 0 {
 			// The line's last chunk is bounded too: without this check a
-			// line up to one buffer over maxRecord kept its path (R2).
-			if !tooLong && len(long)+len(bytes.TrimSuffix(chunk, []byte{'\n'})) > maxRecord {
+			// line up to one buffer over the bound kept its path (R2).
+			if !tooLong && len(long)+len(bytes.TrimSuffix(chunk, []byte{'\n'})) > maxRevListLine {
 				tooLong = true
 			}
 			if !tooLong {
@@ -295,6 +297,11 @@ func parseRevList(r io.Reader) (revList, error) {
 		}
 	}
 }
+
+// maxRevListLine bounds one buffered rev-list line: the widest id, a space
+// and a path of maxRecord. A longer line's path is over maxRecord whatever
+// the id width, so it is dropped without being buffered.
+const maxRevListLine = sha256HexLen + 1 + maxRecord
 
 // revListSeen deduplicates rev-list objects on their full id. SHA-256 ids
 // are keyed on all 32 bytes, so two blobs that share the 20-byte index key
@@ -346,6 +353,12 @@ func (rl *revList) add(line []byte, dropPath bool, width *int, seen revListSeen)
 	}
 	if len(line) == n { // a commit
 		return
+	}
+	if !dropPath && len(line)-(n+1) > maxRecord {
+		// A path over maxRecord within the buffer bound: the same predicate
+		// as the go-git walk's, so both keep or drop the same paths (R2).
+		rl.overlong++
+		dropPath = true
 	}
 	b, tail, ok := parseRevListLine(line, n, dropPath)
 	if !ok {
