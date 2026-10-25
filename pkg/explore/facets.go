@@ -229,7 +229,6 @@ type findingRow struct {
 	Categories       []string
 	Repositories     []string // distinct non-empty facetKey values (repository, else extended source) across matches, sorted
 	Groups           [][]byte
-	MatchCount       int     // total locations (occurrences) across all matches, not the match count
 	ValidationStatus string  // aggregated: "valid", "invalid", "undetermined", or ""
 	Confidence       float64 // mean confidence across matches
 	AnnotationStatus string  // "accept", "reject", or ""
@@ -252,6 +251,7 @@ type matchRow struct {
 	Provenance       []types.Provenance // raw rows, kept for actions that need full provenance
 	Occurrences      []types.Occurrence // every location, from store.GetOccurrences; shared by the matches of one blob, do not modify
 	LocationsErr     error              // why Occurrences could not be loaded; nil when they were
+	ProvenanceErr    error              // why Provenance could not be loaded; nil when it was
 	AnnotationStatus string
 	Comment          string
 }

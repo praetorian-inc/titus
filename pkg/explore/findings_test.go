@@ -42,7 +42,7 @@ func TestFindingsPane_HeaderAndSortNameSayLocations(t *testing.T) {
 func TestFindingsPane_CountCellSumsVisibleLocationsAcrossMatches(t *testing.T) {
 	m1 := &matchRow{Occurrences: append(occsIn("github.com/acme/api", 2), occsIn("github.com/acme/web", 1)...)}
 	m2 := &matchRow{Occurrences: append(occsIn("github.com/acme/web", 1), types.Occurrence{Kind: "file", Path: "plain.txt"})}
-	f := &findingRow{RuleName: "Multi", MatchCount: 5, Matches: []*matchRow{m1, m2}}
+	f := &findingRow{RuleName: "Multi", Matches: []*matchRow{m1, m2}}
 	fp := newFindingsPane([]*findingRow{f})
 	fp.setSize(120, 10)
 
@@ -62,8 +62,8 @@ func TestFindingsPane_CountCellSumsVisibleLocationsAcrossMatches(t *testing.T) {
 func TestFindingsPane_LocationSortUsesVisibleCount(t *testing.T) {
 	// a: 3 api + 1 web = 4 total, 1 visible under web.
 	// b: 2 web = 2 total, 2 visible under web.
-	a := &findingRow{RuleName: "a", MatchCount: 4, Matches: []*matchRow{{Occurrences: append(occsIn("github.com/acme/api", 3), occsIn("github.com/acme/web", 1)...)}}}
-	b := &findingRow{RuleName: "b", MatchCount: 2, Matches: []*matchRow{{Occurrences: occsIn("github.com/acme/web", 2)}}}
+	a := &findingRow{RuleName: "a", Matches: []*matchRow{{Occurrences: append(occsIn("github.com/acme/api", 3), occsIn("github.com/acme/web", 1)...)}}}
+	b := &findingRow{RuleName: "b", Matches: []*matchRow{{Occurrences: occsIn("github.com/acme/web", 2)}}}
 	fp := newFindingsPane([]*findingRow{a, b})
 	fp.sortBy = sortByMatches
 	fp.sort()
@@ -93,7 +93,7 @@ func largeFindingSet(n int) []*findingRow {
 			}
 			matches[j] = &matchRow{Occurrences: occs}
 		}
-		rows[i] = &findingRow{RuleName: "r", MatchCount: 10, Matches: matches}
+		rows[i] = &findingRow{RuleName: "r", Matches: matches}
 	}
 	return rows
 }
@@ -130,9 +130,9 @@ func TestFindingsPane_SetFilteredRowsLocationSortIsFast(t *testing.T) {
 
 // selectionFixture: a has api x3 + web x1 (4 total, 1 under web); b has web x2.
 func selectionFixture() (a, b *findingRow) {
-	a = &findingRow{FindingID: "a", RuleName: "a", Repositories: []string{"github.com/acme/api", "github.com/acme/web"}, MatchCount: 4,
+	a = &findingRow{FindingID: "a", RuleName: "a", Repositories: []string{"github.com/acme/api", "github.com/acme/web"},
 		Matches: []*matchRow{{Occurrences: append(occsIn("github.com/acme/api", 3), occsIn("github.com/acme/web", 1)...)}}}
-	b = &findingRow{FindingID: "b", RuleName: "b", Repositories: []string{"github.com/acme/web"}, MatchCount: 2,
+	b = &findingRow{FindingID: "b", RuleName: "b", Repositories: []string{"github.com/acme/web"},
 		Matches: []*matchRow{{Occurrences: occsIn("github.com/acme/web", 2)}}}
 	return a, b
 }

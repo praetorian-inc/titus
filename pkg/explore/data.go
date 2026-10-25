@@ -197,27 +197,26 @@ func buildFindingRowWith(f *types.Finding, matches []*types.Match, ruleMap map[s
 		row.Matches = append(row.Matches, mr)
 	}
 
-	row.Repositories, row.MatchCount = summarizeOccurrences(row.Matches)
+	row.Repositories = facetValues(row.Matches)
 
 	return row
 }
 
-// summarizeOccurrences returns the distinct non-empty facet keys of the
-// matches' occurrences, sorted, and the total number of occurrences. A facet
+// facetValues returns the distinct non-empty facet keys of the matches'
+// occurrences, sorted. A facet
 // key is the occurrence's repository, or for an extended location its source
 // (see facetKey), so a facet value and a location cannot drift; a legacy row
 // keeps its stored repository string and is therefore a value of its own.
-func summarizeOccurrences(matches []*matchRow) (repos []string, locations int) {
+func facetValues(matches []*matchRow) []string {
 	set := make(map[string]struct{})
 	for _, mr := range matches {
-		locations += len(mr.Occurrences)
 		for _, o := range mr.Occurrences {
 			if k := facetKey(o); k != "" {
 				set[k] = struct{}{}
 			}
 		}
 	}
-	return slices.Sorted(maps.Keys(set)), locations
+	return slices.Sorted(maps.Keys(set))
 }
 
 // blobData is the provenance and locations of one blob, as loaded from the
@@ -271,8 +270,12 @@ func buildMatchRowWith(m *types.Match, s store.Store, blobs blobCache) *matchRow
 	// Load provenance
 	if s != nil {
 		d := blobs.get(s, m.BlobID)
+		// A failed provenance load is kept on the row too: without it the
+		// pane could not tell whether the locations are complete.
 		if d.provErr == nil {
 			mr.Provenance = d.provs
+		} else {
+			mr.ProvenanceErr = d.provErr
 		}
 
 		// A failed location load is kept on the row, so the details pane says

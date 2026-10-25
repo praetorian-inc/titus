@@ -94,7 +94,6 @@ func TestModel_CExplore1_RepositoryFacetNarrowsLocations(t *testing.T) {
 		FindingID:    "f2",
 		RuleName:     "Zeta Token",
 		Repositories: []string{"github.com/acme/api"},
-		MatchCount:   1,
 		Matches: []*matchRow{{Occurrences: []types.Occurrence{
 			{Kind: "git", Repository: "github.com/acme/api", Path: "z.env"},
 		}}},
@@ -146,7 +145,6 @@ func splitFinding() (*findingRow, *matchRow, *matchRow) {
 		FindingID:    "f1",
 		RuleName:     "Split",
 		Repositories: []string{"github.com/acme/api", "github.com/acme/web"},
-		MatchCount:   2,
 		Matches:      []*matchRow{apiMatch, webMatch},
 	}
 	return f, apiMatch, webMatch

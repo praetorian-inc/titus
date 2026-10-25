@@ -194,7 +194,7 @@ func (fp filterPane) View() string {
 
 	// Fill remaining lines
 	for i := visibleEnd - fp.offset; i < fp.visibleRows(); i++ {
-		b.WriteString(strings.Repeat(" ", fp.width-2))
+		b.WriteString(strings.Repeat(" ", max(0, fp.width-2)))
 		if i < fp.visibleRows()-1 {
 			b.WriteString("\n")
 		}

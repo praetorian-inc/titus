@@ -53,15 +53,15 @@ func TestBuildFindingRow(t *testing.T) {
 		},
 	}
 
-	// Each match is on the zero blob, which has one location: MatchCount counts
-	// locations, so two matches give 2.
+	// Each match is on the zero blob, which has one location: the location count
+	// counts locations, so two matches give 2.
 	row := buildFindingRow(finding, matches, ruleMap, storeWithOneLocation(t, types.BlobID{}))
 
 	if row.RuleName != "AWS API Key" {
 		t.Errorf("expected rule name 'AWS API Key', got '%s'", row.RuleName)
 	}
-	if row.MatchCount != 2 {
-		t.Errorf("expected 2 matches, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 2 {
+		t.Errorf("location count = %d, want 2", got)
 	}
 	if row.ValidationStatus != "valid" {
 		t.Errorf("expected validation 'valid', got '%s'", row.ValidationStatus)
@@ -208,8 +208,8 @@ func TestGroupMatchesByFinding_CustomRule(t *testing.T) {
 	if row.RuleName != "PowerShell Hardcoded Credential" {
 		t.Errorf("expected RuleName fallback to match-record RuleName, got %q", row.RuleName)
 	}
-	if row.MatchCount != 2 {
-		t.Errorf("expected MatchCount=2, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 2 {
+		t.Errorf("expected location count 2, got %d", got)
 	}
 }
 
@@ -330,8 +330,8 @@ func TestBuildFindingRow_CustomRule_NoMatches(t *testing.T) {
 	if row.RuleName != "custom.nodata.1" {
 		t.Errorf("expected RuleName fallback to RuleID, got %q", row.RuleName)
 	}
-	if row.MatchCount != 0 {
-		t.Errorf("expected MatchCount 0, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 0 {
+		t.Errorf("expected location count 0, got %d", got)
 	}
 	if len(row.Matches) != 0 {
 		t.Errorf("expected 0 match rows, got %d", len(row.Matches))
@@ -363,8 +363,8 @@ func TestBuildFindingRow_CustomRule_EmptyMatchRuleName(t *testing.T) {
 	if row.RuleName == "" {
 		t.Error("RuleName should never be empty; expected fallback to RuleID")
 	}
-	if row.MatchCount != 1 {
-		t.Errorf("expected MatchCount 1, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 1 {
+		t.Errorf("expected location count 1, got %d", got)
 	}
 }
 
@@ -440,8 +440,8 @@ func TestLoadData_CustomRuleFindingHasMatches(t *testing.T) {
 	row := data.findings[0]
 
 	// The fix (PR #232): custom rule finding must have its match populated
-	if row.MatchCount != 1 {
-		t.Errorf("expected MatchCount 1 (regression: was 0 before fix), got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 1 {
+		t.Errorf("expected location count 1 (regression: was 0 before fix), got %d", got)
 	}
 	if len(row.Matches) != 1 {
 		t.Errorf("expected 1 match row, got %d", len(row.Matches))
@@ -516,6 +516,9 @@ func TestBuildMatchRow_OccurrencesErrorLeavesRowUsable(t *testing.T) {
 	s := failingOccurrenceStore{storeWithOneLocation(t, blobID)}
 
 	mr := buildMatchRow(&types.Match{StructuralID: "m1", BlobID: blobID}, s)
+	if mr.LocationsErr == nil {
+		t.Errorf("LocationsErr = nil, want the GetOccurrences error")
+	}
 
 	if mr.Occurrences != nil {
 		t.Errorf("expected no occurrences on error, got %+v", mr.Occurrences)
@@ -535,8 +538,8 @@ func TestBuildFindingRow_RepositoriesAndLocationCount(t *testing.T) {
 	if !slices.Equal(row.Repositories, wantRepos) {
 		t.Errorf("Repositories = %q, want %q", row.Repositories, wantRepos)
 	}
-	if row.MatchCount != 3 {
-		t.Errorf("MatchCount (total locations) = %d, want 3", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 3 {
+		t.Errorf("location count = %d, want 3", got)
 	}
 }
 
@@ -550,8 +553,8 @@ func TestBuildFindingRow_LocationCountSumsAcrossMatches(t *testing.T) {
 
 	row := buildFindingRow(&types.Finding{ID: "f1", RuleID: m.RuleID}, []*types.Match{m, m2}, map[string]*types.Rule{}, s)
 
-	if row.MatchCount != 4 {
-		t.Errorf("MatchCount = %d, want 4 (3 + 1 locations)", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 4 {
+		t.Errorf("location count = %d, want 4 (3 + 1 locations)", got)
 	}
 	if len(row.Matches) != 2 {
 		t.Errorf("expected 2 match rows, got %d", len(row.Matches))
@@ -577,8 +580,8 @@ func TestBuildFindingRow_FileAddsNoFacetValue_ExtendedSourceDoes(t *testing.T) {
 	if !slices.Equal(row.Repositories, wantRepos) {
 		t.Errorf("Repositories = %q, want %q", row.Repositories, wantRepos)
 	}
-	if row.MatchCount != 5 {
-		t.Errorf("MatchCount = %d, want 5", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 5 {
+		t.Errorf("location count = %d, want 5", got)
 	}
 }
 

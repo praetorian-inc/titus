@@ -1,6 +1,7 @@
 package explore
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
@@ -529,14 +530,16 @@ func (m *Model) renderExcludeContent() string {
 	sb.WriteString("\n  Enter pattern (case-sensitive substring match on repo paths):\n")
 
 	if !m.excludeInListMode {
-		fmt.Fprintf(&sb, "  > %s_\n", m.excludeInput)
+		fmt.Fprintf(&sb, "  > %s_\n", types.SanitizeDisplay(m.excludeInput))
 	} else {
-		fmt.Fprintf(&sb, "    %s\n", m.excludeInput)
+		fmt.Fprintf(&sb, "    %s\n", types.SanitizeDisplay(m.excludeInput))
 	}
 
 	if len(m.excludePatterns) > 0 {
 		sb.WriteString("\n  Active patterns (tab to switch, x to delete):\n")
 		for i, p := range m.excludePatterns {
+			// Patterns stay raw for matching; only their display is escaped.
+			p = types.SanitizeDisplay(p)
 			if m.excludeInListMode && i == m.excludeCursor {
 				fmt.Fprintf(&sb, "  > %s\n", rejectStyle.Render(p))
 			} else {
@@ -888,31 +891,33 @@ func (m *Model) openSource() tea.Cmd {
 }
 
 func (m *Model) openInPager(filePath string, line int) tea.Cmd {
-	pager := os.Getenv("PAGER")
-	if pager == "" {
-		pager = "less"
-	}
+	name, args := pagerCommand(filePath, line)
+	c := exec.Command(name, args...)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return pagerFinishedMsg{err: err}
+	})
+}
 
-	// An absolute path cannot start with "-" or "+", so no pager reads it as
-	// an option or an initial command. less also gets "--" to end its options.
-	if abs, err := filepath.Abs(filePath); err == nil {
-		filePath = abs
-	} else if !filepath.IsAbs(filePath) {
-		filePath = "." + string(filepath.Separator) + filePath
+// pagerCommand returns the program and arguments that show path at line:
+// $PAGER, or less when it is unset. An absolute path cannot start with "-" or
+// "+", so no pager reads it as an option or an initial command. less also gets
+// -L, so a LESSOPEN preprocessor never runs on the file, and "--" to end its
+// options.
+func pagerCommand(path string, line int) (name string, args []string) {
+	name = cmp.Or(os.Getenv("PAGER"), "less")
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	} else if !filepath.IsAbs(path) {
+		path = "." + string(filepath.Separator) + path
 	}
-	var args []string
-	if pager == "less" {
+	if name == "less" {
+		args = append(args, "-L")
 		if line > 0 {
 			args = append(args, fmt.Sprintf("+%d", line))
 		}
 		args = append(args, "--")
 	}
-	args = append(args, filePath)
-
-	c := exec.Command(pager, args...)
-	return tea.ExecProcess(c, func(err error) tea.Msg {
-		return pagerFinishedMsg{err: err}
-	})
+	return name, append(args, path)
 }
 
 func (m *Model) updateLayout() {

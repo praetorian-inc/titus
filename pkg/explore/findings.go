@@ -41,6 +41,10 @@ type findingsPane struct {
 	// repoFilter is the Repository facet selection; the count column and its
 	// sort count only locations visible under it.
 	repoFilter map[string]bool
+	// counts caches locationCount per finding under repoFilter. It is a new
+	// map whenever the rows or the filter change, never cleared in place, so
+	// copies of the pane with different filters keep their own counts.
+	counts map[*findingRow]int
 
 	// Column widths
 	colRuleName   int
@@ -56,6 +60,7 @@ func newFindingsPane(rows []*findingRow) findingsPane {
 		allRows: rows,
 		rows:    rows,
 		sortAsc: true,
+		counts:  make(map[*findingRow]int),
 	}
 	fp.sort()
 	return fp
@@ -63,16 +68,26 @@ func newFindingsPane(rows []*findingRow) findingsPane {
 
 // setRepoFilter sets the Repository facet selection that the count column
 // counts under. Call it before setFilteredRows when the selection changes.
+// Callers pass a fresh map and never modify it afterwards.
 func (fp *findingsPane) setRepoFilter(sel map[string]bool) {
 	fp.repoFilter = sel
+	fp.counts = make(map[*findingRow]int)
 }
 
 // locationCount is the number of the finding's locations visible under the
 // repo filter, summed over its matches. It is the count cell and its sort key.
+// Locations do not change after load, so each count is computed once per
+// filter and then read from fp.counts.
 func (fp findingsPane) locationCount(f *findingRow) int {
+	if n, ok := fp.counts[f]; ok {
+		return n
+	}
 	n := 0
 	for _, mr := range f.Matches {
 		n += len(visibleOccurrences(mr.Occurrences, fp.repoFilter))
+	}
+	if fp.counts != nil {
+		fp.counts[f] = n
 	}
 	return n
 }
@@ -154,13 +169,8 @@ func (fp *findingsPane) sort() {
 	case sortByRuleName:
 		compare = func(a, b *findingRow) int { return cmp.Compare(a.RuleName, b.RuleName) }
 	case sortByMatches:
-		// Count each row's visible locations once; locationCount allocates
-		// under a repo filter, so it must stay out of the comparator.
-		counts := make(map[*findingRow]int, len(fp.rows))
-		for _, r := range fp.rows {
-			counts[r] = fp.locationCount(r)
-		}
-		compare = func(a, b *findingRow) int { return cmp.Compare(counts[a], counts[b]) }
+		// locationCount is cached per filter, so the comparator stays cheap.
+		compare = func(a, b *findingRow) int { return cmp.Compare(fp.locationCount(a), fp.locationCount(b)) }
 	case sortByValidation:
 		compare = func(a, b *findingRow) int { return cmp.Compare(a.ValidationStatus, b.ValidationStatus) }
 	case sortByConfidence:
@@ -183,7 +193,7 @@ func (fp findingsPane) View() string {
 	}
 
 	// Calculate column widths
-	contentWidth := fp.width - 4 // borders
+	contentWidth := max(0, fp.width-4) // borders; never negative in a tiny terminal
 	fp.colMatches = 8
 	fp.colValidation = 8
 	fp.colConfidence = 8

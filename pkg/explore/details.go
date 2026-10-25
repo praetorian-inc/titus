@@ -59,7 +59,7 @@ func (dp *detailsPane) setFinding(f *findingRow) {
 // setRepoFilter sets the Repository facet selection used to narrow locations
 // and match navigation. Like setFinding, it returns the pane to the first
 // visible match at the top, so the two calls give the same result in either
-// order.
+// order. Callers pass a fresh map and never modify it afterwards.
 func (dp *detailsPane) setRepoFilter(sel map[string]bool) {
 	dp.repoFilter = sel
 	dp.matchCursor = 0
@@ -147,7 +147,7 @@ func (dp detailsPane) View() string {
 		return ""
 	}
 
-	contentWidth := dp.width - 4
+	contentWidth := max(0, dp.width-4)
 	c := dp.content()
 
 	// Apply scroll offset
@@ -214,11 +214,6 @@ func (c paneContent) window(off, n int) []string {
 	return out
 }
 
-// contentLines renders every line of the pane before scrolling and clipping.
-func (dp detailsPane) contentLines() []string {
-	return slices.Concat(dp.content()...)
-}
-
 // content returns the pane's lines in parts. Only the location block is
 // cached; the parts around it are bounded in size and rebuilt per call so
 // in-place edits (annotations, comments) show at once.
@@ -227,7 +222,7 @@ func (dp detailsPane) content() paneContent {
 		return paneContent{{"  No finding selected"}}
 	}
 
-	contentWidth := dp.width - 4
+	contentWidth := max(0, dp.width-4)
 	head := renderFindingHeader(dp.finding, contentWidth)
 
 	m := dp.selectedMatch()
@@ -236,7 +231,7 @@ func (dp detailsPane) content() paneContent {
 	}
 	head = append(head,
 		fmt.Sprintf("  %s", headerRowStyle.Render(fmt.Sprintf("Match %d/%d (h/l to navigate)", dp.matchCursor+1, len(dp.visibleMatchIdx)))),
-		"  "+strings.Repeat("─", min(40, contentWidth-4)))
+		"  "+strings.Repeat("─", min(40, max(0, contentWidth-4))))
 	return paneContent{head, dp.matchBody(m, contentWidth), renderMatchTail(m, contentWidth)}
 }
 
@@ -274,7 +269,7 @@ func renderFindingHeader(f *findingRow, contentWidth int) []string {
 		label := fmt.Sprintf("Group %d:", i+1)
 		val := sanitizeForDisplay(g)
 		labelWidth := len(label) + 3 // "  " + label + " "
-		wrapped := wrapLine(val, max(20, contentWidth-labelWidth))
+		wrapped := wrapLine(val, max(1, contentWidth-labelWidth))
 		indent := strings.Repeat(" ", labelWidth)
 		for j, line := range wrapped {
 			if j == 0 {
@@ -348,7 +343,7 @@ func renderMatchTail(m *matchRow, maxWidth int) []string {
 			label := types.SanitizeDisplay(name) + ":"
 			sanitized := sanitizeForDisplay(val)
 			labelWidth := ansi.StringWidth(label) + 5 // "    " + label + " "
-			wrapped := wrapLine(sanitized, max(20, maxWidth-labelWidth))
+			wrapped := wrapLine(sanitized, max(1, maxWidth-labelWidth))
 			indent := strings.Repeat(" ", labelWidth)
 			for j, line := range wrapped {
 				if j == 0 {
@@ -404,7 +399,7 @@ func renderMatchTail(m *matchRow, maxWidth int) []string {
 // sanitized, then wrapped with a 6-space continuation indent. When the
 // locations could not be loaded, it says so instead of showing a count.
 func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
-	wrapWidth := max(20, maxWidth-6)
+	wrapWidth := max(1, maxWidth-6)
 	var lines []string
 	appendWrapped := func(text string) {
 		for j, part := range wrapLine(text, wrapWidth) {
@@ -426,6 +421,12 @@ func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
 		for i, o := range vis {
 			appendWrapped(types.SanitizeDisplay(types.FormatLine(o, m.Location.Source.Start.Line, disp[i])))
 		}
+	}
+	if m.ProvenanceErr != nil {
+		// Without provenance the truncation notice and the extended-source
+		// details below cannot be shown, so say why.
+		lines = append(lines, "  "+fieldLabelStyle.Render("Provenance unavailable; locations may be incomplete:"))
+		appendWrapped(types.SanitizeDisplay(m.ProvenanceErr.Error()))
 	}
 	if types.LocationsTruncated(m.Provenance) {
 		appendWrapped(types.LocationsTruncatedNotice)

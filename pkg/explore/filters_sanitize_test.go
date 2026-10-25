@@ -18,8 +18,8 @@ import (
 func TestFiltersPane_SEC7_SanitizesFacetLabelsKeepsRawForFiltering(t *testing.T) {
 	const hostileRepo = "evil\x1b[31mred\x1b[0m\x1b]8;;http://x\x07c1\u009bbidi\u202eoper"
 
-	hostile := &findingRow{FindingID: "f-hostile", RuleName: "Hostile Rule", Repositories: []string{hostileRepo}, MatchCount: 1}
-	benign := &findingRow{FindingID: "f-benign", RuleName: "Benign Rule", Repositories: []string{"github.com/acme/web"}, MatchCount: 1}
+	hostile := &findingRow{FindingID: "f-hostile", RuleName: "Hostile Rule", Repositories: []string{hostileRepo}}
+	benign := &findingRow{FindingID: "f-benign", RuleName: "Benign Rule", Repositories: []string{"github.com/acme/web"}}
 	m := newTestModel([]*findingRow{hostile, benign})
 	m.filters.setSize(200, 30)
 

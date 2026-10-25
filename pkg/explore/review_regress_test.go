@@ -3,7 +3,6 @@ package explore
 import (
 	"fmt"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -177,7 +176,7 @@ func TestDetailsPane_CacheRerendersOnResizeAndMatchChange(t *testing.T) {
 	dp.setSize(50, 20)
 	narrow := dp.contentLines()
 	if slices.Equal(wide, narrow) {
-		t.Fatalf("fixture: resize did not change the content")
+		t.Fatalf("fixture: resizing must re-wrap the long path; otherwise the fresh-render comparison below cannot detect a stale cache")
 	}
 	if want := freshContent(dp); !slices.Equal(narrow, want) {
 		t.Errorf("after resize, content =\n%q\nwant (fresh render)\n%q", narrow, want)
@@ -318,30 +317,7 @@ func TestFindingsPane_WideRuleNameKeepsColumnsAligned(t *testing.T) {
 
 // --- pager argv ---
 
-// pagerArgv runs the Cmd openInPager returns and reads the argv of the
-// exec.Cmd inside bubbletea's exec message. Bubbletea keeps that message
-// unexported, so this reads it by reflection without running the pager.
-func pagerArgv(t *testing.T, path string, line int) []string {
-	t.Helper()
-	var m Model
-	cmd := m.openInPager(path, line)
-	if cmd == nil {
-		t.Fatalf("openInPager returned nil")
-	}
-	v := reflect.ValueOf(cmd())
-	ec := v.FieldByName("cmd")
-	if !ec.IsValid() {
-		t.Fatalf("bubbletea exec message has no cmd field (%s); update this helper", v.Type())
-	}
-	args := ec.Elem().Elem().Field(0).Elem().FieldByName("Args")
-	out := make([]string, args.Len())
-	for i := range out {
-		out[i] = args.Index(i).String()
-	}
-	return out
-}
-
-func TestOpenInPager_ArgvEndsOptionsAndUsesAbsolutePath(t *testing.T) {
+func TestPagerCommand_EndsOptionsAndUsesAbsolutePath(t *testing.T) {
 	t.Setenv("PAGER", "")
 	for _, tc := range []struct {
 		name, path string
@@ -354,26 +330,36 @@ func TestOpenInPager_ArgvEndsOptionsAndUsesAbsolutePath(t *testing.T) {
 		{"plus-leading path", "+evil.txt", 0, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := pagerArgv(t, tc.path, tc.line)
+			name, args := pagerCommand(tc.path, tc.line)
 			abs, err := filepath.Abs(tc.path)
 			if err != nil {
 				t.Fatalf("Abs: %v", err)
 			}
-			want := slices.Concat([]string{"less"}, tc.wantLine, []string{"--", abs})
-			if !slices.Equal(got, want) {
-				t.Errorf("argv = %q, want %q", got, want)
+			if name != "less" {
+				t.Errorf("pager = %q, want less", name)
 			}
-			last := got[len(got)-1]
+			want := slices.Concat([]string{"-L"}, tc.wantLine, []string{"--", abs})
+			if !slices.Equal(args, want) {
+				t.Errorf("args = %q, want %q", args, want)
+			}
+			last := args[len(args)-1]
 			if !filepath.IsAbs(last) || strings.HasPrefix(last, "-") || strings.HasPrefix(last, "+") {
 				t.Errorf("path argument %q could be read as an option or command", last)
 			}
 		})
 	}
+	t.Run("less gets -L before the end of options", func(t *testing.T) {
+		_, args := pagerCommand("notes/secret.env", 1)
+		iL, iEnd := slices.Index(args, "-L"), slices.Index(args, "--")
+		if iL < 0 || iEnd < 0 || iL > iEnd {
+			t.Errorf("args = %q, want -L before --", args)
+		}
+	})
 	t.Run("other pager gets an absolute path and no less flags", func(t *testing.T) {
 		t.Setenv("PAGER", "more")
-		got := pagerArgv(t, "-o-evil.txt", 9)
-		if len(got) != 2 || got[0] != "more" || !filepath.IsAbs(got[1]) {
-			t.Errorf("argv = %q, want [more <absolute path>]", got)
+		name, args := pagerCommand("-o-evil.txt", 9)
+		if name != "more" || len(args) != 1 || !filepath.IsAbs(args[0]) {
+			t.Errorf("command = %q %q, want more [<absolute path>]", name, args)
 		}
 	})
 }
