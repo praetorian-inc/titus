@@ -904,7 +904,8 @@ func (m *Model) openInPager(filePath string, line int) tea.Cmd {
 // pagerCommand returns the program, arguments and extra environment that show
 // path at line: $PAGER, or less when it is unset. An absolute path cannot
 // start with "-" or "+", so no pager reads it as an option or an initial
-// command. less, by bare name or by path, also gets -L, so a LESSOPEN
+// command. less, by bare name or by path, with or without .exe and in any
+// case (Windows and macOS file systems ignore case), also gets -L, so a LESSOPEN
 // preprocessor never runs on the file, "--" to end its options, and
 // LESSSECURE=1 in its environment, which turns off shell escapes, the editor
 // and input preprocessors.
@@ -915,7 +916,7 @@ func pagerCommand(path string, line int) (name string, args, env []string) {
 	} else if !filepath.IsAbs(path) {
 		path = "." + string(filepath.Separator) + path
 	}
-	if filepath.Base(name) == "less" {
+	if isLess(name) {
 		args = append(args, "-L")
 		if line > 0 {
 			args = append(args, fmt.Sprintf("+%d", line))
@@ -924,6 +925,16 @@ func pagerCommand(path string, line int) (name string, args, env []string) {
 		env = []string{"LESSSECURE=1"}
 	}
 	return name, append(args, path), env
+}
+
+// isLess reports whether the pager name runs less: its base name, without a
+// ".exe" suffix in any case, is "less" in any case.
+func isLess(name string) bool {
+	base := filepath.Base(name)
+	if len(base) > len(".exe") && strings.EqualFold(base[len(base)-len(".exe"):], ".exe") {
+		base = base[:len(base)-len(".exe")]
+	}
+	return strings.EqualFold(base, "less")
 }
 
 func (m *Model) updateLayout() {

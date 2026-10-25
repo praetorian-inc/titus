@@ -330,6 +330,8 @@ func TestPagerCommand_EndsOptionsAndUsesAbsolutePath(t *testing.T) {
 		{"plus-leading path", "", "+evil.txt", 0, "less", nil},
 		{"bare less", "less", "notes/secret.env", 2, "less", []string{"+2"}},
 		{"less by absolute path", "/usr/bin/less", "notes/secret.env", 5, "/usr/bin/less", []string{"+5"}},
+		{"windows less.exe", "less.exe", "notes/secret.env", 4, "less.exe", []string{"+4"}},
+		{"upper-case LESS.EXE", "LESS.EXE", "notes/secret.env", 0, "LESS.EXE", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("PAGER", tc.pager)
