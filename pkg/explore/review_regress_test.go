@@ -318,29 +318,35 @@ func TestFindingsPane_WideRuleNameKeepsColumnsAligned(t *testing.T) {
 // --- pager argv ---
 
 func TestPagerCommand_EndsOptionsAndUsesAbsolutePath(t *testing.T) {
-	t.Setenv("PAGER", "")
 	for _, tc := range []struct {
-		name, path string
-		line       int
-		wantLine   []string
+		name, pager, path string
+		line              int
+		wantName          string
+		wantLine          []string
 	}{
-		{"with line", "notes/secret.env", 7, []string{"+7"}},
-		{"no line", "notes/secret.env", 0, nil},
-		{"dash-leading path", "-o-evil.txt", 3, []string{"+3"}},
-		{"plus-leading path", "+evil.txt", 0, nil},
+		{"with line", "", "notes/secret.env", 7, "less", []string{"+7"}},
+		{"no line", "", "notes/secret.env", 0, "less", nil},
+		{"dash-leading path", "", "-o-evil.txt", 3, "less", []string{"+3"}},
+		{"plus-leading path", "", "+evil.txt", 0, "less", nil},
+		{"bare less", "less", "notes/secret.env", 2, "less", []string{"+2"}},
+		{"less by absolute path", "/usr/bin/less", "notes/secret.env", 5, "/usr/bin/less", []string{"+5"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			name, args := pagerCommand(tc.path, tc.line)
+			t.Setenv("PAGER", tc.pager)
+			name, args, env := pagerCommand(tc.path, tc.line)
 			abs, err := filepath.Abs(tc.path)
 			if err != nil {
 				t.Fatalf("Abs: %v", err)
 			}
-			if name != "less" {
-				t.Errorf("pager = %q, want less", name)
+			if name != tc.wantName {
+				t.Errorf("pager = %q, want %q", name, tc.wantName)
 			}
 			want := slices.Concat([]string{"-L"}, tc.wantLine, []string{"--", abs})
 			if !slices.Equal(args, want) {
 				t.Errorf("args = %q, want %q", args, want)
+			}
+			if !slices.Equal(env, []string{"LESSSECURE=1"}) {
+				t.Errorf("env = %q, want [LESSSECURE=1]", env)
 			}
 			last := args[len(args)-1]
 			if !filepath.IsAbs(last) || strings.HasPrefix(last, "-") || strings.HasPrefix(last, "+") {
@@ -349,17 +355,18 @@ func TestPagerCommand_EndsOptionsAndUsesAbsolutePath(t *testing.T) {
 		})
 	}
 	t.Run("less gets -L before the end of options", func(t *testing.T) {
-		_, args := pagerCommand("notes/secret.env", 1)
+		t.Setenv("PAGER", "")
+		_, args, _ := pagerCommand("notes/secret.env", 1)
 		iL, iEnd := slices.Index(args, "-L"), slices.Index(args, "--")
 		if iL < 0 || iEnd < 0 || iL > iEnd {
 			t.Errorf("args = %q, want -L before --", args)
 		}
 	})
-	t.Run("other pager gets an absolute path and no less flags", func(t *testing.T) {
+	t.Run("other pager gets an absolute path, no less flags and no env", func(t *testing.T) {
 		t.Setenv("PAGER", "more")
-		name, args := pagerCommand("-o-evil.txt", 9)
-		if name != "more" || len(args) != 1 || !filepath.IsAbs(args[0]) {
-			t.Errorf("command = %q %q, want more [<absolute path>]", name, args)
+		name, args, env := pagerCommand("-o-evil.txt", 9)
+		if name != "more" || len(args) != 1 || !filepath.IsAbs(args[0]) || len(env) != 0 {
+			t.Errorf("command = %q %q env %q, want more [<absolute path>] and no env", name, args, env)
 		}
 	})
 }

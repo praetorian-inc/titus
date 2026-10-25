@@ -27,6 +27,19 @@ func TestPanes_TinyTerminalDoesNotPanic(t *testing.T) {
 			_ = dp.View()
 			_ = dp.maxOffset()
 		}()
+		// A pane taller than its content runs the blank-row fill, which
+		// repeats spaces to the content width; it must not go negative.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("tall details width %d: %v", w, r)
+				}
+			}()
+			dp := newDetailsPane()
+			dp.setSize(w, 400)
+			dp.setFinding(f)
+			_ = dp.View()
+		}()
 		func() {
 			defer func() {
 				if r := recover(); r != nil {

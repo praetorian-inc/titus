@@ -165,6 +165,24 @@ func TestBuildMatchRow_ProvenanceErrorIsShown(t *testing.T) {
 	}
 }
 
+// N6: the provenance warning wraps instead of being clipped. Width 56 is the
+// details pane of the default layout on an 80-column terminal.
+func TestDetailsPane_NarrowPaneShowsWholeProvenanceWarning(t *testing.T) {
+	s, m := occurrenceFixture(t)
+	mr := buildMatchRow(m, failingProvenanceStore{s})
+	for _, width := range []int{28, 56} {
+		dp := newDetailsPane()
+		dp.setSize(width, 80)
+		dp.setFinding(&findingRow{RuleName: "r", RuleID: "id", Matches: []*matchRow{mr}})
+		view := squash(dp.View())
+		for _, want := range []string{"Provenance unavailable; locations may be incomplete:", "provenance store down"} {
+			if !strings.Contains(view, squash(want)) {
+				t.Errorf("%q not shown whole in a %d-column pane:\n%s", want, width, stripAnsi(dp.View()))
+			}
+		}
+	}
+}
+
 // contentLines renders every line of the pane before scrolling and clipping.
 // Only tests read it: they inspect content that View would scroll out of
 // sight.

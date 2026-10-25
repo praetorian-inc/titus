@@ -891,33 +891,39 @@ func (m *Model) openSource() tea.Cmd {
 }
 
 func (m *Model) openInPager(filePath string, line int) tea.Cmd {
-	name, args := pagerCommand(filePath, line)
+	name, args, env := pagerCommand(filePath, line)
 	c := exec.Command(name, args...)
+	if len(env) > 0 {
+		c.Env = append(os.Environ(), env...)
+	}
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return pagerFinishedMsg{err: err}
 	})
 }
 
-// pagerCommand returns the program and arguments that show path at line:
-// $PAGER, or less when it is unset. An absolute path cannot start with "-" or
-// "+", so no pager reads it as an option or an initial command. less also gets
-// -L, so a LESSOPEN preprocessor never runs on the file, and "--" to end its
-// options.
-func pagerCommand(path string, line int) (name string, args []string) {
+// pagerCommand returns the program, arguments and extra environment that show
+// path at line: $PAGER, or less when it is unset. An absolute path cannot
+// start with "-" or "+", so no pager reads it as an option or an initial
+// command. less, by bare name or by path, also gets -L, so a LESSOPEN
+// preprocessor never runs on the file, "--" to end its options, and
+// LESSSECURE=1 in its environment, which turns off shell escapes, the editor
+// and input preprocessors.
+func pagerCommand(path string, line int) (name string, args, env []string) {
 	name = cmp.Or(os.Getenv("PAGER"), "less")
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	} else if !filepath.IsAbs(path) {
 		path = "." + string(filepath.Separator) + path
 	}
-	if name == "less" {
+	if filepath.Base(name) == "less" {
 		args = append(args, "-L")
 		if line > 0 {
 			args = append(args, fmt.Sprintf("+%d", line))
 		}
 		args = append(args, "--")
+		env = []string{"LESSSECURE=1"}
 	}
-	return name, append(args, path)
+	return name, append(args, path), env
 }
 
 func (m *Model) updateLayout() {

@@ -424,8 +424,9 @@ func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
 	}
 	if m.ProvenanceErr != nil {
 		// Without provenance the truncation notice and the extended-source
-		// details below cannot be shown, so say why.
-		lines = append(lines, "  "+fieldLabelStyle.Render("Provenance unavailable; locations may be incomplete:"))
+		// details below cannot be shown, so say why. Both lines wrap, so a
+		// narrow pane never clips the warning.
+		appendWrapped("Provenance unavailable; locations may be incomplete:")
 		appendWrapped(types.SanitizeDisplay(m.ProvenanceErr.Error()))
 	}
 	if types.LocationsTruncated(m.Provenance) {

@@ -42,8 +42,10 @@ type findingsPane struct {
 	// sort count only locations visible under it.
 	repoFilter map[string]bool
 	// counts caches locationCount per finding under repoFilter. It is a new
-	// map whenever the rows or the filter change, never cleared in place, so
-	// copies of the pane with different filters keep their own counts.
+	// map whenever the filter changes, never cleared in place, so copies of
+	// the pane with different filters keep their own counts. A row change
+	// keeps it: a finding's count depends only on its own locations and the
+	// filter, and both are fixed after load.
 	counts map[*findingRow]int
 
 	// Column widths

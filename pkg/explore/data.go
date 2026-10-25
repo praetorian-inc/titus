@@ -203,10 +203,10 @@ func buildFindingRowWith(f *types.Finding, matches []*types.Match, ruleMap map[s
 }
 
 // facetValues returns the distinct non-empty facet keys of the matches'
-// occurrences, sorted. A facet
-// key is the occurrence's repository, or for an extended location its source
-// (see facetKey), so a facet value and a location cannot drift; a legacy row
-// keeps its stored repository string and is therefore a value of its own.
+// occurrences, sorted. A facet key is the occurrence's repository, or for an
+// extended location its source (see facetKey), so a facet value and a
+// location cannot drift; a legacy row keeps its stored repository string and
+// is therefore a value of its own.
 func facetValues(matches []*matchRow) []string {
 	set := make(map[string]struct{})
 	for _, mr := range matches {
