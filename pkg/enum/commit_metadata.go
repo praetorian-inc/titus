@@ -87,6 +87,14 @@ type blobIndex struct {
 	// from an empty history is not failed.
 	failed bool
 
+	// treeBlobs holds every blob under a tree that a ref points at directly,
+	// not through a commit. git lists such a blob at the first path it
+	// reaches it by and at no other, and listing every path under a tagged
+	// tree is unbounded (ENG-9329), so these blobs are marked as possibly
+	// missing locations. taggedTrees counts those refs for the warning.
+	treeBlobs   map[[20]byte]struct{}
+	taggedTrees int
+
 	mu   sync.Mutex
 	meta map[uint32]*types.CommitMetadata // materialized on lookup, shared
 }
@@ -582,13 +590,16 @@ func (x *blobIndex) locationsTruncated(hash [20]byte) bool {
 	if x.failed {
 		return true
 	}
+	if _, ok := x.treeBlobs[hash]; ok {
+		return true
+	}
 	_, ok := x.truncatedBlobs[hash]
 	return ok
 }
 
 // marksAny reports whether locationsTruncated can be true for some blob.
 func (x *blobIndex) marksAny() bool {
-	return x != nil && (x.failed || len(x.truncatedBlobs) > 0)
+	return x != nil && (x.failed || len(x.truncatedBlobs) > 0 || len(x.treeBlobs) > 0)
 }
 
 // marksAll reports whether locationsTruncated is true for every blob: the
@@ -612,6 +623,16 @@ func (x *blobIndex) writeWarnings(w io.Writer) {
 	if s.malformed > 0 {
 		_, _ = fmt.Fprintf(w, "titus: skipped %d malformed git records\n", s.malformed)
 	}
+	if x.taggedTrees > 0 {
+		_, _ = fmt.Fprintf(w, "titus: %d git refs point directly at a tree, not a commit; a file under such a tree is listed only at the first path git reaches it by, so those files are marked as possibly missing locations\n", x.taggedTrees)
+	}
+}
+
+// setTaggedTrees records the blobs under trees that refs point at directly,
+// and the number of those refs.
+func (x *blobIndex) setTaggedTrees(blobs map[[20]byte]struct{}, refs int) {
+	x.treeBlobs = blobs
+	x.taggedTrees = refs
 }
 
 // parseGitTime parses git's strict ISO 8601 date (%aI, %cI).

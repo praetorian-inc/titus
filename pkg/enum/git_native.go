@@ -43,7 +43,7 @@ func gitBinaryAvailable() bool {
 
 // enumerateAllHistoryNative uses native git commands for fast history enumeration.
 //
-// Phase 1 runs three tasks concurrently:
+// Phase 1 runs four tasks concurrently:
 //   - git rev-list --all --objects: the scan set (the authority on which blobs
 //     are scanned). Its failure fails the enumeration and cancels the others.
 //   - git log with raw diff output: the blob index, which gives each blob
@@ -51,6 +51,9 @@ func gitBinaryAvailable() bool {
 //     a failure falls back to the rev-list path with no commit, and never
 //     drops a blob.
 //   - git config remote.origin.url: the repository identity. Best effort.
+//   - taggedTreeBlobs: the blobs under trees that refs point at directly,
+//     which are marked as possibly missing locations. Its failure fails the
+//     enumeration, as rev-list's does.
 //
 // Phase 2 streams blob content through git cat-file --batch and invokes the
 // callback once per text blob.
@@ -62,6 +65,10 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		indexErr error
 		remoteID string
 		remoteOK bool
+		// treeBlobs are the blobs under trees that refs point at directly;
+		// treeRefs counts those refs.
+		treeBlobs map[[20]byte]struct{}
+		treeRefs  int
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -78,6 +85,11 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		remoteID, remoteOK = originIdentity(gctx, root)
 		return nil
 	})
+	g.Go(func() error {
+		var err error
+		treeBlobs, treeRefs, err = taggedTreeBlobs(gctx, root)
+		return err
+	})
 	if err := g.Wait(); err != nil {
 		return err
 	}
@@ -91,6 +103,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 			_, _ = fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path and is marked as possibly missing locations\n", indexErr)
 		}
 	}
+	idx.setTaggedTrees(treeBlobs, treeRefs)
 	idx.stats.malformed += rl.malformed
 	writeEnumWarnings(warn, idx, rl.overlong)
 
@@ -171,12 +184,19 @@ func writeEnumWarnings(w io.Writer, idx *blobIndex, revOverlong int) {
 // collectBlobEntries runs git rev-list --all --objects and returns its
 // deduplicated blob entries and record counts.
 func (e *GitEnumerator) collectBlobEntries(ctx context.Context) (revList, error) {
+	// rev-list's missing=print mode lists objects a partial clone lacks as "?<id>"
+	// instead of failing or lazily fetching them (V1).
+	return runRevList(ctx, e.config.Root, nil, "rev-list", "--all", "--objects", "--missing=print")
+}
+
+// runRevList runs git with args in dir, feeding it stdin when that is not
+// nil, and parses its rev-list --objects output.
+func runRevList(ctx context.Context, dir string, stdin io.Reader, args ...string) (revList, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// rev-list's missing=print mode lists objects a partial clone lacks as "?<id>"
-	// instead of failing or lazily fetching them (V1).
-	cmd := hardenedGit(ctx, e.config.Root, "rev-list", "--all", "--objects", "--missing=print")
+	cmd := hardenedGit(ctx, dir, args...)
+	cmd.Stdin = stdin
 	stderr := &limitedBuffer{limit: 4 << 10}
 	cmd.Stderr = stderr
 
@@ -547,11 +567,17 @@ func parseCatFileHeader(line string, want []byte) (objType string, size int64, m
 
 // blobProvenance builds the provenance for one blob. Locations is every
 // (path, earliest commit) the index recorded, sorted by path; the first is
-// the primary location. A blob the index does not know keeps its rev-list
-// path with no commit. LocationsTruncated is set when the index dropped a
-// location of this blob at its size limit (R1), whether or not it kept any.
+// the primary location. The walk's own path, which is a path inside a tree a
+// ref points at when the index lacks it, is added after them with no commit,
+// so no path the walk reached is dropped. A blob the index does not know
+// keeps that path alone. LocationsTruncated is set when the index dropped a
+// location of this blob at its size limit (R1), whether or not it kept any,
+// and for a blob under a tree a ref points at directly.
 func blobProvenance(blob blobEntry, idx *blobIndex, id repoIdentity) types.GitProvenance {
 	locs := idx.lookup(blob.hash)
+	if blob.path != "" && !hasLocationPath(locs, blob.path) {
+		locs = append(locs, types.GitLocation{Path: blob.path})
+	}
 	if len(locs) == 0 {
 		locs = []types.GitLocation{{Path: blob.path}}
 	}
@@ -564,4 +590,14 @@ func blobProvenance(blob blobEntry, idx *blobIndex, id repoIdentity) types.GitPr
 		Locations:          locs,
 		LocationsTruncated: idx.locationsTruncated(blob.hash),
 	}
+}
+
+// hasLocationPath reports whether locs has a location at path.
+func hasLocationPath(locs []types.GitLocation, path string) bool {
+	for _, l := range locs {
+		if l.Path == path {
+			return true
+		}
+	}
+	return false
 }

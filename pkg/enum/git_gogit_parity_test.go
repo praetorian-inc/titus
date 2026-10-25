@@ -62,7 +62,7 @@ func describeCommit(c *types.CommitMetadata) string {
 
 func describeProv(p types.GitProvenance) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "repo=%q root=%q remote=%v primary=(%q, %s)\n", p.RepoPath, p.RepoRoot, p.RemoteIdentity, p.BlobPath, describeCommit(p.Commit))
+	fmt.Fprintf(&b, "repo=%q root=%q remote=%v truncated=%v primary=(%q, %s)\n", p.RepoPath, p.RepoRoot, p.RemoteIdentity, p.LocationsTruncated, p.BlobPath, describeCommit(p.Commit))
 	for _, l := range p.Locations {
 		fmt.Fprintf(&b, "  loc %q wt=%v %s\n", l.Path, l.WorkingTree, describeCommit(l.Commit))
 	}
