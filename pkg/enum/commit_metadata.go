@@ -101,8 +101,9 @@ type blobIndex struct {
 
 // blobIndexLogArgs is the git log invocation the index parses: one
 // first-parent raw diff per commit, NUL-delimited and never quoted (SEC-8).
+// The tips come on stdin, one commit id per line (see resolveRefTips).
 func blobIndexLogArgs() []string {
-	return []string{"log", "--all", "-z",
+	return []string{"log", "--stdin", "-z",
 		"--format=%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s",
 		"--raw", "--no-abbrev", "--no-renames", "--diff-merges=first-parent",
 		"--root", "--no-textconv", "--no-ext-diff", "--no-show-signature"}
@@ -110,11 +111,32 @@ func blobIndexLogArgs() []string {
 
 // buildBlobIndex streams the history of repoPath into a blobIndex. It always
 // drains git's output before waiting on it (SEC-10).
+//
+// The log starts from the commits rev-list --all starts from, not from
+// --all: git log --all dies on the first broken ref, which would cost every
+// blob its commit metadata, where rev-list and go-git skip that ref. The
+// tips go on stdin, so a repository with many refs never hits the argv limit.
 func buildBlobIndex(ctx context.Context, repoPath string) (*blobIndex, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	tips, err := resolveRefTips(ctx, repoPath)
+	if err != nil {
+		return nil, fmt.Errorf("git log: tips: %w", err)
+	}
+	if len(tips.commits) == 0 {
+		// No commit to start from. git log --stdin with no input falls
+		// back to HEAD, so it is not run.
+		return parseBlobIndex(bytes.NewReader(nil))
+	}
+	var in bytes.Buffer
+	for _, id := range tips.commits {
+		in.WriteString(id)
+		in.WriteByte('\n')
+	}
+
 	cmd := hardenedGit(ctx, repoPath, blobIndexLogArgs()...)
+	cmd.Stdin = &in
 	stderr := &limitedBuffer{limit: 4 << 10}
 	cmd.Stderr = stderr
 	stdout, err := cmd.StdoutPipe()

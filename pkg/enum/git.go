@@ -210,15 +210,15 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 // goGitHistoryIndex diffs every commit reachable from HEAD or any ref against
 // its first parent (no rename detection), the go-git equivalent of
 // blobIndexLogArgs. It returns the scan set, deduplicated by blob in
-// first-seen order, the blob index, and the number of tagged-tree subtrees
-// missing from the repository. Only two trees are held at a time.
+// first-seen order, the blob index, and the number of ref targets and
+// tagged-tree subtrees missing from the repository. Only two trees are held at a time.
 //
 // It walks the commit graph itself rather than with repo.Log(All): that
 // iterator skips refs to annotated tags, stops each ref's walk at the first
 // commit already seen (so a merge's other parents behind it are never
 // reached), and drops iterator errors.
 func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, *blobIndex, int, error) {
-	stack, others, err := goGitTips(repo)
+	stack, others, missingTips, err := goGitTips(repo)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -305,7 +305,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 	}
 	idx := p.finish()
 	idx.setTaggedTrees(tw.inTree, treeRefs)
-	return blobs, idx, tw.missing, nil
+	return blobs, idx, tw.missing + missingTips, nil
 }
 
 // taggedWalk collects the blobs of tagged trees and blobs as rev-list
@@ -438,13 +438,16 @@ type taggedObject struct {
 // name order and HEAD last, as rev-list --all takes them; go-git lists loose
 // refs before packed ones, and the order decides the path a blob under two
 // tagged trees is listed at. Annotated tags are peeled; an unborn HEAD and
-// refs to a missing object are skipped, as git skips broken refs.
-func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, error) {
+// refs to a missing object are skipped, as git skips broken refs. The count
+// is the distinct missing objects refs name, which rev-list reports as
+// missing; a ref file that is not an object id names none.
+func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, int, error) {
 	var (
-		tips   []plumbing.Hash
-		others []taggedObject
+		tips    []plumbing.Hash
+		others  []taggedObject
+		missing = make(map[plumbing.Hash]struct{})
 	)
-	add := func(ref *plumbing.Reference) error {
+	add := func(ref *plumbing.Reference, countTree bool) error {
 		name := ref.Name()
 		resolved, err := storer.ResolveReference(repo.Storer, name)
 		if errors.Is(err, plumbing.ErrReferenceNotFound) {
@@ -460,14 +463,25 @@ func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, error) {
 		switch typ {
 		case plumbing.CommitObject:
 			tips = append(tips, h)
-		case plumbing.TreeObject, plumbing.BlobObject:
+		case plumbing.TreeObject:
+			if countTree {
+				others = append(others, taggedObject{hash: h, typ: typ})
+			}
+		case plumbing.BlobObject:
 			others = append(others, taggedObject{hash: h, typ: typ})
+		case plumbing.InvalidObject:
+			// A ref, or a tag on its chain, names an object the repository
+			// lacks: rev-list reports it as missing, once. The zero hash is
+			// a ref file that is not an object id, which names nothing.
+			if !h.IsZero() {
+				missing[h] = struct{}{}
+			}
 		}
 		return nil
 	}
 	refs, err := repo.Storer.IterReferences()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list refs: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to list refs: %w", err)
 	}
 	var named []*plumbing.Reference
 	if err := refs.ForEach(func(ref *plumbing.Reference) error {
@@ -476,20 +490,26 @@ func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, error) {
 		}
 		return nil
 	}); err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	slices.SortFunc(named, func(a, b *plumbing.Reference) int {
 		return strings.Compare(string(a.Name()), string(b.Name()))
 	})
 	for _, ref := range named {
-		if err := add(ref); err != nil {
-			return nil, nil, err
+		if err := add(ref, true); err != nil {
+			return nil, nil, 0, err
 		}
 	}
-	if err := add(plumbing.NewSymbolicReference(plumbing.HEAD, "")); err != nil {
-		return nil, nil, err
+	// HEAD as a symbolic ref to a listed ref is that ref again: its tree,
+	// if any, is not counted a second time.
+	headTree := true
+	if head, err := repo.Storer.Reference(plumbing.HEAD); err == nil && head.Type() == plumbing.SymbolicReference {
+		headTree = !slices.ContainsFunc(named, func(r *plumbing.Reference) bool { return r.Name() == head.Target() })
 	}
-	return tips, others, nil
+	if err := add(plumbing.NewSymbolicReference(plumbing.HEAD, ""), headTree); err != nil {
+		return nil, nil, 0, err
+	}
+	return tips, others, len(missing), nil
 }
 
 // peelRef follows annotated tags from h and returns the object the chain

@@ -356,9 +356,15 @@ func (rl *revList) add(line []byte, dropPath bool, width *int, seen revListSeen)
 		// A "?" line (missing=print mode): an object the repository lacks. Titus never
 		// fetches it (that would run the repository's remote config), so
 		// it is counted and reported instead of being scanned.
-		if n := revListIDWidth(id); n != 0 && n == len(id) {
+		n := revListIDWidth(id)
+		switch {
+		case n != 0 && n == len(id) && bytes.Count(id, []byte{'0'}) == n:
+			// The null id: a ref file that is not an object id, which
+			// for-each-ref and go-git skip as a broken ref. It names no
+			// object, so nothing is missing.
+		case n != 0 && n == len(id):
 			rl.missing++
-		} else {
+		default:
 			rl.malformed++
 		}
 		return
