@@ -30,8 +30,13 @@ type GitProvenance struct {
 	Commit   *CommitMetadata // nil if not tracking commit info
 	BlobPath string          // path within repo at commit
 
-	// RepoRoot is the absolute working-tree root of the scanned repository.
+	// RepoRoot is the absolute scan root: the directory working-tree
+	// location paths are relative to.
 	RepoRoot string `json:",omitempty"`
+	// RepoTop is the absolute top level of the repository, which committed
+	// location paths are relative to, when the scan root is below it. Empty
+	// means RepoRoot is the top level.
+	RepoTop string `json:",omitempty"`
 	// RemoteIdentity is true when RepoPath is a normalized remote identity
 	// (host/owner/repo) rather than a local folder.
 	RemoteIdentity bool `json:",omitempty"`

@@ -95,6 +95,7 @@ func hardenedGit(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	argv := make([]string, 0, len(hardenedGitConfig)+len(args))
 	argv = append(argv, hardenedGitConfig...)
 	argv = append(argv, args...)
+	// #nosec G204 -- constant program, no shell; arguments are built from constants, never from user-controlled options.
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	cmd.Dir = dir
 	cmd.Env = append(inheritedGitEnv(), hardenedGitEnv...)

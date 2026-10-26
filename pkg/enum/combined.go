@@ -4,8 +4,14 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha1" // #nosec G505 -- git object ids, not integrity
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"maps"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -100,6 +106,13 @@ type worktreeMerge struct {
 	err      error                     // prewalk error; read only after done
 	paths    map[types.BlobID][]string // sorted, slash-separated; read only after done
 	archives map[string]struct{}       // archive files the prewalk extracted from
+	head     map[string]string         // HEAD tree path, scan-root-relative -> blob object id (hex); read only after done
+	// prefix is the scan root's path inside the repository ("sub/", or
+	// empty at the top level). History paths are repository-relative and
+	// working-tree paths scan-root-relative, so prefix joins them. Read
+	// only after done.
+	prefix string
+	warn   io.Writer
 
 	mu    sync.Mutex
 	seen  map[types.BlobID]bool
@@ -124,6 +137,7 @@ func enumerateGitWithWorktree(ctx context.Context, g *GitEnumerator, fs *Filesys
 		paths:    make(map[types.BlobID][]string),
 		archives: make(map[string]struct{}),
 		seen:     make(map[types.BlobID]bool),
+		warn:     g.warnWriter(),
 	}
 
 	walkCtx, cancel := context.WithCancel(ctx)
@@ -142,10 +156,13 @@ func enumerateGitWithWorktree(ctx context.Context, g *GitEnumerator, fs *Filesys
 	return errors.Join(m.emitWorktreeOnly(ctx, g), m.err)
 }
 
-// prewalk records every working-tree path per blob id, dropping content. It
-// reuses every filesystem filter (ignore file, size, symlinks, archives).
+// prewalk records every working-tree path per blob id, dropping content, and
+// HEAD's blob per path. It reuses every filesystem filter (ignore file, size,
+// symlinks, archives).
 func (m *worktreeMerge) prewalk(ctx context.Context) {
 	defer close(m.done)
+	m.head = headBlobs(ctx, m.absRoot, m.warn)
+	m.prefix = repoPrefix(ctx, m.absRoot)
 	var mu sync.Mutex
 	m.err = m.fs.Enumerate(ctx, func(_ []byte, id types.BlobID, prov types.Provenance) error {
 		mu.Lock()
@@ -199,26 +216,30 @@ func (m *worktreeMerge) gitCallback(ctx context.Context) blobCallback {
 		if gp, ok := prov.(types.GitProvenance); ok {
 			m.mu.Lock()
 			if m.ident == nil {
-				m.ident = &types.GitProvenance{RepoPath: gp.RepoPath, RepoRoot: gp.RepoRoot, RemoteIdentity: gp.RemoteIdentity}
+				m.ident = &types.GitProvenance{RepoPath: gp.RepoPath, RepoRoot: gp.RepoRoot, RepoTop: gp.RepoTop, RemoteIdentity: gp.RemoteIdentity}
 			}
 			m.mu.Unlock()
-			prov = m.withWorktree(gp, m.paths[id])
+			prov = m.withWorktree(gp, id, m.paths[id])
 		}
 		return m.callback(content, id, prov)
 	}
 }
 
-// withWorktree appends each working-tree path that history does not already
-// record for the blob as a WorkingTree location. A tracked, unmodified file
-// therefore adds nothing.
-func (m *worktreeMerge) withWorktree(gp types.GitProvenance, wt []string) types.GitProvenance {
+// withWorktree appends each working-tree path of blob id as a WorkingTree
+// location unless HEAD holds this same blob at that path and history records
+// it there. A tracked, unmodified file therefore adds nothing, while a file
+// restored to a blob only an older commit held keeps its working-tree
+// location. Working-tree paths stay relative to the scan root; history
+// paths are matched with the scan root's prefix in the repository.
+func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt []string) types.GitProvenance {
 	locs := gp.Locations
 	if len(locs) == 0 {
 		locs = []types.GitLocation{{Path: gp.BlobPath, Commit: gp.Commit}}
 	}
 	var extra []types.GitLocation
 	for _, p := range wt {
-		if !slices.ContainsFunc(locs, func(l types.GitLocation) bool { return l.Path == p }) {
+		inHistory := slices.ContainsFunc(locs, func(l types.GitLocation) bool { return l.Path == m.prefix+p })
+		if !inHistory || !m.headHolds(id, p) {
 			extra = append(extra, types.GitLocation{Path: p, WorkingTree: true})
 		}
 	}
@@ -228,6 +249,40 @@ func (m *worktreeMerge) withWorktree(gp types.GitProvenance, wt []string) types.
 	gp.Locations = slices.Concat(locs, extra)
 	gp.RepoRoot = cmp.Or(gp.RepoRoot, m.absRoot)
 	return gp
+}
+
+// headHolds reports whether HEAD's blob at path is the working-tree file
+// there, whose BlobID is id. In a SHA-1 repository a file git did not
+// transcode has its object id as its BlobID; otherwise (UTF-16 text, SHA-256)
+// the file is hashed as git hashes it, which only such files pay for.
+//
+// That read takes only a regular file, never through a symlink and never
+// waiting on a FIFO, and at most the scanner's maximum file size. A file it
+// cannot read that way counts as not held, so its working-tree location is
+// kept.
+func (m *worktreeMerge) headHolds(id types.BlobID, path string) bool {
+	oid, ok := m.head[path]
+	if !ok {
+		return false
+	}
+	if oid == id.Hex() {
+		return true
+	}
+	f, exists, bad := openRegularRefFile(os.Lstat, osOpenRef, filepath.Join(m.root, filepath.FromSlash(path)))
+	if !exists || bad {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	r := io.Reader(f)
+	limit := m.fs.config.MaxFileSize
+	if limit > 0 {
+		r = io.LimitReader(f, limit+1)
+	}
+	content, err := io.ReadAll(r)
+	if err != nil || (limit > 0 && int64(len(content)) > limit) {
+		return false
+	}
+	return gitObjectID(content, len(oid)) == oid
 }
 
 // emitWorktreeOnly reports the working-tree blobs git did not: each blob is
@@ -322,4 +377,84 @@ func (m *worktreeMerge) identity(ctx context.Context, g *GitEnumerator) types.Gi
 	remote, ok := originIdentity(ctx, g.config.Root)
 	id := g.repoIdentity(remote, ok)
 	return types.GitProvenance{RepoPath: id.path, RepoRoot: id.root, RemoteIdentity: id.remote}
+}
+
+// headBlobs maps each blob path in HEAD's tree under dir, relative to dir,
+// to its object id (hex). It is empty when HEAD cannot be read, so every
+// working-tree path is then kept. That is expected when HEAD is unborn (a
+// repository with no commit, or an orphan branch); any other failure is
+// warned on warn.
+func headBlobs(ctx context.Context, dir string, warn io.Writer) map[string]string {
+	head := make(map[string]string)
+	out, err := hardenedGit(ctx, dir, "ls-tree", "-r", "-z", "HEAD").Output()
+	if err != nil {
+		if ctx.Err() == nil && hardenedGit(ctx, dir, "rev-parse", "--verify", "-q", "HEAD").Run() == nil {
+			_, _ = fmt.Fprintf(warn, "warning: %s\n", types.SanitizeDisplay(fmt.Sprintf(
+				"cannot list HEAD's tree in %s (%v); working-tree copies of tracked files are reported as working-tree locations", dir, err)))
+		}
+		return head
+	}
+	// Each record is "<mode> SP <type> SP <object> TAB <path>".
+	for rec := range bytes.SplitSeq(out, []byte{0}) {
+		meta, path, ok := bytes.Cut(rec, []byte{'\t'})
+		fields := bytes.Fields(meta)
+		if !ok || len(fields) != 3 || string(fields[1]) != "blob" {
+			continue
+		}
+		head[string(path)] = string(fields[2])
+	}
+	return head
+}
+
+// repoPrefix is dir's path inside its repository, slash-separated with a
+// trailing slash ("sub/"), or empty at the top level or when git cannot say.
+func repoPrefix(ctx context.Context, dir string) string {
+	out, err := hardenedGit(ctx, dir, "rev-parse", "--show-prefix").Output()
+	if err != nil {
+		return ""
+	}
+	return string(bytes.TrimSuffix(out, []byte{'\n'}))
+}
+
+// repoTop is the absolute top level of the repository holding dir, or ""
+// when dir is that top level or git cannot say. History paths are relative
+// to it. It is dir with its in-repository prefix removed, which keeps the
+// spelling the scan root was given, unless that is not the directory git
+// names as the top level (a symlink inside the prefix); then it is git's.
+func repoTop(ctx context.Context, dir string) string {
+	prefix := bytes.TrimSuffix([]byte(repoPrefix(ctx, dir)), []byte{'/'})
+	if len(prefix) == 0 {
+		return ""
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		abs = dir
+	}
+	top := abs
+	for range bytes.Count(prefix, []byte{'/'}) + 1 {
+		top = filepath.Dir(top)
+	}
+	out, err := hardenedGit(ctx, dir, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return top
+	}
+	gitTop := filepath.FromSlash(string(bytes.TrimSuffix(out, []byte{'\n'})))
+	a, errA := os.Stat(top)
+	b, errB := os.Stat(gitTop)
+	if errA == nil && errB == nil && os.SameFile(a, b) {
+		return top
+	}
+	return gitTop
+}
+
+// gitObjectID is the hex object id git gives content as a blob: SHA-1 when
+// hexLen is 40, else SHA-256.
+func gitObjectID(content []byte, hexLen int) string {
+	h := sha256.New()
+	if hexLen == 2*sha1.Size {
+		h = sha1.New() // #nosec G401 -- git object ids, not integrity
+	}
+	_, _ = fmt.Fprintf(h, "blob %d\x00", len(content))
+	_, _ = h.Write(content)
+	return hex.EncodeToString(h.Sum(nil))
 }

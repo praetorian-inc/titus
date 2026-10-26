@@ -63,6 +63,11 @@ type indexStats struct {
 	overlong     int // records over maxRecord, skipped (SEC-9)
 	malformed    int // records that do not fit the log grammar (SEC-8)
 	droppedPairs int // pairs not stored after maxIndexPairs (R1)
+	// attributed counts the over-long and malformed records whose loss is
+	// tied to a blob: the blob is in truncatedBlobs, or the record carried
+	// no location to lose. The rest could hide a location of any blob
+	// (dropsUnattributed).
+	attributed int
 	// lostWorktreeHeads counts worktree HEADs and per-worktree refs that
 	// go-git or git could not read, so commits only they reach were not
 	// scanned (R4-1, R5-3, R6-1). It is not a count of worktrees (R7 F3).
@@ -80,8 +85,12 @@ type blobIndex struct {
 	commits []commitRec
 	stats   indexStats
 
+	compactions int // compact calls, parse and finish alike
+
 	// truncatedBlobs holds every blob that lost a location when the index
-	// reached maxIndexPairs (R1). It is nil until then. Memory is one
+	// reached maxIndexPairs (R1), or whose raw entry was skipped as
+	// over-long or malformed with its blob id still readable. It is nil
+	// until then. Memory is one
 	// 20-byte key per distinct affected blob, bounded by the blobs in the
 	// history, never by the number of dropped pairs.
 	truncatedBlobs map[[20]byte]struct{}
@@ -253,6 +262,7 @@ func (p *indexParser) header(id []byte) error {
 		tok, overlong, err := p.z.next()
 		if errors.Is(err, io.EOF) {
 			x.stats.malformed++
+			x.stats.attributed++ // the stream ended: no location follows
 			break
 		}
 		if err != nil {
@@ -260,6 +270,7 @@ func (p *indexParser) header(id []byte) error {
 		}
 		if overlong {
 			x.stats.overlong++
+			x.stats.attributed++ // a metadata field, not a location
 			tok = nil
 		}
 		switch {
@@ -309,6 +320,7 @@ func (p *indexParser) rawEntry(meta []byte) error {
 	path, overlong, err := p.z.next()
 	if errors.Is(err, io.EOF) {
 		p.x.stats.malformed++
+		p.skipEntry(dst, keep, malformed)
 		return nil
 	}
 	if err != nil {
@@ -317,12 +329,28 @@ func (p *indexParser) rawEntry(meta []byte) error {
 	switch {
 	case overlong:
 		p.x.stats.overlong++
+		p.skipEntry(dst, keep, malformed)
 	case malformed || p.cur < 0:
 		p.x.stats.malformed++
+		p.skipEntry(dst, keep, malformed)
 	case keep:
 		p.addEntry(dst, path)
 	}
 	return nil
+}
+
+// skipEntry ties a raw entry the index skipped to its blob. An entry worth
+// indexing marks its blob, which lost the location; an entry not worth
+// indexing (a deletion, a submodule) lost nothing. Only an entry whose blob
+// id cannot be read stays unattributed.
+func (p *indexParser) skipEntry(dst [20]byte, keep, malformed bool) {
+	switch {
+	case malformed:
+		return
+	case keep:
+		p.x.markTruncated(dst)
+	}
+	p.x.stats.attributed++
 }
 
 // addEntry records that blob hash is stored at path in the current commit.
@@ -393,11 +421,14 @@ func (p *indexParser) internPath(b []byte) uint32 {
 
 // addPair stores a pair, folding duplicates when the slice fills so that a
 // long history of re-touched files does not grow memory with commit count.
+// At maxIndexPairs a compaction that frees fewer than 1/64 of the slots
+// makes the index full, so a run of duplicates cannot cost one sort of the
+// whole slice per pair.
 func (p *indexParser) addPair(pair indexPair) {
 	x := &p.x
 	if len(x.pairs) >= maxIndexPairs {
 		x.compact()
-		if len(x.pairs) >= maxIndexPairs {
+		if maxIndexPairs-len(x.pairs) < max(maxIndexPairs/64, 1) {
 			p.full = true
 			x.stats.droppedPairs++
 			p.drop(pair.hash, pair.path)
@@ -436,6 +467,14 @@ func (p *indexParser) drop(hash [20]byte, path uint32) {
 	if found && compareCommitKeys(x.commitKey(x.pairs[i].commit), p.curKey) <= 0 {
 		return
 	}
+	x.markTruncated(hash)
+}
+
+// skipOverlongPath marks hash, whose location was skipped because its path
+// is over maxRecord (SEC-9), and counts the skip as attributed.
+func (x *blobIndex) skipOverlongPath(hash [20]byte) {
+	x.stats.overlong++
+	x.stats.attributed++
 	x.markTruncated(hash)
 }
 
@@ -482,6 +521,7 @@ func (p *indexParser) finish() *blobIndex {
 // compact sorts pairs by (hash, path, earliest commit) and keeps the first
 // pair of each (hash, path).
 func (x *blobIndex) compact() {
+	x.compactions++
 	slices.SortFunc(x.pairs, func(a, b indexPair) int {
 		if c := bytes.Compare(a.hash[:], b.hash[:]); c != 0 {
 			return c
@@ -597,13 +637,16 @@ func (x *blobIndex) commitMeta(id uint32) *types.CommitMetadata {
 	return m
 }
 
-// truncated reports whether the index dropped pairs at maxIndexPairs.
+// truncated reports whether the index lost a location of some blob, at
+// maxIndexPairs or to a skipped raw entry. A dropped pair that repeats a
+// recorded location at the same or a later commit loses nothing.
 func (x *blobIndex) truncated() bool {
-	return x != nil && x.stats.droppedPairs > 0
+	return x != nil && len(x.truncatedBlobs) > 0
 }
 
 // locationsTruncated reports whether the index dropped a location of hash at
-// maxIndexPairs, so its lookup is incomplete by an unknown count (R1). This
+// maxIndexPairs (R1), or skipped an over-long or malformed raw entry of hash,
+// so its lookup is incomplete by an unknown count. This
 // includes a blob all of whose pairs were dropped, which lookup reports as
 // unknown. A blob with no dropped pair is not marked, even when the index is
 // truncated: none of its history locations were lost to the cap. An index
@@ -623,6 +666,14 @@ func (x *blobIndex) locationsTruncated(hash [20]byte) bool {
 	}
 	_, ok := x.truncatedBlobs[hash]
 	return ok
+}
+
+// dropsUnattributed reports whether the index or the walk skipped a record it
+// cannot tie to a blob (over-long or malformed), so any blob's lookup may be
+// missing a location that no per-blob mark records. Skipped records tied to
+// a blob mark it in truncatedBlobs instead (stats.attributed).
+func (x *blobIndex) dropsUnattributed() bool {
+	return x != nil && x.stats.overlong+x.stats.malformed > x.stats.attributed
 }
 
 // marksAny reports whether locationsTruncated can be true for some blob.

@@ -494,10 +494,12 @@ func formatSnippet(before, matching, after []byte, maxLen int) string {
 }
 
 // sanitizeSnippetText makes raw scanned content safe for a terminal. It keeps
-// '\n' and '\t' verbatim so code stays readable, and applies
+// '\n' (CRLF included) and '\t' verbatim so code stays readable, and applies
 // types.SanitizeDisplay to the text between them, which escapes ESC sequences
 // and other control bytes while leaving printable Unicode unchanged.
 func sanitizeSnippetText(s string) string {
+	// A CRLF line ending is a newline; only a lone \r is escaped.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
 	var b strings.Builder
 	b.Grow(len(s))
 	for {
@@ -512,8 +514,20 @@ func sanitizeSnippetText(s string) string {
 	}
 }
 
+// trimSplitCR drops the \r that ends part when next starts with \n: a CRLF
+// line ending split across two snippet parts, which is a newline and not a
+// stray carriage return.
+func trimSplitCR(part, next string) string {
+	if strings.HasSuffix(part, "\r") && strings.HasPrefix(next, "\n") {
+		return part[:len(part)-1]
+	}
+	return part
+}
+
 // sanitized returns p with its content parts made safe for a terminal.
 func (p snippetParts) sanitized() snippetParts {
+	p.before = trimSplitCR(p.before, p.matching+p.after)
+	p.matching = trimSplitCR(p.matching, p.after)
 	p.before = sanitizeSnippetText(p.before)
 	p.matching = sanitizeSnippetText(p.matching)
 	p.after = sanitizeSnippetText(p.after)
@@ -725,6 +739,9 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 	// Build content-based finding-to-match map
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 
+	// Cache location lookups per blob to avoid redundant store queries.
+	locationCache := make(map[types.BlobID]blobLocations)
+
 	totalFindings := len(findings)
 
 	// Output each finding in noseyparker format with colors
@@ -807,9 +824,13 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 		// location lines only. Nothing is truncated.
 		findingMatches := matchesByFinding[f.ID]
 		for k, match := range findingMatches {
-			locs, err := loadBlobLocations(s, match)
-			if err != nil {
-				return err
+			locs, ok := locationCache[match.BlobID]
+			if !ok {
+				var err error
+				if locs, err = loadBlobLocations(s, match); err != nil {
+					return err
+				}
+				locationCache[match.BlobID] = locs
 			}
 			line := match.Location.Source.Start.Line
 			if k >= fullMatches {

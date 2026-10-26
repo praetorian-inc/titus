@@ -162,6 +162,7 @@ func storedProvenance(prov types.Provenance) types.Provenance {
 	}
 	g.Locations = nil
 	g.RepoRoot = ""
+	g.RepoTop = ""
 	g.RemoteIdentity = false
 	return g
 }
@@ -244,6 +245,19 @@ func sortedProvenance(provs []types.Provenance) []types.Provenance {
 		result[i] = r.prov
 	}
 	return result
+}
+
+// HasMatches reports whether any match is stored for a blob.
+func (m *MemoryStore) HasMatches(blobID types.BlobID) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, match := range m.matches {
+		if match.BlobID == blobID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // GetMatches retrieves matches for a blob.

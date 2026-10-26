@@ -120,6 +120,12 @@ func createMatchesTable(db *sql.DB) error {
 			end_column INTEGER
 		)
 	`)
+	if err != nil {
+		return err
+	}
+	// GetMatches looks matches up by blob_id once per already-stored blob
+	// on an --incremental rescan, so it must not scan the whole table.
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_matches_blob_id ON matches(blob_id)`)
 	return err
 }
 

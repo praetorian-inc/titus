@@ -39,7 +39,10 @@ type refReader func(name string) (b []byte, exists, bad bool)
 type openRefFunc func(name string, flag int) (io.ReadCloser, error)
 
 // osOpenRef is an openRefFunc on the host filesystem.
-func osOpenRef(name string, flag int) (io.ReadCloser, error) { return os.OpenFile(name, flag, 0) }
+func osOpenRef(name string, flag int) (io.ReadCloser, error) {
+	// #nosec G304 -- name is a ref file under the scanned repository's gitdir; callers open it read-only and reject symlinks and non-regular files.
+	return os.OpenFile(name, flag, 0)
+}
 
 // osRefReader reads ref files under the gitdir dir.
 func osRefReader(dir string) refReader {

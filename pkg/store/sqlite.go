@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -114,6 +115,17 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 		validationStatus, validationConfidence, validationMessage, validationTimestamp,
 		findingID, startLine, startColumn, endLine, endColumn)
 	return err
+}
+
+// HasMatches reports whether any match is stored for blobID. It reads one
+// row through idx_matches_blob_id.
+func (s *SQLiteStore) HasMatches(blobID types.BlobID) (bool, error) {
+	var one int
+	err := s.e.QueryRow("SELECT 1 FROM matches WHERE blob_id = ? LIMIT 1", blobID.Hex()).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {

@@ -198,7 +198,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 		}
 		return gitEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 			if gp, ok := prov.(types.GitProvenance); ok {
-				gp.RepoPath, gp.RemoteIdentity, gp.RepoRoot = id, remote, ""
+				gp.RepoPath, gp.RemoteIdentity, gp.RepoRoot, gp.RepoTop = id, remote, "", ""
 				return callback(content, blobID, gp)
 			}
 			return callback(content, blobID, prov)
@@ -267,6 +267,7 @@ func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) (*types.
 	if len(locs) > 0 && (truncated || !idx.marksAny()) {
 		return commitForPath(locs, rel), truncated
 	}
+	// #nosec G304 -- file is a FileProvenance path the filesystem enumerator walked inside this enumerator's own clone directory.
 	raw, err := os.ReadFile(file)
 	if err != nil {
 		return commitForPath(locs, rel), truncated || idx.marksAny()

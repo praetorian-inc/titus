@@ -42,6 +42,10 @@ type Store interface {
 	// GetMatches retrieves matches for a blob.
 	GetMatches(blobID types.BlobID) ([]*types.Match, error)
 
+	// HasMatches reports whether any match is stored for a blob, without
+	// loading the matches.
+	HasMatches(blobID types.BlobID) (bool, error)
+
 	// GetAllMatches retrieves all matches (for JSON export).
 	GetAllMatches() ([]*types.Match, error)
 

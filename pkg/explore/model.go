@@ -868,13 +868,8 @@ func (m *Model) openSource() tea.Cmd {
 		return nil
 	}
 
-	// Check if match has FileProvenance with a file that exists on disk
-	for _, prov := range match.Provenance {
-		if fp, ok := prov.(types.FileProvenance); ok {
-			if _, err := os.Stat(fp.FilePath); err == nil {
-				return m.openInPager(fp.FilePath, match.Location.Source.Start.Line)
-			}
-		}
+	if path, ok := onDiskPath(match); ok {
+		return m.openInPager(path, match.Location.Source.Start.Line)
 	}
 
 	// Fallback: show snippet in overlay
@@ -893,8 +888,31 @@ func (m *Model) openSource() tea.Cmd {
 	return nil
 }
 
+// onDiskPath returns the first scanned file of match that exists on disk: a
+// FileProvenance path, else a git working-tree location (which a --git scan
+// reports as GitProvenance, not FileProvenance). A committed location is
+// never returned; the file at its path may differ from the committed blob.
+func onDiskPath(match *matchRow) (string, bool) {
+	exists := func(p string) bool {
+		_, err := os.Stat(p)
+		return err == nil
+	}
+	for _, prov := range match.Provenance {
+		if fp, ok := prov.(types.FileProvenance); ok && exists(fp.FilePath) {
+			return fp.FilePath, true
+		}
+	}
+	for _, o := range match.Occurrences {
+		if o.Kind == "git" && o.WorkingTree && o.AbsolutePath != "" && exists(o.AbsolutePath) {
+			return o.AbsolutePath, true
+		}
+	}
+	return "", false
+}
+
 func (m *Model) openInPager(filePath string, line int) tea.Cmd {
 	name, args, env := pagerCommand(filePath, line)
+	// #nosec G204 -- name is the user's own $PAGER (or less), run without a shell on a path they chose to open; pagerCommand hardens less.
 	c := exec.Command(name, args...)
 	if len(env) > 0 {
 		c.Env = append(os.Environ(), env...)

@@ -31,7 +31,8 @@ type blobEntry struct {
 // repoIdentity is the repository identity stamped on every provenance record.
 type repoIdentity struct {
 	path   string // normalized remote identity, or the typed root
-	root   string // absolute working-tree root
+	root   string // absolute scan root
+	top    string // absolute repository top level when root is below it; "" when root is the top level
 	remote bool   // path is a normalized remote identity
 }
 
@@ -65,6 +66,8 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		indexErr error
 		remoteID string
 		remoteOK bool
+		// top is the repository's top level when root is below it.
+		top string
 		// treeBlobs are the blobs under trees that refs point at directly;
 		// treeRefs counts those refs.
 		treeBlobs map[[20]byte]struct{}
@@ -86,6 +89,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 	})
 	g.Go(func() error {
 		remoteID, remoteOK = originIdentity(gctx, root)
+		top = repoTop(gctx, root)
 		return nil
 	})
 	g.Go(func() error {
@@ -111,7 +115,9 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 	idx.stats.malformed += rl.malformed
 	writeEnumWarnings(warn, idx, rl.overlong)
 
-	err := e.streamBlobContents(ctx, &rl, idx, e.repoIdentity(remoteID, remoteOK), callback)
+	id := e.repoIdentity(remoteID, remoteOK)
+	id.top = top
+	err := e.streamBlobContents(ctx, &rl, idx, id, callback)
 	writeMissingWarning(warn, rl.missing)
 	return err
 }
@@ -528,20 +534,16 @@ func (e *GitEnumerator) streamBlobContents(ctx context.Context, rl *revList, idx
 			return abort(fmt.Errorf("git cat-file: read trailing newline: %w", err))
 		}
 
-		var isText bool
-		if content, isText = textContent(content); !isText {
+		text, isText, transcoded := decodeText(content)
+		if !isText {
 			continue
 		}
 
-		// In a SHA-1 repository the git blob id IS the BlobID: both are
-		// SHA-1("blob {len}\0{content}"). A SHA-256 id is not, so the BlobID
-		// is computed as the filesystem enumerator computes it.
-		blobID := types.BlobID(blob.hash)
-		if rl.sha256() {
-			blobID = types.ComputeBlobID(content)
-		}
-
-		if err := callback(content, blobID, blobProvenance(blob, idx, id)); err != nil {
+		// In a SHA-1 repository the git blob id IS the BlobID of untranscoded
+		// text: both are SHA-1("blob {len}\0{content}"). The index is keyed
+		// by the git id either way.
+		blobID := textBlobID(types.BlobID(blob.hash), text, transcoded, rl.sha256())
+		if err := callback(text, blobID, blobProvenance(blob, idx, id)); err != nil {
 			return abort(err)
 		}
 	}
@@ -592,11 +594,23 @@ func parseCatFileHeader(line string, want []byte) (objType string, size int64, m
 // so no path the walk reached is dropped. A blob the index does not know
 // keeps that path alone. LocationsTruncated is set when the index dropped a
 // location of this blob at its size limit (R1), whether or not it kept any,
-// and for a blob under a tree a ref points at directly.
+// and for a blob under a tree a ref points at directly. It is also set when
+// the walk's path is ambiguous against an index that may be incomplete (see
+// matchLocationPath), so no location is collapsed away silently.
 func blobProvenance(blob blobEntry, idx *blobIndex, id repoIdentity) types.GitProvenance {
 	locs := idx.lookup(blob.hash)
-	if blob.path != "" && !hasLocationPath(locs, blob.path) {
-		locs = append(locs, types.GitLocation{Path: blob.path})
+	truncated := idx.locationsTruncated(blob.hash)
+	if blob.path != "" {
+		switch matchLocationPath(locs, blob.path) {
+		case pathAbsent:
+			locs = append(locs, types.GitLocation{Path: blob.path})
+		case pathCutOnly:
+			// The walk's path is either the cut of an indexed path or a
+			// distinct path the index lost. A complete index holds the
+			// walk's full path, so only unattributed index drops leave the
+			// second reading open.
+			truncated = truncated || idx.dropsUnattributed()
+		}
 	}
 	if len(locs) == 0 {
 		locs = []types.GitLocation{{Path: blob.path}}
@@ -606,18 +620,40 @@ func blobProvenance(blob blobEntry, idx *blobIndex, id repoIdentity) types.GitPr
 		Commit:             locs[0].Commit,
 		BlobPath:           locs[0].Path,
 		RepoRoot:           id.root,
+		RepoTop:            id.top,
 		RemoteIdentity:     id.remote,
 		Locations:          locs,
-		LocationsTruncated: idx.locationsTruncated(blob.hash),
+		LocationsTruncated: truncated,
 	}
 }
 
-// hasLocationPath reports whether locs has a location at path.
-func hasLocationPath(locs []types.GitLocation, path string) bool {
+// locationMatch is how a walk path relates to a blob's indexed locations.
+type locationMatch int
+
+const (
+	pathAbsent  locationMatch = iota // no indexed location can be this path
+	pathExact                        // an indexed location is exactly this path
+	pathCutOnly                      // only indexed paths holding a newline start with it
+)
+
+// matchLocationPath compares path, as the walk reported it, with locs, whose
+// paths are whole (the index reads git log -z). rev-list prints a path only
+// up to its first newline, so a path with no newline that matches no location
+// exactly may still be the cut of a location whose first line it is: that is
+// pathCutOnly, where the cut and a distinct path equal to it cannot be told
+// apart from the walk alone. A path holding a newline was never cut.
+func matchLocationPath(locs []types.GitLocation, path string) locationMatch {
+	match := pathAbsent
 	for _, l := range locs {
 		if l.Path == path {
-			return true
+			return pathExact
+		}
+		if strings.Contains(path, "\n") {
+			continue
+		}
+		if first, _, cut := strings.Cut(l.Path, "\n"); cut && first == path {
+			match = pathCutOnly
 		}
 	}
-	return false
+	return match
 }

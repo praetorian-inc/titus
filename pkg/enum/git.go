@@ -251,12 +251,13 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 		if !ok {
 			continue
 		}
-		content, isText := textContent(content)
+		text, isText, transcoded := decodeText(content)
 		if !isText {
 			continue
 		}
-		// The git blob hash is the BlobID, as on the native path.
-		if err := callback(content, types.BlobID(b.hash), blobProvenance(b, idx, id)); err != nil {
+		// The git blob hash is the BlobID unless the text was transcoded, as
+		// on the native path; the index stays keyed by the git hash.
+		if err := callback(text, textBlobID(types.BlobID(b.hash), text, transcoded, false), blobProvenance(b, idx, id)); err != nil {
 			return err
 		}
 	}
@@ -357,7 +358,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 				blobs = append(blobs, b)
 			}
 			if overlong {
-				p.x.stats.overlong++
+				p.x.skipOverlongPath(hash)
 				continue
 			}
 			p.addEntry(hash, []byte(to.Name))

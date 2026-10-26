@@ -77,8 +77,14 @@ func gitOccurrences(g GitProvenance) []Occurrence {
 		}
 		// Committed content of a host-identified repository merges across
 		// folders; everything else stays separated by its absolute folder.
+		// Working-tree paths are relative to the scan root, committed paths
+		// to the repository's top level.
 		if g.RepoRoot != "" && (l.WorkingTree || !g.RemoteIdentity) {
-			o.AbsolutePath = filepath.Join(g.RepoRoot, l.Path)
+			base := g.RepoRoot
+			if !l.WorkingTree {
+				base = cmp.Or(g.RepoTop, g.RepoRoot)
+			}
+			o.AbsolutePath = filepath.Join(base, l.Path)
 		}
 		out = append(out, o)
 	}
