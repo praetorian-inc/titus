@@ -103,7 +103,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		// missing others (R1).
 		idx = unavailableIndex()
 		if ctx.Err() == nil {
-			_, _ = fmt.Fprintf(warn, "titus: git history index unavailable: %v; each blob falls back to one path and is marked as possibly missing locations\n", indexErr)
+			_, _ = fmt.Fprintf(warn, "titus: git history index unavailable: %s; each blob falls back to one path and is marked as possibly missing locations\n", types.SanitizeDisplay(indexErr.Error())) // R6-3
 		}
 	}
 	idx.setTaggedTrees(treeBlobs, treeRefs)

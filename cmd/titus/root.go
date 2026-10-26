@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -52,14 +54,22 @@ func Execute() error {
 // reportError prints err the way cobra does, but passes the message through
 // types.SanitizeDisplay: an error can carry repository bytes, such as a path
 // read from a .git file or a commondir file, and control bytes in it must
-// reach the terminal escaped, not raw (O3). The error value is unchanged. A
-// command that cannot run failed to resolve, so it gets cobra's hint;
-// otherwise the usage follows, as cobra prints it.
+// reach the terminal escaped, not raw (O3). The error value is unchanged.
+// Cobra prints its help hint only when the command lookup fails, and the
+// usage after any other error, a flag error on a group included (R6-2).
 func reportError(cmd *cobra.Command, err error) {
 	cmd.PrintErrln(cmd.ErrPrefix(), types.SanitizeDisplay(err.Error()))
-	if !cmd.Runnable() {
+	if isLookupError(cmd, err) {
 		cmd.PrintErrf("Run '%v --help' for usage.\n", cmd.CommandPath())
 		return
 	}
 	cmd.Println(cmd.UsageString())
+}
+
+// isLookupError reports whether err came from cobra's command lookup. Find
+// fails only in legacyArgs, for the root command with no Args validator,
+// and that error is the only one cobra words "unknown command"; a flag error
+// on the same command never is (R6-2).
+func isLookupError(cmd *cobra.Command, err error) bool {
+	return !cmd.HasParent() && cmd.Args == nil && strings.HasPrefix(err.Error(), "unknown command ")
 }

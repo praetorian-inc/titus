@@ -111,9 +111,10 @@ func (e *CloneEnumerator) Enumerate(ctx context.Context, callback func(content [
 
 		if err := e.cloneAndScan(ctx, repo, callback); err != nil {
 			// Log error and continue to next repo. Never print CloneURL: it
-			// may carry a token.
+			// may carry a token. The id and error carry repo-derived text,
+			// so escape them for the terminal (R6-3).
 			id, _ := cloneIdentity(repo)
-			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", id, err)
+			fmt.Fprintf(os.Stderr, "warning: skipping %s: %s\n", types.SanitizeDisplay(id), types.SanitizeDisplay(err.Error()))
 			continue
 		}
 	}
@@ -167,7 +168,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 	}
 	cloneArgs = append(cloneArgs, repo.CloneURL, clonePath)
 
-	fmt.Fprintf(os.Stderr, "Cloning %s...\n", id)
+	fmt.Fprintf(os.Stderr, "Cloning %s...\n", types.SanitizeDisplay(id)) // R6-3
 	cmd := exec.CommandContext(ctx, "git", cloneArgs...)
 	cmd.Stderr = os.Stderr
 
@@ -216,7 +217,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 	if err != nil {
 		idx = unavailableIndex()
 		if ctx.Err() == nil {
-			fmt.Fprintf(os.Stderr, "titus: git history index unavailable: %v; files are scanned without commit metadata and marked as possibly missing locations\n", err)
+			fmt.Fprintf(os.Stderr, "titus: git history index unavailable: %s; files are scanned without commit metadata and marked as possibly missing locations\n", types.SanitizeDisplay(err.Error())) // R6-3
 		}
 	}
 	idx.writeWarnings(os.Stderr)

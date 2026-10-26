@@ -88,7 +88,8 @@ func detectAccessibility(target, token string) Accessibility {
 		}
 		isPrivate, err := githubRepoIsPrivate(m[1], m[2], tok)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via GitHub API (%v); assuming private\n", err)
+			// The error carries the repo's own remote URL; escape it (R6-3).
+			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via GitHub API (%s); assuming private\n", types.SanitizeDisplay(err.Error()))
 			return Private
 		}
 		if isPrivate {
@@ -105,7 +106,7 @@ func detectAccessibility(target, token string) Accessibility {
 		}
 		isPrivate, err := gitlabRepoIsPrivate(m[1], tok)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via GitLab API (%v); assuming private\n", err)
+			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via GitLab API (%s); assuming private\n", types.SanitizeDisplay(err.Error())) // R6-3
 			return Private
 		}
 		if isPrivate {
@@ -122,7 +123,7 @@ func detectAccessibility(target, token string) Accessibility {
 		}
 		isPrivate, err := bitbucketRepoIsPrivate(m[1], m[2], tok)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via Bitbucket API (%v); assuming private\n", err)
+			fmt.Fprintf(os.Stderr, "[info] could not determine repo accessibility via Bitbucket API (%s); assuming private\n", types.SanitizeDisplay(err.Error())) // R6-3
 			return Private
 		}
 		if isPrivate {

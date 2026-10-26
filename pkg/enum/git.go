@@ -487,6 +487,9 @@ func goGitTips(repo *git.Repository, missing map[plumbing.Hash]struct{}) (tips [
 	}
 	add := func(ref *plumbing.Reference, countTree bool) error {
 		name := ref.Name()
+		if ref.Type() == plumbing.HashReference {
+			return addHash(name.String(), ref.Hash(), countTree)
+		}
 		resolved, err := storer.ResolveReference(repo.Storer, name)
 		if errors.Is(err, plumbing.ErrReferenceNotFound) {
 			return nil // dangling symbolic ref, such as an unborn HEAD
@@ -500,14 +503,26 @@ func goGitTips(repo *git.Repository, missing map[plumbing.Hash]struct{}) (tips [
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to list refs: %w", err)
 	}
+	// In a linked worktree go-git reads refs/worktree/<name> and the other
+	// per-worktree refs from the common store, which holds the main
+	// worktree's. They are dropped and read from the opened gitdir instead
+	// (R6-1). In the main worktree the two are one directory, and go-git
+	// lists them itself.
+	self, common, onDisk := gitDirs(repo)
+	linked := onDisk && !sameDir(self, common)
 	var named []*plumbing.Reference
 	if err := refs.ForEach(func(ref *plumbing.Reference) error {
-		if ref.Name() != plumbing.HEAD {
+		if ref.Name() != plumbing.HEAD && (!linked || !isPerWorktreeRef(ref.Name().String())) {
 			named = append(named, ref)
 		}
 		return nil
 	}); err != nil {
 		return nil, nil, 0, err
+	}
+	if linked {
+		own, ownLost := perWorktreeRefs(repo, self)
+		named = append(named, own...)
+		lost += ownLost
 	}
 	slices.SortFunc(named, func(a, b *plumbing.Reference) int {
 		return strings.Compare(string(a.Name()), string(b.Name()))
@@ -520,15 +535,34 @@ func goGitTips(repo *git.Repository, missing map[plumbing.Hash]struct{}) (tips [
 	// HEAD as a symbolic ref to a listed ref is that ref again: its tree,
 	// if any, is not counted a second time.
 	headTree := true
-	if head, err := repo.Storer.Reference(plumbing.HEAD); err == nil && head.Type() == plumbing.SymbolicReference {
+	head, err := repo.Storer.Reference(plumbing.HEAD)
+	symbolic := err == nil && head.Type() == plumbing.SymbolicReference
+	if symbolic {
 		headTree = !slices.ContainsFunc(named, func(r *plumbing.Reference) bool { return r.Name() == head.Target() })
 	}
-	if err := add(plumbing.NewSymbolicReference(plumbing.HEAD, ""), headTree); err != nil {
+	// A HEAD on a per-worktree ref is resolved from the opened gitdir: go-git
+	// looks for the target in the common store, finds nothing, and would
+	// take the HEAD as unborn (R6-1).
+	var h plumbing.Hash
+	found, bad := false, false
+	if symbolic && onDisk {
+		h, found, bad = resolveSymref(repo, osRefReader(self), string(head.Target()))
+	}
+	switch {
+	case found:
+		err = addHash("HEAD", h, headTree)
+	case bad:
+		lost++
+	default:
+		err = add(plumbing.NewSymbolicReference(plumbing.HEAD, ""), headTree)
+	}
+	if err != nil {
 		return nil, nil, 0, err
 	}
 	// go-git has no API for other worktrees' HEADs (R4-1). A detached one
 	// is a tip like a ref; one on a branch repeats a listed ref.
-	heads, lost := goGitWorktreeHeads(repo)
+	heads, headsLost := goGitWorktreeHeads(repo)
+	lost += headsLost
 	for _, wt := range heads {
 		if err := addHash("worktree HEAD", wt, true); err != nil {
 			return nil, nil, 0, err
@@ -541,24 +575,26 @@ func goGitTips(repo *git.Repository, missing map[plumbing.Hash]struct{}) (tips [
 // or a symbolic ref fits easily; a longer file is neither.
 const maxWorktreeHead = 4 << 10
 
-// goGitWorktreeHeads returns the detached HEAD of every worktree except the
-// one opened, read as git reads it: the first word must be an object id.
+// goGitWorktreeHeads returns the HEAD commit-ish of every worktree except
+// the one opened, read as git reads it: an object id, or a symbolic ref.
 // Linked worktrees keep theirs in <commondir>/worktrees/<id>/HEAD, and the
 // main worktree in <commondir>/HEAD, which go-git does not read when the
-// scan is opened in a linked worktree (R5-1). A symbolic HEAD repeats a
-// listed ref, and a file that names no object id names nothing, as for
-// refs; both are skipped. A worktree entry or HEAD that is a symlink, or
-// cannot be read, is counted in lost, since git would still reach it; so is
-// an object id of the other hash width, which go-git cannot look up (O4).
+// scan is opened in a linked worktree (R5-1). A symbolic HEAD on a
+// per-worktree ref is resolved from that worktree's gitdir (R6-1); one on a
+// common ref repeats a listed ref, and a file that names no object id names
+// nothing, as for refs; both are skipped. A worktree entry or HEAD that is a
+// symlink, or cannot be read, is counted in lost, since git would still
+// reach it; so is an object id of the other hash width, which go-git cannot
+// look up (O4).
 func goGitWorktreeHeads(repo *git.Repository) (heads []plumbing.Hash, lost int) {
 	s, ok := repo.Storer.(*filesystem.Storage)
 	if !ok {
 		return nil, 0 // not on disk: no worktrees
 	}
 	fs := s.Filesystem()
-	self := fs.Root()
-	read := func(lstat func(string) (os.FileInfo, error), open func(string) (io.ReadCloser, error), name string) {
-		h, found, bad := readHeadFile(lstat, open, name)
+	self, common, ok := gitDirs(repo)
+	read := func(r refReader) {
+		h, found, bad := readHeadFile(repo, r)
 		switch {
 		case found:
 			heads = append(heads, h)
@@ -566,12 +602,10 @@ func goGitWorktreeHeads(repo *git.Repository) (heads []plumbing.Hash, lost int) 
 			lost++
 		}
 	}
-	// Paths under objects/ and worktrees/ resolve in the common directory
-	// (R4-2), so the parent of objects/ is the common directory.
-	if ofs, err := fs.Chroot("objects"); err != nil {
+	if !ok {
 		lost++
-	} else if common := filepath.Dir(ofs.Root()); !sameDir(common, self) {
-		read(os.Lstat, func(n string) (io.ReadCloser, error) { return os.Open(n) }, filepath.Join(common, "HEAD"))
+	} else if !sameDir(common, self) {
+		read(osRefReader(common))
 	}
 	fi, err := fs.Lstat("worktrees")
 	switch {
@@ -599,35 +633,31 @@ func goGitWorktreeHeads(repo *git.Repository) (heads []plumbing.Hash, lost int) 
 		if !e.IsDir() || sameDir(filepath.Join(wfs.Root(), e.Name()), self) {
 			continue // not a worktree, or the one opened: its HEAD is HEAD
 		}
-		read(wfs.Lstat, wopen, path.Join(e.Name(), "HEAD"))
+		id := e.Name()
+		read(func(name string) ([]byte, bool, bool) {
+			return readRefFile(wfs.Lstat, wopen, path.Join(id, name))
+		})
 	}
 	return heads, lost
 }
 
-// readHeadFile reads the HEAD file name, at most maxWorktreeHead bytes of a
-// regular file. found reports a detached HEAD naming an object. bad reports
-// a HEAD git would use that is not read here: an error, a symlink or other
-// non-regular file, or an object id of the other hash width. A missing file
-// is neither: git skips that worktree too.
-func readHeadFile(lstat func(string) (os.FileInfo, error), open func(string) (io.ReadCloser, error), name string) (h plumbing.Hash, found, bad bool) {
-	fi, err := lstat(name)
-	if errors.Is(err, os.ErrNotExist) {
-		return h, false, false
-	}
-	if err != nil || !fi.Mode().IsRegular() {
-		return h, false, true
-	}
-	f, err := open(name)
-	if err != nil {
-		return h, false, true
-	}
-	b, err := io.ReadAll(io.LimitReader(f, maxWorktreeHead))
-	_ = f.Close()
-	if err != nil {
-		return h, false, true
+// readHeadFile reads the HEAD file of the worktree read reads, at most
+// maxWorktreeHead bytes of a regular file. found reports a HEAD naming an
+// object, directly or through a per-worktree ref. bad reports a HEAD git
+// would use that is not read here: an error, a symlink or other non-regular
+// file, an object id of the other hash width, or a symbolic ref that
+// resolveSymref cannot follow. A missing file is neither: git skips that
+// worktree too.
+func readHeadFile(repo *git.Repository, read refReader) (h plumbing.Hash, found, bad bool) {
+	b, exists, bad := read("HEAD")
+	if !exists || bad {
+		return h, false, bad
 	}
 	if h, ok := parseDetachedHead(b); ok {
 		return h, true, false
+	}
+	if target, ok := parseSymref(b); ok {
+		return resolveSymref(repo, read, target)
 	}
 	return h, false, otherWidthID(b)
 }
