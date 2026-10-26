@@ -348,6 +348,15 @@ func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt
 // transcode has its object id as its BlobID; otherwise (UTF-16 text, SHA-256)
 // the file is hashed as git hashes it, which only such files pay for.
 //
+// Git may have converted the file at checkout, so the raw bytes are not the
+// only candidate: the file with CRLF line endings turned to LF (eol=crlf,
+// core.autocrlf), and UTF-16 text decoded to UTF-8 with and without that
+// line-ending change (working-tree-encoding) are hashed too. Each is tried only
+// after the raw hash misses and only when it differs from the raw bytes. Filter
+// drivers are never run. A file that differs from HEAD only in line endings
+// therefore counts as held: its secret's lines are already reported at the
+// HEAD commit location.
+//
 // That read takes only a regular file, never through a symlink and never
 // waiting on a FIFO, and at most the scanner's maximum file size. A file it
 // cannot read that way counts as not held, so its working-tree location is
@@ -374,7 +383,24 @@ func (m *worktreeMerge) headHolds(id types.BlobID, path string) bool {
 	if err != nil || (limit > 0 && int64(len(content)) > limit) {
 		return false
 	}
-	return gitObjectID(content, len(oid)) == oid
+	return checkoutMatches(content, oid)
+}
+
+// checkoutMatches reports whether content, or a form of it git's checkout
+// conversions could have produced from the blob oid, hashes to oid.
+func checkoutMatches(content []byte, oid string) bool {
+	matches := func(c []byte) bool {
+		if gitObjectID(c, len(oid)) == oid {
+			return true
+		}
+		return bytes.Contains(c, []byte("\r\n")) &&
+			gitObjectID(bytes.ReplaceAll(c, []byte("\r\n"), []byte("\n")), len(oid)) == oid
+	}
+	if matches(content) {
+		return true
+	}
+	decoded, isUTF16 := decodeUTF16(content)
+	return isUTF16 && matches(decoded)
 }
 
 // emitWorktreeOnly reports the working-tree blobs git did not: each blob is
@@ -430,6 +456,11 @@ func (m *worktreeMerge) isSeen(id types.BlobID) bool {
 // reported that id, the file still reaches the callback, as its own path
 // only, so its location is not dropped. Other provenances (archive members)
 // pass through, deduplicated as the filesystem scan does.
+//
+// A path whose HEAD blob is this content after git's checkout conversions
+// (see checkoutMatches) is dropped: a CRLF checkout of an LF blob has its own
+// id, but HEAD's blob was reported from history. A file left with no other
+// path is not reported at all.
 func (m *worktreeMerge) worktreeCallback(ident types.GitProvenance) blobCallback {
 	return func(content []byte, id types.BlobID, prov types.Provenance) error {
 		fp, isFile := prov.(types.FileProvenance)
@@ -445,6 +476,13 @@ func (m *worktreeMerge) worktreeCallback(ident types.GitProvenance) blobCallback
 					rel = fp.FilePath
 				}
 				paths = []string{filepath.ToSlash(rel)}
+			}
+			paths = slices.DeleteFunc(slices.Clone(paths), func(p string) bool {
+				oid, ok := m.head[p]
+				return ok && checkoutMatches(content, oid)
+			})
+			if len(paths) == 0 {
+				return nil
 			}
 			gp := ident
 			gp.BlobPath = paths[0]

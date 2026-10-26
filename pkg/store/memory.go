@@ -20,6 +20,9 @@ type blobRecord struct {
 // No CGO dependency required.
 // Originally used only for WASM builds, but now the default for non-CGO builds.
 type MemoryStore struct {
+	// batchMu serializes ExecBatch; mu guards each individual call.
+	batchMu sync.Mutex
+
 	mu         sync.RWMutex
 	blobs      map[string]blobRecord         // keyed by BlobID.Hex()
 	matches    []*types.Match                // all matches, in insertion order
@@ -335,7 +338,13 @@ func (m *MemoryStore) GetProvenance(blobID types.BlobID) (types.Provenance, erro
 	return sortedProvenance(provs)[0], nil
 }
 
+// ExecBatch runs fn with every other batch excluded. Callers check then insert
+// inside one batch (FindingExists then AddFinding), which must be atomic as it
+// is in SQLiteStore's transaction, or two workers could both see a finding as
+// new.
 func (s *MemoryStore) ExecBatch(fn func(Store) error) error {
+	s.batchMu.Lock()
+	defer s.batchMu.Unlock()
 	return fn(s)
 }
 
