@@ -952,6 +952,51 @@ func TestScanE2E_NoRemoteRepositoryAsTyped(t *testing.T) {
 	assert.Equal(t, 1, committed)
 }
 
+// TestScanE2E_UntrackedCopyIsWorkingTreeLocation covers C-WORKTREE-1: after
+// `titus scan acme-api --git`, an untracked backup/config.yml with the same
+// bytes as the committed config.yml is its own location with no commit, and
+// the human report labels it "working tree". If the combined enumerator
+// skipped the already-seen blob, the report would show only the commit line.
+func TestScanE2E_UntrackedCopyIsWorkingTreeLocation(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "acme-api")
+	gitRepoForTest(t, repo, "", map[string]string{"config.yml": locTestSecret})
+	writeFileForTest(t, filepath.Join(repo, "backup", "config.yml"), locTestSecret)
+	rev, err := exec.Command("git", "-C", repo, "rev-parse", "--short=7", "HEAD").Output()
+	require.NoError(t, err)
+	commitA := strings.TrimSpace(string(rev))
+	t.Chdir(root)
+	ds := tempDatastore(t)
+
+	got := scanJSONMatches(t, scanForTest(t, "acme-api", ds, "json", true))
+	require.Len(t, got, 1)
+	commits := map[string]bool{}
+	for _, l := range got[0].Locations {
+		commits[l.Path] = l.Commit != nil
+	}
+	assert.Equal(t, map[string]bool{"config.yml": true, "backup/config.yml": false}, commits,
+		"the untracked copy is a location with no commit")
+
+	s, err := store.New(store.Config{Path: filepath.Join(ds, "datastore.db")})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	builtins, err := rule.NewLoader().LoadBuiltinRules()
+	require.NoError(t, err)
+	ruleMap := map[string]*types.Rule{}
+	for _, r := range builtins {
+		ruleMap[r.ID] = r
+	}
+
+	assert.Equal(t, []string{
+		"    acme-api  backup/config.yml:1  working tree",
+		"    acme-api  config.yml:1  " + commitA + "  2024-01-02",
+	}, humanLocationLines(renderHuman(t, s, findings, matches, ruleMap)))
+}
+
 // retryingMatcherFake makes every blob time out on the parallel pass: it
 // returns no matches, reports the blob as queued for retry, and returns the
 // real matches only from DrainTimedOut, as a matcher does after a timeout.

@@ -1755,6 +1755,79 @@ func TestOutputReport_LegacyDatastoreHostNotRecorded(t *testing.T) {
 	assert.Equal(t, "config.yml", rep.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI)
 }
 
+// sarifRepoHosts returns, per SARIF result, its repository and whether the
+// host was recorded.
+func sarifRepoHosts(t *testing.T, data []byte) map[string]bool {
+	t.Helper()
+	var rep sarif.Report
+	require.NoError(t, json.Unmarshal(data, &rep))
+	require.Len(t, rep.Runs, 1)
+	got := map[string]bool{}
+	for _, r := range rep.Runs[0].Results {
+		require.NotNil(t, r.Properties)
+		require.NotNil(t, r.Properties.HostRecorded, "git result %q has host_recorded", r.Properties.Repository)
+		got[r.Properties.Repository] = *r.Properties.HostRecorded
+	}
+	assert.Len(t, rep.Runs[0].Results, len(got), "one result per repository")
+	return got
+}
+
+// C-OLDDS-2: a pre-change datastore row for acme/api plus a rescan via
+// `titus github acme/api` into it shows both repositories in every format:
+// the legacy one as "acme/api (host not recorded)" and the rescan as
+// github.com/acme/api. Upgrading or deduplicating the legacy row on rescan
+// would leave only github.com/acme/api.
+func TestOutputReport_LegacyAndRescanShowBoth(t *testing.T) {
+	s, findings, matches, ruleMap := legacyFixture(t, types.GitProvenance{RepoPath: "acme/api", BlobPath: "config.yml"})
+	// Stand-in for `titus github acme/api`, as in TestScanE2E_OriginRemoteMergesWithAPI.
+	require.NoError(t, s.AddOccurrences(types.ComputeBlobID([]byte("TOKEN=tok_legacy")), []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", HostRecorded: true},
+	}))
+
+	assert.Equal(t, []string{
+		"    acme/api  config.yml:3  host not recorded",
+		"    github.com/acme/api  config.yml:3",
+	}, humanLocationLines(renderHuman(t, s, findings, matches, ruleMap)))
+
+	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Matches, 1)
+	gotJSON := map[string]bool{}
+	for _, l := range out[0].Matches[0].Locations {
+		require.NotNil(t, l.Repository)
+		gotJSON[*l.Repository] = l.HostRecorded
+	}
+	assert.Len(t, out[0].Matches[0].Locations, 2)
+	want := map[string]bool{"acme/api": false, "github.com/acme/api": true}
+	assert.Equal(t, want, gotJSON)
+
+	assert.Equal(t, want, sarifRepoHosts(t, renderSARIF(t, s, findings, matches, ruleMap)))
+}
+
+// C-HOSTS-1 at report level: the same owner/repo on three hosts, scanned into
+// one datastore, stays three repositories rather than collapsing to acme/api.
+func TestOutputReport_ThreeHostsStayDistinct(t *testing.T) {
+	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", HostRecorded: true},
+		{Kind: "git", Repository: "github.example.com/acme/api", Path: "config.yml", HostRecorded: true},
+		{Kind: "git", Repository: "gitlab.example.com/acme/api", Path: "config.yml", HostRecorded: true},
+	})
+	want := []string{"github.com/acme/api", "github.example.com/acme/api", "gitlab.example.com/acme/api"}
+
+	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Matches, 1)
+	var got []string
+	for _, l := range out[0].Matches[0].Locations {
+		require.NotNil(t, l.Repository)
+		got = append(got, *l.Repository)
+	}
+	assert.Equal(t, want, got)
+
+	sarifRepos := sarifRepoHosts(t, renderSARIF(t, s, findings, matches, ruleMap))
+	assert.ElementsMatch(t, want, slices.Collect(maps.Keys(sarifRepos)))
+}
+
 // SEC-5: a legacy repository URL with userinfo never shows the credential in
 // any format.
 func TestOutputReport_LegacyUserinfoRedactedEverywhere(t *testing.T) {
