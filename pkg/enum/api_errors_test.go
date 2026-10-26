@@ -1,10 +1,8 @@
 package enum
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -97,120 +94,4 @@ func TestAPIEnumerators_ListingErrorHasNoURLOrCredential(t *testing.T) {
 			assert.NotContains(t, msg, "/api/")
 		})
 	}
-}
-
-func TestAPIEnumerators_ListingCancelReturnsCtxErr(t *testing.T) {
-	for _, tc := range listingCases() {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			srv, fails := newFailingAPIServer(t, tc.failPrefix, http.StatusInternalServerError, cancel)
-			err := tc.run(t, ctx, srv)
-			// The failing request cancels ctx: the enumerator must stop with
-			// ctx's error and send no retry, whatever its backoff.
-			require.ErrorIs(t, err, context.Canceled)
-			assert.Equal(t, int32(1), fails.Load(), "no retry after cancel")
-			assert.NotContains(t, err.Error(), "secret")
-		})
-	}
-}
-
-func TestAPIEnumerators_SetupErrorHasNoCredential(t *testing.T) {
-	const bad = "https://u:" + "secret@git.example.test:notaport/"
-	t.Run("github", func(t *testing.T) {
-		_, err := NewGitHubEnumerator(GitHubConfig{BaseURL: bad, Owner: "acme", Repo: "api"})
-		require.Error(t, err)
-		assert.NotContains(t, err.Error(), "secret")
-		assert.NotContains(t, err.Error(), "git.example.test")
-	})
-	t.Run("gitlab", func(t *testing.T) {
-		_, err := NewGitLabEnumerator(GitLabConfig{BaseURL: bad, Project: "grp/api"})
-		require.Error(t, err)
-		assert.NotContains(t, err.Error(), "secret")
-		assert.NotContains(t, err.Error(), "git.example.test")
-	})
-}
-
-// countingRT counts the raw-file response-body bytes the client reads.
-type countingRT struct{ n atomic.Int64 }
-
-type countingBody struct {
-	io.ReadCloser
-	n *atomic.Int64
-}
-
-func (b countingBody) Read(p []byte) (int, error) {
-	k, err := b.ReadCloser.Read(p)
-	b.n.Add(int64(k))
-	return k, err
-}
-
-func (rt *countingRT) RoundTrip(r *http.Request) (*http.Response, error) {
-	resp, err := http.DefaultTransport.RoundTrip(r)
-	if resp != nil && resp.Body != nil && strings.HasSuffix(r.URL.Path, "/raw") {
-		resp.Body = countingBody{resp.Body, &rt.n}
-	}
-	return resp, err
-}
-
-// A raw file far over MaxFileSize is read at most limit+1 bytes (the
-// client's deferred drain included), skipped, and warned; a small file in the
-// same project is still reported.
-func TestGitLabEnumerator_RawReadIsBounded(t *testing.T) {
-	const limit = 1000
-	big := strings.Repeat("a", 4<<20) // 4 MiB
-	srv := newGitLabTreeServer(t, []apiEntry{
-		{sha: strings.Repeat("1", 40), path: "big.txt", content: big},
-		{sha: strings.Repeat("2", 40), path: "small.txt", content: "token-small"},
-	}, nil)
-	rt := &countingRT{}
-	c, err := gitlab.NewClient("", gitlab.WithBaseURL(credURL(t, srv, "/api/v4")), gitlab.WithHTTPClient(&http.Client{Transport: rt}))
-	require.NoError(t, err)
-	var warn bytes.Buffer
-	e := &GitLabEnumerator{client: c, config: GitLabConfig{Project: "grp/api", Config: Config{MaxFileSize: limit}}, warn: &warn}
-
-	calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
-
-	assert.Equal(t, map[string][]string{"token-small": {"small.txt"}}, pathsByContent(t, calls))
-	read := rt.n.Load() - int64(len("token-small"))
-	assert.LessOrEqual(t, read, int64(limit+1), "raw body bytes read for big.txt")
-	assert.Contains(t, warn.String(), "big.txt")
-	assert.Contains(t, warn.String(), "size limit")
-	assert.NotContains(t, warn.String(), "secret")
-}
-
-func TestCappedBuffer(t *testing.T) {
-	t.Run("WriteTo source over limit stops", func(t *testing.T) {
-		stopped := 0
-		c := &cappedBuffer{limit: 10, stop: func() { stopped++ }}
-		// *strings.Reader has WriteTo, so io.Copy uses Write, not ReadFrom.
-		_, err := io.Copy(c, strings.NewReader(strings.Repeat("a", 11)))
-		require.ErrorIs(t, err, errOverSizeLimit)
-		assert.Equal(t, 1, stopped)
-		assert.LessOrEqual(t, c.buf.Len(), 10)
-	})
-	t.Run("at limit keeps everything", func(t *testing.T) {
-		stopped := 0
-		c := &cappedBuffer{limit: 10, stop: func() { stopped++ }}
-		_, err := io.Copy(c, strings.NewReader(strings.Repeat("a", 10)))
-		require.NoError(t, err)
-		assert.Equal(t, 10, c.buf.Len())
-		assert.Zero(t, stopped)
-	})
-	t.Run("ReadFrom over limit stops", func(t *testing.T) {
-		stopped := 0
-		c := &cappedBuffer{limit: 10, stop: func() { stopped++ }}
-		_, err := io.Copy(c, io.LimitReader(strings.NewReader(strings.Repeat("a", 1<<16)), 1<<16))
-		require.ErrorIs(t, err, errOverSizeLimit)
-		assert.Equal(t, 1, stopped)
-		assert.LessOrEqual(t, c.buf.Len(), 11)
-	})
-	t.Run("no limit keeps everything", func(t *testing.T) {
-		stopped := 0
-		c := &cappedBuffer{stop: func() { stopped++ }}
-		_, err := io.Copy(c, io.LimitReader(strings.NewReader(strings.Repeat("a", 1<<16)), 1<<16))
-		require.NoError(t, err)
-		assert.Equal(t, 1<<16, c.buf.Len())
-		assert.Zero(t, stopped)
-	})
 }

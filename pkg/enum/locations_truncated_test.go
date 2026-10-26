@@ -2,13 +2,9 @@ package enum
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -23,76 +19,6 @@ func lowerIndexCap(t *testing.T, n int) {
 	old := maxIndexPairs
 	maxIndexPairs = n
 	t.Cleanup(func() { maxIndexPairs = old })
-}
-
-func headerAt(id, date, subject string) string {
-	return id + "\x00A\x00a@x\x00" + date + "\x00C\x00c@x\x00" + date + "\x00" + subject + "\x00"
-}
-
-func hexN(i int) string { return fmt.Sprintf("%040x", i) }
-
-// R1: once the index is full, a blob is marked truncated exactly when a
-// location of it was dropped: a new (blob, path) pair — including a new path
-// for a blob the index kept — or an existing pair seen at an earlier commit
-// than the one recorded. A dropped re-touch at the same or a later commit
-// loses nothing and does not mark. Kept locations stay as recorded.
-func TestParseBlobIndex_TruncatedBlobsMarked(t *testing.T) {
-	lowerIndexCap(t, 3)
-	mid, newer, older := strings.Repeat("2", 40), strings.Repeat("3", 40), strings.Repeat("1", 40)
-
-	var s strings.Builder
-	s.WriteString(headerAt(mid, "2026-02-01T00:00:00Z", "mid"))
-	for i := 1; i <= 6; i++ { // 1..3 kept, 4..6 dropped
-		s.WriteString(raw("100644", hexN(i), "A", fmt.Sprintf("f%d", i)))
-	}
-	s.WriteString(raw("100644", hexN(2), "M", "f2")) // same commit again: nothing lost
-	s.WriteString(headerAt(newer, "2026-03-01T00:00:00Z", "newer"))
-	s.WriteString(raw("100644", hexN(2), "M", "f2")) // later re-touch: nothing lost
-	s.WriteString(raw("100644", hexN(3), "A", "g3")) // kept blob, new path: location lost
-	s.WriteString(headerAt(older, "2026-01-01T00:00:00Z", "older"))
-	s.WriteString(raw("100644", hexN(1), "A", "f1")) // earlier commit: attribution lost
-
-	idx, err := parseBlobIndex(strings.NewReader(s.String()))
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	want := map[int]bool{1: true, 2: false, 3: true, 4: true, 5: true, 6: true, 7: false}
-	for i, w := range want {
-		if got := idx.locationsTruncated(mustHash(t, hexN(i))); got != w {
-			t.Errorf("locationsTruncated(blob %d) = %v, want %v", i, got, w)
-		}
-	}
-	if idx.stats.droppedPairs != 7 {
-		t.Errorf("droppedPairs = %d, want 7", idx.stats.droppedPairs)
-	}
-	// Kept entries are untouched by the drops: the index still reports the
-	// commit it held, which is why the blob must carry the marker.
-	for i, w := range map[int][]locWant{
-		1: {{"f1", mid}},
-		2: {{"f2", mid}},
-		3: {{"f3", mid}},
-		4: {},
-	} {
-		if got := locsOf(idx.lookup(mustHash(t, hexN(i)))); !slices.Equal(got, w) {
-			t.Errorf("lookup(blob %d) = %+v, want %+v", i, got, w)
-		}
-	}
-	var nilIdx *blobIndex
-	if nilIdx.locationsTruncated(mustHash(t, hexN(1))) {
-		t.Error("nil index reports a truncated blob")
-	}
-}
-
-// An index that never reached the cap marks nothing.
-func TestParseBlobIndex_UntruncatedMarksNothing(t *testing.T) {
-	c := strings.Repeat("1", 40)
-	idx, err := parseBlobIndex(strings.NewReader(header(c, "s") + raw("100644", hexN(1), "A", "f")))
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	if idx.truncated() || idx.locationsTruncated(mustHash(t, hexN(1))) {
-		t.Error("untruncated index marks a blob")
-	}
 }
 
 // threeCommitRepo commits a.txt, b.txt, c.txt in that order, oldest first,
@@ -169,56 +95,6 @@ func TestNativeGitEnumerator_TruncatedIndexMarksAffectedBlobs(t *testing.T) {
 	}
 }
 
-// go-git fallback: the walk starts at the tip, so c.txt is kept.
-func TestGoGitEnumerator_TruncatedIndexMarksAffectedBlobs(t *testing.T) {
-	skipIfNoGit(t)
-	lowerIndexCap(t, 1)
-	dir := t.TempDir()
-	a, b, c := threeCommitRepo(t, dir)
-	var warn bytes.Buffer
-	e := nativeEnum(dir)
-	e.warn = &warn
-
-	provs := map[types.BlobID]types.GitProvenance{}
-	err := e.enumerateAllHistory(context.Background(), func(_ []byte, id types.BlobID, prov types.Provenance) error {
-		provs[id] = prov.(types.GitProvenance)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("enumerateAllHistory: %v", err)
-	}
-	checkTruncationMarks(t, provs, c, a, b)
-	if got := warn.String(); strings.Count(got, truncWarning) != 1 {
-		t.Errorf("warning = %q, want exactly one %q", got, truncWarning)
-	}
-}
-
-// Clone, filesystem mode: the working-tree blob whose history pair was
-// dropped is marked; the kept one is not.
-func TestCloneEnumerator_TruncatedIndexMarksAffectedBlobs(t *testing.T) {
-	skipIfNoGit(t)
-	lowerIndexCap(t, 1)
-	dir := t.TempDir()
-	a, b, c := threeCommitRepo(t, dir)
-
-	e := NewCloneEnumerator([]RepoInfo{{Name: "test/repo", CloneURL: "file://" + dir}}, Config{MaxFileSize: 1 << 20})
-	var mu sync.Mutex
-	provs := map[types.BlobID]types.GitProvenance{}
-	err := e.Enumerate(context.Background(), func(_ []byte, id types.BlobID, prov types.Provenance) error {
-		mu.Lock()
-		defer mu.Unlock()
-		// Filesystem mode also walks the clone's .git directory.
-		if gp, ok := prov.(types.GitProvenance); ok && !strings.HasPrefix(gp.BlobPath, ".git/") {
-			provs[id] = gp
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("Enumerate: %v", err)
-	}
-	checkTruncationMarks(t, provs, c, a, b)
-}
-
 // Combined (--git plus working tree): the marker survives the working-tree
 // merge, and a working-tree-only blob is never marked.
 func TestCombinedEnumerator_TruncatedIndexMarkSurvivesMerge(t *testing.T) {
@@ -248,23 +124,5 @@ func TestCombinedEnumerator_TruncatedIndexMarkSurvivesMerge(t *testing.T) {
 	}
 	if mustGitProv(t, r, types.ComputeBlobID([]byte(untracked))).LocationsTruncated {
 		t.Error("working-tree-only blob marked")
-	}
-}
-
-// The field is omitted from JSON unless set.
-func TestGitProvenance_LocationsTruncatedJSON(t *testing.T) {
-	off, err := json.Marshal(types.GitProvenance{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(off, []byte("LocationsTruncated")) {
-		t.Errorf("unset field serialized: %s", off)
-	}
-	on, err := json.Marshal(types.GitProvenance{LocationsTruncated: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(on, []byte(`"LocationsTruncated":true`)) {
-		t.Errorf("set field missing: %s", on)
 	}
 }

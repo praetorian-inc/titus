@@ -91,10 +91,6 @@ func isDotGit(p types.Provenance) bool {
 	return ok && strings.HasPrefix(gp.BlobPath, ".git/")
 }
 
-func withoutDotGit(calls []blobCall) []blobCall {
-	return slices.DeleteFunc(calls, func(c blobCall) bool { return isDotGit(c.prov) })
-}
-
 func locationPaths(gp types.GitProvenance) []string {
 	var out []string
 	for _, l := range gp.Locations {

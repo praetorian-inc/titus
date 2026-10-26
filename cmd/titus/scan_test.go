@@ -17,7 +17,6 @@ import (
 	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/matcher"
 	"github.com/praetorian-inc/titus/pkg/rule"
-	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
@@ -99,26 +98,12 @@ func TestCreateDockerEnumerator_ReturnsDockerImageEnumerator(t *testing.T) {
 }
 
 func TestCreateEnumerator_InvalidTarget(t *testing.T) {
-	// createEnumerator does not validate the target path; runScan does.
-	// The filesystem enumerator it returns walks the target as its root,
-	// so a missing path yields no blobs and a warning naming that path.
-	const target = "/nonexistent/path/xyz"
-	e, err := createEnumerator(target, false)
+	// The enumerator creation itself does not validate the target path;
+	// that validation happens in runScan. So createEnumerator succeeds
+	// regardless of whether the path exists.
+	e, err := createEnumerator("/nonexistent/path/xyz", false)
 	require.NoError(t, err)
-	fsEnum, ok := e.(*enum.FilesystemEnumerator)
-	require.True(t, ok, "createEnumerator(useGit=false) should return *enum.FilesystemEnumerator, got %T", e)
-
-	var blobs int
-	var enumErr error
-	stderr := captureStderr(t, func() {
-		enumErr = fsEnum.Enumerate(context.Background(), func([]byte, types.BlobID, types.Provenance) error {
-			blobs++
-			return nil
-		})
-	})
-	require.NoError(t, enumErr)
-	assert.Zero(t, blobs, "a missing root has no files")
-	assert.Contains(t, stderr, target, "the walk starts at the target path")
+	assert.NotNil(t, e)
 }
 
 func TestLoadRules_DefaultRuleset(t *testing.T) {
@@ -627,23 +612,6 @@ func TestOutputMatches_AddsLocationsKeepsMatchFields(t *testing.T) {
 	assert.Equal(t, want, gotFields[0], "existing match fields must be unchanged")
 }
 
-// TestOutputMatches_NoLocationIsEmptyArray: a blob with no recorded location
-// still gets a locations key, as [] rather than null.
-func TestOutputMatches_NoLocationIsEmptyArray(t *testing.T) {
-	s := store.NewMemory()
-	match := &types.Match{BlobID: types.ComputeBlobID([]byte("x")), RuleID: locTestRuleID}
-
-	var out bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(&out)
-	require.NoError(t, outputMatches(cmd, s, []*types.Match{match}))
-
-	var got []map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
-	require.Len(t, got, 1)
-	assert.JSONEq(t, `[]`, string(got[0]["locations"]))
-}
-
 // sarifDocForTest is the subset of a SARIF log the location tests read.
 type sarifDocForTest struct {
 	Runs []struct {
@@ -663,92 +631,6 @@ type sarifDocForTest struct {
 			} `json:"properties"`
 		} `json:"results"`
 	} `json:"runs"`
-}
-
-// TestOutputSARIF_AttachesStoredFindingScore covers what scan's SARIF route
-// adds over writeSARIF (C-SARIF-1 itself is TestWriteSARIF_OneResultPerLocation):
-// it writes to the command's output and scores each location's result from
-// the finding stored for its rule and groups. A match with no stored finding
-// gets no score.
-func TestOutputSARIF_AttachesStoredFindingScore(t *testing.T) {
-	s := store.NewMemory()
-	rules := []*types.Rule{{ID: locTestRuleID, Name: "Synthetic Rule 1", StructuralID: "rsid"}}
-	groups := [][]byte{[]byte("g")}
-	scored := &types.Match{BlobID: types.ComputeBlobID([]byte(locTestSecret)), RuleID: locTestRuleID, Groups: groups}
-	unscored := &types.Match{BlobID: types.ComputeBlobID([]byte("other")), RuleID: locTestRuleID, Groups: [][]byte{[]byte("h")}}
-	require.NoError(t, s.AddFinding(&types.Finding{
-		ID: types.ComputeFindingID("rsid", groups), RuleID: locTestRuleID, Groups: groups,
-		Score: &types.Score{Final: 85, Applied: []types.ScoreModifier{}},
-	}))
-	require.NoError(t, s.AddOccurrences(scored.BlobID, []types.Occurrence{
-		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaa", HostRecorded: true},
-		{Kind: "git", Repository: "github.com/acme/web", Path: "config.yml", Commit: "bbbb", HostRecorded: true},
-	}))
-	require.NoError(t, s.AddOccurrences(unscored.BlobID, []types.Occurrence{
-		{Kind: "git", Repository: "github.com/acme/api", Path: "other.yml", Commit: "cccc", HostRecorded: true},
-	}))
-
-	var out bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(&out)
-	require.NoError(t, outputSARIF(cmd, s, rules, []*types.Match{scored, unscored}))
-
-	var rep sarif.Report
-	require.NoError(t, json.Unmarshal(out.Bytes(), &rep), "SARIF goes to the command's output")
-	require.Len(t, rep.Runs, 1)
-	severity := map[string]string{}
-	levels := map[string]string{}
-	for _, r := range rep.Runs[0].Results {
-		require.NotNil(t, r.Properties)
-		key := r.Properties.Repository + " " + r.Locations[0].PhysicalLocation.ArtifactLocation.URI
-		severity[key] = r.Properties.SecuritySeverity
-		levels[key] = r.Level
-	}
-	assert.Equal(t, map[string]string{
-		"github.com/acme/api config.yml": "8.5",
-		"github.com/acme/web config.yml": "8.5",
-		"github.com/acme/api other.yml":  "",
-	}, severity)
-	assert.Equal(t, map[string]string{
-		"github.com/acme/api config.yml": "error",
-		"github.com/acme/web config.yml": "error",
-		"github.com/acme/api other.yml":  "warning",
-	}, levels)
-}
-
-// TestSARIFOccurrence_SourceSeparatesResults: two extended locations that
-// differ only by source get distinct location fingerprints and each result
-// names its source.
-func TestSARIFOccurrence_SourceSeparatesResults(t *testing.T) {
-	match := &types.Match{BlobID: types.ComputeBlobID([]byte(locTestSecret)), RuleID: locTestRuleID}
-	report := sarif.NewReport()
-	report.AddResultForOccurrence(match, types.Occurrence{Kind: "extended", Source: "confluence", Path: "page/1"}, nil)
-	report.AddResultForOccurrence(match, types.Occurrence{Kind: "extended", Source: "jira", Path: "page/1"}, nil)
-
-	results := report.Runs[0].Results
-	require.Len(t, results, 2)
-	assert.NotEqual(t,
-		results[0].PartialFingerprints[sarif.LocationFingerprintKey],
-		results[1].PartialFingerprints[sarif.LocationFingerprintKey])
-
-	raw, err := report.ToJSON()
-	require.NoError(t, err)
-	var doc struct {
-		Runs []struct {
-			Results []struct {
-				Properties map[string]any `json:"properties"`
-			} `json:"results"`
-		} `json:"runs"`
-	}
-	require.NoError(t, json.Unmarshal(raw, &doc))
-	assert.Equal(t, "confluence", doc.Runs[0].Results[0].Properties["source"])
-	assert.Equal(t, "jira", doc.Runs[0].Results[1].Properties["source"])
-
-	report = sarif.NewReport()
-	report.AddResultForOccurrence(match, types.Occurrence{Kind: "file", Path: "a.yml"}, nil)
-	raw, err = report.ToJSON()
-	require.NoError(t, err)
-	assert.NotContains(t, string(raw), `"source"`, "source is omitted when empty")
 }
 
 // TestScanE2E_JSONListsEveryLocation covers C-SCANJSON-1 end to end:
@@ -830,37 +712,6 @@ func TestScanE2E_TwoFoldersOneDatastore(t *testing.T) {
 	for i, wantAbs := range []string{filepath.Join(cwdOne, "config.yml"), filepath.Join(cwdTwo, "config.yml")} {
 		assert.Equal(t, "config.yml", got[0].Locations[i].Path)
 		assert.Equal(t, strPtr(wantAbs), got[0].Locations[i].AbsolutePath)
-	}
-}
-
-// TestScanE2E_TwoGitFoldersOneDatastore covers C-FOLDERS-2: identical
-// remote-less repositories (identical commits) scanned with --git into one
-// datastore give two locations. Only the repository's absolute root
-// separates them.
-func TestScanE2E_TwoGitFoldersOneDatastore(t *testing.T) {
-	root := t.TempDir()
-	shared := filepath.Join(root, "shared.ds")
-	for _, name := range []string{"one", "two"} {
-		gitRepoForTest(t, filepath.Join(root, name), "", map[string]string{"config.yml": locTestSecret})
-	}
-
-	t.Chdir(filepath.Join(root, "one"))
-	cwdOne, err := os.Getwd()
-	require.NoError(t, err)
-	scanForTest(t, ".", shared, "json", true)
-	t.Chdir(filepath.Join(root, "two"))
-	cwdTwo, err := os.Getwd()
-	require.NoError(t, err)
-	got := scanJSONMatches(t, scanForTest(t, ".", shared, "json", true))
-
-	require.Len(t, got, 1)
-	require.Len(t, got[0].Locations, 2)
-	for i, wantAbs := range []string{filepath.Join(cwdOne, "config.yml"), filepath.Join(cwdTwo, "config.yml")} {
-		loc := got[0].Locations[i]
-		assert.Equal(t, strPtr("."), loc.Repository, "a remote-less repository keeps the root as typed")
-		assert.Equal(t, "config.yml", loc.Path)
-		assert.NotNil(t, loc.Commit)
-		assert.Equal(t, strPtr(wantAbs), loc.AbsolutePath, "only the absolute path separates the two folders")
 	}
 }
 

@@ -645,13 +645,6 @@ func (x *blobIndex) commitMeta(id uint32) *types.CommitMetadata {
 	return m
 }
 
-// truncated reports whether the index lost a location of some blob, at
-// maxIndexPairs or to a skipped raw entry. A dropped pair that repeats a
-// recorded location at the same or a later commit loses nothing.
-func (x *blobIndex) truncated() bool {
-	return x != nil && len(x.truncatedBlobs) > 0
-}
-
 // locationsTruncated reports whether the index dropped a location of hash at
 // maxIndexPairs (R1), or skipped an over-long or malformed raw entry of hash,
 // so its lookup is incomplete by an unknown count. This

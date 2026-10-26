@@ -21,7 +21,7 @@ type Occurrence struct {
 	Repository   string    // git only; "" otherwise
 	Source       string    // extended only: Payload["source"] (e.g. "confluence"); derived from provenance, never stored
 	Path         string    // repo-relative (git) or as typed / source-native (others)
-	AbsolutePath string    // working tree, plain folder, and committed locations of remote-less repos
+	AbsolutePath string    // working tree, plain folder, and committed locations of remote-less repos; the item URL for SharePoint
 	Commit       string    // full hash; "" = none
 	CommitDate   time.Time // zero = none
 	WorkingTree  bool
@@ -38,7 +38,8 @@ const (
 
 // OccurrencesOf returns every occurrence a provenance describes: one per
 // GitProvenance.Locations entry (or the primary location when Locations is
-// empty), and one for every other provenance kind.
+// empty), and one for every other provenance kind. A SharePoint occurrence
+// carries its item URL as its AbsolutePath.
 func OccurrencesOf(p Provenance) []Occurrence {
 	switch v := p.(type) {
 	case GitProvenance:
@@ -51,7 +52,11 @@ func OccurrencesOf(p Provenance) []Occurrence {
 		return []Occurrence{{Kind: v.Kind(), Path: v.FilePath, AbsolutePath: abs, HostRecorded: true}}
 	case ExtendedProvenance:
 		source, _ := v.Payload["source"].(string)
-		return []Occurrence{{Kind: v.Kind(), Source: source, Path: v.Path(), HostRecorded: true}}
+		o := Occurrence{Kind: v.Kind(), Source: source, Path: v.Path(), HostRecorded: true}
+		if source == "sharepoint" {
+			o.AbsolutePath, _ = v.Payload["url"].(string)
+		}
+		return []Occurrence{o}
 	default:
 		return []Occurrence{{Kind: p.Kind(), Path: p.Path(), HostRecorded: true}}
 	}
@@ -155,13 +160,20 @@ func legacyOccurrencesOf(p Provenance) []Occurrence {
 	return OccurrencesOf(p)
 }
 
-type coverKey struct{ kind, repository, path, commit string }
+type coverKey struct{ kind, repository, path, absolutePath, commit string }
 
+// coverKeyOf keys git rows by repository, path, and commit, and file rows by
+// path alone, since legacy FileProvenance has no absolute path. Extended rows
+// also key on AbsolutePath, which keeps same-path SharePoint items apart.
 func coverKeyOf(o Occurrence) coverKey {
-	if o.Kind == "git" {
-		return coverKey{o.Kind, o.Repository, o.Path, o.Commit}
+	switch o.Kind {
+	case "git":
+		return coverKey{kind: o.Kind, repository: o.Repository, path: o.Path, commit: o.Commit}
+	case "extended":
+		return coverKey{kind: o.Kind, path: o.Path, absolutePath: o.AbsolutePath}
+	default:
+		return coverKey{kind: o.Kind, path: o.Path}
 	}
-	return coverKey{kind: o.Kind, path: o.Path}
 }
 
 type repoPath struct{ repository, path string }

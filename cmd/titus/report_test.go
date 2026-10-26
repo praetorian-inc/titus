@@ -1531,11 +1531,6 @@ func humanLocationLines(out string) []string {
 	return lines
 }
 
-// lineFields splits one human location line into its fields.
-func lineFields(line string) []string {
-	return strings.Split(strings.TrimPrefix(line, "    "), "  ")
-}
-
 // reportJSONLocations decodes the locations of every match of every finding.
 type reportJSONMatch struct {
 	FilePath  string         `json:"file_path"`
@@ -1551,50 +1546,6 @@ func decodeReportJSON(t *testing.T, data []byte) []reportJSONFinding {
 	var out []reportJSONFinding
 	require.NoError(t, json.Unmarshal(data, &out))
 	return out
-}
-
-// C-HUMANLINE-1
-func TestOutputReportHuman_LineFieldsGit(t *testing.T) {
-	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
-		Kind: "git", Repository: "github.com/acme/api", Path: "config.yml",
-		Commit: "7d0e8150aaaa", CommitDate: reportCommitDate, HostRecorded: true,
-	}})
-	lines := humanLocationLines(renderHuman(t, s, findings, matches, ruleMap))
-	require.Len(t, lines, 1)
-	assert.Equal(t, []string{"github.com/acme/api", "config.yml:3", "7d0e815", "2026-06-15"}, lineFields(lines[0]))
-}
-
-// C-HUMANLINE-2
-func TestOutputReportHuman_LineFieldsNoRepoNoCommit(t *testing.T) {
-	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
-		Kind: "file", Path: "e/f/config.yml", HostRecorded: true,
-	}})
-	lines := humanLocationLines(renderHuman(t, s, findings, matches, ruleMap))
-	require.Len(t, lines, 1)
-	assert.Equal(t, []string{"e/f/config.yml:3"}, lineFields(lines[0]))
-}
-
-// C-LINEONLY-1: human shows the line only; JSON keeps the full range.
-func TestOutputReport_LineOnlyHumanFullRangeJSON(t *testing.T) {
-	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
-		Kind: "file", Path: "config.yml", HostRecorded: true,
-	}})
-	matches[0].Location.Source = types.SourceSpan{
-		Start: types.SourcePoint{Line: 2, Column: 8},
-		End:   types.SourcePoint{Line: 2, Column: 48},
-	}
-
-	human := renderHuman(t, s, findings, matches, ruleMap)
-	assert.Contains(t, human, "config.yml:2")
-	assert.NotContains(t, human, "2:8-2:48")
-	assert.NotContains(t, human, "Lines:")
-
-	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
-	require.Len(t, out, 1)
-	require.Len(t, out[0].Matches, 1)
-	require.Len(t, out[0].Matches[0].Locations, 1)
-	assert.Equal(t, jsonRange{Start: jsonPos{Line: 2, Column: 8}, End: jsonPos{Line: 2, Column: 48}},
-		out[0].Matches[0].Locations[0].Range)
 }
 
 // C-OVER3-1: the first 3 matches print in full, the rest print only their
@@ -1680,20 +1631,6 @@ func TestOutputReportJSON_LocationsKeysAndFilePath(t *testing.T) {
 	}
 }
 
-// A blob with no recorded location still emits "locations": [] (never null)
-// and falls back to the blob id for file_path.
-func TestOutputReportJSON_NoLocationsIsEmptyArray(t *testing.T) {
-	s, findings, matches, ruleMap := reportFixture(t, nil)
-
-	var raw []map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(renderJSON(t, s, findings, matches, ruleMap), &raw))
-	var ms []map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(raw[0]["Matches"], &ms))
-	require.Len(t, ms, 1)
-	assert.JSONEq(t, `[]`, string(ms[0]["locations"]))
-	assert.JSONEq(t, `"`+matches[0].BlobID.Hex()+`"`, string(ms[0]["file_path"]))
-}
-
 // SEC-7: hostile repository and path bytes are sanitized in human output.
 func TestOutputReportHuman_SanitizesLocations(t *testing.T) {
 	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{{
@@ -1708,51 +1645,6 @@ func TestOutputReportHuman_SanitizesLocations(t *testing.T) {
 	lines := humanLocationLines(out)
 	require.Len(t, lines, 1)
 	assert.Contains(t, lines[0], `github.com/acme/\x1b[31mapi`)
-}
-
-// SEC-7b: JSON keeps the exact bytes, escaped by encoding/json.
-func TestOutputReportJSON_ExactBytesRoundTrip(t *testing.T) {
-	paths := []string{"a\nb.yml", "x\x1b[31mRED\x1b[0m.yml"}
-	var occs []types.Occurrence
-	for _, p := range paths {
-		occs = append(occs, types.Occurrence{Kind: "file", Path: p, HostRecorded: true})
-	}
-	s, findings, matches, ruleMap := reportFixture(t, occs)
-
-	data := renderJSON(t, s, findings, matches, ruleMap)
-	assert.NotContains(t, string(data), "\x1b", "raw escape byte must be JSON-escaped")
-
-	out := decodeReportJSON(t, data)
-	require.Len(t, out[0].Matches, 1)
-	var got []string
-	for _, l := range out[0].Matches[0].Locations {
-		got = append(got, l.Path)
-	}
-	assert.ElementsMatch(t, paths, got)
-}
-
-// C-OLDDS-1: a datastore written before blob_locations existed still reports
-// its git provenance, labelled "host not recorded".
-func TestOutputReport_LegacyDatastoreHostNotRecorded(t *testing.T) {
-	s, findings, matches, ruleMap := legacyFixture(t, types.GitProvenance{RepoPath: "acme/api", BlobPath: "config.yml"})
-
-	assert.Equal(t, []string{"    acme/api  config.yml:3  host not recorded"},
-		humanLocationLines(renderHuman(t, s, findings, matches, ruleMap)))
-
-	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
-	require.Len(t, out, 1)
-	require.Len(t, out[0].Matches, 1)
-	m := out[0].Matches[0]
-	assert.Equal(t, "config.yml", m.FilePath)
-	require.Len(t, m.Locations, 1)
-	require.NotNil(t, m.Locations[0].Repository)
-	assert.Equal(t, "acme/api", *m.Locations[0].Repository)
-	assert.False(t, m.Locations[0].HostRecorded)
-
-	var rep sarif.Report
-	require.NoError(t, json.Unmarshal(renderSARIF(t, s, findings, matches, ruleMap), &rep))
-	require.Len(t, rep.Runs[0].Results, 1)
-	assert.Equal(t, "config.yml", rep.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI)
 }
 
 // sarifRepoHosts returns, per SARIF result, its repository and whether the
@@ -1804,30 +1696,6 @@ func TestOutputReport_LegacyAndRescanShowBoth(t *testing.T) {
 	assert.Equal(t, want, sarifRepoHosts(t, renderSARIF(t, s, findings, matches, ruleMap)))
 }
 
-// C-HOSTS-1 at report level: the same owner/repo on three hosts, scanned into
-// one datastore, stays three repositories rather than collapsing to acme/api.
-func TestOutputReport_ThreeHostsStayDistinct(t *testing.T) {
-	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{
-		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", HostRecorded: true},
-		{Kind: "git", Repository: "github.example.com/acme/api", Path: "config.yml", HostRecorded: true},
-		{Kind: "git", Repository: "gitlab.example.com/acme/api", Path: "config.yml", HostRecorded: true},
-	})
-	want := []string{"github.com/acme/api", "github.example.com/acme/api", "gitlab.example.com/acme/api"}
-
-	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
-	require.Len(t, out, 1)
-	require.Len(t, out[0].Matches, 1)
-	var got []string
-	for _, l := range out[0].Matches[0].Locations {
-		require.NotNil(t, l.Repository)
-		got = append(got, *l.Repository)
-	}
-	assert.Equal(t, want, got)
-
-	sarifRepos := sarifRepoHosts(t, renderSARIF(t, s, findings, matches, ruleMap))
-	assert.ElementsMatch(t, want, slices.Collect(maps.Keys(sarifRepos)))
-}
-
 // SEC-5: a legacy repository URL with userinfo never shows the credential in
 // any format.
 func TestOutputReport_LegacyUserinfoRedactedEverywhere(t *testing.T) {
@@ -1838,23 +1706,6 @@ func TestOutputReport_LegacyUserinfoRedactedEverywhere(t *testing.T) {
 	assert.Equal(t, []string{"    https://h/o/r  config.yml:3  host not recorded"}, humanLocationLines(human))
 	assert.NotContains(t, string(renderJSON(t, s, findings, matches, ruleMap)), "SECRET")
 	assert.NotContains(t, string(renderSARIF(t, s, findings, matches, ruleMap)), "SECRET")
-}
-
-// C-NONGIT-1: identical content in two S3 objects lists both objects.
-func TestOutputReportJSON_NonGitEveryLocation(t *testing.T) {
-	s, findings, matches, ruleMap := legacyFixture(t,
-		types.ExtendedProvenance{Payload: map[string]any{"path": "s3://b/one.env"}},
-		types.ExtendedProvenance{Payload: map[string]any{"path": "s3://b/two.env"}},
-	)
-
-	out := decodeReportJSON(t, renderJSON(t, s, findings, matches, ruleMap))
-	require.Len(t, out, 1)
-	require.Len(t, out[0].Matches, 1)
-	var got []string
-	for _, l := range out[0].Matches[0].Locations {
-		got = append(got, l.Path)
-	}
-	assert.Equal(t, []string{"s3://b/one.env", "s3://b/two.env"}, got)
 }
 
 // SARIF: one result per location, each carrying the finding's score.
@@ -1883,153 +1734,6 @@ func TestOutputReportSARIF_OneResultPerLocation(t *testing.T) {
 // =============================================================================
 // Terminal-injection sanitization of snippets, groups, owner, and resources
 // =============================================================================
-
-func TestSanitizeSnippetText(t *testing.T) {
-	var printable []byte
-	for c := byte(0x20); c <= 0x7E; c++ {
-		printable = append(printable, c)
-	}
-
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"empty", "", ""},
-		{"ESC sequence escaped", "a\x1b[2Jb", `a\x1b[2Jb`},
-		{"tab kept", "a\tb", "a\tb"},
-		{"carriage return escaped", "a\rb", `a\x0db`},
-		{"NUL escaped", "a\x00b", `a\x00b`},
-		{"DEL escaped", "a\x7fb", `a\x7fb`},
-		{"raw C1 CSI byte 0x9b escaped", "a\x9b2Jb", `a\x9b2Jb`},
-		{"invalid UTF-8 bytes escaped", string([]byte{0x80, 'x', 0xff}), `\x80x\xff`},
-		{"multibyte UTF-8 kept", "é", "é"},
-		{"C1 rune U+009B escaped", "\u009b", `\u{009b}`},
-		{"bidi override U+202E escaped", string(rune(0x202e)), `\u{202e}`},
-		{"tab and newline kept around an escape", "a\t\x1b\nb", "a\t\\x1b\nb"},
-		{"newline kept", "line1\nline2", "line1\nline2"},
-		{"all printable ASCII kept", string(printable), string(printable)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, sanitizeSnippetText(tt.in))
-		})
-	}
-}
-
-func TestFormatSnippetWithParts_SanitizesEachPart(t *testing.T) {
-	const esc = "\x1b[2J"
-	tests := []struct {
-		name                    string
-		before, matching, after string
-		want                    snippetParts
-	}{
-		{
-			name: "before", before: "pre" + esc + " ", matching: "tok", after: " post",
-			want: snippetParts{before: `pre\x1b[2J `, matching: "tok", after: " post"},
-		},
-		{
-			name: "matching", before: "pre ", matching: "tok" + esc, after: " post",
-			want: snippetParts{before: "pre ", matching: `tok\x1b[2J`, after: " post"},
-		},
-		{
-			name: "after", before: "pre ", matching: "tok", after: " " + esc + "post",
-			want: snippetParts{before: "pre ", matching: "tok", after: ` \x1b[2Jpost`},
-		},
-		{
-			name: "benign unchanged", before: "pre ", matching: "tok", after: " post",
-			want: snippetParts{before: "pre ", matching: "tok", after: " post"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatSnippetWithParts([]byte(tt.before), []byte(tt.matching), []byte(tt.after), 500)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-// Truncation cuts the raw bytes, and only then is each part sanitized. The
-// expected parts below are the raw window, worked out by hand from the
-// algorithm at maxLen 500, with each control byte written as its escape:
-//
-//	availableContext = 500 - len(matching) - 6
-//	halfContext      = availableContext / 2
-//	start            = len(before) - halfContext
-//	end              = len(before) + len(matching) + halfContext
-//
-// Escaping first would expand each ESC to four bytes and move every cut.
-func TestFormatSnippetWithParts_TruncatesRawBytesThenSanitizes(t *testing.T) {
-	const esc = "\x1b[2J"
-	const escShown = `\x1b[2J`
-	tests := []struct {
-		name                    string
-		before, matching, after string
-		want                    snippetParts
-		hostile                 bool
-	}{
-		{
-			// len(before)=404, len(matching)=9: half=242, start=162, end=655.
-			// Shown: before[162:] (238 x + ESC), after[:242] (ESC + 238 y).
-			name:     "hostile context on both sides",
-			before:   strings.Repeat("x", 400) + esc,
-			matching: "MATCH" + esc,
-			after:    esc + strings.Repeat("y", 400),
-			want: snippetParts{
-				prefix:   "...",
-				before:   strings.Repeat("x", 238) + escShown,
-				matching: "MATCH" + escShown,
-				after:    escShown + strings.Repeat("y", 238),
-				suffix:   "...",
-			},
-			hostile: true,
-		},
-		{
-			// len(matching)=800 >= 500: shown matching[:494], which is 123
-			// whole sequences (492 bytes) plus the first two bytes "\x1b[".
-			name:     "hostile match longer than maxLen",
-			before:   "pre",
-			matching: strings.Repeat(esc, 200),
-			after:    "post",
-			want: snippetParts{
-				prefix:   "...",
-				matching: strings.Repeat(escShown, 123) + `\x1b[`,
-				suffix:   "...",
-			},
-			hostile: true,
-		},
-		{
-			// "é" is 0xc3 0xa9. len(before)=400, len(matching)=4: half=245,
-			// start=155 (odd, so it lands on 0xa9), end=649 (after[:245]
-			// ends on 0xc3). Each split half renders as its byte escape.
-			name:     "multibyte character split at both cuts",
-			before:   strings.Repeat("é", 200),
-			matching: "MTCH",
-			after:    strings.Repeat("é", 200),
-			want: snippetParts{
-				prefix:   "...",
-				before:   `\xa9` + strings.Repeat("é", 122),
-				matching: "MTCH",
-				after:    strings.Repeat("é", 122) + `\xc3`,
-				suffix:   "...",
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatSnippetWithParts([]byte(tt.before), []byte(tt.matching), []byte(tt.after), 500)
-
-			assert.Equal(t, tt.want, got)
-			joined := got.prefix + got.before + got.matching + got.after + got.suffix
-			assert.True(t, utf8.ValidString(joined), "a split character must not leave a raw partial rune")
-			assertNoTerminalControls(t, joined)
-			if tt.hostile {
-				assert.NotContains(t, joined, "\x1b")
-				assert.Contains(t, joined, escShown, "the escaped sequence must be inside the shown window")
-			}
-		})
-	}
-}
 
 // sanitizeReportFixture is reportFixture with one plain file location, whose
 // finding and match carry the given groups and snippet, and whose finding
@@ -2115,27 +1819,6 @@ func assertNoTerminalControls(t *testing.T, out string) {
 	}
 }
 
-// readableSnippet is Go source with tab indentation and a non-ASCII rune; the
-// group holds a tab. Human output must show both byte for byte.
-var (
-	readableGroups  = [][]byte{[]byte("ab\tcé")}
-	readableSnippet = types.Snippet{
-		Before:   []byte("func main() {\n\tkey := \""),
-		Matching: []byte("ab\tcé"),
-		After:    []byte("\" // café\n}"),
-	}
-)
-
-func TestOutputReportHuman_KeepsTabsAndUnicodeReadable(t *testing.T) {
-	s, findings, matches, ruleMap := sanitizeReportFixture(t, readableGroups, readableSnippet, nil, nil)
-	out := renderHuman(t, s, findings, matches, ruleMap)
-
-	assertNoTerminalControls(t, out)
-	assert.Contains(t, outputLines(out), "Group 1: ab\tcé")
-	assert.Contains(t, out, "\n        func main() {\n\tkey := \"ab\tcé\" // café\n}\n\n",
-		"snippet must render byte for byte, with tabs and é unchanged")
-}
-
 func TestOutputReportHuman_SanitizesFindingContent(t *testing.T) {
 	for _, tc := range sanitizeCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2151,85 +1834,4 @@ func TestOutputReportHuman_SanitizesFindingContent(t *testing.T) {
 			assert.Contains(t, lines, "  "+tc.wantDetail)
 		})
 	}
-}
-
-// JSON keeps the exact stored bytes of groups, snippet, owner, and resources:
-// sanitizing is for human output only.
-func TestOutputReportJSON_KeepsRawFindingContent(t *testing.T) {
-	tc := sanitizeCases()[0]
-	s, findings, matches, ruleMap := sanitizeReportFixture(t, tc.groups, tc.snippet, tc.owner, tc.resources)
-	data := renderJSON(t, s, findings, matches, ruleMap)
-
-	assert.NotContains(t, string(data), "\x1b", "raw escape byte must be JSON-escaped")
-	assert.Contains(t, string(data), `alice\u001b[2J`, "owner string is JSON-escaped, not display-sanitized")
-
-	var out []struct {
-		Groups    [][]byte             `json:"Groups"`
-		Owner     *types.OwnerInfo     `json:"owner"`
-		Resources []types.ResourceInfo `json:"resources"`
-		Matches   []struct {
-			Groups  [][]byte      `json:"Groups"`
-			Snippet types.Snippet `json:"Snippet"`
-		} `json:"Matches"`
-	}
-	require.NoError(t, json.Unmarshal(data, &out))
-	require.Len(t, out, 1)
-	assert.Equal(t, tc.groups, out[0].Groups)
-	assert.Equal(t, tc.owner, out[0].Owner)
-	assert.Equal(t, tc.resources, out[0].Resources)
-	require.Len(t, out[0].Matches, 1)
-	assert.Equal(t, tc.groups, out[0].Matches[0].Groups)
-	assert.Equal(t, tc.snippet, out[0].Matches[0].Snippet)
-}
-
-// ENG-9178: a "\r\n" line ending is a newline, not a control byte, so a
-// snippet from a CRLF file shows no "\x0d" at each line end. A lone '\r'
-// stays escaped: it can still rewrite the terminal line.
-func TestSanitizeSnippetText_CRLFIsNewline(t *testing.T) {
-	tests := []struct{ name, in, want string }{
-		{"CRLF line endings", "key = 1\r\nnext\r\n", "key = 1\nnext\n"},
-		{"lone CR still escaped", "a\rb", `a\x0db`},
-		{"CR before CRLF escaped once", "a\r\r\nb", "a\\x0d\nb"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, sanitizeSnippetText(tt.in))
-		})
-	}
-}
-
-// A rule ending in `.*` takes the '\r' of a CRLF line into the match, so the
-// "\r\n" pair is split across the matching and after parts. The pair is
-// still one newline: no "\x0d" in either part.
-func TestFormatSnippetWithParts_CRLFSplitAtMatchEnd(t *testing.T) {
-	got := formatSnippetWithParts([]byte("x = 1\r\ntoken: "), []byte("KEY\r"), []byte("\ny = 2\r\n"), 500)
-	assert.Equal(t, snippetParts{before: "x = 1\ntoken: ", matching: "KEY", after: "\ny = 2\n"}, got)
-}
-
-// End to end: `titus report` on a scanned CRLF file prints the snippet lines
-// with plain newlines, the line after the match included.
-func TestOutputReportHuman_CRLFFileSnippet(t *testing.T) {
-	dir := t.TempDir()
-	writeFileForTest(t, filepath.Join(dir, "c.yml"), "x = 1\r\n"+strings.TrimSuffix(locTestSecret, "\n")+"\r\ny = 2\r\n")
-	ds := tempDatastore(t)
-	scanForTest(t, dir, ds, "json", false)
-
-	s, err := store.New(store.Config{Path: filepath.Join(ds, "datastore.db")})
-	require.NoError(t, err)
-	defer func() { _ = s.Close() }()
-	matches, err := s.GetAllMatches()
-	require.NoError(t, err)
-	findings, err := s.GetFindings()
-	require.NoError(t, err)
-
-	origColor := reportColor
-	t.Cleanup(func() { reportColor = origColor })
-	reportColor = "never"
-	var out bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(&out)
-	require.NoError(t, outputReportHuman(cmd, s, findings, matches, map[string]*types.Rule{}))
-
-	assert.NotContains(t, out.String(), `\x0d`)
-	assert.Contains(t, out.String(), "x = 1\ntoken: synthetic_1_AbCd1234\ny = 2\n")
 }

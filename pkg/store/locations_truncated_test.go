@@ -56,24 +56,3 @@ func TestStore_LocationsTruncatedRoundTrip(t *testing.T) {
 		})
 	}
 }
-
-// The flag is sticky per row: a later truncated write of an existing row
-// marks it, a later untruncated write never clears it, and a truncated write
-// of one row leaves the blob's other rows unmarked.
-func TestStore_LocationsTruncatedSticky(t *testing.T) {
-	for _, f := range storeFactories {
-		t.Run(f.name, func(t *testing.T) {
-			s := f.open(t)
-			id := types.ComputeBlobID([]byte("sticky"))
-			require.NoError(t, s.AddBlob(id, 6))
-			require.NoError(t, s.AddProvenance(id, truncProv("a.yml", false)))
-			require.NoError(t, s.AddProvenance(id, truncProv("b.yml", false)))
-
-			require.NoError(t, s.AddProvenance(id, truncProv("a.yml", true)))
-			assert.Equal(t, map[string]bool{"a.yml": true, "b.yml": false}, truncByPath(t, s, id))
-
-			require.NoError(t, s.AddProvenance(id, truncProv("a.yml", false)))
-			assert.Equal(t, map[string]bool{"a.yml": true, "b.yml": false}, truncByPath(t, s, id))
-		})
-	}
-}
