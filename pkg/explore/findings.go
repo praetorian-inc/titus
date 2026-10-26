@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -94,6 +95,27 @@ func (fp findingsPane) locationCount(f *findingRow) int {
 	return n
 }
 
+// locationCell is the Locs cell: the location count, marked "?" when a match
+// failed to load its locations, so the count is a lower bound (S1).
+func (fp findingsPane) locationCell(f *findingRow) string {
+	n := strconv.Itoa(fp.locationCount(f))
+	if locationsUnknown(f) {
+		return n + "?"
+	}
+	return n
+}
+
+// compareBool orders false before true.
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
+}
+
 // setFilteredRows replaces the shown rows and re-sorts them, because the
 // location count, and so the order, depends on the current repo filter. The
 // cursor follows the selected finding when it is still shown.
@@ -172,7 +194,11 @@ func (fp *findingsPane) sort() {
 		compare = func(a, b *findingRow) int { return cmp.Compare(a.RuleName, b.RuleName) }
 	case sortByMatches:
 		// locationCount is cached per filter, so the comparator stays cheap.
-		compare = func(a, b *findingRow) int { return cmp.Compare(fp.locationCount(a), fp.locationCount(b)) }
+		// An unknown count ("N?") sorts after a known count of the same N.
+		compare = func(a, b *findingRow) int {
+			return cmp.Or(cmp.Compare(fp.locationCount(a), fp.locationCount(b)),
+				compareBool(locationsUnknown(a), locationsUnknown(b)))
+		}
 	case sortByValidation:
 		compare = func(a, b *findingRow) int { return cmp.Compare(a.ValidationStatus, b.ValidationStatus) }
 	case sortByConfidence:
@@ -248,10 +274,10 @@ func (fp findingsPane) View() string {
 		}
 		statusStr := renderAnnotationStatus(row.AnnotationStatus)
 
-		line := fmt.Sprintf(" %s %s %*d %s %*s %s",
+		line := fmt.Sprintf(" %s %s %*s %s %*s %s",
 			cell(types.SanitizeDisplay(row.RuleName), fp.colRuleName),
 			cell(groupStr, fp.colGroups),
-			fp.colMatches, fp.locationCount(row),
+			fp.colMatches, fp.locationCell(row),
 			cell(valStr, fp.colValidation),
 			fp.colConfidence, confStr,
 			cell(statusStr, fp.colStatus),

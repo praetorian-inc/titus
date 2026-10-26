@@ -813,10 +813,7 @@ func (m *Model) moveNext() {
 			}
 		}
 	case paneDetails:
-		if m.details.matchCursor < len(m.details.visibleMatchIdx)-1 {
-			m.details.matchCursor++
-			m.details.offset = 0
-		}
+		m.details.nextMatch()
 	}
 }
 

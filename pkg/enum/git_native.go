@@ -162,13 +162,23 @@ func typedRepoIdentity(root string) string {
 	return types.SanitizeDisplay(repoid.RedactUserinfo(root))
 }
 
+// RemoteURL returns the URL of the origin remote of the repository at dir,
+// read by git with the hardened configuration and environment (S3).
+func RemoteURL(ctx context.Context, dir string) (string, error) {
+	out, err := hardenedGit(ctx, dir, "config", "--get", "remote.origin.url").Output()
+	if err != nil {
+		return "", fmt.Errorf("git remote: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // originIdentity returns the normalized identity of the origin remote.
 func originIdentity(ctx context.Context, dir string) (string, bool) {
-	out, err := hardenedGit(ctx, dir, "config", "--get", "remote.origin.url").Output()
+	u, err := RemoteURL(ctx, dir)
 	if err != nil {
 		return "", false
 	}
-	return repoid.Normalize(strings.TrimSpace(string(out)))
+	return repoid.Normalize(u)
 }
 
 // writeEnumWarnings prints the index warnings, folding rev-list's over-long

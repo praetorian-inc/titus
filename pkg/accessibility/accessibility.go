@@ -4,16 +4,17 @@
 package accessibility
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/praetorian-inc/titus/pkg/enum"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -74,7 +75,7 @@ func Resolve(mode, target, token string) Accessibility {
 // Falls back to Private on any error (conservative default).
 // Detection is attempted in order: GitHub → GitLab → Bitbucket.
 func detectAccessibility(target, token string) Accessibility {
-	remoteURL, err := gitRemoteURL(target)
+	remoteURL, err := enum.RemoteURL(context.Background(), target)
 	if err != nil {
 		// Not a git repo or no remote — assume private
 		return Private
@@ -134,19 +135,6 @@ func detectAccessibility(target, token string) Accessibility {
 
 	// Unknown hosting platform — assume private
 	return Private
-}
-
-// gitRemoteURL returns the URL of the git remote named "origin" for the given
-// directory, or an error if the directory is not a git repo or has no remote.
-func gitRemoteURL(dir string) (string, error) {
-	// #nosec G204 -- dir is the user's own scan target path, not external input.
-	// The only arguments passed to git are fixed strings; dir controls where git runs.
-	cmd := exec.Command("git", "-C", dir, "config", "--get", "remote.origin.url")
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("git remote: %w", err)
-	}
-	return strings.TrimSpace(string(out)), nil
 }
 
 // githubRepoIsPrivate queries the GitHub REST API to check whether the given

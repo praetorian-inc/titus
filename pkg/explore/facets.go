@@ -164,8 +164,9 @@ func (fs *facetState) matchesFinding(f *findingRow) bool {
 		case facetRepository:
 			// Repositories holds exactly the facet keys of the finding's
 			// occurrences, so this passes iff visibleOccurrences leaves at
-			// least one location of the finding.
-			if !slices.ContainsFunc(f.Repositories, func(repo string) bool { return selected[repo] }) {
+			// least one location of the finding. A finding with a match whose
+			// locations failed to load is kept: they may be in the selection (S1).
+			if !locationsUnknown(f) && !slices.ContainsFunc(f.Repositories, func(repo string) bool { return selected[repo] }) {
 				return false
 			}
 		}
@@ -254,6 +255,12 @@ type matchRow struct {
 	ProvenanceErr    error              // why Provenance could not be loaded; nil when it was
 	AnnotationStatus string
 	Comment          string
+}
+
+// locationsUnknown reports whether any match of f failed to load its
+// locations, so its location count and repositories are incomplete.
+func locationsUnknown(f *findingRow) bool {
+	return slices.ContainsFunc(f.Matches, func(m *matchRow) bool { return m.LocationsErr != nil })
 }
 
 // facetKey is an occurrence's Repository facet value: its repository, or for

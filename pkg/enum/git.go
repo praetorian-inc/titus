@@ -1,15 +1,10 @@
 package enum
 
 import (
-	"bytes"
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -18,8 +13,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/storer"
-	"github.com/go-git/go-git/v5/storage/filesystem"
 
 	"github.com/praetorian-inc/titus/pkg/repoid"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -65,6 +58,52 @@ func (e *GitEnumerator) Enumerate(ctx context.Context, callback func(content []b
 // shared refs are in the common directory, which git reads too (R4-2).
 func openGoGitRepo(root string) (*git.Repository, error) {
 	return git.PlainOpenWithOptions(root, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+}
+
+// goGitExtensions are the repository extensions go-git reads as git does.
+// objectformat is allowed only as sha1: plumbing.Hash is 20 bytes.
+var goGitExtensions = map[string]bool{
+	"noop":            true,
+	"preciousobjects": true,
+	"partialclone":    true,
+	"worktreeconfig":  true,
+}
+
+// goGitFormatSupported fails closed on a repository format go-git does not
+// read, such as reftable refs or SHA-256 objects. A walk of one would skip
+// history without an error (B1).
+func goGitFormatSupported(repo *git.Repository, root string) error {
+	cfg, err := repo.Config()
+	if err != nil {
+		return fmt.Errorf("failed to read git config: %w", err)
+	}
+	// go-git does not parse core.repositoryformatversion into cfg.Core.
+	var version string
+	for _, s := range cfg.Raw.Sections {
+		if s.IsName("core") && s.Options.Has("repositoryformatversion") {
+			version = strings.TrimSpace(s.Options.Get("repositoryformatversion"))
+		}
+	}
+	switch version {
+	case "", "0":
+		return nil // git ignores extensions in a version 0 repository
+	case "1":
+	default:
+		return fmt.Errorf("%s: core.repositoryformatversion %s is not supported by the built-in git reader; install git to scan this repository's history", root, version)
+	}
+	for _, s := range cfg.Raw.Sections {
+		if !s.IsName("extensions") {
+			continue
+		}
+		for _, o := range s.Options {
+			key := strings.ToLower(o.Key)
+			if goGitExtensions[key] || (key == "objectformat" && strings.EqualFold(o.Value, "sha1")) {
+				continue
+			}
+			return fmt.Errorf("%s: extensions.%s=%s is not supported by the built-in git reader; install git to scan this repository's history", root, key, o.Value)
+		}
+	}
+	return nil
 }
 
 // treeBlob is one blob of a single tree and every path it is stored at.
@@ -181,6 +220,9 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 	repo, err := openGoGitRepo(e.config.Root)
 	if err != nil {
 		return fmt.Errorf("failed to open git repository: %w", err)
+	}
+	if err := goGitFormatSupported(repo, e.config.Root); err != nil {
+		return err
 	}
 
 	// missing starts at the tagged-tree subtrees the index walk could not
@@ -323,417 +365,6 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 	idx := p.finish()
 	idx.setTaggedTrees(tw.inTree, treeRefs)
 	return blobs, idx, len(tw.missing), nil
-}
-
-// taggedWalk collects the blobs of tagged trees and blobs as rev-list
-// --objects lists them: each object once, a blob with the first path it is
-// reached at in a pre-order walk, in tree-entry order. Every tree is read
-// once across all tagged roots, so a tree that names one subtree many
-// times costs one read per distinct tree, not one per path (N1).
-type taggedWalk struct {
-	repo    *git.Repository
-	blobs   []blobEntry
-	seen    map[[20]byte]struct{}      // blobs, shared with the commit walk
-	inTree  map[[20]byte]struct{}      // every blob under a tagged tree
-	trees   map[plumbing.Hash]struct{} // trees already walked, across roots
-	stats   *indexStats                // receives over-long paths (R2)
-	missing map[plumbing.Hash]struct{} // objects missing from the repository
-}
-
-func newTaggedWalk(repo *git.Repository, blobs []blobEntry, seen map[[20]byte]struct{}, stats *indexStats) *taggedWalk {
-	return &taggedWalk{
-		repo:    repo,
-		blobs:   blobs,
-		seen:    seen,
-		inTree:  make(map[[20]byte]struct{}),
-		trees:   make(map[plumbing.Hash]struct{}),
-		stats:   stats,
-		missing: make(map[plumbing.Hash]struct{}),
-	}
-}
-
-// add walks the tagged object o, a tree or a blob.
-func (w *taggedWalk) add(ctx context.Context, o taggedObject) error {
-	if o.typ == plumbing.BlobObject {
-		w.addBlob(o.hash, "")
-		return nil
-	}
-	return w.walkTree(ctx, o.hash)
-}
-
-// treeFrame is one tree on the walk's stack: its entries, the next entry to
-// visit, and the length of the tree's path in the shared path buffer.
-type treeFrame struct {
-	entries []object.TreeEntry
-	next    int
-	prefix  int
-}
-
-// walkTree adds the blobs under the tree root. It keeps its own stack, so
-// any nesting depth is walked, as git walks it, without growing the
-// goroutine stack (F3). A tree missing from the repository is counted, as
-// rev-list's missing=print mode reports it, and its siblings are still
-// walked (N2).
-func (w *taggedWalk) walkTree(ctx context.Context, root plumbing.Hash) error {
-	var (
-		stack []treeFrame
-		path  []byte
-	)
-	push := func(h plumbing.Hash) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if _, ok := w.trees[h]; ok {
-			return nil
-		}
-		w.trees[h] = struct{}{}
-		tree, err := w.repo.TreeObject(h)
-		if errors.Is(err, plumbing.ErrObjectNotFound) {
-			w.missing[h] = struct{}{}
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("failed to get tagged tree %s: %w", h, err)
-		}
-		stack = append(stack, treeFrame{entries: tree.Entries, prefix: len(path)})
-		return nil
-	}
-	if err := push(root); err != nil {
-		return err
-	}
-	for len(stack) > 0 {
-		top := len(stack) - 1
-		if stack[top].next == len(stack[top].entries) {
-			stack = stack[:top]
-			continue
-		}
-		entry := stack[top].entries[stack[top].next]
-		stack[top].next++
-		path = path[:stack[top].prefix]
-		if len(path) > 0 {
-			path = append(path, '/')
-		}
-		path = append(path, entry.Name...)
-		switch entry.Mode {
-		case filemode.Submodule:
-			continue // a gitlink, not an object in this repository
-		case filemode.Dir:
-			if err := push(entry.Hash); err != nil {
-				return err
-			}
-		default:
-			w.inTree[[20]byte(entry.Hash)] = struct{}{}
-			w.addBlob(entry.Hash, string(path))
-		}
-	}
-	return nil
-}
-
-// addBlob adds h with path unless it was already seen. A path over
-// maxRecord is dropped and counted, as rev-list's is (SEC-9, R2).
-func (w *taggedWalk) addBlob(h plumbing.Hash, path string) {
-	hash := [20]byte(h)
-	if _, ok := w.seen[hash]; ok {
-		return
-	}
-	w.seen[hash] = struct{}{}
-	if len(path) > maxRecord {
-		w.stats.overlong++
-		path = ""
-	}
-	w.blobs = append(w.blobs, blobEntry{hash: hash, path: path})
-}
-
-// taggedObject is a tree or blob that a ref points at, directly or through
-// annotated tags.
-type taggedObject struct {
-	hash plumbing.Hash
-	typ  plumbing.ObjectType
-}
-
-// goGitTips returns the commits that HEAD, every ref and every other
-// worktree's HEAD point at, the tips of rev-list --all, and the trees and
-// blobs refs point at. Refs are taken in name order, then HEAD, then the
-// other worktrees' HEADs, as rev-list --all takes them; go-git lists loose
-// refs before packed ones, and the order decides the path a blob under two
-// tagged trees is listed at. Annotated tags are peeled; an unborn HEAD and
-// refs to a missing object are skipped, as git skips broken refs. The
-// missing objects refs name are added to missing, which rev-list reports as
-// missing; a ref file that is not an object id names none. lost counts the
-// other worktrees whose HEAD could not be read.
-func goGitTips(repo *git.Repository, missing map[plumbing.Hash]struct{}) (tips []plumbing.Hash, others []taggedObject, lost int, err error) {
-	addHash := func(name string, h plumbing.Hash, countTree bool) error {
-		h, typ, err := peelRef(repo, h)
-		if err != nil {
-			return fmt.Errorf("failed to peel ref %s: %w", name, err)
-		}
-		switch typ {
-		case plumbing.CommitObject:
-			tips = append(tips, h)
-		case plumbing.TreeObject:
-			if countTree {
-				others = append(others, taggedObject{hash: h, typ: typ})
-			}
-		case plumbing.BlobObject:
-			others = append(others, taggedObject{hash: h, typ: typ})
-		case plumbing.InvalidObject:
-			// A ref, or a tag on its chain, names an object the repository
-			// lacks: rev-list reports it as missing, once. The zero hash is
-			// a ref file that is not an object id, which names nothing.
-			if !h.IsZero() {
-				missing[h] = struct{}{}
-			}
-		}
-		return nil
-	}
-	add := func(ref *plumbing.Reference, countTree bool) error {
-		name := ref.Name()
-		if ref.Type() == plumbing.HashReference {
-			return addHash(name.String(), ref.Hash(), countTree)
-		}
-		resolved, err := storer.ResolveReference(repo.Storer, name)
-		if errors.Is(err, plumbing.ErrReferenceNotFound) {
-			return nil // dangling symbolic ref, such as an unborn HEAD
-		}
-		if err != nil {
-			return fmt.Errorf("failed to resolve ref %s: %w", name, err)
-		}
-		return addHash(name.String(), resolved.Hash(), countTree)
-	}
-	refs, err := repo.Storer.IterReferences()
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to list refs: %w", err)
-	}
-	// In a linked worktree go-git reads refs/worktree/<name> and the other
-	// per-worktree refs from the common store, which holds the main
-	// worktree's. They are dropped and read from the opened gitdir instead
-	// (R6-1). In the main worktree the two are one directory, and go-git
-	// lists them itself.
-	self, common, onDisk := gitDirs(repo)
-	linked := onDisk && !sameDir(self, common)
-	var named []*plumbing.Reference
-	if err := refs.ForEach(func(ref *plumbing.Reference) error {
-		if ref.Name() != plumbing.HEAD && (!linked || !isPerWorktreeRef(ref.Name().String())) {
-			named = append(named, ref)
-		}
-		return nil
-	}); err != nil {
-		return nil, nil, 0, err
-	}
-	if linked {
-		own, ownLost := perWorktreeRefs(repo, self)
-		named = append(named, own...)
-		lost += ownLost
-	}
-	slices.SortFunc(named, func(a, b *plumbing.Reference) int {
-		return strings.Compare(string(a.Name()), string(b.Name()))
-	})
-	for _, ref := range named {
-		if err := add(ref, true); err != nil {
-			return nil, nil, 0, err
-		}
-	}
-	// HEAD as a symbolic ref to a listed ref is that ref again: its tree,
-	// if any, is not counted a second time.
-	headTree := true
-	head, err := repo.Storer.Reference(plumbing.HEAD)
-	symbolic := err == nil && head.Type() == plumbing.SymbolicReference
-	if symbolic {
-		headTree = !slices.ContainsFunc(named, func(r *plumbing.Reference) bool { return r.Name() == head.Target() })
-	}
-	// A HEAD on a per-worktree ref is resolved from the opened gitdir: go-git
-	// looks for the target in the common store, finds nothing, and would
-	// take the HEAD as unborn (R6-1).
-	var h plumbing.Hash
-	found, bad := false, false
-	if symbolic && onDisk {
-		h, found, bad = resolveSymref(repo, osRefReader(self), string(head.Target()))
-	}
-	switch {
-	case found:
-		err = addHash("HEAD", h, headTree)
-	case bad:
-		lost++
-	default:
-		err = add(plumbing.NewSymbolicReference(plumbing.HEAD, ""), headTree)
-	}
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	// go-git has no API for other worktrees' HEADs (R4-1). A detached one
-	// is a tip like a ref; one on a branch repeats a listed ref.
-	heads, headsLost := goGitWorktreeHeads(repo)
-	lost += headsLost
-	for _, wt := range heads {
-		if err := addHash("worktree HEAD", wt, true); err != nil {
-			return nil, nil, 0, err
-		}
-	}
-	return tips, others, lost, nil
-}
-
-// maxWorktreeHead bounds the read of a worktree's HEAD file. An object id
-// or a symbolic ref fits easily; a longer file is neither.
-const maxWorktreeHead = 4 << 10
-
-// goGitWorktreeHeads returns the HEAD commit-ish of every worktree except
-// the one opened, read as git reads it: an object id, or a symbolic ref.
-// Linked worktrees keep theirs in <commondir>/worktrees/<id>/HEAD, and the
-// main worktree in <commondir>/HEAD, which go-git does not read when the
-// scan is opened in a linked worktree (R5-1). A symbolic HEAD on a
-// per-worktree ref is resolved from that worktree's gitdir (R6-1); one on a
-// common ref repeats a listed ref, and a file that names no object id names
-// nothing, as for refs; both are skipped. A worktree entry or HEAD that is a
-// symlink, or cannot be read, is counted in lost, since git would still
-// reach it; so is an object id of the other hash width, which go-git cannot
-// look up (O4).
-func goGitWorktreeHeads(repo *git.Repository) (heads []plumbing.Hash, lost int) {
-	s, ok := repo.Storer.(*filesystem.Storage)
-	if !ok {
-		return nil, 0 // not on disk: no worktrees
-	}
-	fs := s.Filesystem()
-	self, common, ok := gitDirs(repo)
-	read := func(r refReader) {
-		h, found, bad := readHeadFile(repo, r)
-		switch {
-		case found:
-			heads = append(heads, h)
-		case bad:
-			lost++
-		}
-	}
-	if !ok {
-		lost++
-	} else if !sameDir(common, self) {
-		read(osRefReader(common))
-	}
-	fi, err := fs.Lstat("worktrees")
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return heads, lost
-	case err != nil || fi.Mode()&os.ModeSymlink != 0:
-		return heads, lost + 1
-	case !fi.IsDir():
-		return heads, lost // git finds no worktrees here either
-	}
-	wfs, err := fs.Chroot("worktrees")
-	if err != nil {
-		return heads, lost + 1
-	}
-	entries, err := wfs.ReadDir(".")
-	if err != nil {
-		return heads, lost + 1
-	}
-	// billy passes the flags through to os.OpenFile on disk (R7 I-1).
-	wopen := func(n string, flag int) (io.ReadCloser, error) { return wfs.OpenFile(n, flag, 0) }
-	for _, e := range entries {
-		if e.Mode()&os.ModeSymlink != 0 {
-			lost++
-			continue
-		}
-		if !e.IsDir() || sameDir(filepath.Join(wfs.Root(), e.Name()), self) {
-			continue // not a worktree, or the one opened: its HEAD is HEAD
-		}
-		id := e.Name()
-		read(func(name string) ([]byte, bool, bool) {
-			return readRefFile(wfs.Lstat, wopen, path.Join(id, name))
-		})
-	}
-	return heads, lost
-}
-
-// readHeadFile reads the HEAD file of the worktree read reads, at most
-// maxWorktreeHead bytes of a regular file. found reports a HEAD naming an
-// object, directly or through a per-worktree ref. bad reports a HEAD git
-// would use that is not read here: an error, a symlink or other non-regular
-// file, an object id of the other hash width, a "ref:" line parseSymref
-// rejects, or a symbolic ref that resolveSymref cannot follow. A missing file is neither: git skips that
-// worktree too.
-func readHeadFile(repo *git.Repository, read refReader) (h plumbing.Hash, found, bad bool) {
-	b, exists, bad := read("HEAD")
-	if !exists || bad {
-		return h, false, bad
-	}
-	if h, ok := parseDetachedHead(b); ok {
-		return h, true, false
-	}
-	if target, ok := parseSymref(b); ok {
-		return resolveSymref(repo, read, target)
-	}
-	if bytes.HasPrefix(b, []byte("ref:")) {
-		return h, false, true // a symref git may follow that is not read here (R7 F2)
-	}
-	return h, false, otherWidthID(b)
-}
-
-// otherWidthID reports whether b starts with a non-null object id of the
-// hash width the repository does not use (40 or 64 hex digits), followed by
-// the end or whitespace. git in such a repository names an object go-git
-// cannot read, so the HEAD is counted as lost rather than dropped (O4).
-func otherWidthID(b []byte) bool {
-	own := hex.EncodedLen(len(plumbing.Hash{}))
-	for _, n := range []int{40, 64} {
-		if n == own || len(b) < n || (len(b) > n && !strings.ContainsRune(" \t\n\r", rune(b[n]))) {
-			continue
-		}
-		id := string(b[:n])
-		if _, err := hex.DecodeString(id); err == nil && strings.Trim(id, "0") != "" {
-			return true
-		}
-	}
-	return false
-}
-
-// sameDir reports whether a and b name the same directory: equal once
-// cleaned, or once symlinks are resolved (O1), so a common directory spelled
-// through a symlinked path is still recognized as the one opened.
-func sameDir(a, b string) bool {
-	a, b = filepath.Clean(a), filepath.Clean(b)
-	if a == b {
-		return true
-	}
-	ra, errA := filepath.EvalSymlinks(a)
-	rb, errB := filepath.EvalSymlinks(b)
-	return errA == nil && errB == nil && ra == rb
-}
-
-// parseDetachedHead parses a HEAD file as git parses a loose ref: an object
-// id of the repository's hash width, then the end or whitespace. The null id
-// and anything else, such as "ref: ...", name no object.
-func parseDetachedHead(b []byte) (plumbing.Hash, bool) {
-	var h plumbing.Hash
-	n := hex.EncodedLen(len(h))
-	if len(b) < n || (len(b) > n && !strings.ContainsRune(" \t\n\r", rune(b[n]))) {
-		return h, false
-	}
-	if _, err := hex.Decode(h[:], b[:n]); err != nil || h.IsZero() {
-		return h, false
-	}
-	return h, true
-}
-
-// peelRef follows annotated tags from h and returns the object the chain
-// ends at and its type. The type is plumbing.InvalidObject when an object on
-// the chain is missing.
-func peelRef(repo *git.Repository, h plumbing.Hash) (plumbing.Hash, plumbing.ObjectType, error) {
-	for {
-		obj, err := repo.Storer.EncodedObject(plumbing.AnyObject, h)
-		if errors.Is(err, plumbing.ErrObjectNotFound) {
-			return h, plumbing.InvalidObject, nil
-		}
-		if err != nil {
-			return h, plumbing.InvalidObject, err
-		}
-		if obj.Type() != plumbing.TagObject {
-			return h, obj.Type(), nil
-		}
-		tag, err := object.DecodeTag(repo.Storer, obj)
-		if err != nil {
-			return h, plumbing.InvalidObject, err
-		}
-		h = tag.Target
-	}
 }
 
 // firstParentChanges diffs c against its first parent, or against the empty

@@ -82,15 +82,24 @@ func (dp *detailsPane) recomputeVisibleMatches() {
 }
 
 // hasVisibleLocation reports whether m is navigable under repoFilter, without
-// copying its occurrences.
+// copying its occurrences. A match whose locations failed to load stays
+// navigable, so its warning is not hidden by a facet (S1).
 func (dp *detailsPane) hasVisibleLocation(m *matchRow) bool {
-	if len(dp.repoFilter) == 0 {
+	if len(dp.repoFilter) == 0 || m.LocationsErr != nil {
 		return true
 	}
 	return slices.ContainsFunc(m.Occurrences, func(o types.Occurrence) bool {
 		k := facetKey(o)
 		return k != "" && dp.repoFilter[k]
 	})
+}
+
+// nextMatch moves to the next visible match, if there is one.
+func (dp *detailsPane) nextMatch() {
+	if dp.matchCursor < len(dp.visibleMatchIdx)-1 {
+		dp.matchCursor++
+		dp.offset = 0
+	}
 }
 
 func (dp detailsPane) selectedMatch() *matchRow {
@@ -121,10 +130,7 @@ func (dp detailsPane) Update(msg tea.Msg) (detailsPane, tea.Cmd) {
 			dp.offset = 0
 		}
 	case keyMatches(keyMsg, defaultKeys.Right):
-		if dp.matchCursor < len(dp.visibleMatchIdx)-1 {
-			dp.matchCursor++
-			dp.offset = 0
-		}
+		dp.nextMatch()
 	case keyMatches(keyMsg, defaultKeys.Home):
 		dp.offset = 0
 	case keyMatches(keyMsg, defaultKeys.PageDown):

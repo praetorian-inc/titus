@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // hardenedGitConfig overrides repository configuration that could change the
@@ -28,9 +29,9 @@ var hardenedGitConfig = []string{
 	"-c", "gc.auto=0",
 }
 
-// hardenedGitEnv is appended after the inherited environment; exec keeps the
-// last duplicate, so these values win. GIT_CONFIG_GLOBAL is deliberately left
-// alone: the user's safe.directory settings live there.
+// hardenedGitEnv is appended after the filtered inherited environment; exec
+// keeps the last duplicate, so these values win. GIT_CONFIG_GLOBAL is
+// deliberately left alone: the user's safe.directory settings live there.
 var hardenedGitEnv = []string{
 	"GIT_NO_REPLACE_OBJECTS=1",
 	"GIT_CONFIG_NOSYSTEM=1",
@@ -46,6 +47,48 @@ var hardenedGitEnv = []string{
 	"LC_ALL=C",
 }
 
+// inheritedGitEnvDenied are inherited variables that would point git at
+// another repository, object store or config than dir's, or rewrite its
+// history (S2). GIT_CONFIG_KEY_<n> and GIT_CONFIG_VALUE_<n> go by prefix.
+var inheritedGitEnvDenied = map[string]bool{
+	"GIT_DIR":                          true,
+	"GIT_WORK_TREE":                    true,
+	"GIT_INDEX_FILE":                   true,
+	"GIT_OBJECT_DIRECTORY":             true,
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
+	"GIT_COMMON_DIR":                   true,
+	"GIT_NAMESPACE":                    true,
+	"GIT_CEILING_DIRECTORIES":          true,
+	"GIT_DISCOVERY_ACROSS_FILESYSTEM":  true,
+	"GIT_CONFIG":                       true,
+	"GIT_CONFIG_COUNT":                 true,
+	"GIT_CONFIG_PARAMETERS":            true,
+	"GIT_REPLACE_REF_BASE":             true,
+	"GIT_NO_REPLACE_OBJECTS":           true,
+	"GIT_GRAFT_FILE":                   true,
+	"GIT_SHALLOW_FILE":                 true,
+	"GIT_QUARANTINE_PATH":              true,
+	"GIT_PREFIX":                       true,
+}
+
+// inheritedGitEnv returns os.Environ() without inheritedGitEnvDenied. HOME,
+// PATH and GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM/GIT_CONFIG_NOSYSTEM are kept.
+func inheritedGitEnv() []string {
+	env := os.Environ()
+	kept := make([]string, 0, len(env)+len(hardenedGitEnv))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		name = strings.ToUpper(name) // Windows names are case-insensitive
+		if inheritedGitEnvDenied[name] ||
+			strings.HasPrefix(name, "GIT_CONFIG_KEY_") ||
+			strings.HasPrefix(name, "GIT_CONFIG_VALUE_") {
+			continue
+		}
+		kept = append(kept, kv)
+	}
+	return kept
+}
+
 // hardenedGit returns a git command for dir with the hardening flags placed
 // before the caller's arguments.
 func hardenedGit(ctx context.Context, dir string, args ...string) *exec.Cmd {
@@ -54,7 +97,7 @@ func hardenedGit(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	argv = append(argv, args...)
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), hardenedGitEnv...)
+	cmd.Env = append(inheritedGitEnv(), hardenedGitEnv...)
 	return cmd
 }
 
