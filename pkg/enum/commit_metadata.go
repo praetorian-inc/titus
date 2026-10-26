@@ -63,6 +63,9 @@ type indexStats struct {
 	overlong     int // records over maxRecord, skipped (SEC-9)
 	malformed    int // records that do not fit the log grammar (SEC-8)
 	droppedPairs int // pairs not stored after maxIndexPairs (R1)
+	// lostWorktreeHeads counts linked worktrees whose HEAD go-git could
+	// not read, so commits only they reach were not scanned (R4-1).
+	lostWorktreeHeads int
 }
 
 // blobIndex maps a blob to every path it was stored at in history and the
@@ -644,6 +647,9 @@ func (x *blobIndex) writeWarnings(w io.Writer) {
 	}
 	if s.malformed > 0 {
 		_, _ = fmt.Fprintf(w, "titus: skipped %d malformed git records\n", s.malformed)
+	}
+	if s.lostWorktreeHeads > 0 {
+		_, _ = fmt.Fprintf(w, "titus: could not read the HEAD of %d linked git worktrees; commits reachable only from them were not scanned\n", s.lostWorktreeHeads)
 	}
 	if x.taggedTrees > 0 {
 		_, _ = fmt.Fprintf(w, "titus: %d git refs point directly at a tree, not a commit; a file under such a tree is listed only at the first path git reaches it by, so those files are marked as possibly missing locations\n", x.taggedTrees)

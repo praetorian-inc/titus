@@ -2,9 +2,13 @@ package enum
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +18,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 
 	"github.com/praetorian-inc/titus/pkg/repoid"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -54,6 +59,13 @@ func (e *GitEnumerator) Enumerate(ctx context.Context, callback func(content []b
 	return e.enumerateSingleCommit(ctx, callback)
 }
 
+// openGoGitRepo opens the repository at root. A linked worktree's .git
+// names a gitdir that holds only its HEAD and per-worktree refs; objects and
+// shared refs are in the common directory, which git reads too (R4-2).
+func openGoGitRepo(root string) (*git.Repository, error) {
+	return git.PlainOpenWithOptions(root, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+}
+
 // treeBlob is one blob of a single tree and every path it is stored at.
 type treeBlob struct {
 	hash  plumbing.Hash
@@ -63,7 +75,7 @@ type treeBlob struct {
 // enumerateSingleCommit walks the tree at a single commit (CommitRef). Each
 // blob is yielded once, with every path it has in that tree as a location.
 func (e *GitEnumerator) enumerateSingleCommit(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	repo, err := git.PlainOpen(e.config.Root)
+	repo, err := openGoGitRepo(e.config.Root)
 	if err != nil {
 		return fmt.Errorf("failed to open git repository: %w", err)
 	}
@@ -165,7 +177,7 @@ func (e *GitEnumerator) enumerateSingleCommit(ctx context.Context, callback func
 // per blob, with every (path, earliest commit) location from a first-parent,
 // rename-free diff of each commit.
 func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	repo, err := git.PlainOpen(e.config.Root)
+	repo, err := openGoGitRepo(e.config.Root)
 	if err != nil {
 		return fmt.Errorf("failed to open git repository: %w", err)
 	}
@@ -210,18 +222,29 @@ func (e *GitEnumerator) enumerateAllHistory(ctx context.Context, callback func(c
 // goGitHistoryIndex diffs every commit reachable from HEAD or any ref against
 // its first parent (no rename detection), the go-git equivalent of
 // blobIndexLogArgs. It returns the scan set, deduplicated by blob in
-// first-seen order, the blob index, and the number of ref targets and
-// tagged-tree subtrees missing from the repository. Only two trees are held at a time.
+// first-seen order, the blob index, and the number of distinct ref targets
+// and tagged-tree subtrees missing from the repository. Only two trees are
+// held at a time.
 //
 // It walks the commit graph itself rather than with repo.Log(All): that
 // iterator skips refs to annotated tags, stops each ref's walk at the first
 // commit already seen (so a merge's other parents behind it are never
 // reached), and drops iterator errors.
 func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, *blobIndex, int, error) {
-	stack, others, missingTips, err := goGitTips(repo)
+	p := &indexParser{
+		pathIDs: make(map[string]uint32),
+		nameIDs: make(map[string]uint32),
+		cur:     -1,
+	}
+	seen := make(map[[20]byte]struct{})
+	tw := newTaggedWalk(repo, nil, seen, &p.x.stats)
+	// The walk and the tips share one missing set, so an object that a ref
+	// names and a tagged tree holds is counted once, as rev-list counts it.
+	stack, others, lost, err := goGitTips(repo, tw.missing)
 	if err != nil {
 		return nil, nil, 0, err
 	}
+	p.x.stats.lostWorktreeHeads = lost
 	shallowList, err := repo.Storer.Shallow()
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to read shallow commits: %w", err)
@@ -231,18 +254,11 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 		shallow[h] = struct{}{}
 	}
 
-	p := &indexParser{
-		pathIDs: make(map[string]uint32),
-		nameIDs: make(map[string]uint32),
-		cur:     -1,
-	}
 	// Trees and blobs a ref reaches only through a tag (M4) come first:
 	// rev-list --all --objects walks them before any commit's tree, so a
 	// blob in both is listed at its tagged-tree path. git log never sees
 	// them, so they join the scan set with that path and no commit, as on
 	// the native path, and the blobs under a tagged tree are marked.
-	seen := make(map[[20]byte]struct{})
-	tw := newTaggedWalk(repo, nil, seen, &p.x.stats)
 	treeRefs := 0
 	for _, o := range others {
 		if o.typ == plumbing.TreeObject {
@@ -305,7 +321,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 	}
 	idx := p.finish()
 	idx.setTaggedTrees(tw.inTree, treeRefs)
-	return blobs, idx, tw.missing + missingTips, nil
+	return blobs, idx, len(tw.missing), nil
 }
 
 // taggedWalk collects the blobs of tagged trees and blobs as rev-list
@@ -320,17 +336,18 @@ type taggedWalk struct {
 	inTree  map[[20]byte]struct{}      // every blob under a tagged tree
 	trees   map[plumbing.Hash]struct{} // trees already walked, across roots
 	stats   *indexStats                // receives over-long paths (R2)
-	missing int                        // subtrees missing from the repository
+	missing map[plumbing.Hash]struct{} // objects missing from the repository
 }
 
 func newTaggedWalk(repo *git.Repository, blobs []blobEntry, seen map[[20]byte]struct{}, stats *indexStats) *taggedWalk {
 	return &taggedWalk{
-		repo:   repo,
-		blobs:  blobs,
-		seen:   seen,
-		inTree: make(map[[20]byte]struct{}),
-		trees:  make(map[plumbing.Hash]struct{}),
-		stats:  stats,
+		repo:    repo,
+		blobs:   blobs,
+		seen:    seen,
+		inTree:  make(map[[20]byte]struct{}),
+		trees:   make(map[plumbing.Hash]struct{}),
+		stats:   stats,
+		missing: make(map[plumbing.Hash]struct{}),
 	}
 }
 
@@ -371,7 +388,7 @@ func (w *taggedWalk) walkTree(ctx context.Context, root plumbing.Hash) error {
 		w.trees[h] = struct{}{}
 		tree, err := w.repo.TreeObject(h)
 		if errors.Is(err, plumbing.ErrObjectNotFound) {
-			w.missing++
+			w.missing[h] = struct{}{}
 			return nil
 		}
 		if err != nil {
@@ -433,30 +450,19 @@ type taggedObject struct {
 	typ  plumbing.ObjectType
 }
 
-// goGitTips returns the commits that HEAD and every ref point at, the tips of
-// rev-list --all, and the trees and blobs refs point at. Refs are taken in
-// name order and HEAD last, as rev-list --all takes them; go-git lists loose
+// goGitTips returns the commits that HEAD, every ref and every other
+// worktree's HEAD point at, the tips of rev-list --all, and the trees and
+// blobs refs point at. Refs are taken in name order, then HEAD, then the
+// other worktrees' HEADs, as rev-list --all takes them; go-git lists loose
 // refs before packed ones, and the order decides the path a blob under two
 // tagged trees is listed at. Annotated tags are peeled; an unborn HEAD and
-// refs to a missing object are skipped, as git skips broken refs. The count
-// is the distinct missing objects refs name, which rev-list reports as
-// missing; a ref file that is not an object id names none.
-func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, int, error) {
-	var (
-		tips    []plumbing.Hash
-		others  []taggedObject
-		missing = make(map[plumbing.Hash]struct{})
-	)
-	add := func(ref *plumbing.Reference, countTree bool) error {
-		name := ref.Name()
-		resolved, err := storer.ResolveReference(repo.Storer, name)
-		if errors.Is(err, plumbing.ErrReferenceNotFound) {
-			return nil // dangling symbolic ref, such as an unborn HEAD
-		}
-		if err != nil {
-			return fmt.Errorf("failed to resolve ref %s: %w", name, err)
-		}
-		h, typ, err := peelRef(repo, resolved.Hash())
+// refs to a missing object are skipped, as git skips broken refs. The
+// missing objects refs name are added to missing, which rev-list reports as
+// missing; a ref file that is not an object id names none. lost counts the
+// other worktrees whose HEAD could not be read.
+func goGitTips(repo *git.Repository, missing map[plumbing.Hash]struct{}) (tips []plumbing.Hash, others []taggedObject, lost int, err error) {
+	addHash := func(name string, h plumbing.Hash, countTree bool) error {
+		h, typ, err := peelRef(repo, h)
 		if err != nil {
 			return fmt.Errorf("failed to peel ref %s: %w", name, err)
 		}
@@ -478,6 +484,17 @@ func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, int, erro
 			}
 		}
 		return nil
+	}
+	add := func(ref *plumbing.Reference, countTree bool) error {
+		name := ref.Name()
+		resolved, err := storer.ResolveReference(repo.Storer, name)
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return nil // dangling symbolic ref, such as an unborn HEAD
+		}
+		if err != nil {
+			return fmt.Errorf("failed to resolve ref %s: %w", name, err)
+		}
+		return addHash(name.String(), resolved.Hash(), countTree)
 	}
 	refs, err := repo.Storer.IterReferences()
 	if err != nil {
@@ -509,7 +526,98 @@ func goGitTips(repo *git.Repository) ([]plumbing.Hash, []taggedObject, int, erro
 	if err := add(plumbing.NewSymbolicReference(plumbing.HEAD, ""), headTree); err != nil {
 		return nil, nil, 0, err
 	}
-	return tips, others, len(missing), nil
+	// go-git has no API for other worktrees' HEADs (R4-1). A detached one
+	// is a tip like a ref; one on a branch repeats a listed ref.
+	heads, lost := goGitWorktreeHeads(repo)
+	for _, wt := range heads {
+		if err := addHash("worktree HEAD", wt, true); err != nil {
+			return nil, nil, 0, err
+		}
+	}
+	return tips, others, lost, nil
+}
+
+// maxWorktreeHead bounds the read of a worktree's HEAD file. An object id
+// or a symbolic ref fits easily; a longer file is neither.
+const maxWorktreeHead = 4 << 10
+
+// goGitWorktreeHeads returns the detached HEAD of every linked worktree
+// except the one opened, read from <commondir>/worktrees/<id>/HEAD as git
+// reads it: the first word must be an object id. A symbolic HEAD repeats a
+// listed ref, and a file that names no object id names nothing, as for
+// refs; both are skipped. A worktree entry or HEAD that is a symlink, or
+// cannot be read, is counted in lost, since git would still reach it.
+func goGitWorktreeHeads(repo *git.Repository) (heads []plumbing.Hash, lost int) {
+	s, ok := repo.Storer.(*filesystem.Storage)
+	if !ok {
+		return nil, 0 // not on disk: no worktrees
+	}
+	fs := s.Filesystem()
+	// Paths under worktrees/ resolve in the common directory (R4-2).
+	fi, err := fs.Lstat("worktrees")
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil, 0
+	case err != nil || fi.Mode()&os.ModeSymlink != 0:
+		return nil, 1
+	case !fi.IsDir():
+		return nil, 0 // git finds no worktrees here either
+	}
+	wfs, err := fs.Chroot("worktrees")
+	if err != nil {
+		return nil, 1
+	}
+	entries, err := wfs.ReadDir(".")
+	if err != nil {
+		return nil, 1
+	}
+	self := filepath.Clean(fs.Root())
+	for _, e := range entries {
+		if e.Mode()&os.ModeSymlink != 0 {
+			lost++
+			continue
+		}
+		if !e.IsDir() || filepath.Join(wfs.Root(), e.Name()) == self {
+			continue // not a worktree, or the one opened: its HEAD is HEAD
+		}
+		head := path.Join(e.Name(), "HEAD")
+		if fi, err := wfs.Lstat(head); errors.Is(err, os.ErrNotExist) {
+			continue // no HEAD: git skips the worktree too
+		} else if err != nil || !fi.Mode().IsRegular() {
+			lost++
+			continue
+		}
+		f, err := wfs.Open(head)
+		if err != nil {
+			lost++
+			continue
+		}
+		b, err := io.ReadAll(io.LimitReader(f, maxWorktreeHead))
+		_ = f.Close()
+		if err != nil {
+			lost++
+			continue
+		}
+		if h, ok := parseDetachedHead(b); ok {
+			heads = append(heads, h)
+		}
+	}
+	return heads, lost
+}
+
+// parseDetachedHead parses a HEAD file as git parses a loose ref: an object
+// id of the repository's hash width, then the end or whitespace. The null id
+// and anything else, such as "ref: ...", name no object.
+func parseDetachedHead(b []byte) (plumbing.Hash, bool) {
+	var h plumbing.Hash
+	n := hex.EncodedLen(len(h))
+	if len(b) < n || (len(b) > n && !strings.ContainsRune(" \t\n\r", rune(b[n]))) {
+		return h, false
+	}
+	if _, err := hex.Decode(h[:], b[:n]); err != nil || h.IsZero() {
+		return h, false
+	}
+	return h, true
 }
 
 // peelRef follows annotated tags from h and returns the object the chain

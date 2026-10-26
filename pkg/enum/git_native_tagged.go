@@ -125,6 +125,7 @@ func resolveRefTips(ctx context.Context, dir string) (refTips, error) {
 		return refTips{}, fmt.Errorf("git cat-file: %w", err)
 	}
 	var t refTips
+	commits := make(map[string]struct{}) // a tip named twice is listed once
 	for i, line := range strings.Split(strings.TrimSuffix(string(out), "\n"), "\n") {
 		if i >= len(kinds) {
 			break
@@ -135,7 +136,10 @@ func resolveRefTips(ctx context.Context, dir string) (refTips, error) {
 		}
 		switch {
 		case typ == "commit":
-			t.commits = append(t.commits, id)
+			if _, ok := commits[id]; !ok {
+				commits[id] = struct{}{}
+				t.commits = append(t.commits, id)
+			}
 		case typ == "tree" && (kinds[i] == tipRef || kinds[i] == tipHead):
 			t.trees = append(t.trees, id)
 		}
@@ -159,17 +163,73 @@ func symbolicHead(ctx context.Context, dir string) (string, error) {
 // worktreeHeads returns the HEAD commit id of every worktree, which
 // rev-list --all also starts from. A worktree on a branch repeats a ref
 // and costs nothing; a detached one adds commits no ref reaches.
+//
+// A worktree path may contain a newline, so the plain porcelain output
+// can carry a forged "HEAD <id>" line. With -z (git 2.36 or later) every
+// field ends in NUL and a path is one field, so the HEAD field that
+// follows a worktree field is the real one. An older git rejects -z with
+// exit 129; worktreeHeadsLines then parses the plain output.
 func worktreeHeads(ctx context.Context, dir string) ([]string, error) {
+	out, err := hardenedGit(ctx, dir, "worktree", "list", "--porcelain", "-z").Output()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 129 {
+		return worktreeHeadsLines(ctx, dir)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("git worktree list: %w", err)
+	}
+	var ids []string
+	inBlock, haveHead := false, false
+	for _, field := range strings.Split(string(out), "\x00") {
+		switch {
+		case field == "":
+			inBlock = false // an empty field ends a block
+		case strings.HasPrefix(field, "worktree "):
+			inBlock, haveHead = true, false
+		case inBlock && !haveHead:
+			if id, ok := strings.CutPrefix(field, "HEAD "); ok {
+				haveHead = true
+				ids = appendWorktreeHead(ids, id)
+			}
+		}
+	}
+	return ids, nil
+}
+
+// worktreeHeadsLines parses "worktree list --porcelain" for a git older
+// than 2.36. It takes HEAD lines only inside a block (from a worktree
+// line to a blank line). It keeps every HEAD line of a block rather than
+// the first: a path with a newline can put a forged line before the real
+// one, and dropping the real one would hide a tip. The residual risk is
+// an added tip, which must still be strict hex and name an object that
+// exists (cat-file drops the rest).
+func worktreeHeadsLines(ctx context.Context, dir string) ([]string, error) {
 	out, err := hardenedGit(ctx, dir, "worktree", "list", "--porcelain").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git worktree list: %w", err)
 	}
 	var ids []string
+	inBlock := false
 	for _, line := range strings.Split(string(out), "\n") {
-		id, ok := strings.CutPrefix(line, "HEAD ")
-		if ok && revListIDWidth([]byte(id)) == len(id) && strings.Trim(id, "0") != "" {
-			ids = append(ids, id)
+		switch {
+		case line == "":
+			inBlock = false
+		case strings.HasPrefix(line, "worktree "):
+			inBlock = true
+		case inBlock:
+			if id, ok := strings.CutPrefix(line, "HEAD "); ok {
+				ids = appendWorktreeHead(ids, id)
+			}
 		}
 	}
 	return ids, nil
+}
+
+// appendWorktreeHead appends id when it is a full object id that is not
+// the null id (an unborn branch).
+func appendWorktreeHead(ids []string, id string) []string {
+	if revListIDWidth([]byte(id)) == len(id) && strings.Trim(id, "0") != "" {
+		ids = append(ids, id)
+	}
+	return ids
 }
