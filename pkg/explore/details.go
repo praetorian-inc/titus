@@ -402,13 +402,13 @@ func renderMatchTail(m *matchRow, maxWidth int) []string {
 
 // renderLocations renders the "Locations N:" heading and one line per location
 // visible under sel, using the shared human line format. Each line is
-// sanitized, then wrapped with a 6-space continuation indent. When the
+// sanitized, then word-wrapped with a 6-space continuation indent. When the
 // locations could not be loaded, it says so instead of showing a count.
 func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
 	wrapWidth := max(1, maxWidth-6)
 	var lines []string
 	appendWrapped := func(text string) {
-		for j, part := range wrapLine(text, wrapWidth) {
+		for j, part := range wrapWords(text, wrapWidth) {
 			indent := "      "
 			if j == 0 {
 				indent = "    "
@@ -512,6 +512,17 @@ func wrapLine(s string, maxWidth int) []string {
 		return []string{s}
 	}
 	return strings.Split(ansi.Hardwrap(s, maxWidth, true), "\n")
+}
+
+// wrapWords splits a string into lines of at most maxWidth terminal cells,
+// breaking at spaces so a token such as a commit hash stays on one row. Only a
+// single word wider than maxWidth is hard-broken. Secret values use wrapLine
+// instead, where hard wrapping is intended.
+func wrapWords(s string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		return []string{s}
+	}
+	return strings.Split(ansi.Wrap(s, maxWidth, ""), "\n")
 }
 
 func (dp detailsPane) visibleRows() int {

@@ -284,7 +284,7 @@ func TestRenderLocations_LongLineWraps(t *testing.T) {
 	if len(body) < 2 {
 		t.Fatalf("expected wrapped lines, got %q", body)
 	}
-	var rebuilt strings.Builder
+	rows := make([]string, 0, len(body))
 	for i, l := range body {
 		indent := "      "
 		if i == 0 {
@@ -297,10 +297,22 @@ func TestRenderLocations_LongLineWraps(t *testing.T) {
 		if len(rest) > width-6 {
 			t.Errorf("line %d longer than wrap width %d: %q", i, width-6, rest)
 		}
-		rebuilt.WriteString(rest)
+		rows = append(rows, rest)
 	}
-	if want := types.FormatLine(long, 7, ""); rebuilt.String() != want {
-		t.Errorf("wrapped text = %q, want %q", rebuilt.String(), want)
+	// Word wrapping drops the spaces it breaks at, and the path here is wider
+	// than the pane, so it is also hard-broken. Compare the non-space text, and
+	// require every field that fits the pane to stay whole on one row.
+	want := types.FormatLine(long, 7, "")
+	if got, w := strings.Join(strings.Fields(strings.Join(rows, " ")), ""), strings.Join(strings.Fields(want), ""); got != w {
+		t.Errorf("wrapped text = %q, want %q", got, w)
+	}
+	for _, f := range strings.Fields(want) {
+		if len(f) > width-6 {
+			continue
+		}
+		if !slices.ContainsFunc(rows, func(r string) bool { return slices.Contains(strings.Fields(r), f) }) {
+			t.Errorf("field %q split across rows: %q", f, rows)
+		}
 	}
 	if strings.Contains(strings.Join(body, ""), "...") {
 		t.Errorf("location line truncated with ...: %q", body)

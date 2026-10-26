@@ -451,12 +451,18 @@ func (m *Model) renderStatusBar() string {
 		helpKeyStyle.Render("?"), helpDescStyle.Render("help"),
 	)
 
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 0 {
-		gap = 0
-	}
+	// Keep at least a 2-cell gap between the sections. When the bar is too
+	// narrow, truncate the help text so the bar never exceeds the width.
+	const minGap = 2
+	right = ansi.Truncate(right, max(0, m.width-lipgloss.Width(left)-minGap), "…")
+	gap := max(minGap, m.width-lipgloss.Width(left)-lipgloss.Width(right))
 
-	return left + strings.Repeat(" ", gap) + right
+	bar := left + strings.Repeat(" ", gap) + right
+	if m.width > 0 {
+		// The left section alone can be wider than a tiny terminal.
+		bar = ansi.Truncate(bar, m.width, "")
+	}
+	return bar
 }
 
 func (m *Model) renderOverlay() string {

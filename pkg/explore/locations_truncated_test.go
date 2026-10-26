@@ -54,7 +54,8 @@ func TestRenderLocations_TruncatedNoticeWraps(t *testing.T) {
 		}
 		parts = append(parts, rest)
 	}
-	if got := strings.Join(parts, ""); got != types.LocationsTruncatedNotice {
-		t.Errorf("wrapped notice reads %q", got)
+	// Word wrapping drops the spaces it breaks at, so compare the words.
+	if got, want := strings.Fields(strings.Join(parts, " ")), strings.Fields(types.LocationsTruncatedNotice); !slices.Equal(got, want) {
+		t.Errorf("wrapped notice words = %q, want %q", got, want)
 	}
 }
