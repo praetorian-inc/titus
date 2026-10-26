@@ -84,10 +84,11 @@ func goGitFormatSupported(repo *git.Repository, root string) error {
 			version = strings.TrimSpace(s.Options.Get("repositoryformatversion"))
 		}
 	}
+	// Extensions are checked in a version 0 repository too: git 2.28+ honours
+	// v1-only ones such as refstorage there and refuses to read the
+	// repository, so an extension go-git cannot read fails closed (R9-1).
 	switch version {
-	case "", "0":
-		return nil // git ignores extensions in a version 0 repository
-	case "1":
+	case "", "0", "1":
 	default:
 		return fmt.Errorf("%s: core.repositoryformatversion %s is not supported by the built-in git reader; install git to scan this repository's history", root, version)
 	}

@@ -51,6 +51,27 @@ func appendConfig(t *testing.T, dir, text string) {
 	}
 }
 
+// dropFormatVersion removes every core.repositoryformatversion line from
+// the repository's .git/config, so a case can state the version (or its
+// absence) and the order of [core] sections itself.
+func dropFormatVersion(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, ".git", "config")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, line := range strings.SplitAfter(string(data), "\n") {
+		if !strings.Contains(strings.ToLower(line), "repositoryformatversion") {
+			kept = append(kept, line)
+		}
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(kept, "")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // B1: go-git does not read reftable refs, so a walk of a reftable
 // repository would see no refs and report nothing, without an error. The
 // go-git walk must fail closed with an error that names the extension and
@@ -95,18 +116,35 @@ func TestGoGitHistory_RepositoryFormatGate(t *testing.T) {
 		name   string
 		config string
 		reject string // substring of the error; "" means the walk succeeds
+		// dropVersion removes the repositoryformatversion git init wrote,
+		// so config alone decides the version.
+		dropVersion bool
 	}{
-		{"unknown extension", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\ttitusfuture = true\n", "extensions.titusfuture=true"},
-		{"objectformat sha256 value", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = sha256\n", "extensions.objectformat=sha256"},
-		{"version 2", "[core]\n\trepositoryformatversion = 2\n", "repositoryformatversion 2"},
-		{"mixed-case reftable", "[Core]\n\tRepositoryFormatVersion = 1\n[Extensions]\n\tRefStorage = reftable\n", "extensions.refstorage=reftable"},
-		{"worktreeconfig and objectformat sha1", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\tworktreeconfig = true\n\tobjectformat = sha1\n", ""},
-		{"mixed-case allowed extensions", "[CORE]\n\tRepositoryFormatVersion = 1\n[Extensions]\n\tWorktreeConfig = true\n\tObjectFormat = sha1\n\tPreciousObjects = true\n", ""},
-		{"version 0 ignores extensions", "[core]\n\trepositoryformatversion = 0\n[extensions]\n\ttitusfuture = true\n", ""},
+		{"unknown extension", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\ttitusfuture = true\n", "extensions.titusfuture=true", false},
+		{"objectformat sha256 value", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = sha256\n", "extensions.objectformat=sha256", false},
+		{"version 2", "[core]\n\trepositoryformatversion = 2\n", "repositoryformatversion 2", false},
+		{"mixed-case reftable", "[Core]\n\tRepositoryFormatVersion = 1\n[Extensions]\n\tRefStorage = reftable\n", "extensions.refstorage=reftable", false},
+		{"worktreeconfig and objectformat sha1", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\tworktreeconfig = true\n\tobjectformat = sha1\n", "", false},
+		{"mixed-case allowed extensions", "[CORE]\n\tRepositoryFormatVersion = 1\n[Extensions]\n\tWorktreeConfig = true\n\tObjectFormat = sha1\n\tPreciousObjects = true\n", "", false},
+		// R9-1: a version 0 (or unset) repository runs the same extensions
+		// check as version 1, so a walk never silently yields no history.
+		{"version 0 unknown extension", "[core]\n\trepositoryformatversion = 0\n[extensions]\n\ttitusfuture = true\n", "extensions.titusfuture=true", false},
+		{"version 0 reftable", "[core]\n\trepositoryformatversion = 0\n[extensions]\n\trefstorage = reftable\n", "extensions.refstorage=reftable", true},
+		{"no version key reftable", "[extensions]\n\trefstorage = reftable\n", "extensions.refstorage=reftable", true},
+		{"no version key objectformat sha256", "[extensions]\n\tobjectformat = sha256\n", "extensions.objectformat=sha256", true},
+		{"duplicate core last version 0 reftable", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\trefstorage = reftable\n[core]\n\trepositoryformatversion = 0\n", "extensions.refstorage=reftable", true},
+		// Allowed extensions still walk at version 0 or unset. objectformat
+		// is left out: git refuses it in a version 0 repository ("v1-only
+		// extension"), so the native control could not read the fixture.
+		{"version 0 allowed extension", "[core]\n\trepositoryformatversion = 0\n[extensions]\n\tpreciousobjects = true\n", "", true},
+		{"no version key allowed extensions", "[extensions]\n\tworktreeconfig = true\n\tpreciousobjects = true\n", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			dir := b1Repo(t)
+			if c.dropVersion {
+				dropFormatVersion(t, dir)
+			}
 			// The last repositoryformatversion in the file wins, as in git.
 			appendConfig(t, dir, c.config)
 
