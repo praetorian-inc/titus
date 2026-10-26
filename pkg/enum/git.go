@@ -1,6 +1,7 @@
 package enum
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -624,7 +625,8 @@ func goGitWorktreeHeads(repo *git.Repository) (heads []plumbing.Hash, lost int) 
 	if err != nil {
 		return heads, lost + 1
 	}
-	wopen := func(n string) (io.ReadCloser, error) { return wfs.Open(n) }
+	// billy passes the flags through to os.OpenFile on disk (R7 I-1).
+	wopen := func(n string, flag int) (io.ReadCloser, error) { return wfs.OpenFile(n, flag, 0) }
 	for _, e := range entries {
 		if e.Mode()&os.ModeSymlink != 0 {
 			lost++
@@ -645,8 +647,8 @@ func goGitWorktreeHeads(repo *git.Repository) (heads []plumbing.Hash, lost int) 
 // maxWorktreeHead bytes of a regular file. found reports a HEAD naming an
 // object, directly or through a per-worktree ref. bad reports a HEAD git
 // would use that is not read here: an error, a symlink or other non-regular
-// file, an object id of the other hash width, or a symbolic ref that
-// resolveSymref cannot follow. A missing file is neither: git skips that
+// file, an object id of the other hash width, a "ref:" line parseSymref
+// rejects, or a symbolic ref that resolveSymref cannot follow. A missing file is neither: git skips that
 // worktree too.
 func readHeadFile(repo *git.Repository, read refReader) (h plumbing.Hash, found, bad bool) {
 	b, exists, bad := read("HEAD")
@@ -658,6 +660,9 @@ func readHeadFile(repo *git.Repository, read refReader) (h plumbing.Hash, found,
 	}
 	if target, ok := parseSymref(b); ok {
 		return resolveSymref(repo, read, target)
+	}
+	if bytes.HasPrefix(b, []byte("ref:")) {
+		return h, false, true // a symref git may follow that is not read here (R7 F2)
 	}
 	return h, false, otherWidthID(b)
 }
