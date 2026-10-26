@@ -63,8 +63,9 @@ type indexStats struct {
 	overlong     int // records over maxRecord, skipped (SEC-9)
 	malformed    int // records that do not fit the log grammar (SEC-8)
 	droppedPairs int // pairs not stored after maxIndexPairs (R1)
-	// lostWorktreeHeads counts linked worktrees whose HEAD go-git could
-	// not read, so commits only they reach were not scanned (R4-1).
+	// lostWorktreeHeads counts linked worktrees whose HEAD go-git or git
+	// could not read, so commits only they reach were not scanned (R4-1,
+	// R5-3).
 	lostWorktreeHeads int
 }
 
@@ -607,12 +608,14 @@ func (x *blobIndex) truncated() bool {
 // unknown. A blob with no dropped pair is not marked, even when the index is
 // truncated: none of its history locations were lost to the cap. An index
 // that could not be built (unavailableIndex) marks every blob; a nil index
-// marks nothing.
+// marks nothing. When a linked worktree's HEAD could not be read, any blob
+// may have a location only that worktree reaches, so every blob is marked;
+// the index still answers lookups (R5-3).
 func (x *blobIndex) locationsTruncated(hash [20]byte) bool {
 	if x == nil {
 		return false
 	}
-	if x.failed {
+	if x.failed || x.stats.lostWorktreeHeads > 0 {
 		return true
 	}
 	if _, ok := x.treeBlobs[hash]; ok {
@@ -624,7 +627,7 @@ func (x *blobIndex) locationsTruncated(hash [20]byte) bool {
 
 // marksAny reports whether locationsTruncated can be true for some blob.
 func (x *blobIndex) marksAny() bool {
-	return x != nil && (x.failed || len(x.truncatedBlobs) > 0 || len(x.treeBlobs) > 0)
+	return x != nil && (x.failed || x.stats.lostWorktreeHeads > 0 || len(x.truncatedBlobs) > 0 || len(x.treeBlobs) > 0)
 }
 
 // marksAll reports whether locationsTruncated is true for every blob: the
@@ -649,7 +652,7 @@ func (x *blobIndex) writeWarnings(w io.Writer) {
 		_, _ = fmt.Fprintf(w, "titus: skipped %d malformed git records\n", s.malformed)
 	}
 	if s.lostWorktreeHeads > 0 {
-		_, _ = fmt.Fprintf(w, "titus: could not read the HEAD of %d linked git worktrees; commits reachable only from them were not scanned\n", s.lostWorktreeHeads)
+		_, _ = fmt.Fprintf(w, "titus: could not read the HEAD of %d linked git worktrees; commits reachable only from them were not scanned, so every finding is marked as possibly missing locations\n", s.lostWorktreeHeads)
 	}
 	if x.taggedTrees > 0 {
 		_, _ = fmt.Fprintf(w, "titus: %d git refs point directly at a tree, not a commit; a file under such a tree is listed only at the first path git reaches it by, so those files are marked as possibly missing locations\n", x.taggedTrees)

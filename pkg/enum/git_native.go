@@ -69,6 +69,9 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		// treeRefs counts those refs.
 		treeBlobs map[[20]byte]struct{}
 		treeRefs  int
+		// lostHeads counts linked worktrees whose HEAD git could not
+		// read (R5-3).
+		lostHeads int
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -87,7 +90,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 	})
 	g.Go(func() error {
 		var err error
-		treeBlobs, treeRefs, err = taggedTreeBlobs(gctx, root)
+		treeBlobs, treeRefs, lostHeads, err = taggedTreeBlobs(gctx, root)
 		return err
 	})
 	if err := g.Wait(); err != nil {
@@ -104,6 +107,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		}
 	}
 	idx.setTaggedTrees(treeBlobs, treeRefs)
+	idx.stats.lostWorktreeHeads = lostHeads
 	idx.stats.malformed += rl.malformed
 	writeEnumWarnings(warn, idx, rl.overlong)
 

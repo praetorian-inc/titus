@@ -2,6 +2,8 @@ package main
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 var (
@@ -35,7 +37,29 @@ func init() {
 	rootCmd.AddCommand(exploreCmd)
 }
 
-// Execute runs the root command.
+// Execute runs the root command. Cobra's own error print is silenced and
+// replaced by reportError, which sanitizes the message.
 func Execute() error {
-	return rootCmd.Execute()
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
+	cmd, err := rootCmd.ExecuteC()
+	if err != nil {
+		reportError(cmd, err)
+	}
+	return err
+}
+
+// reportError prints err the way cobra does, but passes the message through
+// types.SanitizeDisplay: an error can carry repository bytes, such as a path
+// read from a .git file or a commondir file, and control bytes in it must
+// reach the terminal escaped, not raw (O3). The error value is unchanged. A
+// command that cannot run failed to resolve, so it gets cobra's hint;
+// otherwise the usage follows, as cobra prints it.
+func reportError(cmd *cobra.Command, err error) {
+	cmd.PrintErrln(cmd.ErrPrefix(), types.SanitizeDisplay(err.Error()))
+	if !cmd.Runnable() {
+		cmd.PrintErrf("Run '%v --help' for usage.\n", cmd.CommandPath())
+		return
+	}
+	cmd.Println(cmd.UsageString())
 }
