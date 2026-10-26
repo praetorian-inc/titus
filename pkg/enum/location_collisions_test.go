@@ -46,25 +46,50 @@ func (a *allLocs) of(id types.BlobID) []wtLoc {
 
 func newAllLocs() *allLocs { return &allLocs{locs: map[types.BlobID][]wtLoc{}} }
 
-// utf16TwinFixture commits a.txt (UTF-8) and b.ps1 (UTF-16LE with BOM) holding
-// the same token text in one commit. The two are different git objects, but
-// b.ps1's decoded text is a.txt's content, so both have the same BlobID.
-// With removeUTF16, a second commit git-rm's b.ps1, so it exists in history
-// only. It returns the repository, the first commit, and the shared BlobID.
-func utf16TwinFixture(t *testing.T, removeUTF16 bool) (dir, commit string, id types.BlobID) {
+// utf16TwinFixture commits utf8Name (UTF-8) and utf16Name (UTF-16LE with BOM)
+// holding the same token text in one commit. The two are different git
+// objects, but the UTF-16 file's decoded text is the UTF-8 file's content, so
+// both have the same BlobID. With removeUTF16, a second commit git-rm's the
+// UTF-16 file, so it exists in history only. It returns the repository, the
+// first commit, and the shared BlobID.
+func utf16TwinFixture(t *testing.T, utf8Name, utf16Name string, removeUTF16 bool) (dir, commit string, id types.BlobID) {
 	t.Helper()
 	skipIfNoGit(t)
 	dir = t.TempDir()
 	initGitRepo(t, dir)
 	text := fakeTokenLine('z')
-	writeFile(t, filepath.Join(dir, "a.txt"), text)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.ps1"), encodeUTF16(t, text, false, true), 0o644))
+	writeFile(t, filepath.Join(dir, utf8Name), text)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, utf16Name), encodeUTF16(t, text, false, true), 0o644))
 	commit = commitAt(t, dir, "A", "2026-01-01T00:00:00Z")
 	if removeUTF16 {
-		runGit(t, dir, "rm", "-q", "b.ps1")
+		runGit(t, dir, "rm", "-q", utf16Name)
 		commitAt(t, dir, "B", "2026-01-02T00:00:00Z")
 	}
 	return dir, commit, types.ComputeBlobID([]byte(text))
+}
+
+// utf16TwinCase is one name order for utf16TwinFixture and the locations
+// expected for the shared BlobID.
+type utf16TwinCase struct {
+	name            string
+	utf8, utf16     string
+	remove          bool
+	wantPathsSorted [2]string
+}
+
+// utf16TwinCases covers both name orders. In the r3 cases the UTF-8 file sorts
+// first. In the r4 cases (ENG-9178 review r4) the UTF-16 file sorts first:
+// a.ps1 is UTF-16 and b.txt is UTF-8. Both orders must give each file exactly
+// one location, with its commit, and no working-tree location.
+var utf16TwinCases = []utf16TwinCase{
+	{"both files in working tree", "a.txt", "b.ps1", false, [2]string{"a.txt", "b.ps1"}},
+	{"utf16 file removed in a later commit", "a.txt", "b.ps1", true, [2]string{"a.txt", "b.ps1"}},
+	{"r4 utf16 sorts first, both files in working tree", "b.txt", "a.ps1", false, [2]string{"a.ps1", "b.txt"}},
+	{"r4 utf16 sorts first, utf16 file removed in a later commit", "b.txt", "a.ps1", true, [2]string{"a.ps1", "b.txt"}},
+}
+
+func (tc utf16TwinCase) want(commit string) []wtLoc {
+	return []wtLoc{{tc.wantPathsSorted[0], commit, false}, {tc.wantPathsSorted[1], commit, false}}
 }
 
 // C1 (ENG-9178 review r3): a UTF-8 file and a UTF-16 file with the same text
@@ -73,47 +98,40 @@ func utf16TwinFixture(t *testing.T, removeUTF16 bool) (dir, commit string, id ty
 // b.ps1, each with its commit. Dropping the second git object as "already
 // seen" loses b.ps1, the UTF-16 copy, from the report. The case where b.ps1
 // was later git-rm'd checks the historical-only location is kept too.
+//
+// ENG-9178 review r4: when the UTF-16 file sorts first (a.ps1 UTF-16, b.txt
+// UTF-8), the working-tree pass must not take the decoded UTF-16 content for
+// b.txt's HEAD object. If it does, b.txt is reported twice: once with its
+// commit and again as a spurious working-tree location.
 func TestCombinedEnumerator_UTF16TwinOfUTF8BlobKeepsEveryLocation(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		remove bool
-	}{
-		{"both files in working tree", false},
-		{"utf16 file removed in a later commit", true},
-	} {
+	for _, tc := range utf16TwinCases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir, a, id := utf16TwinFixture(t, tc.remove)
+			dir, a, id := utf16TwinFixture(t, tc.utf8, tc.utf16, tc.remove)
 
 			got := newAllLocs()
 			require.NoError(t, gitAndWorktree(dir, Config{}).Enumerate(context.Background(), got.callback))
 
-			assert.Equal(t, []wtLoc{{"a.txt", a, false}, {"b.ps1", a, false}}, got.of(id),
+			assert.Equal(t, tc.want(a), got.of(id),
 				"locations of the shared BlobID across all callbacks")
 		})
 	}
 }
 
 // C1, history side: each history walk on its own delivers both locations of
-// the shared BlobID, whether in one callback or several.
+// the shared BlobID, whether in one callback or several, in both name orders.
 func TestGitHistory_UTF16TwinOfUTF8BlobKeepsEveryLocation(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		remove bool
-	}{
-		{"both files in working tree", false},
-		{"utf16 file removed in a later commit", true},
-	} {
+	for _, tc := range utf16TwinCases {
 		for name, walk := range map[string]func(*GitEnumerator, context.Context, blobCallback) error{
 			"native": (*GitEnumerator).enumerateAllHistoryNative,
 			"go-git": (*GitEnumerator).enumerateAllHistory,
 		} {
 			t.Run(tc.name+"/"+name, func(t *testing.T) {
-				dir, a, id := utf16TwinFixture(t, tc.remove)
+				dir, a, id := utf16TwinFixture(t, tc.utf8, tc.utf16, tc.remove)
 
 				got := newAllLocs()
 				require.NoError(t, walk(nativeEnum(dir), context.Background(), got.callback))
 
-				assert.Equal(t, []wtLoc{{"a.txt", a, false}, {"b.ps1", a, false}}, got.of(id))
+				assert.Equal(t, tc.want(a), got.of(id))
 			})
 		}
 	}

@@ -121,8 +121,8 @@ type worktreeMerge struct {
 	mu    sync.Mutex
 	seen  map[types.BlobID]bool
 	ident *types.GitProvenance // identity of the first git provenance reported
-	// deferred holds, per blob id, the working-tree paths whose HEAD blob
-	// is another git object with the same text (see withWorktree). A later
+	// deferred holds, per blob id, the working-tree paths HEAD holds that
+	// the first git callback did not record in history (see withWorktree). A later
 	// git callback for that id that records the path in history settles
 	// it; whatever is left is reported by emitDeferred.
 	deferred map[types.BlobID]*deferredWorktree
@@ -250,7 +250,7 @@ func (m *worktreeMerge) gitCallback(ctx context.Context) blobCallback {
 		if !first || !isGit {
 			return m.callback(content, id, prov)
 		}
-		gp, wait := m.withWorktree(gp, id, m.paths[id], content)
+		gp, wait := m.withWorktree(gp, id, m.paths[id])
 		if len(wait) > 0 {
 			m.mu.Lock()
 			m.deferred[id] = &deferredWorktree{content: content, paths: wait}
@@ -305,18 +305,20 @@ func (m *worktreeMerge) emitDeferred(ctx context.Context, g *GitEnumerator) erro
 	return nil
 }
 
-// withWorktree appends each working-tree path of blob id as a WorkingTree
-// location unless HEAD holds this same blob at that path and history records
-// it there. A tracked, unmodified file therefore adds nothing, while a file
-// restored to a blob only an older commit held keeps its working-tree
-// location. Working-tree paths stay relative to the scan root; history
-// paths are matched with the scan root's prefix in the repository.
+// withWorktree appends each working-tree path of blob id that HEAD does not
+// hold as a WorkingTree location. A path HEAD holds and history records here
+// adds nothing, so a tracked, unmodified file stays quiet. Working-tree paths
+// stay relative to the scan root; history paths are matched with the scan
+// root's prefix in the repository.
 //
-// A path HEAD holds as a different git object with the same text (the
-// UTF-16 copy of a UTF-8 blob, or the reverse) is not decided here: that
-// object's own callback records it in history. It is returned in wait so the
-// caller can confirm that, and report it if no callback does.
-func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt []string, content []byte) (_ types.GitProvenance, wait []string) {
+// A path HEAD holds that history does not record here is not decided here:
+// another git object with the same BlobID (the UTF-8 twin of a transcoded
+// UTF-16 blob, or the reverse) can record it in its own callback. It is
+// returned in wait so the caller can confirm that, and report it as a
+// working-tree location if no callback does. A file restored to a blob only
+// an older commit held is not held by HEAD, so it keeps its working-tree
+// location.
+func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt []string) (_ types.GitProvenance, wait []string) {
 	locs := gp.Locations
 	if len(locs) == 0 {
 		locs = []types.GitLocation{{Path: gp.BlobPath, Commit: gp.Commit}}
@@ -327,7 +329,7 @@ func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt
 		held := m.headHolds(id, p)
 		switch {
 		case inHistory && held:
-		case held && !m.headIsObject(p, content):
+		case held:
 			wait = append(wait, p)
 		default:
 			extra = append(extra, types.GitLocation{Path: p, WorkingTree: true})
@@ -339,14 +341,6 @@ func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt
 	gp.Locations = slices.Concat(locs, extra)
 	gp.RepoRoot = cmp.Or(gp.RepoRoot, m.absRoot)
 	return gp, wait
-}
-
-// headIsObject reports whether HEAD's blob at path is the git object whose
-// content git reported as content. A transcoded object's content is not its
-// stored bytes, so it never is; its path is then settled by emitDeferred.
-func (m *worktreeMerge) headIsObject(path string, content []byte) bool {
-	oid := m.head[path]
-	return gitObjectID(content, len(oid)) == oid
 }
 
 // headHolds reports whether HEAD's blob at path is the working-tree file
