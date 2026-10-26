@@ -99,12 +99,26 @@ func TestCreateDockerEnumerator_ReturnsDockerImageEnumerator(t *testing.T) {
 }
 
 func TestCreateEnumerator_InvalidTarget(t *testing.T) {
-	// The enumerator creation itself does not validate the target path;
-	// that validation happens in runScan. So createEnumerator succeeds
-	// regardless of whether the path exists.
-	e, err := createEnumerator("/nonexistent/path/xyz", false)
+	// createEnumerator does not validate the target path; runScan does.
+	// The filesystem enumerator it returns walks the target as its root,
+	// so a missing path yields no blobs and a warning naming that path.
+	const target = "/nonexistent/path/xyz"
+	e, err := createEnumerator(target, false)
 	require.NoError(t, err)
-	assert.NotNil(t, e)
+	fsEnum, ok := e.(*enum.FilesystemEnumerator)
+	require.True(t, ok, "createEnumerator(useGit=false) should return *enum.FilesystemEnumerator, got %T", e)
+
+	var blobs int
+	var enumErr error
+	stderr := captureStderr(t, func() {
+		enumErr = fsEnum.Enumerate(context.Background(), func([]byte, types.BlobID, types.Provenance) error {
+			blobs++
+			return nil
+		})
+	})
+	require.NoError(t, enumErr)
+	assert.Zero(t, blobs, "a missing root has no files")
+	assert.Contains(t, stderr, target, "the walk starts at the target path")
 }
 
 func TestLoadRules_DefaultRuleset(t *testing.T) {
@@ -651,48 +665,55 @@ type sarifDocForTest struct {
 	} `json:"runs"`
 }
 
-// TestOutputSARIF_OneResultPerLocation covers C-SARIF-1 through scan's
-// SARIF route: 3 locations give 3 results, each naming its repository.
-func TestOutputSARIF_OneResultPerLocation(t *testing.T) {
+// TestOutputSARIF_AttachesStoredFindingScore covers what scan's SARIF route
+// adds over writeSARIF (C-SARIF-1 itself is TestWriteSARIF_OneResultPerLocation):
+// it writes to the command's output and scores each location's result from
+// the finding stored for its rule and groups. A match with no stored finding
+// gets no score.
+func TestOutputSARIF_AttachesStoredFindingScore(t *testing.T) {
 	s := store.NewMemory()
-	blobID := types.ComputeBlobID([]byte(locTestSecret))
-	require.NoError(t, s.AddOccurrences(blobID, []types.Occurrence{
+	rules := []*types.Rule{{ID: locTestRuleID, Name: "Synthetic Rule 1", StructuralID: "rsid"}}
+	groups := [][]byte{[]byte("g")}
+	scored := &types.Match{BlobID: types.ComputeBlobID([]byte(locTestSecret)), RuleID: locTestRuleID, Groups: groups}
+	unscored := &types.Match{BlobID: types.ComputeBlobID([]byte("other")), RuleID: locTestRuleID, Groups: [][]byte{[]byte("h")}}
+	require.NoError(t, s.AddFinding(&types.Finding{
+		ID: types.ComputeFindingID("rsid", groups), RuleID: locTestRuleID, Groups: groups,
+		Score: &types.Score{Final: 85, Applied: []types.ScoreModifier{}},
+	}))
+	require.NoError(t, s.AddOccurrences(scored.BlobID, []types.Occurrence{
 		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaa", HostRecorded: true},
 		{Kind: "git", Repository: "github.com/acme/web", Path: "config.yml", Commit: "bbbb", HostRecorded: true},
-		{Kind: "git", Repository: "github.com/acme/api", Path: "deploy/config.yml", Commit: "cccc", HostRecorded: true},
 	}))
-	match := &types.Match{BlobID: blobID, RuleID: locTestRuleID, RuleName: "Synthetic Rule 1",
-		Location: types.Location{Source: types.SourceSpan{
-			Start: types.SourcePoint{Line: 3, Column: 1}, End: types.SourcePoint{Line: 3, Column: 20},
-		}}}
-	rules := []*types.Rule{{ID: locTestRuleID, Name: "Synthetic Rule 1", StructuralID: "rsid"}}
+	require.NoError(t, s.AddOccurrences(unscored.BlobID, []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "other.yml", Commit: "cccc", HostRecorded: true},
+	}))
 
 	var out bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&out)
-	require.NoError(t, outputSARIF(cmd, s, rules, []*types.Match{match}))
+	require.NoError(t, outputSARIF(cmd, s, rules, []*types.Match{scored, unscored}))
 
-	var doc sarifDocForTest
-	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
-	require.Len(t, doc.Runs, 1)
-	results := doc.Runs[0].Results
-	require.Len(t, results, 3)
-
-	var uris, pairs []string
-	for _, r := range results {
-		require.Len(t, r.Locations, 1)
-		uri := r.Locations[0].PhysicalLocation.ArtifactLocation.URI
-		assert.Equal(t, 3, r.Locations[0].PhysicalLocation.Region.StartLine)
-		assert.NotEmpty(t, r.Properties.Repository, "each result names its repository")
-		uris = append(uris, uri)
-		pairs = append(pairs, r.Properties.Repository+" "+uri)
+	var rep sarif.Report
+	require.NoError(t, json.Unmarshal(out.Bytes(), &rep), "SARIF goes to the command's output")
+	require.Len(t, rep.Runs, 1)
+	severity := map[string]string{}
+	levels := map[string]string{}
+	for _, r := range rep.Runs[0].Results {
+		require.NotNil(t, r.Properties)
+		key := r.Properties.Repository + " " + r.Locations[0].PhysicalLocation.ArtifactLocation.URI
+		severity[key] = r.Properties.SecuritySeverity
+		levels[key] = r.Level
 	}
-	assert.ElementsMatch(t, []string{"config.yml", "config.yml", "deploy/config.yml"}, uris)
-	assert.ElementsMatch(t, []string{
-		"github.com/acme/api config.yml",
-		"github.com/acme/web config.yml",
-		"github.com/acme/api deploy/config.yml",
-	}, pairs)
+	assert.Equal(t, map[string]string{
+		"github.com/acme/api config.yml": "8.5",
+		"github.com/acme/web config.yml": "8.5",
+		"github.com/acme/api other.yml":  "",
+	}, severity)
+	assert.Equal(t, map[string]string{
+		"github.com/acme/api config.yml": "error",
+		"github.com/acme/web config.yml": "error",
+		"github.com/acme/api other.yml":  "warning",
+	}, levels)
 }
 
 // TestSARIFOccurrence_SourceSeparatesResults: two extended locations that

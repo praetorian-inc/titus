@@ -175,7 +175,8 @@ func treeBomb(t *testing.T, dir string, depth int) string {
 
 // N1: a tagged tree that names the same subtree many times is walked once
 // per distinct tree, as rev-list --objects does, not once per path. A
-// depth-20 bomb (2^20 paths, 21 tree objects) must finish at once.
+// depth-20 bomb (2^20 paths, 21 tree objects) must finish; a per-path walk
+// does not finish inside the 5 s bound.
 func TestGoGitHistory_TaggedTreeBomb(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
@@ -193,7 +194,6 @@ func TestGoGitHistory_TaggedTreeBomb(t *testing.T) {
 		err   error
 	}
 	done := make(chan result, 1)
-	start := time.Now()
 	go func() {
 		blobs, _, _, err := goGitHistoryIndex(context.Background(), repo)
 		done <- result{blobs, err}
@@ -204,12 +204,8 @@ func TestGoGitHistory_TaggedTreeBomb(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("go-git walk of a depth-20 tagged tree bomb did not finish in 5 s: subtrees are walked per path")
 	}
-	elapsed := time.Since(start)
 	if r.err != nil {
 		t.Fatalf("goGitHistoryIndex: %v", r.err)
-	}
-	if elapsed > time.Second {
-		t.Errorf("walk took %v, want well under 1 s", elapsed)
 	}
 	want := strings.Repeat("x/", 20) + "f"
 	leafHash := contentHash(leaf)

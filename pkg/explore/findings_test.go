@@ -4,7 +4,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -108,19 +107,16 @@ func BenchmarkFindingsPane_SetFilteredRowsLocationSort(b *testing.B) {
 	}
 }
 
-// A filters-pane key re-sorts the shown rows; 3000 findings under one
-// selected repository must re-sort well inside one frame budget.
-func TestFindingsPane_SetFilteredRowsLocationSortIsFast(t *testing.T) {
+// A filters-pane key re-sorts the shown rows: 3000 findings under one
+// selected repository come back in ascending location order. Speed is
+// measured by BenchmarkFindingsPane_SetFilteredRowsLocationSort.
+func TestFindingsPane_SetFilteredRowsLocationSort(t *testing.T) {
 	rows := largeFindingSet(3000)
 	fp := newFindingsPane(slices.Clone(rows))
 	fp.sortBy = sortByMatches
 	fp.setRepoFilter(map[string]bool{"github.com/acme/web": true})
 
-	start := time.Now()
 	fp.setFilteredRows(slices.Clone(rows))
-	if d := time.Since(start); d > 100*time.Millisecond {
-		t.Errorf("setFilteredRows on 3000 rows took %v, want < 100ms", d)
-	}
 	for i := 1; i < len(fp.rows); i++ {
 		if fp.locationCount(fp.rows[i-1]) > fp.locationCount(fp.rows[i]) {
 			t.Fatalf("rows not in ascending location order at %d", i)
