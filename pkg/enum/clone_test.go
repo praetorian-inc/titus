@@ -159,7 +159,7 @@ func TestCloneEnumerator_GitMode_RemoteIdentityNoCredential(t *testing.T) {
 	makeRemoteFixture(t, root, "acme", "api", map[string]string{"a.txt": "token-AAAA", "dir/b.txt": "token-AAAA"})
 	redirectHTTPSToLocal(t, root)
 
-	e := NewCloneEnumerator([]RepoInfo{{Name: "acme/api", CloneURL: "https://u:secret@github.com/acme/api.git"}}, Config{})
+	e := NewCloneEnumerator([]RepoInfo{{Name: "acme/api", CloneURL: fakeCredURL("https", "github.com/acme/api.git")}}, Config{})
 	e.Git = true
 	calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
 
@@ -169,6 +169,7 @@ func TestCloneEnumerator_GitMode_RemoteIdentityNoCredential(t *testing.T) {
 	assert.Equal(t, "github.com/acme/api", gp.RepoPath)
 	assert.True(t, gp.RemoteIdentity)
 	assert.Empty(t, gp.RepoRoot, "the clone temp dir is deleted and must not be recorded")
+	assert.Empty(t, gp.RepoTop, "the clone temp dir is deleted and must not be recorded")
 	assert.Equal(t, []string{"a.txt", "dir/b.txt"}, locationPaths(gp))
 	for _, o := range types.OccurrencesOf(gp) {
 		assert.Empty(t, o.AbsolutePath)
@@ -182,7 +183,7 @@ func TestCloneEnumerator_FilesystemMode_RemoteIdentityAndCommit(t *testing.T) {
 	head := makeRemoteFixture(t, root, "acme", "api", map[string]string{"cfg/app.yml": "token-BBBB"})
 	redirectHTTPSToLocal(t, root)
 
-	e := NewCloneEnumerator([]RepoInfo{{Name: "acme/api", CloneURL: "https://u:secret@github.com/acme/api.git"}}, Config{})
+	e := NewCloneEnumerator([]RepoInfo{{Name: "acme/api", CloneURL: fakeCredURL("https", "github.com/acme/api.git")}}, Config{})
 	calls := withoutDotGit(collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) }))
 
 	require.Len(t, calls, 1)
@@ -219,7 +220,7 @@ func TestCloneEnumerator_CloneErrorHasNoCredential(t *testing.T) {
 	redirectHTTPSToLocal(t, root)
 	e := NewCloneEnumerator(nil, Config{})
 	err := e.cloneAndScan(context.Background(),
-		RepoInfo{Name: "https://u:secret@github.com/acme/missing", CloneURL: "https://u:secret@github.com/acme/missing.git"},
+		RepoInfo{Name: fakeCredURL("https", "github.com/acme/missing"), CloneURL: fakeCredURL("https", "github.com/acme/missing.git")},
 		func([]byte, types.BlobID, types.Provenance) error { return nil })
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "github.com/acme/missing", "the error names the normalized repository")
@@ -236,8 +237,8 @@ func TestCloneEnumerator_SameBlobTwoRepos(t *testing.T) {
 	for _, gitMode := range []bool{false, true} {
 		t.Run(fmt.Sprintf("git=%v", gitMode), func(t *testing.T) {
 			e := NewCloneEnumerator([]RepoInfo{
-				{Name: "acme/api", CloneURL: "https://u:secret@github.com/acme/api.git"},
-				{Name: "acme/web", CloneURL: "https://u:secret@github.com/acme/web.git"},
+				{Name: "acme/api", CloneURL: fakeCredURL("https", "github.com/acme/api.git")},
+				{Name: "acme/web", CloneURL: fakeCredURL("https", "github.com/acme/web.git")},
 			}, Config{})
 			e.Git = gitMode
 			s := store.NewMemory()

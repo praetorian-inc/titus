@@ -883,3 +883,53 @@ func benchRepo(b *testing.B) string {
 	}
 	return dir
 }
+
+// F3 (ENG-9178): once the index holds maxIndexPairs pairs, a run of
+// duplicate (blob, path) pairs must not cost one full compaction (a sort of
+// the whole slice) each. The first compaction at the cap frees one slot, too
+// few, so the index goes full and every later pair takes the drop path with
+// no further sort. The count of compactions is therefore a constant (the one
+// at the cap plus the one in finish), whatever the number of duplicates;
+// without the guard it grows by one per duplicate. Each dropped pair is still
+// counted, and a dropped pair that carries a new location marks its blob.
+func TestParseBlobIndex_DuplicatesAtCapDoNotCompactPerPair(t *testing.T) {
+	oldMax, oldMin := maxIndexPairs, minCompactPairs
+	t.Cleanup(func() { maxIndexPairs, minCompactPairs = oldMax, oldMin })
+	const n, dups = 1000, 500
+	maxIndexPairs, minCompactPairs = n, 1<<30
+
+	dupBlob := fmt.Sprintf("%040x", 10)
+	newBlob := fmt.Sprintf("%040x", 9)
+	var s strings.Builder
+	s.WriteString(header(fmt.Sprintf("%040x", 1), "c1"))
+	for i := range n - 1 {
+		s.WriteString(raw("100644", fmt.Sprintf("%040x", i+10), "A", fmt.Sprintf("f%d", i)))
+	}
+	for c := range dups + 1 { // the first duplicate fills the slice to the cap
+		s.WriteString(header(fmt.Sprintf("%040x", c+2), "m"))
+		s.WriteString(raw("100644", dupBlob, "M", "f0"))
+	}
+	// A location the index lacks, after the run: it must be dropped and marked.
+	s.WriteString(header(fmt.Sprintf("%040x", dups+3), "new"))
+	s.WriteString(raw("100644", newBlob, "A", "new"))
+
+	idx, err := parseBlobIndex(strings.NewReader(s.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.compactions > 3 {
+		t.Errorf("compactions = %d for %d duplicate pairs at the cap, want <= 3: one full compaction per pair", idx.compactions, dups)
+	}
+	if want := dups + 1; idx.stats.droppedPairs != want {
+		t.Errorf("droppedPairs = %d, want %d (every duplicate past the cap and the new location)", idx.stats.droppedPairs, want)
+	}
+	if idx.locationsTruncated(mustHash(t, dupBlob)) {
+		t.Error("duplicate blob marked truncated; re-touches at later commits lose no location")
+	}
+	if got := idx.lookup(mustHash(t, dupBlob)); len(got) != 1 || got[0].Path != "f0" {
+		t.Errorf("duplicate blob lookup = %+v, want the single f0 location", got)
+	}
+	if !idx.locationsTruncated(mustHash(t, newBlob)) {
+		t.Error("blob whose only location was dropped at the cap is not marked truncated: silent loss")
+	}
+}

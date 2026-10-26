@@ -1106,3 +1106,59 @@ func TestScanE2E_RetriedMatchListsEveryLocation(t *testing.T) {
 	}
 	assert.Equal(t, []string{"a/config.yml", "b/config.yml"}, uris)
 }
+
+// datastoreOccurrencePaths opens the datastore at ds and returns the location
+// paths of the blob of its single match.
+func datastoreOccurrencePaths(t *testing.T, ds string) []string {
+	t.Helper()
+	s, err := store.New(store.Config{Path: filepath.Join(ds, "datastore.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	occs, err := s.GetOccurrences(matches[0].BlobID)
+	require.NoError(t, err)
+	paths := make([]string, 0, len(occs))
+	for _, o := range occs {
+		paths = append(paths, o.Path)
+	}
+	return paths
+}
+
+// ENG-9178: `--incremental` skips the matching of a blob already in the
+// datastore, but a rescan that finds that blob at a new path still records
+// the new location. Without it, the copy is invisible in every output.
+func TestScan_IncrementalRescanRecordsNewLocation(t *testing.T) {
+	orig := scanIncremental
+	t.Cleanup(func() { scanIncremental = orig })
+	scanIncremental = true
+
+	t.Run("folder", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFileForTest(t, filepath.Join(dir, "a", "config.yml"), locTestSecret)
+		t.Chdir(dir)
+		ds := tempDatastore(t)
+
+		scanForTest(t, ".", ds, "json", false)
+		writeFileForTest(t, filepath.Join(dir, "b", "config.yml"), locTestSecret)
+		scanForTest(t, ".", ds, "json", false)
+
+		assert.Equal(t, []string{"a/config.yml", "b/config.yml"}, datastoreOccurrencePaths(t, ds))
+	})
+
+	// The same rule under --git: an uncommitted copy of a committed secret
+	// gets its working-tree location on the incremental rescan.
+	t.Run("git working-tree copy", func(t *testing.T) {
+		dir := t.TempDir()
+		gitRepoForTest(t, dir, "", map[string]string{"a/config.yml": locTestSecret})
+		t.Chdir(dir)
+		ds := tempDatastore(t)
+
+		scanForTest(t, ".", ds, "json", true)
+		writeFileForTest(t, filepath.Join(dir, "b", "config.yml"), locTestSecret)
+		scanForTest(t, ".", ds, "json", true)
+
+		assert.Contains(t, datastoreOccurrencePaths(t, ds), "b/config.yml")
+	})
+}

@@ -2181,3 +2181,55 @@ func TestOutputReportJSON_KeepsRawFindingContent(t *testing.T) {
 	assert.Equal(t, tc.groups, out[0].Matches[0].Groups)
 	assert.Equal(t, tc.snippet, out[0].Matches[0].Snippet)
 }
+
+// ENG-9178: a "\r\n" line ending is a newline, not a control byte, so a
+// snippet from a CRLF file shows no "\x0d" at each line end. A lone '\r'
+// stays escaped: it can still rewrite the terminal line.
+func TestSanitizeSnippetText_CRLFIsNewline(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"CRLF line endings", "key = 1\r\nnext\r\n", "key = 1\nnext\n"},
+		{"lone CR still escaped", "a\rb", `a\x0db`},
+		{"CR before CRLF escaped once", "a\r\r\nb", "a\\x0d\nb"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, sanitizeSnippetText(tt.in))
+		})
+	}
+}
+
+// A rule ending in `.*` takes the '\r' of a CRLF line into the match, so the
+// "\r\n" pair is split across the matching and after parts. The pair is
+// still one newline: no "\x0d" in either part.
+func TestFormatSnippetWithParts_CRLFSplitAtMatchEnd(t *testing.T) {
+	got := formatSnippetWithParts([]byte("x = 1\r\ntoken: "), []byte("KEY\r"), []byte("\ny = 2\r\n"), 500)
+	assert.Equal(t, snippetParts{before: "x = 1\ntoken: ", matching: "KEY", after: "\ny = 2\n"}, got)
+}
+
+// End to end: `titus report` on a scanned CRLF file prints the snippet lines
+// with plain newlines, the line after the match included.
+func TestOutputReportHuman_CRLFFileSnippet(t *testing.T) {
+	dir := t.TempDir()
+	writeFileForTest(t, filepath.Join(dir, "c.yml"), "x = 1\r\n"+strings.TrimSuffix(locTestSecret, "\n")+"\r\ny = 2\r\n")
+	ds := tempDatastore(t)
+	scanForTest(t, dir, ds, "json", false)
+
+	s, err := store.New(store.Config{Path: filepath.Join(ds, "datastore.db")})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+	matches, err := s.GetAllMatches()
+	require.NoError(t, err)
+	findings, err := s.GetFindings()
+	require.NoError(t, err)
+
+	origColor := reportColor
+	t.Cleanup(func() { reportColor = origColor })
+	reportColor = "never"
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	require.NoError(t, outputReportHuman(cmd, s, findings, matches, map[string]*types.Rule{}))
+
+	assert.NotContains(t, out.String(), `\x0d`)
+	assert.Contains(t, out.String(), "x = 1\ntoken: synthetic_1_AbCd1234\ny = 2\n")
+}

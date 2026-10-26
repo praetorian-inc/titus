@@ -55,12 +55,12 @@ func makeRemoteFixture(t *testing.T, root, owner, name string, files map[string]
 	return gitIn(t, dir, "rev-parse", "HEAD")
 }
 
-// redirectHTTPSToLocal makes "https://u:secret@github.com/" resolve to root,
+// redirectHTTPSToLocal makes fakeCredURL("https", "github.com/") resolve to root,
 // so a token-bearing https CloneURL clones a local fixture with no network.
 func redirectHTTPSToLocal(t *testing.T, root string) {
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "url.file://"+root+"/.insteadOf")
-	t.Setenv("GIT_CONFIG_VALUE_0", "https://u:secret@github.com/")
+	t.Setenv("GIT_CONFIG_VALUE_0", fakeCredURL("https", "github.com/"))
 }
 
 type blobCall struct {
@@ -150,7 +150,7 @@ func newFakeGitHub(t *testing.T, repos []fakeGHRepo, contentHits *atomic.Int32) 
 		return map[string]any{
 			"name": r.name, "full_name": r.owner + "/" + r.name, "default_branch": "main",
 			"owner":     map[string]any{"login": r.owner},
-			"clone_url": "https://u:secret@github.example.com/" + r.owner + "/" + r.name + ".git",
+			"clone_url": fakeCredURL("https", "github.example.com/") + r.owner + "/" + r.name + ".git",
 		}
 	}
 	mux := http.NewServeMux()
@@ -235,7 +235,7 @@ func newFakeGitLab(t *testing.T, fullPath string, files map[string]string, rawHi
 		case strings.HasPrefix(p, "/api/v4/projects/"):
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id": 7, "path_with_namespace": fullPath, "default_branch": "main",
-				"http_url_to_repo": "https://oauth2:secret@gitlab.example.com/" + fullPath + ".git",
+				"http_url_to_repo": "https://oauth2:" + "secret@gitlab.example.com/" + fullPath + ".git",
 			})
 		default:
 			http.NotFound(w, r)

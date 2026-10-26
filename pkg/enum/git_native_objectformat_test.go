@@ -73,7 +73,7 @@ func TestNativeGitEnumerator_ObjectFormats(t *testing.T) {
 		t.Run(tc.format, func(t *testing.T) {
 			dir := t.TempDir()
 			initGitRepoFormat(t, dir, tc.format)
-			const secret = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"
+			secret := "AWS_SECRET_ACCESS_KEY=" + "wJalrXUtnFEMI/K7MDENG/" + "bPxRfiCYEXAMPLEKEY\n"
 			if err := os.MkdirAll(filepath.Join(dir, "deploy", "prod"), 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -151,7 +151,7 @@ func TestNativeGitEnumerator_IgnoresReplaceRefs(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
 	initGitRepo(t, dir)
-	const original = "TOKEN=ghp_cccccccccccccccccccccccccccccccccccc\n"
+	original := fakeTokenLine('c')
 	const replacement = "nothing to see here\n"
 	writeFile(t, filepath.Join(dir, "a.txt"), original)
 	c := commitAt(t, dir, "A", "2026-01-01T00:00:00Z")

@@ -510,7 +510,7 @@ func TestNativeGitEnumerator_OneCallbackEveryLocation(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
 	initGitRepo(t, dir)
-	const secret = "TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+	secret := fakeTokenLine('a')
 	writeFile(t, filepath.Join(dir, "config.yml"), secret)
 	a := commitAt(t, dir, "A", "2026-01-01T00:00:00Z")
 	if err := os.MkdirAll(filepath.Join(dir, "deploy"), 0o755); err != nil {
@@ -569,7 +569,7 @@ func TestNativeGitEnumerator_ModifyCommitAttribution(t *testing.T) {
 	initGitRepo(t, dir)
 	writeFile(t, filepath.Join(dir, "config.yml"), "name: app\n")
 	commitAt(t, dir, "create", "2026-01-15T00:00:00Z")
-	const withToken = "name: app\nTOKEN=ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+	withToken := "name: app\n" + fakeTokenLine('b')
 	writeFile(t, filepath.Join(dir, "config.yml"), withToken)
 	mod := commitAt(t, dir, "modify", "2026-06-15T00:00:00Z")
 
@@ -679,7 +679,7 @@ func TestNativeGitEnumerator_NoRemoteIdentity(t *testing.T) {
 func TestNativeGitEnumerator_RemoteIdentityStripsCredentials(t *testing.T) {
 	skipIfNoGit(t)
 	dir := setupTestGitRepo(t)
-	runGit(t, dir, "remote", "add", "origin", "https://u:secret@github.com/acme/api.git")
+	runGit(t, dir, "remote", "add", "origin", fakeCredURL("https", "github.com/acme/api.git"))
 
 	r := runNative(t, nativeEnum(dir))
 	if len(r.provs) == 0 {

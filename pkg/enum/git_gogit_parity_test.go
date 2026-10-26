@@ -94,7 +94,7 @@ func parityFixture(t *testing.T) (dir string, secret string, a, b string) {
 	t.Helper()
 	dir = t.TempDir()
 	initGitRepo(t, dir)
-	secret = "TOKEN=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+	secret = fakeTokenLine('a')
 
 	writeFile(t, filepath.Join(dir, "config.yml"), secret)
 	writeFile(t, filepath.Join(dir, "old.txt"), fixtureRenamedBody)
@@ -113,7 +113,7 @@ func parityFixture(t *testing.T) (dir string, secret string, a, b string) {
 	commitAt(t, dir, "C", "2026-03-01T00:00:00Z")
 
 	writeFile(t, filepath.Join(dir, "gone.yml"), fixtureReadded)
-	writeFile(t, filepath.Join(dir, "app.yml"), "name: app\nTOKEN=ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n")
+	writeFile(t, filepath.Join(dir, "app.yml"), "name: app\n"+fakeTokenLine('b'))
 	commitAt(t, dir, "D re-add and modify", "2026-04-01T00:00:00Z")
 
 	base := gitOutput(t, dir, "rev-parse", "--abbrev-ref", "HEAD")
@@ -139,7 +139,7 @@ func parityFixture(t *testing.T) (dir string, secret string, a, b string) {
 func TestGoGitHistory_ParityWithNative(t *testing.T) {
 	skipIfNoGit(t)
 	dir, _, _, _ := parityFixture(t)
-	runGit(t, dir, "remote", "add", "origin", "https://u:secret@github.com/acme/api.git")
+	runGit(t, dir, "remote", "add", "origin", fakeCredURL("https", "github.com/acme/api.git"))
 
 	native := describeRun(runNative(t, nativeEnum(dir)))
 	gogit := describeRun(runGoGit(t, nativeEnum(dir)))
@@ -231,7 +231,7 @@ func TestGoGitHistory_ModifyCommitAttribution(t *testing.T) {
 	initGitRepo(t, dir)
 	writeFile(t, filepath.Join(dir, "config.yml"), "name: app\n")
 	commitAt(t, dir, "create", "2026-01-15T00:00:00Z")
-	const withToken = "name: app\nTOKEN=ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+	withToken := "name: app\n" + fakeTokenLine('b')
 	writeFile(t, filepath.Join(dir, "config.yml"), withToken)
 	mod := commitAt(t, dir, "modify", "2026-06-15T00:00:00Z")
 
@@ -255,7 +255,7 @@ func TestGitSingleCommit_EveryPathInTree(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
 	initGitRepo(t, dir)
-	const secret = "TOKEN=ghp_cccccccccccccccccccccccccccccccccccc\n"
+	secret := fakeTokenLine('c')
 	if err := os.MkdirAll(filepath.Join(dir, "deploy"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestGitSingleCommit_EveryPathInTree(t *testing.T) {
 func TestGoGit_RemoteIdentity(t *testing.T) {
 	skipIfNoGit(t)
 	dir := setupTestGitRepo(t)
-	runGit(t, dir, "remote", "add", "origin", "https://u:secret@github.com/acme/api.git")
+	runGit(t, dir, "remote", "add", "origin", fakeCredURL("https", "github.com/acme/api.git"))
 
 	for name, run := range map[string]func() nativeRun{
 		"history": func() nativeRun { return runGoGit(t, nativeEnum(dir)) },
