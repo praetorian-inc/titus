@@ -288,6 +288,12 @@ func truncateStringLeft(s string, maxLen int) string {
 	if ansi.StringWidth(out) > maxLen {
 		out = ansi.TruncateLeft(s, n+1, prefix)
 	}
+	// When the last rune is wider than the room left after "...", the extra
+	// cut drops every rune and TruncateLeft returns "" without the prefix.
+	// Return the bare marker so the label still reads as truncated.
+	if out == "" {
+		out = prefix
+	}
 	return out
 }
 

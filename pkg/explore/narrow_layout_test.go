@@ -165,12 +165,16 @@ func TestTruncateStringLeft_WideRunesFit(t *testing.T) {
 			if sw <= maxLen && got != s {
 				t.Errorf("truncateStringLeft(%q, %d) = %q, want it unchanged", s, maxLen, got)
 			}
-			// A result that is not empty marks the cut. (When the last rune is
-			// itself wider than the room left after "...", the result is empty.)
-			if sw > maxLen && maxLen > 3 && got != "" && !strings.HasPrefix(got, "...") {
+			// With room for the marker, a cut result always starts with "..." and
+			// is never empty, even when the last rune is too wide to keep.
+			if sw > maxLen && maxLen > 3 && !strings.HasPrefix(got, "...") {
 				t.Errorf("truncateStringLeft(%q, %d) = %q, want a \"...\" prefix", s, maxLen, got)
 			}
 		}
+	}
+	// The last rune (2 cells) does not fit the 1 cell left after "...".
+	if got := truncateStringLeft("github.com/日本語/リポジトリ", 4); got != "..." {
+		t.Errorf("truncateStringLeft(%q, 4) = %q, want %q", "github.com/日本語/リポジトリ", got, "...")
 	}
 }
 
