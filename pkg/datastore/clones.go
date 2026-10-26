@@ -1,12 +1,15 @@
 package datastore
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/praetorian-inc/titus/pkg/repoid"
 )
 
 // GetOrClone returns path to cached bare clone, cloning if needed.
@@ -42,7 +45,9 @@ func (c *CloneCache) GetOrClone(repoURL string) (string, error) {
 	// Clone as bare repository
 	cmd := exec.Command("git", "clone", "--bare", repoURL, cachePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("cloning repository: %w (output: %s)", err, string(output))
+		// git may echo the URL; keep userinfo out of the error.
+		out := strings.ReplaceAll(string(output), repoURL, repoid.RedactUserinfo(repoURL))
+		return "", fmt.Errorf("cloning repository: %w (output: %s)", err, out)
 	}
 
 	return cachePath, nil
@@ -123,6 +128,8 @@ func (c *CloneCache) clonePath(repoURL string) (string, error) {
 		return "", fmt.Errorf("repository URL is required")
 	}
 
+	// Errors report the redacted URL so userinfo (user:token@) never leaks.
+	redacted := repoid.RedactUserinfo(repoURL)
 	var host, path string
 
 	// Handle git@host:path format (SSH)
@@ -130,7 +137,7 @@ func (c *CloneCache) clonePath(repoURL string) (string, error) {
 		// git@github.com:org/repo.git -> github.com/org/repo
 		parts := strings.SplitN(strings.TrimPrefix(repoURL, "git@"), ":", 2)
 		if len(parts) != 2 {
-			return "", fmt.Errorf("invalid SSH URL format: %s", repoURL)
+			return "", fmt.Errorf("invalid SSH URL format: %s", redacted)
 		}
 		host = parts[0]
 		path = parts[1]
@@ -138,11 +145,16 @@ func (c *CloneCache) clonePath(repoURL string) (string, error) {
 		// Handle https:// or http:// format
 		parsed, err := url.Parse(repoURL)
 		if err != nil {
-			return "", fmt.Errorf("parsing repository URL: %w", err)
+			// *url.Error embeds the raw URL; report only its cause.
+			var uerr *url.Error
+			if errors.As(err, &uerr) {
+				err = uerr.Err
+			}
+			return "", fmt.Errorf("parsing repository URL %s: %w", redacted, err)
 		}
 
 		if parsed.Host == "" {
-			return "", fmt.Errorf("invalid repository URL (missing host): %s", repoURL)
+			return "", fmt.Errorf("invalid repository URL (missing host): %s", redacted)
 		}
 
 		host = parsed.Host
@@ -152,9 +164,13 @@ func (c *CloneCache) clonePath(repoURL string) (string, error) {
 	if err := validateCloneHost(host); err != nil {
 		return "", err
 	}
+	// Backslash is a separator on Windows; reject it on every OS.
+	if strings.Contains(path, `\`) {
+		return "", fmt.Errorf("invalid repository URL (backslash in path): %s", redacted)
+	}
 	for seg := range strings.SplitSeq(path, "/") {
 		if seg == ".." {
-			return "", fmt.Errorf("invalid repository URL (path traversal): %s", repoURL)
+			return "", fmt.Errorf("invalid repository URL (path traversal): %s", redacted)
 		}
 	}
 
@@ -166,8 +182,9 @@ func (c *CloneCache) clonePath(repoURL string) (string, error) {
 
 	// Construct full cache path
 	cachePath := filepath.Join(c.Root, host, path)
-	if !isStrictlyWithin(c.Root, cachePath) {
-		return "", fmt.Errorf("invalid repository URL (escapes clone cache): %s", repoURL)
+	// Contain within the host directory so one host cannot alias another's cache.
+	if !isStrictlyWithin(filepath.Join(c.Root, host), cachePath) {
+		return "", fmt.Errorf("invalid repository URL (escapes clone cache): %s", redacted)
 	}
 
 	return cachePath, nil
