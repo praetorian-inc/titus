@@ -42,6 +42,7 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewLookerValidator())
 	validators = append(validators, NewGCPValidator())
 	validators = append(validators, NewFreshdeskValidator())
+	validators = append(validators, NewHashiCorpValidator())
 
 	// Embedded YAML validators
 	embedded, err := LoadEmbeddedValidators()
