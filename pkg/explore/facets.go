@@ -165,7 +165,8 @@ func (fs *facetState) matchesFinding(f *findingRow) bool {
 			// Repositories holds exactly the facet keys of the finding's
 			// occurrences, so this passes iff visibleOccurrences leaves at
 			// least one location of the finding. A finding with a match whose
-			// locations failed to load is kept: they may be in the selection (S1).
+			// locations failed to load or were truncated is kept: the missing
+			// locations may be in the selection (S1).
 			if !locationsUnknown(f) && !slices.ContainsFunc(f.Repositories, func(repo string) bool { return selected[repo] }) {
 				return false
 			}
@@ -257,10 +258,18 @@ type matchRow struct {
 	Comment          string
 }
 
-// locationsUnknown reports whether any match of f failed to load its
-// locations, so its location count and repositories are incomplete.
+// locationsUnknown reports whether the location list of any match of f is
+// incomplete, because it failed to load or its provenance records that it
+// was truncated, so the location count of f and its repositories are only a
+// lower bound.
 func locationsUnknown(f *findingRow) bool {
-	return slices.ContainsFunc(f.Matches, func(m *matchRow) bool { return m.LocationsErr != nil })
+	return slices.ContainsFunc(f.Matches, matchLocationsUnknown)
+}
+
+// matchLocationsUnknown reports whether m's location list is incomplete: it
+// failed to load, or the git history index did not record every location.
+func matchLocationsUnknown(m *matchRow) bool {
+	return m.LocationsErr != nil || types.LocationsTruncated(m.Provenance)
 }
 
 // facetKey is an occurrence's Repository facet value: its repository, or for

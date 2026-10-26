@@ -202,3 +202,85 @@ func matchIDs(ms []*matchRow, web, bad *matchRow) []string {
 	}
 	return out
 }
+
+// truncatedFixture builds a finding whose only match has one known location,
+// in github.com/acme/api. With truncated set, its git provenance records that
+// the history index did not record every location, so more may exist in any
+// repository.
+func truncatedFixture(truncated bool) *findingRow {
+	m := matchWith(5, occAPI1)
+	m.StructuralID = "truncated"
+	m.Provenance = []types.Provenance{types.GitProvenance{
+		RepoPath: "github.com/acme/api", BlobPath: occAPI1.Path, LocationsTruncated: truncated,
+	}}
+	return &findingRow{FindingID: "truncated", RuleName: "Truncated Token",
+		Repositories: []string{"github.com/acme/api"}, Matches: []*matchRow{m}}
+}
+
+// D-TUI-1/D-TUI-2: a finding whose location list is truncated may have
+// locations in any repository, exactly like one whose locations failed to
+// load. A Repository facet must not hide it, its match stays navigable, the
+// truncation notice shows, and its Locs cell is a lower bound ("1?").
+func TestModel_TruncatedFindingReachableUnderRepositoryFacet(t *testing.T) {
+	for _, repo := range []string{"github.com/acme/api", "github.com/acme/web"} {
+		t.Run(repo, func(t *testing.T) {
+			trunc := truncatedFixture(true)
+			_, api, web := unknownLocationsFixture()
+			m := newTestModel([]*findingRow{trunc, api, web})
+			selectFacetValue(t, &m, facetRepository, repo)
+			m.applyFilters()
+
+			if !slices.Contains(m.findings.rows, trunc) {
+				t.Fatalf("truncated finding hidden by the %s facet; rows = %v", repo, rowNames(m.findings.rows))
+			}
+			m.findings.cursor = slices.Index(m.findings.rows, trunc)
+			m.details.setFinding(trunc)
+			if got := m.details.selectedMatch(); got != trunc.Matches[0] {
+				t.Fatalf("truncated match not navigable under the %s facet (visibleMatchIdx %v)", repo, m.details.visibleMatchIdx)
+			}
+			plain := stripAnsi(strings.Join(m.details.contentLines(), "\n"))
+			if !strings.Contains(strings.Join(strings.Fields(plain), " "), types.LocationsTruncatedNotice) {
+				t.Errorf("details pane does not show the truncation notice:\n%s", plain)
+			}
+			m.findings.setSize(120, 10)
+			want := "1?"
+			if repo == "github.com/acme/web" {
+				want = "0?"
+			}
+			if got := locsCell(t, m.findings, "Truncated Token"); got != want {
+				t.Errorf("Locs cell under the %s facet = %q, want %q", repo, got, want)
+			}
+		})
+	}
+	fp := newFindingsPane([]*findingRow{truncatedFixture(true)})
+	fp.setSize(120, 10)
+	if got := locsCell(t, fp, "Truncated Token"); got != "1?" {
+		t.Errorf("Locs cell with no facet = %q, want %q", got, "1?")
+	}
+}
+
+// Benign control: a finding with the same locations but no truncation keeps
+// a complete location list, so the web facet still hides it and its Locs
+// cell is a plain count.
+func TestModel_UntruncatedFindingStillFilteredByRepositoryFacet(t *testing.T) {
+	plainF := truncatedFixture(false)
+	_, api, web := unknownLocationsFixture()
+	m := newTestModel([]*findingRow{plainF, api, web})
+	selectFacetValue(t, &m, facetRepository, "github.com/acme/web")
+	m.applyFilters()
+	if slices.Contains(m.findings.rows, plainF) {
+		t.Errorf("untruncated api-only finding shown under the web facet; rows = %v", rowNames(m.findings.rows))
+	}
+	dp := newTestPane()
+	dp.setRepoFilter(map[string]bool{"github.com/acme/web": true})
+	dp.setFinding(plainF)
+	if got := dp.selectedMatch(); got != nil {
+		t.Errorf("untruncated api-only match navigable under the web facet")
+	}
+
+	fp := newFindingsPane([]*findingRow{truncatedFixture(false)})
+	fp.setSize(120, 10)
+	if got := locsCell(t, fp, "Truncated Token"); got != "1" {
+		t.Errorf("Locs cell = %q, want %q", got, "1")
+	}
+}

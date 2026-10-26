@@ -96,7 +96,8 @@ func (fp findingsPane) locationCount(f *findingRow) int {
 }
 
 // locationCell is the Locs cell: the location count, marked "?" when a match
-// failed to load its locations, so the count is a lower bound (S1).
+// failed to load its locations or they were truncated, so the count is a
+// lower bound (S1).
 func (fp findingsPane) locationCell(f *findingRow) string {
 	n := strconv.Itoa(fp.locationCount(f))
 	if locationsUnknown(f) {

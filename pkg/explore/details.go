@@ -82,10 +82,10 @@ func (dp *detailsPane) recomputeVisibleMatches() {
 }
 
 // hasVisibleLocation reports whether m is navigable under repoFilter, without
-// copying its occurrences. A match whose locations failed to load stays
-// navigable, so its warning is not hidden by a facet (S1).
+// copying its occurrences. A match whose locations failed to load or were
+// truncated stays navigable, so its warning is not hidden by a facet (S1).
 func (dp *detailsPane) hasVisibleLocation(m *matchRow) bool {
-	if len(dp.repoFilter) == 0 || m.LocationsErr != nil {
+	if len(dp.repoFilter) == 0 || matchLocationsUnknown(m) {
 		return true
 	}
 	return slices.ContainsFunc(m.Occurrences, func(o types.Occurrence) bool {
