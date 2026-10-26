@@ -40,7 +40,11 @@ func NewCombinedEnumerator(enumerators ...Enumerator) *CombinedEnumerator {
 
 // Enumerate runs each child enumerator in sequence, passing unique blobs to
 // callback. A blob is considered a duplicate if its BlobID was already seen
-// by a previous call across any enumerator in this combined set.
+// by a previous call across any enumerator in this combined set. A duplicate
+// carrying a GitProvenance still reaches callback: git reports each object
+// once, and two objects share a BlobID when they hold the same text in
+// different encodings (UTF-8 and UTF-16), so dropping one would drop its
+// history locations.
 //
 // When the set is a git enumerator followed by a filesystem enumerator over
 // the same root (the `scan --git` shape), the working tree is folded into the
@@ -56,12 +60,12 @@ func (c *CombinedEnumerator) Enumerate(ctx context.Context, callback blobCallbac
 	for _, e := range c.enumerators {
 		err := e.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 			mu.Lock()
-			if seen[blobID] {
-				mu.Unlock()
-				return nil
-			}
+			dup := seen[blobID]
 			seen[blobID] = true
 			mu.Unlock()
+			if _, isGit := prov.(types.GitProvenance); dup && !isGit {
+				return nil
+			}
 
 			return callback(content, blobID, prov)
 		})
@@ -117,6 +121,18 @@ type worktreeMerge struct {
 	mu    sync.Mutex
 	seen  map[types.BlobID]bool
 	ident *types.GitProvenance // identity of the first git provenance reported
+	// deferred holds, per blob id, the working-tree paths whose HEAD blob
+	// is another git object with the same text (see withWorktree). A later
+	// git callback for that id that records the path in history settles
+	// it; whatever is left is reported by emitDeferred.
+	deferred map[types.BlobID]*deferredWorktree
+}
+
+// deferredWorktree is the content of a blob and its working-tree paths not
+// yet known to be covered by a history location.
+type deferredWorktree struct {
+	content []byte
+	paths   []string
 }
 
 // enumerateGitWithWorktree runs the git enumeration with the working tree
@@ -137,6 +153,7 @@ func enumerateGitWithWorktree(ctx context.Context, g *GitEnumerator, fs *Filesys
 		paths:    make(map[types.BlobID][]string),
 		archives: make(map[string]struct{}),
 		seen:     make(map[types.BlobID]bool),
+		deferred: make(map[types.BlobID]*deferredWorktree),
 		warn:     g.warnWriter(),
 	}
 
@@ -151,6 +168,9 @@ func enumerateGitWithWorktree(ctx context.Context, g *GitEnumerator, fs *Filesys
 		return err
 	}
 	if err := m.wait(ctx); err != nil {
+		return err
+	}
+	if err := m.emitDeferred(ctx, g); err != nil {
 		return err
 	}
 	return errors.Join(m.emitWorktreeOnly(ctx, g), m.err)
@@ -205,24 +225,84 @@ func (m *worktreeMerge) claim(id types.BlobID) bool {
 
 // gitCallback wraps the caller's callback for git blobs: it waits for the
 // prewalk, then adds the blob's working-tree paths to its locations.
+//
+// git reports each object once, but two objects share a BlobID when they hold
+// the same text in different encodings (a UTF-8 and a UTF-16 file). The first
+// callback for an id carries its working-tree paths; a later one passes
+// through with only its own history locations, never dropped, and settles
+// the working-tree paths the first one deferred to it.
 func (m *worktreeMerge) gitCallback(ctx context.Context) blobCallback {
 	return func(content []byte, id types.BlobID, prov types.Provenance) error {
 		if err := m.wait(ctx); err != nil {
 			return err
 		}
-		if !m.claim(id) {
-			return nil
+		gp, isGit := prov.(types.GitProvenance)
+		m.mu.Lock()
+		first := !m.seen[id]
+		m.seen[id] = true
+		if isGit && m.ident == nil {
+			m.ident = &types.GitProvenance{RepoPath: gp.RepoPath, RepoRoot: gp.RepoRoot, RepoTop: gp.RepoTop, RemoteIdentity: gp.RemoteIdentity}
 		}
-		if gp, ok := prov.(types.GitProvenance); ok {
+		if !first && isGit {
+			m.settleDeferred(id, gp)
+		}
+		m.mu.Unlock()
+		if !first || !isGit {
+			return m.callback(content, id, prov)
+		}
+		gp, wait := m.withWorktree(gp, id, m.paths[id], content)
+		if len(wait) > 0 {
 			m.mu.Lock()
-			if m.ident == nil {
-				m.ident = &types.GitProvenance{RepoPath: gp.RepoPath, RepoRoot: gp.RepoRoot, RepoTop: gp.RepoTop, RemoteIdentity: gp.RemoteIdentity}
-			}
+			m.deferred[id] = &deferredWorktree{content: content, paths: wait}
 			m.mu.Unlock()
-			prov = m.withWorktree(gp, id, m.paths[id])
 		}
-		return m.callback(content, id, prov)
+		return m.callback(content, id, gp)
 	}
+}
+
+// settleDeferred drops the deferred working-tree paths of id that gp records
+// in history. m.mu must be held.
+func (m *worktreeMerge) settleDeferred(id types.BlobID, gp types.GitProvenance) {
+	d := m.deferred[id]
+	if d == nil {
+		return
+	}
+	d.paths = slices.DeleteFunc(d.paths, func(p string) bool {
+		return gp.BlobPath == m.prefix+p || slices.ContainsFunc(gp.Locations, func(l types.GitLocation) bool {
+			return !l.WorkingTree && l.Path == m.prefix+p
+		})
+	})
+	if len(d.paths) == 0 {
+		delete(m.deferred, id)
+	}
+}
+
+// emitDeferred reports, after git has reported every blob, the deferred
+// working-tree paths no history location covered, one callback per blob.
+func (m *worktreeMerge) emitDeferred(ctx context.Context, g *GitEnumerator) error {
+	m.mu.Lock()
+	ids := slices.SortedFunc(maps.Keys(m.deferred), func(a, b types.BlobID) int { return bytes.Compare(a[:], b[:]) })
+	m.mu.Unlock()
+	if len(ids) == 0 {
+		return nil
+	}
+	ident := m.identity(ctx, g)
+	for _, id := range ids {
+		m.mu.Lock()
+		d := m.deferred[id]
+		delete(m.deferred, id)
+		m.mu.Unlock()
+		gp := ident
+		gp.BlobPath = d.paths[0]
+		gp.Locations = make([]types.GitLocation, len(d.paths))
+		for i, p := range d.paths {
+			gp.Locations[i] = types.GitLocation{Path: p, WorkingTree: true}
+		}
+		if err := m.callback(d.content, id, gp); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // withWorktree appends each working-tree path of blob id as a WorkingTree
@@ -231,7 +311,12 @@ func (m *worktreeMerge) gitCallback(ctx context.Context) blobCallback {
 // restored to a blob only an older commit held keeps its working-tree
 // location. Working-tree paths stay relative to the scan root; history
 // paths are matched with the scan root's prefix in the repository.
-func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt []string) types.GitProvenance {
+//
+// A path HEAD holds as a different git object with the same text (the
+// UTF-16 copy of a UTF-8 blob, or the reverse) is not decided here: that
+// object's own callback records it in history. It is returned in wait so the
+// caller can confirm that, and report it if no callback does.
+func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt []string, content []byte) (_ types.GitProvenance, wait []string) {
 	locs := gp.Locations
 	if len(locs) == 0 {
 		locs = []types.GitLocation{{Path: gp.BlobPath, Commit: gp.Commit}}
@@ -239,16 +324,29 @@ func (m *worktreeMerge) withWorktree(gp types.GitProvenance, id types.BlobID, wt
 	var extra []types.GitLocation
 	for _, p := range wt {
 		inHistory := slices.ContainsFunc(locs, func(l types.GitLocation) bool { return l.Path == m.prefix+p })
-		if !inHistory || !m.headHolds(id, p) {
+		held := m.headHolds(id, p)
+		switch {
+		case inHistory && held:
+		case held && !m.headIsObject(p, content):
+			wait = append(wait, p)
+		default:
 			extra = append(extra, types.GitLocation{Path: p, WorkingTree: true})
 		}
 	}
 	if len(extra) == 0 {
-		return gp
+		return gp, wait
 	}
 	gp.Locations = slices.Concat(locs, extra)
 	gp.RepoRoot = cmp.Or(gp.RepoRoot, m.absRoot)
-	return gp
+	return gp, wait
+}
+
+// headIsObject reports whether HEAD's blob at path is the git object whose
+// content git reported as content. A transcoded object's content is not its
+// stored bytes, so it never is; its path is then settled by emitDeferred.
+func (m *worktreeMerge) headIsObject(path string, content []byte) bool {
+	oid := m.head[path]
+	return gitObjectID(content, len(oid)) == oid
 }
 
 // headHolds reports whether HEAD's blob at path is the working-tree file
@@ -334,16 +432,20 @@ func (m *worktreeMerge) isSeen(id types.BlobID) bool {
 // worktreeCallback reports a working-tree-only file blob as a GitProvenance
 // whose locations are all of its working-tree paths. The id is the one
 // computed from the content just read, so a file changed since the prewalk
-// is still reported, under its new id. Other provenances (archive members)
-// pass through.
+// is still reported, under its new id; when another callback already
+// reported that id, the file still reaches the callback, as its own path
+// only, so its location is not dropped. Other provenances (archive members)
+// pass through, deduplicated as the filesystem scan does.
 func (m *worktreeMerge) worktreeCallback(ident types.GitProvenance) blobCallback {
 	return func(content []byte, id types.BlobID, prov types.Provenance) error {
-		if !m.claim(id) {
+		fp, isFile := prov.(types.FileProvenance)
+		first := m.claim(id)
+		if !first && !isFile {
 			return nil
 		}
-		if fp, ok := prov.(types.FileProvenance); ok {
+		if isFile {
 			paths := m.paths[id]
-			if len(paths) == 0 {
+			if len(paths) == 0 || !first {
 				rel, err := filepath.Rel(m.root, fp.FilePath)
 				if err != nil {
 					rel = fp.FilePath

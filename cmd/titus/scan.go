@@ -151,12 +151,14 @@ type blobJob struct {
 }
 
 // incrementalJob decides what --incremental does with job. A blob not yet in
-// the store is scanned as usual. A stored blob without matches is skipped, as
-// it has nothing to report. A stored blob with matches is sent as known, so
-// the worker records this location (a new path or commit) without matching
-// the content again. skipped reports a stored blob, whose content is not
-// matched again either way.
-func incrementalJob(s store.Store, job *blobJob) (send, skipped bool, err error) {
+// the store is scanned as usual. A stored blob is known when it has matches,
+// or when this scan queued it in m for a timed-out rule retry: its matches
+// are still pending and drainTimedOutMatches adds them after the parallel
+// pass. A known blob is sent so the worker records this location (a new path
+// or commit) without matching the content again. Any other stored blob is
+// skipped, as it has nothing to report. skipped reports a stored blob, whose
+// content is not matched again either way.
+func incrementalJob(s store.Store, m matcher.Matcher, job *blobJob) (send, skipped bool, err error) {
 	exists, err := s.BlobExists(job.blobID)
 	if err != nil {
 		return false, false, fmt.Errorf("checking blob: %w", err)
@@ -168,6 +170,7 @@ func incrementalJob(s store.Store, job *blobJob) (send, skipped bool, err error)
 	if err != nil {
 		return false, false, fmt.Errorf("checking matches of blob: %w", err)
 	}
+	job.known = job.known || matcher.HasPendingRetry(m, job.blobID)
 	return job.known, true, nil
 }
 
@@ -338,7 +341,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			// Check for incremental scanning
 			job := blobJob{content: content, blobID: blobID, prov: prov}
 			if scanIncremental {
-				send, skipped, err := incrementalJob(s, &job)
+				send, skipped, err := incrementalJob(s, m, &job)
 				if err != nil {
 					return err
 				}
@@ -1005,7 +1008,7 @@ func runRepoScan(cmd *cobra.Command, rt repoTarget) error {
 
 			job := blobJob{content: content, blobID: blobID, prov: prov}
 			if scanIncremental {
-				send, skipped, err := incrementalJob(s, &job)
+				send, skipped, err := incrementalJob(s, m, &job)
 				if err != nil {
 					return err
 				}
@@ -1264,7 +1267,7 @@ func runS3Scan(cmd *cobra.Command, bucket, prefix string) error {
 
 			job := blobJob{content: content, blobID: blobID, prov: prov}
 			if scanIncremental {
-				send, skipped, err := incrementalJob(s, &job)
+				send, skipped, err := incrementalJob(s, m, &job)
 				if err != nil {
 					return err
 				}
@@ -1554,7 +1557,7 @@ func runAsanaScan(cmd *cobra.Command, scope enum.AsanaScope, gid string) error {
 
 			job := blobJob{content: content, blobID: blobID, prov: prov}
 			if scanIncremental {
-				send, skipped, err := incrementalJob(s, &job)
+				send, skipped, err := incrementalJob(s, m, &job)
 				if err != nil {
 					return err
 				}
@@ -1843,7 +1846,7 @@ func runGDriveScan(cmd *cobra.Command, scope enum.GDriveScope, driveID string) e
 
 			job := blobJob{content: content, blobID: blobID, prov: prov}
 			if scanIncremental {
-				send, skipped, err := incrementalJob(s, &job)
+				send, skipped, err := incrementalJob(s, m, &job)
 				if err != nil {
 					return err
 				}

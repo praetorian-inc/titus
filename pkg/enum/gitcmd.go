@@ -19,6 +19,10 @@ var hardenedGitConfig = []string{
 	"-c", "log.showRoot=true",
 	"-c", "i18n.logOutputEncoding=UTF-8",
 	"-c", "diff.external=",
+	// diff.relative=true would make the history index's raw diff paths
+	// relative to the working directory and drop changes outside it;
+	// blobIndexLogArgs also overrides it on the command line.
+	"-c", "diff.relative=false",
 	"-c", "core.hooksPath=/dev/null",
 	// A partial clone fetches missing objects on demand through the
 	// repository's remote, whose uploadpack/sshCommand it controls (V1).

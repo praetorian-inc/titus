@@ -24,6 +24,7 @@ func TestHardenedGit_ArgvAndEnv(t *testing.T) {
 		"-c", "log.showRoot=true",
 		"-c", "i18n.logOutputEncoding=UTF-8",
 		"-c", "diff.external=",
+		"-c", "diff.relative=false",
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "protocol.allow=never",
 		"-c", "maintenance.auto=false",

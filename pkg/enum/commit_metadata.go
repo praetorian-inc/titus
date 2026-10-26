@@ -119,7 +119,15 @@ func blobIndexLogArgs() []string {
 	return []string{"log", "--stdin", "-z",
 		"--format=%H%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s",
 		"--raw", "--no-abbrev", "--no-renames", "--diff-merges=first-parent",
-		"--root", "--no-textconv", "--no-ext-diff", "--no-show-signature"}
+		"--root", "--no-textconv", "--no-ext-diff", "--no-show-signature",
+		// Paths stay repository-relative and complete even when the scan
+		// root is a subdirectory and the repository sets diff.relative.
+		"--no-relative",
+		// An empty order file keeps git's own entry order and overrides
+		// diff.orderFile, which reorders entries or, naming a missing file,
+		// makes git log fail and the whole index unavailable. Git for
+		// Windows maps /dev/null to NUL.
+		"-O/dev/null"}
 }
 
 // buildBlobIndex streams the history of repoPath into a blobIndex. It always
