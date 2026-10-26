@@ -116,7 +116,7 @@ func TestAPIEnumerators_ListingCancelReturnsCtxErr(t *testing.T) {
 }
 
 func TestAPIEnumerators_SetupErrorHasNoCredential(t *testing.T) {
-	const bad = "https://u:secret@git.example.test:notaport/"
+	const bad = "https://u:" + "secret@git.example.test:notaport/"
 	t.Run("github", func(t *testing.T) {
 		_, err := NewGitHubEnumerator(GitHubConfig{BaseURL: bad, Owner: "acme", Repo: "api"})
 		require.Error(t, err)

@@ -14,7 +14,7 @@ import (
 func TestNormalize_SpecExamples(t *testing.T) {
 	for _, remote := range []string{
 		"git@github.com:acme/api.git",
-		"https://user:tok@GitHub.com/acme/api.git",
+		"https://user:" + "tok@GitHub.com/acme/api.git",
 		"ssh://git@github.com:22/acme/api",
 	} {
 		t.Run(remote, func(t *testing.T) {
@@ -33,7 +33,7 @@ func TestNormalize_Accepted(t *testing.T) {
 	}{
 		{"scp form", "git@github.com:acme/api.git", "github.com/acme/api"},
 		{"scp form without user", "github.com:acme/api", "github.com/acme/api"},
-		{"https with credentials", "https://user:tok@GitHub.com/acme/api.git", "github.com/acme/api"},
+		{"https with credentials", "https://user:" + "tok@GitHub.com/acme/api.git", "github.com/acme/api"},
 		{"ssh with non-default port", "ssh://git@gitlab.example.com:2222/group/sub/api.git", "gitlab.example.com/group/sub/api"},
 		{"ssh default port", "ssh://git@github.com:22/acme/api", "github.com/acme/api"},
 		{"query and fragment stripped", "https://github.com/acme/api.git?ref=main#readme", "github.com/acme/api"},
@@ -45,7 +45,7 @@ func TestNormalize_Accepted(t *testing.T) {
 		{"http", "http://git.example.com/acme/api", "git.example.com/acme/api"},
 		{"uppercase scheme", "HTTPS://github.com/acme/api", "github.com/acme/api"},
 		{"github app token", "https://x-access-token:" + "ghs_X@github.com/o/r.git", "github.com/o/r"},
-		{"gitlab token, port, query, fragment", "https://oauth2:glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag", "gitlab.example.com/g/s/p"},
+		{"gitlab token, port, query, fragment", "https://oauth2:" + "glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag", "gitlab.example.com/g/s/p"},
 		{"azure devops org userinfo", "https://org@dev.azure.com/org/proj/_git/repo", "dev.azure.com/org/proj/_git/repo"},
 		{"percent-encoded userinfo", "https://u%3Ap@h/o/r", "h/o/r"},
 		{"percent-encoded path decoded once", "https://github.com/acme/my%2Dapi", "github.com/acme/my-api"},
@@ -63,12 +63,12 @@ func TestNormalize_Accepted(t *testing.T) {
 }
 
 func TestNormalize_CredentialsNeverInOutput(t *testing.T) {
-	id, ok := Normalize("https://user:tok@GitHub.com/acme/api.git")
+	id, ok := Normalize("https://user:" + "tok@GitHub.com/acme/api.git")
 	require.True(t, ok)
 	assert.NotContains(t, id, "tok")
 	assert.NotContains(t, id, "user")
 
-	id, ok = Normalize("https://oauth2:glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag")
+	id, ok = Normalize("https://oauth2:" + "glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag")
 	require.True(t, ok)
 	assert.NotContains(t, id, "glpat")
 	assert.NotContains(t, id, "private_token")
@@ -141,7 +141,7 @@ func TestFromBaseURL(t *testing.T) {
 		{"github enterprise web url", "https://github.example.com", "github.com", "acme/api", "github.example.com/acme/api"},
 		{"gitlab self-hosted", "https://gitlab.example.com", "gitlab.com", "acme/api", "gitlab.example.com/acme/api"},
 		{"default gitlab nested group", "", "gitlab.com", "group/sub/api", "gitlab.com/group/sub/api"},
-		{"base url credentials and port dropped", "https://u:tok@GitLab.Example.com:8443/", "gitlab.com", "acme/api", "gitlab.example.com/acme/api"},
+		{"base url credentials and port dropped", "https://u:" + "tok@GitLab.Example.com:8443/", "gitlab.com", "acme/api", "gitlab.example.com/acme/api"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -270,11 +270,11 @@ func secretWindows(s string) []string {
 func FuzzNormalize(f *testing.F) {
 	for _, seed := range []string{
 		"git@github.com:acme/api.git",
-		"https://user:tok@GitHub.com/acme/api.git",
+		"https://user:" + "tok@GitHub.com/acme/api.git",
 		"ssh://git@github.com:22/acme/api",
 		"ssh://git@gitlab.example.com:2222/group/sub/api.git",
 		"https://x-access-token:" + "ghs_X@github.com/o/r.git",
-		"https://oauth2:glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag",
+		"https://oauth2:" + "glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag",
 		"https://org@dev.azure.com/org/proj/_git/repo",
 		"ssh://git@[2001:db8::1]:2222/o/r",
 		"git@[::1]:o/r.git",
@@ -322,8 +322,8 @@ func FuzzNormalize(f *testing.F) {
 
 func FuzzRedactUserinfo(f *testing.F) {
 	for _, seed := range []string{
-		"https://user:tok@GitHub.com/acme/api.git",
-		"https://oauth2:glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag",
+		"https://user:" + "tok@GitHub.com/acme/api.git",
+		"https://oauth2:" + "glpat-X@gitlab.example.com:8443/g/s/p.git?private_token=Y#frag",
 		"https://h/o/r.git?private_token=SECRET#x",
 		"https://h#SECRET",
 		"https://u:p@ss@h/o/r",

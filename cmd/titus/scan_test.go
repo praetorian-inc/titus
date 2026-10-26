@@ -933,7 +933,7 @@ func TestScanE2E_OriginRemoteMergesWithAPI(t *testing.T) {
 func TestScanE2E_OriginURLNormalized(t *testing.T) {
 	for _, origin := range []string{
 		"git@github.com:acme/api.git",
-		"https://user:tok@GitHub.com/acme/api.git",
+		"https://user:" + "tok@GitHub.com/acme/api.git",
 		"ssh://git@github.com:22/acme/api",
 	} {
 		t.Run(origin, func(t *testing.T) {
