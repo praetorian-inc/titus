@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -22,7 +23,12 @@ type HashiCorpValidator struct {
 }
 
 func NewHashiCorpValidator() *HashiCorpValidator {
-	return &HashiCorpValidator{client: &http.Client{Timeout: 30 * time.Second}}
+	return &HashiCorpValidator{client: &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}}
 }
 
 func NewHashiCorpValidatorWithClient(client *http.Client) *HashiCorpValidator {
@@ -42,8 +48,11 @@ func (v *HashiCorpValidator) CanValidate(ruleID string) bool {
 }
 
 func (v *HashiCorpValidator) Validate(ctx context.Context, match *types.Match) (*types.ValidationResult, error) {
-	if match.RuleID == "np.hashicorp.7" {
+	switch match.RuleID {
+	case "np.hashicorp.7":
 		return types.NewValidationResult(types.StatusUndetermined, 0, "unseal keys cannot be safely validated via API"), nil
+	case "np.hashicorp.3", "np.hashicorp.6":
+		return types.NewValidationResult(types.StatusUndetermined, 0, "recovery tokens cannot be validated via lookup-self"), nil
 	}
 
 	token := extractNamedGroup(match, "token")
@@ -56,12 +65,20 @@ func (v *HashiCorpValidator) Validate(ctx context.Context, match *types.Match) (
 		return types.NewValidationResult(types.StatusUndetermined, 0, "vault server URL not found in context"), nil
 	}
 
-	host := extractHostFromURL(vaultURL)
-	if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
+	if isLoopbackURL(vaultURL) {
 		return types.NewValidationResult(types.StatusUndetermined, 0, "skipping localhost vault server"), nil
 	}
 
 	return v.validateAgainst(ctx, token, vaultURL)
+}
+
+func isLoopbackURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func (v *HashiCorpValidator) validateAgainst(ctx context.Context, token, vaultURL string) (*types.ValidationResult, error) {
@@ -83,8 +100,10 @@ func (v *HashiCorpValidator) validateAgainst(ctx context.Context, token, vaultUR
 	case http.StatusOK:
 		return types.NewValidationResult(types.StatusValid, 1.0, fmt.Sprintf("valid Vault token at %s", vaultURL)), nil
 	case http.StatusForbidden:
-		return types.NewValidationResult(types.StatusValid, 1.0, fmt.Sprintf("valid Vault token at %s (authenticated; insufficient permissions for lookup-self)", vaultURL)), nil
-	case http.StatusBadRequest, http.StatusNotFound:
+		// Vault returns 403 for both live tokens without lookup-self permission
+		// AND for expired/revoked/invalid tokens. Cannot distinguish.
+		return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("Vault returned 403 at %s (could be valid token without lookup-self permission or invalid token)", vaultURL)), nil
+	case http.StatusBadRequest:
 		return types.NewValidationResult(types.StatusInvalid, 1.0, fmt.Sprintf("invalid Vault token: HTTP %d", resp.StatusCode)), nil
 	default:
 		return types.NewValidationResult(types.StatusUndetermined, 0.5, fmt.Sprintf("unexpected status: HTTP %d", resp.StatusCode)), nil

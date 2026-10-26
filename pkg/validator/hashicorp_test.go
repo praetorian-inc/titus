@@ -73,7 +73,7 @@ func TestHashiCorpValidator_Validate_Invalid(t *testing.T) {
 	assert.Equal(t, types.StatusInvalid, result.Status)
 }
 
-func TestHashiCorpValidator_Validate_Forbidden_IsValid(t *testing.T) {
+func TestHashiCorpValidator_Validate_Forbidden_IsUndetermined(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"errors":["permission denied"]}`))
@@ -84,8 +84,8 @@ func TestHashiCorpValidator_Validate_Forbidden_IsValid(t *testing.T) {
 
 	result, err := v.validateAgainst(context.Background(), "hvs.JGbZZaCkOSgsZ56uhGlTK2zyC1j2mwhy0VLp4", srv.URL)
 	require.NoError(t, err)
-	assert.Equal(t, types.StatusValid, result.Status)
-	assert.Contains(t, result.Message, "insufficient permissions")
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "403")
 }
 
 func TestHashiCorpValidator_Validate_UnsealKey(t *testing.T) {
@@ -219,6 +219,44 @@ func TestHashiCorpValidator_VaultURLExtraction(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestHashiCorpValidator_Validate_RecoveryToken(t *testing.T) {
+	v := NewHashiCorpValidator()
+	for _, ruleID := range []string{"np.hashicorp.3", "np.hashicorp.6"} {
+		t.Run(ruleID, func(t *testing.T) {
+			match := &types.Match{
+				RuleID: ruleID,
+				Groups: [][]byte{[]byte("hvr.somerecoverytoken12345678")},
+				Snippet: types.Snippet{
+					Before:   []byte("VAULT_ADDR=https://vault.example.com\n"),
+					Matching: []byte("hvr.somerecoverytoken12345678"),
+					After:    []byte(""),
+				},
+			}
+			result, err := v.Validate(context.Background(), match)
+			require.NoError(t, err)
+			assert.Equal(t, types.StatusUndetermined, result.Status)
+			assert.Contains(t, result.Message, "recovery tokens")
+		})
+	}
+}
+
+func TestHashiCorpValidator_Validate_IPv6Localhost(t *testing.T) {
+	v := NewHashiCorpValidator()
+	match := &types.Match{
+		RuleID: "np.hashicorp.4",
+		Groups: [][]byte{[]byte("hvs.JGbZZaCkOSgsZ56uhGlTK2zyC1j2mwhy0VLp4")},
+		Snippet: types.Snippet{
+			Before:   []byte("VAULT_ADDR=http://[::1]:8200\n"),
+			Matching: []byte("hvs.JGbZZaCkOSgsZ56uhGlTK2zyC1j2mwhy0VLp4"),
+			After:    []byte(""),
+		},
+	}
+	result, err := v.Validate(context.Background(), match)
+	require.NoError(t, err)
+	assert.Equal(t, types.StatusUndetermined, result.Status)
+	assert.Contains(t, result.Message, "localhost")
 }
 
 func TestHashiCorpValidator_Validate_NewFormatToken(t *testing.T) {
