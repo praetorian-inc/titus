@@ -390,6 +390,23 @@ func TestFormatFileURI_RFC3986(t *testing.T) {
 	}
 }
 
+// TestFormatFileURI_LoneAsteriskIsRelativeReference: a file literally named
+// "*" is a valid location and must reach SARIF as a relative reference that
+// round-trips to the same path; an asterisk inside a longer path is escaped.
+func TestFormatFileURI_LoneAsteriskIsRelativeReference(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"*", "*"},
+		{"a/*", "a/%2A"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got := formatFileURI(tt.in)
+			assert.Equal(t, tt.want, got)
+			assertValidURI(t, tt.in, got)
+		})
+	}
+}
+
 func assertValidURI(t *testing.T, in, got string) {
 	t.Helper()
 	u, err := url.Parse(got)

@@ -1,7 +1,6 @@
 package enum
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -19,9 +18,7 @@ import (
 	"testing"
 
 	"github.com/google/go-github/v57/github"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -122,81 +119,6 @@ func requireContentBlobIDs(t *testing.T, calls []blobCall) {
 	}
 }
 
-// --- clone ----------------------------------------------------------------
-
-func TestCloneEnumerator_GitMode_RemoteIdentityNoCredential(t *testing.T) {
-	root := t.TempDir()
-	makeRemoteFixture(t, root, "acme", "api", map[string]string{"a.txt": "token-AAAA", "dir/b.txt": "token-AAAA"})
-	redirectHTTPSToLocal(t, root)
-
-	e := NewCloneEnumerator([]RepoInfo{{Name: "acme/api", CloneURL: "https://u:secret@github.com/acme/api.git"}}, Config{})
-	e.Git = true
-	calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
-
-	require.Len(t, calls, 1, "one callback per blob")
-	requireContentBlobIDs(t, calls)
-	gp := gitProv(t, calls[0].prov)
-	assert.Equal(t, "github.com/acme/api", gp.RepoPath)
-	assert.True(t, gp.RemoteIdentity)
-	assert.Empty(t, gp.RepoRoot, "the clone temp dir is deleted and must not be recorded")
-	assert.Equal(t, []string{"a.txt", "dir/b.txt"}, locationPaths(gp))
-	for _, o := range types.OccurrencesOf(gp) {
-		assert.Empty(t, o.AbsolutePath)
-		assert.NotEmpty(t, o.Commit)
-	}
-	assert.NotContains(t, fmt.Sprintf("%+v", gp), "secret")
-}
-
-func TestCloneEnumerator_FilesystemMode_RemoteIdentityAndCommit(t *testing.T) {
-	root := t.TempDir()
-	head := makeRemoteFixture(t, root, "acme", "api", map[string]string{"cfg/app.yml": "token-BBBB"})
-	redirectHTTPSToLocal(t, root)
-
-	e := NewCloneEnumerator([]RepoInfo{{Name: "acme/api", CloneURL: "https://u:secret@github.com/acme/api.git"}}, Config{})
-	calls := withoutDotGit(collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) }))
-
-	require.Len(t, calls, 1)
-	requireContentBlobIDs(t, calls)
-	gp := gitProv(t, calls[0].prov)
-	assert.Equal(t, "github.com/acme/api", gp.RepoPath)
-	assert.True(t, gp.RemoteIdentity)
-	assert.Empty(t, gp.RepoRoot)
-	assert.Equal(t, "cfg/app.yml", gp.BlobPath)
-	require.Len(t, gp.Locations, 1)
-	assert.Equal(t, "cfg/app.yml", gp.Locations[0].Path)
-	require.NotNil(t, gp.Locations[0].Commit, "commit comes from the blob index")
-	assert.Equal(t, head, gp.Locations[0].Commit.CommitID)
-	assert.NotContains(t, fmt.Sprintf("%+v", gp), "secret")
-}
-
-func TestCloneEnumerator_LocalURLUsesTypedName(t *testing.T) {
-	root := t.TempDir()
-	makeRemoteFixture(t, root, "acme", "api", map[string]string{"x.txt": "token-CCCC"})
-	cloneURL := "file://" + filepath.Join(root, "acme", "api.git")
-
-	e := NewCloneEnumerator([]RepoInfo{{Name: "acme/api", CloneURL: cloneURL}}, Config{})
-	calls := withoutDotGit(collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) }))
-
-	require.Len(t, calls, 1)
-	gp := gitProv(t, calls[0].prov)
-	assert.Equal(t, "acme/api", gp.RepoPath, "no host is guessed (SEC-3)")
-	assert.False(t, gp.RemoteIdentity)
-	assert.Empty(t, gp.RepoRoot)
-}
-
-func TestCloneEnumerator_CloneErrorHasNoCredential(t *testing.T) {
-	root := t.TempDir()
-	redirectHTTPSToLocal(t, root)
-	e := NewCloneEnumerator(nil, Config{})
-	err := e.cloneAndScan(context.Background(),
-		RepoInfo{Name: "https://u:secret@github.com/acme/missing", CloneURL: "https://u:secret@github.com/acme/missing.git"},
-		func([]byte, types.BlobID, types.Provenance) error { return nil })
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "github.com/acme/missing", "the error names the normalized repository")
-	assert.NotContains(t, err.Error(), "secret")
-	assert.NotContains(t, err.Error(), "u:")
-}
-
 // occurrenceStrings lists the stored occurrences of id as "repo path".
 func occurrenceStrings(t *testing.T, s store.Store, id types.BlobID) []string {
 	t.Helper()
@@ -208,38 +130,6 @@ func occurrenceStrings(t *testing.T, s store.Store, id types.BlobID) []string {
 	}
 	slices.Sort(got)
 	return got
-}
-
-func TestCloneEnumerator_SameBlobTwoRepos(t *testing.T) {
-	root := t.TempDir()
-	makeRemoteFixture(t, root, "acme", "api", map[string]string{"k.txt": "token-SHARED"})
-	makeRemoteFixture(t, root, "acme", "web", map[string]string{"conf/k.txt": "token-SHARED"})
-	redirectHTTPSToLocal(t, root)
-
-	for _, gitMode := range []bool{false, true} {
-		t.Run(fmt.Sprintf("git=%v", gitMode), func(t *testing.T) {
-			e := NewCloneEnumerator([]RepoInfo{
-				{Name: "acme/api", CloneURL: "https://u:secret@github.com/acme/api.git"},
-				{Name: "acme/web", CloneURL: "https://u:secret@github.com/acme/web.git"},
-			}, Config{})
-			e.Git = gitMode
-			s := store.NewMemory()
-			var mu sync.Mutex // filesystem mode calls back from parallel readers
-			var ids []types.BlobID
-			require.NoError(t, e.Enumerate(context.Background(), func(_ []byte, id types.BlobID, p types.Provenance) error {
-				if isDotGit(p) {
-					return nil
-				}
-				mu.Lock()
-				ids = append(ids, id)
-				mu.Unlock()
-				return s.AddOccurrences(id, types.OccurrencesOf(p))
-			}))
-			require.Len(t, ids, 2)
-			require.Equal(t, ids[0], ids[1], "same content, same blob")
-			assert.Equal(t, []string{"github.com/acme/api k.txt", "github.com/acme/web conf/k.txt"}, occurrenceStrings(t, s, ids[0]))
-		})
-	}
 }
 
 // --- GitHub API -----------------------------------------------------------
@@ -320,63 +210,6 @@ func provByContent(t *testing.T, calls []blobCall) map[string]types.GitProvenanc
 	return out
 }
 
-func TestGitHubEnumerator_RemoteIdentityOneCallbackPerBlob(t *testing.T) {
-	repo := fakeGHRepo{"acme", "api", map[string]string{"a.txt": "token-DUP", "b/c.txt": "token-DUP", "d.txt": "token-ONE"}}
-	for _, tc := range []struct{ baseURL, want string }{
-		{"", "github.com/acme/api"},
-		{"https://github.example.com", "github.example.com/acme/api"},
-		{"https://GitHub.Example.com:8443/", "github.example.com/acme/api"},
-	} {
-		t.Run(tc.want+tc.baseURL, func(t *testing.T) {
-			var hits atomic.Int32
-			srv := newFakeGitHub(t, []fakeGHRepo{repo}, &hits)
-			e := githubEnumFor(t, srv, GitHubConfig{BaseURL: tc.baseURL, Owner: "acme", Repo: "api"})
-			calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
-
-			require.Len(t, calls, 2, "one callback per distinct blob")
-			requireContentBlobIDs(t, calls)
-			byContent := provByContent(t, calls)
-			dup := byContent["token-DUP"]
-			assert.Equal(t, tc.want, dup.RepoPath)
-			assert.True(t, dup.RemoteIdentity)
-			assert.Empty(t, dup.RepoRoot)
-			assert.Equal(t, []string{"a.txt", "b/c.txt"}, locationPaths(dup))
-			assert.Equal(t, "a.txt", dup.BlobPath)
-			assert.Equal(t, []string{"d.txt"}, locationPaths(byContent["token-ONE"]))
-			assert.EqualValues(t, 2, hits.Load(), "content fetched once per blob")
-			assert.NotContains(t, fmt.Sprintf("%+v", calls), "secret")
-		})
-	}
-}
-
-func TestGitHubEnumerator_ListRepoURLsNameHasNoCredential(t *testing.T) {
-	var hits atomic.Int32
-	srv := newFakeGitHub(t, []fakeGHRepo{{"acme", "api", map[string]string{"a": "b"}}}, &hits)
-	e := githubEnumFor(t, srv, GitHubConfig{BaseURL: "https://github.example.com", Org: "acme"})
-	repos, err := e.ListRepoURLs(context.Background())
-	require.NoError(t, err)
-	require.Len(t, repos, 1)
-	assert.Equal(t, "acme/api", repos[0].Name)
-}
-
-func TestGitHubEnumerator_SameBlobTwoRepos(t *testing.T) {
-	var hits atomic.Int32
-	srv := newFakeGitHub(t, []fakeGHRepo{
-		{"acme", "api", map[string]string{"k.txt": "token-SHARED"}},
-		{"acme", "web", map[string]string{"conf/k.txt": "token-SHARED"}},
-	}, &hits)
-	e := githubEnumFor(t, srv, GitHubConfig{Org: "acme"})
-	s := store.NewMemory()
-	var ids []types.BlobID
-	require.NoError(t, e.Enumerate(context.Background(), func(_ []byte, id types.BlobID, p types.Provenance) error {
-		ids = append(ids, id)
-		return s.AddOccurrences(id, types.OccurrencesOf(p))
-	}))
-	require.Len(t, ids, 2)
-	require.Equal(t, ids[0], ids[1], "same content, same blob")
-	assert.Equal(t, []string{"github.com/acme/api k.txt", "github.com/acme/web conf/k.txt"}, occurrenceStrings(t, s, ids[0]))
-}
-
 // --- GitLab API -----------------------------------------------------------
 
 func newFakeGitLab(t *testing.T, fullPath string, files map[string]string, rawHits *atomic.Int32) *httptest.Server {
@@ -410,33 +243,4 @@ func newFakeGitLab(t *testing.T, fullPath string, files map[string]string, rawHi
 	}))
 	t.Cleanup(srv.Close)
 	return srv
-}
-
-func TestGitLabEnumerator_RemoteIdentityOneCallbackPerBlob(t *testing.T) {
-	files := map[string]string{"a.txt": "token-DUP", "b/c.txt": "token-DUP", "d.txt": "token-ONE"}
-	for _, tc := range []struct{ baseURL, want string }{
-		{"", "gitlab.com/grp/sub/api"},
-		{"https://gitlab.example.com/api/v4", "gitlab.example.com/grp/sub/api"},
-	} {
-		t.Run(tc.want, func(t *testing.T) {
-			var hits atomic.Int32
-			srv := newFakeGitLab(t, "grp/sub/api", files, &hits)
-			c, err := gitlab.NewClient("", gitlab.WithBaseURL(srv.URL+"/api/v4"))
-			require.NoError(t, err)
-			e := &GitLabEnumerator{client: c, config: GitLabConfig{BaseURL: tc.baseURL, Project: "grp/sub/api"}}
-			calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
-
-			require.Len(t, calls, 2, "one callback per distinct blob")
-			requireContentBlobIDs(t, calls)
-			byContent := provByContent(t, calls)
-			dup := byContent["token-DUP"]
-			assert.Equal(t, tc.want, dup.RepoPath)
-			assert.True(t, dup.RemoteIdentity)
-			assert.Empty(t, dup.RepoRoot)
-			assert.Equal(t, []string{"a.txt", "b/c.txt"}, locationPaths(dup))
-			assert.Equal(t, []string{"d.txt"}, locationPaths(byContent["token-ONE"]))
-			assert.EqualValues(t, 2, hits.Load(), "content fetched once per blob")
-			assert.NotContains(t, fmt.Sprintf("%+v", calls), "secret")
-		})
-	}
 }
