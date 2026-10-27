@@ -11,11 +11,14 @@ LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 CGO_ENABLED ?= 1
 GO_TAGS ?= vectorscan
 
-# When CGO is enabled, add netgo and osusergo to force Go's pure-Go DNS
-# resolver and user lookup. Static glibc's getaddrinfo dlopen()s NSS modules
-# at runtime, causing SIGSEGV when the host's NSS libraries are incompatible.
+# On Linux with CGO, add netgo and osusergo so Go uses its pure-Go DNS
+# resolver instead of glibc's getaddrinfo. Static glibc's getaddrinfo
+# dlopen()s NSS modules at runtime, causing SIGSEGV on incompatible hosts.
+# Skip on macOS/Windows where the native resolver handles VPN/mDNS correctly.
 ifeq ($(CGO_ENABLED),1)
-  GO_TAGS := $(GO_TAGS) netgo osusergo
+  ifeq ($(shell uname -s),Linux)
+    GO_TAGS := $(GO_TAGS),netgo,osusergo
+  endif
 endif
 
 # Clear vectorscan tag when CGO is disabled (vectorscan requires CGO)
@@ -25,7 +28,7 @@ endif
 
 # Build -tags flag (empty when GO_TAGS is empty to avoid bare "-tags" argument)
 ifneq ($(GO_TAGS),)
-  TAGS_FLAG := -tags $(GO_TAGS)
+  TAGS_FLAG := -tags "$(GO_TAGS)"
 else
   TAGS_FLAG :=
 endif
