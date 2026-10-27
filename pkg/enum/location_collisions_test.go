@@ -116,3 +116,56 @@ func TestCombinedEnumerator_UTF16TwinOfUTF8BlobKeepsEveryLocation(t *testing.T) 
 		})
 	}
 }
+
+// C1, history side: each history walk on its own delivers both locations of
+// the shared BlobID, whether in one callback or several, in both name orders.
+func TestGitHistory_UTF16TwinOfUTF8BlobKeepsEveryLocation(t *testing.T) {
+	for _, tc := range utf16TwinCases {
+		for name, walk := range map[string]func(*GitEnumerator, context.Context, blobCallback) error{
+			"native": (*GitEnumerator).enumerateAllHistoryNative,
+			"go-git": (*GitEnumerator).enumerateAllHistory,
+		} {
+			t.Run(tc.name+"/"+name, func(t *testing.T) {
+				dir, a, id := utf16TwinFixture(t, tc.utf8, tc.utf16, tc.remove)
+
+				got := newAllLocs()
+				require.NoError(t, walk(nativeEnum(dir), context.Background(), got.callback))
+
+				assert.Equal(t, tc.want(a), got.of(id))
+			})
+		}
+	}
+}
+
+// C3 (ENG-9178 review r3): a repository with diff.relative=true makes git log
+// print paths relative to its working directory and drop changes outside it.
+// A scan rooted at a subdirectory must still name history locations relative
+// to the repository top level, as it does without that setting: the blob at
+// sub/deep/c.yml and top.yml is reported at both, never as "deep/c.yml", and
+// top.yml keeps its commit.
+func TestDiffRelativeConfigKeepsRepoTopPaths(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	runGit(t, dir, "config", "diff.relative", "true")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub", "deep"), 0o755))
+	secret := fakeTokenLine('y')
+	writeFile(t, filepath.Join(dir, "sub", "deep", "c.yml"), secret)
+	writeFile(t, filepath.Join(dir, "top.yml"), secret)
+	a := commitAt(t, dir, "A", "2026-01-01T00:00:00Z")
+	id := types.ComputeBlobID([]byte(secret))
+	root := filepath.Join(dir, "sub")
+	want := []wtLoc{{"sub/deep/c.yml", a, false}, {"top.yml", a, false}}
+
+	t.Run("native history", func(t *testing.T) {
+		got := newAllLocs()
+		require.NoError(t, nativeEnum(root).enumerateAllHistoryNative(context.Background(), got.callback))
+		assert.Equal(t, want, got.of(id))
+	})
+
+	t.Run("scan --git shape", func(t *testing.T) {
+		got := newAllLocs()
+		require.NoError(t, gitAndWorktree(root, Config{}).Enumerate(context.Background(), got.callback))
+		assert.Equal(t, want, got.of(id))
+	})
+}

@@ -612,6 +612,74 @@ func TestSQLite_OpensPreChangeDatastore(t *testing.T) {
 	assert.Equal(t, "ok", integrity)
 }
 
+func TestSQLite_BlobLocationsSchema(t *testing.T) {
+	s, err := NewSQLite(filepath.Join(t.TempDir(), "ds.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	rows, err := s.db.Query(`SELECT name, "notnull" FROM pragma_table_info('blob_locations')`)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	notNull := map[string]bool{}
+	for rows.Next() {
+		var name string
+		var nn bool
+		require.NoError(t, rows.Scan(&name, &nn))
+		notNull[name] = nn
+	}
+	require.NoError(t, rows.Err())
+
+	// Every UNIQUE column is NOT NULL, so the key is total (SEC-16).
+	for _, name := range []string{"blob_id", "kind", "repository", "path", "absolute_path", "commit_hash", "working_tree", "commit_ts"} {
+		nn, ok := notNull[name]
+		require.True(t, ok, "missing column %s", name)
+		assert.True(t, nn, "column %s must be NOT NULL", name)
+	}
+
+	var idx int
+	require.NoError(t, s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_blob_locations_blob_id'`).Scan(&idx))
+	assert.Equal(t, 1, idx)
+}
+
+func TestSQLite_HostilePathLeavesFindingsTable(t *testing.T) {
+	s, err := NewSQLite(filepath.Join(t.TempDir(), "ds.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+	blob := types.ComputeBlobID([]byte("secret"))
+	require.NoError(t, s.AddBlob(blob, 6))
+
+	require.NoError(t, s.AddOccurrences(blob, []types.Occurrence{gitOcc("r", "x'); DROP TABLE findings;--", nil)}))
+
+	var n int
+	require.NoError(t, s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'findings'`).Scan(&n))
+	assert.Equal(t, 1, n)
+}
+
+// A datastore written before the column existed (writeLegacyDatastore) opens,
+// reads the flag as false with its commit metadata intact, and can then be
+// marked truncated by a rescan.
+func TestSQLite_LegacyDatastoreLocationsTruncated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	blob := types.ComputeBlobID([]byte("secret"))
+	writeLegacyDatastore(t, path, blob)
+
+	s, err := NewSQLite(path)
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	provs, err := s.GetAllProvenance(blob)
+	require.NoError(t, err)
+	require.Len(t, provs, 1)
+	g := provs[0].(types.GitProvenance)
+	assert.False(t, g.LocationsTruncated)
+	require.NotNil(t, g.Commit)
+	assert.Equal(t, commitA.CommitterTimestamp, g.Commit.CommitterTimestamp, "full query, not the legacy fallback")
+
+	g.LocationsTruncated = true
+	require.NoError(t, s.AddProvenance(blob, g))
+	assert.Equal(t, map[string]bool{"config.yml": true}, truncByPath(t, s, blob))
+}
+
 // locationsTruncatedColumn reads the declared NOT NULL flag and default of
 // provenance.locations_truncated.
 func locationsTruncatedColumn(t *testing.T, s *SQLiteStore) (notNull bool, dflt sql.NullString) {
@@ -652,4 +720,15 @@ func TestSQLite_LegacyDatastoreLocationsTruncatedColumn(t *testing.T) {
 
 		require.NoError(t, s.Close())
 	}
+}
+
+// SEC-16: a fresh datastore declares the same NOT NULL DEFAULT 0 column.
+func TestSQLite_FreshDatastoreLocationsTruncatedColumn(t *testing.T) {
+	s, err := NewSQLite(filepath.Join(t.TempDir(), "ds.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	notNull, dflt := locationsTruncatedColumn(t, s)
+	assert.True(t, notNull)
+	assert.Equal(t, sql.NullString{String: "0", Valid: true}, dflt)
 }

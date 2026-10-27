@@ -2,6 +2,7 @@ package enum
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,6 +16,44 @@ import (
 
 // crlf turns every LF in s into CRLF, as git's eol=crlf checkout does.
 func crlf(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
+
+// ENG-9178: headHolds must accept a working-tree file that git converted at
+// checkout from HEAD's blob: CRLF line endings (eol=crlf, core.autocrlf) and
+// UTF-16 text (working-tree-encoding), alone or together, in SHA-1 and
+// SHA-256 repositories. A file whose text really differs is still not held.
+func TestHeadHolds_CheckoutConversions(t *testing.T) {
+	blob := fakeTokenLine('c') + "PASSWORD=hunter2\n"
+
+	for _, hexLen := range []int{40, 64} {
+		oid := gitObjectID([]byte(blob), hexLen)
+		for _, tc := range []struct {
+			name    string
+			content []byte
+			want    bool
+		}{
+			{"raw blob bytes", []byte(blob), true},
+			{"CRLF line endings", []byte(crlf(blob)), true},
+			{"UTF-16LE with BOM", encodeUTF16(t, blob, false, true), true},
+			{"UTF-16BE with BOM", encodeUTF16(t, blob, true, true), true},
+			{"UTF-16LE with BOM and CRLF", encodeUTF16(t, crlf(blob), false, true), true},
+			{"CRLF with an extra line", []byte(crlf(blob + "EXTRA=1\n")), false},
+			{"UTF-16LE with an extra line", encodeUTF16(t, blob+"EXTRA=1\n", false, true), false},
+			{"lone CR line endings", []byte(strings.ReplaceAll(blob, "\n", "\r")), false},
+		} {
+			t.Run(fmt.Sprintf("%s/hex%d", tc.name, hexLen), func(t *testing.T) {
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "c.yml"), tc.content, 0o644))
+				m := &worktreeMerge{
+					fs:   NewFilesystemEnumerator(Config{Root: dir}),
+					root: dir,
+					head: map[string]string{"c.yml": oid},
+				}
+				// A zero BlobID never equals the object id, so the content is read.
+				assert.Equal(t, tc.want, m.headHolds(types.BlobID{}, "c.yml"))
+			})
+		}
+	}
+}
 
 // checkoutConversionCase is one repository whose file.path git rewrote at
 // checkout, and whether the working-tree copy really differs from HEAD.
