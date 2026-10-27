@@ -1,7 +1,10 @@
 package explore
 
 import (
+	"errors"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -482,4 +485,139 @@ func occurrenceFixture(t *testing.T) (*store.MemoryStore, *types.Match) {
 	}
 	m := &types.Match{StructuralID: "m1", BlobID: blobID, RuleID: "np.aws.1", RuleName: "AWS API Key"}
 	return s, m
+}
+
+func TestBuildMatchRow_OccurrencesFromStore(t *testing.T) {
+	s, m := occurrenceFixture(t)
+
+	mr := buildMatchRow(m, s)
+
+	want, err := s.GetOccurrences(m.BlobID)
+	if err != nil {
+		t.Fatalf("GetOccurrences: %v", err)
+	}
+	if len(want) != 3 {
+		t.Fatalf("fixture: expected 3 occurrences, got %d", len(want))
+	}
+	if !reflect.DeepEqual(mr.Occurrences, want) {
+		t.Errorf("matchRow.Occurrences = %+v, want %+v", mr.Occurrences, want)
+	}
+}
+
+// failingOccurrenceStore fails GetOccurrences and delegates everything else.
+type failingOccurrenceStore struct{ *store.MemoryStore }
+
+func (failingOccurrenceStore) GetOccurrences(types.BlobID) ([]types.Occurrence, error) {
+	return nil, errors.New("occurrences unavailable")
+}
+
+func TestBuildMatchRow_OccurrencesErrorLeavesRowUsable(t *testing.T) {
+	blobID := types.ComputeBlobID([]byte("x"))
+	s := failingOccurrenceStore{storeWithOneLocation(t, blobID)}
+
+	mr := buildMatchRow(&types.Match{StructuralID: "m1", BlobID: blobID}, s)
+	if mr.LocationsErr == nil {
+		t.Errorf("LocationsErr = nil, want the GetOccurrences error")
+	}
+
+	if mr.Occurrences != nil {
+		t.Errorf("expected no occurrences on error, got %+v", mr.Occurrences)
+	}
+	if len(mr.Provenance) != 1 {
+		t.Errorf("expected provenance to load despite the occurrence error, got %d rows", len(mr.Provenance))
+	}
+}
+
+func TestBuildFindingRow_RepositoriesAndLocationCount(t *testing.T) {
+	s, m := occurrenceFixture(t)
+	finding := &types.Finding{ID: "f1", RuleID: m.RuleID}
+
+	row := buildFindingRow(finding, []*types.Match{m}, map[string]*types.Rule{}, s)
+
+	wantRepos := []string{"github.com/acme/api", "github.com/acme/web"}
+	if !slices.Equal(row.Repositories, wantRepos) {
+		t.Errorf("Repositories = %q, want %q", row.Repositories, wantRepos)
+	}
+	if got := (findingsPane{}).locationCount(row); got != 3 {
+		t.Errorf("location count = %d, want 3", got)
+	}
+}
+
+func TestBuildFindingRow_LocationCountSumsAcrossMatches(t *testing.T) {
+	s, m := occurrenceFixture(t)
+	other := types.ComputeBlobID([]byte("other"))
+	if err := s.AddProvenance(other, types.FileProvenance{FilePath: "notes.txt"}); err != nil {
+		t.Fatalf("AddProvenance: %v", err)
+	}
+	m2 := &types.Match{StructuralID: "m2", BlobID: other, RuleID: m.RuleID}
+
+	row := buildFindingRow(&types.Finding{ID: "f1", RuleID: m.RuleID}, []*types.Match{m, m2}, map[string]*types.Rule{}, s)
+
+	if got := (findingsPane{}).locationCount(row); got != 4 {
+		t.Errorf("location count = %d, want 4 (3 + 1 locations)", got)
+	}
+	if len(row.Matches) != 2 {
+		t.Errorf("expected 2 match rows, got %d", len(row.Matches))
+	}
+}
+
+// TestBuildFindingRow_FileAddsNoFacetValue_ExtendedSourceDoes verifies that a
+// plain file contributes a location but no facet value, while an extended
+// location contributes its source ("s3://bucket") as a facet value.
+func TestBuildFindingRow_FileAddsNoFacetValue_ExtendedSourceDoes(t *testing.T) {
+	s, m := occurrenceFixture(t)
+	if err := s.AddProvenance(m.BlobID, types.FileProvenance{FilePath: "dump/creds.txt"}); err != nil {
+		t.Fatalf("AddProvenance file: %v", err)
+	}
+	ext := types.ExtendedProvenance{Payload: map[string]interface{}{"source": "s3://bucket", "path": "k/creds"}}
+	if err := s.AddProvenance(m.BlobID, ext); err != nil {
+		t.Fatalf("AddProvenance extended: %v", err)
+	}
+
+	row := buildFindingRow(&types.Finding{ID: "f1", RuleID: m.RuleID}, []*types.Match{m}, map[string]*types.Rule{}, s)
+
+	wantRepos := []string{"github.com/acme/api", "github.com/acme/web", "s3://bucket"}
+	if !slices.Equal(row.Repositories, wantRepos) {
+		t.Errorf("Repositories = %q, want %q", row.Repositories, wantRepos)
+	}
+	if got := (findingsPane{}).locationCount(row); got != 5 {
+		t.Errorf("location count = %d, want 5", got)
+	}
+}
+
+// TestBuildFindingRow_LegacyRowIsOwnFacetValue verifies spec R5: a legacy git
+// row (HostRecorded=false) keeps its stored repository string, so it is a
+// facet value of its own beside the host-qualified form.
+func TestBuildFindingRow_LegacyRowIsOwnFacetValue(t *testing.T) {
+	s := store.NewMemory()
+	blobID := types.ComputeBlobID([]byte("legacy"))
+	if err := s.AddOccurrences(blobID, []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "a.env", Commit: "1111111aaaaaaaa"},
+	}); err != nil {
+		t.Fatalf("AddOccurrences: %v", err)
+	}
+	if err := s.AddProvenance(blobID, types.GitProvenance{RepoPath: "acme/api", BlobPath: "old.env"}); err != nil {
+		t.Fatalf("AddProvenance: %v", err)
+	}
+	m := &types.Match{StructuralID: "m1", BlobID: blobID, RuleID: "r"}
+
+	row := buildFindingRow(&types.Finding{ID: "f1", RuleID: "r"}, []*types.Match{m}, map[string]*types.Rule{}, s)
+
+	legacy := slices.IndexFunc(row.Matches[0].Occurrences, func(o types.Occurrence) bool { return !o.HostRecorded })
+	if legacy < 0 || row.Matches[0].Occurrences[legacy].Repository != "acme/api" {
+		t.Fatalf("fixture: expected a legacy occurrence for acme/api, got %+v", row.Matches[0].Occurrences)
+	}
+	wantRepos := []string{"acme/api", "github.com/acme/api"}
+	if !slices.Equal(row.Repositories, wantRepos) {
+		t.Errorf("Repositories = %q, want %q", row.Repositories, wantRepos)
+	}
+
+	fs := buildFacets([]*findingRow{row})
+	var values []string
+	for _, v := range fs.Values[facetRepository] {
+		values = append(values, v.Value)
+	}
+	if !slices.Equal(values, wantRepos) {
+		t.Errorf("repository facet values = %q, want %q", values, wantRepos)
+	}
 }

@@ -39,3 +39,18 @@ func TestResolve_AutoNoRemoteIsPrivate(t *testing.T) {
 	t.Setenv("GIT_DIR", filepath.Join(decoy, ".git"))
 	assert.Equal(t, Private, Resolve("auto", dir, ""))
 }
+
+// A directory that is not a git repository is Private.
+func TestResolve_AutoNotARepoIsPrivate(t *testing.T) {
+	requireGit(t)
+	assert.Equal(t, Private, Resolve("auto", t.TempDir(), ""))
+}
+
+// An origin on a host with no platform API is Private.
+func TestResolve_AutoUnknownHostIsPrivate(t *testing.T) {
+	requireGit(t)
+	dir := t.TempDir()
+	gitRun(t, "init", "-q", dir)
+	gitRun(t, "-C", dir, "remote", "add", "origin", "https://git.example.invalid/acme/app.git")
+	assert.Equal(t, Private, Resolve("auto", dir, ""))
+}

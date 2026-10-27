@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -29,13 +30,6 @@ func newTestModel(rows []*findingRow) Model {
 		m.details.setFinding(f)
 	}
 	return m
-}
-
-// contentLines renders every line of the pane before scrolling and clipping.
-// Only tests read it: they inspect content that View would scroll out of
-// sight.
-func (dp detailsPane) contentLines() []string {
-	return slices.Concat(dp.content()...)
 }
 
 func selectFacetValue(t *testing.T, m *Model, id facetID, value string) {
@@ -133,5 +127,215 @@ func TestModel_CExplore1_RepositoryFacetNarrowsLocations(t *testing.T) {
 	}
 	if got := countCell(t, m.findings, target.RuleName); got != 3 {
 		t.Errorf("after clear: row_count = %d, want 3", got)
+	}
+}
+
+// splitFinding has an api-only first match and a web-only second match, so
+// under the github.com/acme/web facet only the second match is navigable.
+func splitFinding() (*findingRow, *matchRow, *matchRow) {
+	apiMatch := &matchRow{StructuralID: "m-api", Occurrences: []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/api", Path: "a.env"},
+	}}
+	apiMatch.Snippet.Matching = []byte("api-secret")
+	webMatch := &matchRow{StructuralID: "m-web", Occurrences: []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/web", Path: "w.env"},
+	}}
+	webMatch.Snippet.Matching = []byte("web-secret")
+	f := &findingRow{
+		FindingID:    "f1",
+		RuleName:     "Split",
+		Repositories: []string{"github.com/acme/api", "github.com/acme/web"},
+		Matches:      []*matchRow{apiMatch, webMatch},
+	}
+	return f, apiMatch, webMatch
+}
+
+func TestModel_CopySecretUsesVisibleSelectedMatch(t *testing.T) {
+	f, _, _ := splitFinding()
+	m := newTestModel([]*findingRow{f})
+	selectFacetValue(t, &m, facetRepository, "github.com/acme/web")
+	m.applyFilters()
+	m.focus = paneDetails
+
+	m.copySecretToClipboard()
+
+	if m.pendingClipboard != "web-secret" {
+		t.Errorf("copied %q, want the visible match's secret %q", m.pendingClipboard, "web-secret")
+	}
+}
+
+func TestModel_MoveNextStaysWithinVisibleMatches(t *testing.T) {
+	f, apiMatch, webMatch := splitFinding()
+	// Web first: the only visible match is also the last navigable one, so a
+	// step bounded by len(Matches) would move past it.
+	f.Matches = []*matchRow{webMatch, apiMatch}
+	m := newTestModel([]*findingRow{f})
+	selectFacetValue(t, &m, facetRepository, "github.com/acme/web")
+	m.applyFilters()
+	m.focus = paneDetails
+
+	m.moveNext()
+
+	if got := m.details.selectedMatch(); got != webMatch {
+		gotID := "<nil>"
+		if got != nil {
+			gotID = got.StructuralID
+		}
+		t.Errorf("after moveNext selected match = %q, want the only visible match %q", gotID, webMatch.StructuralID)
+	}
+}
+
+func TestModel_MouseScrollDetailsOffsetClamped(t *testing.T) {
+	f, _, _ := splitFinding()
+	m := newTestModel([]*findingRow{f})
+	m.width, m.height = 200, 50
+	m.details.setSize(120, 8)
+	maxOff := m.details.maxOffset()
+	if maxOff < 4 {
+		t.Fatalf("fixture: details content must overflow the pane, maxOffset = %d", maxOff)
+	}
+
+	// (150, 40) is inside the details pane: right of the filters, below the findings.
+	for range 100 {
+		m.handleMouseScroll(150, 40, false)
+	}
+	if m.details.offset != maxOff {
+		t.Fatalf("offset after scrolling past the end = %d, want %d", m.details.offset, maxOff)
+	}
+	m.handleMouseScroll(150, 40, true)
+	if m.details.offset != maxOff-3 {
+		t.Errorf("one scroll up moved offset to %d, want %d", m.details.offset, maxOff-3)
+	}
+}
+
+func runeKey(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+
+func ruleNameOf(f *findingRow) string {
+	if f == nil {
+		return "<nil>"
+	}
+	return f.RuleName
+}
+
+// Item 2: the facet change re-sorts the rows; the highlighted finding and the
+// details pane must stay on a, not jump to whatever lands on the old index.
+func TestModel_FacetChangeKeepsSelectedFinding(t *testing.T) {
+	a, b := selectionFixture()
+	m := newTestModel([]*findingRow{a, b})
+	m.findings.sortBy = sortByMatches
+	m.findings.sort()
+	m.findings.cursor = slices.Index(m.findings.rows, a)
+	m.details.setFinding(a)
+	if m.findings.cursor != 1 {
+		t.Fatalf("fixture: want a at index 1 (b=2 before a=4), got %d", m.findings.cursor)
+	}
+
+	selectFacetValue(t, &m, facetRepository, "github.com/acme/web")
+	m.applyFilters()
+
+	if got := m.findings.selectedFinding(); got != a {
+		t.Errorf("selected finding = %q, want a", ruleNameOf(got))
+	}
+	if m.details.finding != a {
+		t.Errorf("details finding = %q, want a", ruleNameOf(m.details.finding))
+	}
+}
+
+// Item 3: s re-sorts; the highlighted row and the details pane must agree,
+// and both stay on the finding selected before the sort.
+func TestModel_SortKeyKeepsDetailsOnHighlightedRow(t *testing.T) {
+	a, b := selectionFixture()
+	m := newTestModel([]*findingRow{a, b}) // rule name asc: a, b; a selected
+	if m.findings.selectedFinding() != a || m.details.finding != a {
+		t.Fatalf("fixture: want a selected and shown first")
+	}
+
+	next, _ := m.Update(runeKey('s'))
+	m = next.(Model)
+
+	if m.findings.rows[0] != b {
+		t.Fatalf("fixture: Locations sort should put b first, got %q", m.findings.rows[0].RuleName)
+	}
+	if got := m.findings.selectedFinding(); got != a {
+		t.Errorf("highlighted after s = %q, want a", ruleNameOf(got))
+	}
+	if m.details.finding != m.findings.selectedFinding() {
+		t.Errorf("details shows %q but row %q is highlighted", ruleNameOf(m.details.finding), ruleNameOf(m.findings.selectedFinding()))
+	}
+}
+
+// Item 4: a stale offset past maxOffset (content shrank) must be clamped on
+// wheel-up, matching the keyboard Up path.
+func TestModel_MouseScrollUpClampsStaleOffset(t *testing.T) {
+	f, _, _ := splitFinding()
+	m := newTestModel([]*findingRow{f})
+	m.width, m.height = 200, 50
+	m.details.setSize(120, 8)
+	maxOff := m.details.maxOffset()
+	if maxOff < 4 {
+		t.Fatalf("fixture: details content must overflow the pane, maxOffset = %d", maxOff)
+	}
+	m.details.offset = maxOff + 10
+
+	m.handleMouseScroll(150, 40, true)
+
+	if m.details.offset != maxOff-3 {
+		t.Errorf("wheel up from stale offset = %d, want %d", m.details.offset, maxOff-3)
+	}
+}
+
+// Item 4: A/R (moveNext) in the details pane moves to the next match and,
+// like l, starts it scrolled to the top.
+func TestModel_MoveNextInDetailsResetsOffset(t *testing.T) {
+	f, apiMatch, webMatch := splitFinding()
+	m := newTestModel([]*findingRow{f})
+	m.focus = paneDetails
+	m.details.offset = 2
+
+	m.moveNext()
+
+	if got := m.details.selectedMatch(); got != webMatch {
+		t.Fatalf("fixture: moveNext should go from %q to %q", apiMatch.StructuralID, webMatch.StructuralID)
+	}
+	if m.details.offset != 0 {
+		t.Errorf("offset after moveNext = %d, want 0", m.details.offset)
+	}
+}
+
+// Item 5: the facet change driven by keys through Model.Update, with the
+// filters pane focused, reaches the findings and details panes.
+func TestModel_FiltersPaneKeysNarrowAndClearLocations(t *testing.T) {
+	s, match := occurrenceFixture(t)
+	target := buildFindingRow(&types.Finding{ID: "f1", RuleID: match.RuleID}, []*types.Match{match}, map[string]*types.Rule{}, s)
+	m := newTestModel([]*findingRow{target})
+	m.setFocus(paneFilters)
+	m.filters.cursor = slices.IndexFunc(m.filters.items, func(it filterItem) bool {
+		return it.Kind == filterItemValue && it.FacetID == facetRepository && it.Label == "github.com/acme/web"
+	})
+	if m.filters.cursor < 0 {
+		t.Fatalf("fixture: no github.com/acme/web item in the filters pane")
+	}
+
+	next, _ := m.Update(runeKey('x'))
+	m = next.(Model)
+
+	if got := detailsLocations(t, m); got != 1 {
+		t.Errorf("after toggle: details_locations = %d, want 1", got)
+	}
+	if got := countCell(t, m.findings, target.RuleName); got != 1 {
+		t.Errorf("after toggle: row_count = %d, want 1", got)
+	}
+	if got := navDenominator(t, m); got != 1 {
+		t.Errorf("after toggle: nm_denominator = %d, want 1", got)
+	}
+
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = next.(Model)
+
+	if got := detailsLocations(t, m); got != 3 {
+		t.Errorf("after reset: details_locations = %d, want 3", got)
+	}
+	if got := countCell(t, m.findings, target.RuleName); got != 3 {
+		t.Errorf("after reset: row_count = %d, want 3", got)
 	}
 }

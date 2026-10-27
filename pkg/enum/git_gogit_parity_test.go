@@ -29,6 +29,22 @@ func runGoGit(t *testing.T, e *GitEnumerator) nativeRun {
 	return r
 }
 
+// runSingleCommit collects every callback of the default (single-commit)
+// Enumerate path, keyed by blob.
+func runSingleCommit(t *testing.T, dir string) nativeRun {
+	t.Helper()
+	r := nativeRun{calls: map[types.BlobID]int{}, provs: map[types.BlobID]types.GitProvenance{}}
+	err := NewGitEnumerator(Config{Root: dir}).Enumerate(context.Background(), func(_ []byte, id types.BlobID, prov types.Provenance) error {
+		r.calls[id]++
+		r.provs[id] = prov.(types.GitProvenance)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Enumerate: %v", err)
+	}
+	return r
+}
+
 // describeCommit renders every CommitMetadata field, with timestamps as
 // instant plus zone offset so that two equal times in different Location
 // values still compare equal.
@@ -154,6 +170,151 @@ func TestGoGitHistory_ParityWithNative(t *testing.T) {
 		id := ids[h]
 		if native[id] != gogit[id] {
 			t.Errorf("blob %s differs\nnative: %s\ngo-git: %s", id.Hex(), native[id], gogit[id])
+		}
+	}
+}
+
+// C-ONECALLBACK-1 + C-HISTPATHS-1 + C-NOREMOTE-1 on the go-git path alone.
+func TestGoGitHistory_OneCallbackEveryLocation(t *testing.T) {
+	skipIfNoGit(t)
+	dir, secret, a, b := parityFixture(t)
+
+	r := runGoGit(t, nativeEnum(dir))
+	if len(r.calls) == 0 {
+		t.Fatal("go-git enumerated no blobs")
+	}
+	for id, n := range r.calls {
+		if n != 1 {
+			t.Errorf("blob %s got %d callbacks, want 1", id.Hex(), n)
+		}
+	}
+	p := r.provs[types.ComputeBlobID([]byte(secret))]
+	feature := gitOutput(t, dir, "rev-parse", "feature")
+	want := []locWant{{"config.yml", a}, {"copy-of-secret.env", feature}, {"deploy/config.yml", b}}
+	if got := locsOf(p.Locations); !slices.Equal(got, want) {
+		t.Fatalf("locations = %v, want %v", got, want)
+	}
+	if p.BlobPath != "config.yml" || p.Commit == nil || p.Commit.CommitID != a {
+		t.Errorf("primary = (%q, %v), want (config.yml, %s)", p.BlobPath, p.Commit, a)
+	}
+	wantRoot, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.RepoPath != dir || p.RemoteIdentity || p.RepoRoot != wantRoot {
+		t.Errorf("identity = (%q, %v, %q), want (%q, false, %q)", p.RepoPath, p.RemoteIdentity, p.RepoRoot, dir, wantRoot)
+	}
+
+	// A rename keeps both paths, each with the commit that introduced it.
+	renamed := r.provs[types.ComputeBlobID([]byte(fixtureRenamedBody))]
+	if got, want := locsOf(renamed.Locations), []locWant{{"new.txt", b}, {"old.txt", a}}; !slices.Equal(got, want) {
+		t.Errorf("renamed locations = %v, want %v", got, want)
+	}
+	// A delete and re-add of the same content at the same path stays one
+	// location, attributed to the earliest commit.
+	readded := r.provs[types.ComputeBlobID([]byte(fixtureReadded))]
+	if got, want := locsOf(readded.Locations), []locWant{{"gone.yml", a}}; !slices.Equal(got, want) {
+		t.Errorf("re-added locations = %v, want %v", got, want)
+	}
+	// A ref that is never merged is still walked.
+	unmerged := gitOutput(t, dir, "rev-parse", "unmerged")
+	side := r.provs[types.ComputeBlobID([]byte(fixtureUnmergedOnly))]
+	if got, want := locsOf(side.Locations), []locWant{{"unmerged.txt", unmerged}}; !slices.Equal(got, want) {
+		t.Errorf("unmerged locations = %v, want %v", got, want)
+	}
+}
+
+// C-MODCOMMIT-1 on the go-git path: a modify commit owns the content it adds.
+func TestGoGitHistory_ModifyCommitAttribution(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "config.yml"), "name: app\n")
+	commitAt(t, dir, "create", "2026-01-15T00:00:00Z")
+	withToken := "name: app\n" + fakeTokenLine('b')
+	writeFile(t, filepath.Join(dir, "config.yml"), withToken)
+	mod := commitAt(t, dir, "modify", "2026-06-15T00:00:00Z")
+
+	r := runGoGit(t, nativeEnum(dir))
+	id := types.ComputeBlobID([]byte(withToken))
+	if r.calls[id] != 1 {
+		t.Fatalf("callbacks = %d, want 1", r.calls[id])
+	}
+	p := r.provs[id]
+	if p.BlobPath != "config.yml" || p.Commit == nil || p.Commit.CommitID != mod {
+		t.Fatalf("primary = (%q, %v), want (config.yml, %s)", p.BlobPath, p.Commit, mod)
+	}
+	if got, want := locsOf(p.Locations), []locWant{{"config.yml", mod}}; !slices.Equal(got, want) {
+		t.Errorf("locations = %v, want %v", got, want)
+	}
+}
+
+// enumerateSingleCommit lists every path of a blob in the scanned tree, with
+// the scanned commit on each.
+func TestGitSingleCommit_EveryPathInTree(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	secret := fakeTokenLine('c')
+	if err := os.MkdirAll(filepath.Join(dir, "deploy"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "z.yml"), secret)
+	writeFile(t, filepath.Join(dir, "deploy", "config.yml"), secret)
+	writeFile(t, filepath.Join(dir, "other.txt"), "other\n")
+	head := commitAt(t, dir, "A", "2026-01-01T00:00:00Z")
+
+	r := runSingleCommit(t, dir)
+	for id, n := range r.calls {
+		if n != 1 {
+			t.Errorf("blob %s got %d callbacks, want 1", id.Hex(), n)
+		}
+	}
+	if len(r.calls) != 2 {
+		t.Errorf("enumerated %d blobs, want 2 (secret, other.txt)", len(r.calls))
+	}
+	x := types.ComputeBlobID([]byte(secret))
+	if r.calls[x] != 1 {
+		t.Fatalf("callbacks = %d, want 1", r.calls[x])
+	}
+	p := r.provs[x]
+	want := []locWant{{"deploy/config.yml", head}, {"z.yml", head}}
+	if got := locsOf(p.Locations); !slices.Equal(got, want) {
+		t.Fatalf("locations = %v, want %v", got, want)
+	}
+	if p.BlobPath != "deploy/config.yml" || p.Commit == nil || p.Commit.CommitID != head {
+		t.Errorf("primary = (%q, %v), want (deploy/config.yml, %s)", p.BlobPath, p.Commit, head)
+	}
+	wantRoot, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.RepoPath != dir || p.RepoRoot != wantRoot || p.RemoteIdentity {
+		t.Errorf("identity = (%q, %q, %v), want (%q, %q, false)", p.RepoPath, p.RepoRoot, p.RemoteIdentity, dir, wantRoot)
+	}
+}
+
+// SEC-3 on the go-git paths: origin is normalized without credentials.
+func TestGoGit_RemoteIdentity(t *testing.T) {
+	skipIfNoGit(t)
+	dir := setupTestGitRepo(t)
+	runGit(t, dir, "remote", "add", "origin", fakeCredURL("https", "github.com/acme/api.git"))
+
+	for name, run := range map[string]func() nativeRun{
+		"history": func() nativeRun { return runGoGit(t, nativeEnum(dir)) },
+		"single":  func() nativeRun { return runSingleCommit(t, dir) },
+	} {
+		r := run()
+		if len(r.provs) == 0 {
+			t.Fatalf("%s: no blobs", name)
+		}
+		for _, p := range r.provs {
+			if p.RepoPath != "github.com/acme/api" || !p.RemoteIdentity {
+				t.Errorf("%s: identity = (%q, %v), want (github.com/acme/api, true)", name, p.RepoPath, p.RemoteIdentity)
+			}
+			if strings.Contains(describeProv(p), "u:secret") {
+				t.Errorf("%s: provenance leaks the remote credential:\n%s", name, describeProv(p))
+			}
 		}
 	}
 }

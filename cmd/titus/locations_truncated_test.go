@@ -68,6 +68,18 @@ func TestReportHuman_LocationsTruncatedMarkerFollowsList(t *testing.T) {
 	assert.Equal(t, 2, strings.Count(out, types.LocationsTruncatedNotice))
 }
 
+// The report JSON carries "locations_truncated": true only on the truncated
+// matches; on the others the key is absent.
+func TestReportJSON_LocationsTruncatedOnlyOnTruncatedMatches(t *testing.T) {
+	var out []struct {
+		Matches []map[string]json.RawMessage `json:"Matches"`
+	}
+	s, findings, matches, ruleMap := truncFixture(t, truncatedAt)
+	require.NoError(t, json.Unmarshal(renderJSON(t, s, findings, matches, ruleMap), &out))
+	require.Len(t, out, 1)
+	assertTruncatedKey(t, out[0].Matches)
+}
+
 // The scan JSON (outputMatches) follows the same rule.
 func TestScanJSON_LocationsTruncatedOnlyOnTruncatedMatches(t *testing.T) {
 	s, _, matches, _ := truncFixture(t, truncatedAt)

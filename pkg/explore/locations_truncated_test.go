@@ -31,3 +31,31 @@ func TestRenderLocations_TruncatedNoticeAfterList(t *testing.T) {
 		}
 	}
 }
+
+// A narrow pane wraps the notice like a location line: first line indented
+// four spaces, continuations six, text intact.
+func TestRenderLocations_TruncatedNoticeWraps(t *testing.T) {
+	m := matchWith(12, occAPI1)
+	m.Provenance = []types.Provenance{types.GitProvenance{LocationsTruncated: true}}
+	_, body := locationBlock(t, plainLines(m, nil, 40))
+	i := slices.IndexFunc(body, func(l string) bool { return strings.HasPrefix(l, "    locations truncated") })
+	if i < 0 {
+		t.Fatalf("no notice in %q", body)
+	}
+	notice := body[i:]
+	if len(notice) < 2 {
+		t.Fatalf("notice did not wrap at width 40: %q", notice)
+	}
+	parts := []string{strings.TrimPrefix(notice[0], "    ")}
+	for _, l := range notice[1:] {
+		rest, ok := strings.CutPrefix(l, "      ")
+		if !ok {
+			t.Fatalf("continuation %q not indented six spaces", l)
+		}
+		parts = append(parts, rest)
+	}
+	// Word wrapping drops the spaces it breaks at, so compare the words.
+	if got, want := strings.Fields(strings.Join(parts, " ")), strings.Fields(types.LocationsTruncatedNotice); !slices.Equal(got, want) {
+		t.Errorf("wrapped notice words = %q, want %q", got, want)
+	}
+}
