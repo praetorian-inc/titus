@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // SchemaVersion is the current database schema version (compatible with NoseyParker v70).
@@ -35,6 +36,10 @@ func CreateSchema(db *sql.DB) error {
 
 	if err := createProvenanceTable(db); err != nil {
 		return fmt.Errorf("creating provenance table: %w", err)
+	}
+
+	if err := createBlobLocationsTable(db); err != nil {
+		return fmt.Errorf("creating blob_locations table: %w", err)
 	}
 
 	if err := createAnnotationsTable(db); err != nil {
@@ -115,6 +120,12 @@ func createMatchesTable(db *sql.DB) error {
 			end_column INTEGER
 		)
 	`)
+	if err != nil {
+		return err
+	}
+	// GetMatches looks matches up by blob_id once per already-stored blob
+	// on an --incremental rescan, so it must not scan the whole table.
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_matches_blob_id ON matches(blob_id)`)
 	return err
 }
 
@@ -168,6 +179,7 @@ func createProvenanceTable(db *sql.DB) error {
 			committer_email TEXT,
 			committer_timestamp TEXT,
 			commit_message TEXT,
+			locations_truncated INTEGER NOT NULL DEFAULT 0,
 			UNIQUE(blob_id, type, path, repo_path, commit_hash)
 		)
 	`)
@@ -189,11 +201,53 @@ func createProvenanceTable(db *sql.DB) error {
 	} {
 		_, _ = db.Exec("ALTER TABLE provenance ADD COLUMN " + col)
 	}
+	if err := addLocationsTruncatedColumn(db); err != nil {
+		return err
+	}
 
 	// Create index for efficient provenance lookup by blob_id
 	_, err = db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_provenance_blob_id ON provenance(blob_id)
 	`)
+	return err
+}
+
+// addLocationsTruncatedColumn adds provenance.locations_truncated to a
+// datastore created before the column existed. Existing rows read 0 (false).
+// Only SQLite's "duplicate column name" error, which means the column is
+// already there, is ignored; any other error fails the schema setup.
+func addLocationsTruncatedColumn(db *sql.DB) error {
+	const alter = "ALTER TABLE provenance ADD COLUMN locations_truncated INTEGER NOT NULL DEFAULT 0"
+	_, err := db.Exec(alter)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		return fmt.Errorf("adding provenance.locations_truncated: %w", err)
+	}
+	return nil
+}
+
+// createBlobLocationsTable adds the table of every location of a matched
+// blob. It is additive and idempotent, so an older datastore gains it on its
+// next open and SchemaVersion is unchanged. Every UNIQUE column is NOT NULL
+// with an empty-string or 0 default, because SQLite treats NULLs as distinct and the key
+// must be total for INSERT OR IGNORE to deduplicate.
+func createBlobLocationsTable(db *sql.DB) error {
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS blob_locations (
+			id            INTEGER PRIMARY KEY,
+			blob_id       TEXT    NOT NULL REFERENCES blobs(id),
+			kind          TEXT    NOT NULL,
+			repository    TEXT    NOT NULL DEFAULT '',
+			path          TEXT    NOT NULL,
+			absolute_path TEXT    NOT NULL DEFAULT '',
+			commit_hash   TEXT    NOT NULL DEFAULT '',
+			commit_ts     INTEGER NOT NULL DEFAULT 0,
+			working_tree  INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(blob_id, kind, repository, path, absolute_path, commit_hash, working_tree)
+		)
+	`); err != nil {
+		return err
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_blob_locations_blob_id ON blob_locations(blob_id)`)
 	return err
 }
 

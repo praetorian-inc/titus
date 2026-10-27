@@ -66,7 +66,8 @@ type VectorscanMatcher struct {
 	// scan completes.
 	retryMu      sync.Mutex
 	retryJobs    []retryJob
-	retryDropped int // count of jobs dropped due to queue cap
+	retryDropped int                       // count of jobs dropped due to queue cap
+	retryBlobs   map[types.BlobID]struct{} // blobs with a queued job; at most retryQueueCap entries
 
 	// blacklistMu protects blacklist, which tracks per-rule timeout counts.
 	blacklistMu sync.Mutex
@@ -991,10 +992,23 @@ func (m *VectorscanMatcher) enqueueOrBlacklist(j retryJob) {
 	m.retryMu.Lock()
 	if len(m.retryJobs) < retryQueueCap {
 		m.retryJobs = append(m.retryJobs, j)
+		if m.retryBlobs == nil {
+			m.retryBlobs = make(map[types.BlobID]struct{})
+		}
+		m.retryBlobs[j.blobID] = struct{}{}
 	} else {
 		m.retryDropped++
 	}
 	m.retryMu.Unlock()
+}
+
+// HasPendingRetry reports whether a retry job for blobID is queued for
+// DrainTimedOut.
+func (m *VectorscanMatcher) HasPendingRetry(blobID types.BlobID) bool {
+	m.retryMu.Lock()
+	defer m.retryMu.Unlock()
+	_, ok := m.retryBlobs[blobID]
+	return ok
 }
 
 // DrainTimedOut replays any (content, blobID, rule) triples that timed out during
@@ -1010,6 +1024,7 @@ func (m *VectorscanMatcher) DrainTimedOut() ([]*types.Match, error) {
 	m.retryMu.Lock()
 	jobs := m.retryJobs
 	m.retryJobs = nil
+	m.retryBlobs = nil
 	dropped := m.retryDropped
 	m.retryMu.Unlock()
 

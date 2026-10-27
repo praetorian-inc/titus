@@ -2,9 +2,13 @@ package enum
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
+	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestGitHubEnumerator_Construction tests that we can create a GitHub enumerator.
@@ -86,4 +90,22 @@ func TestGitHubEnumerator_RequiresTarget(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no owner/org/user specified, got nil")
 	}
+}
+
+func TestGitHubEnumerator_SameBlobTwoRepos(t *testing.T) {
+	var hits atomic.Int32
+	srv := newFakeGitHub(t, []fakeGHRepo{
+		{"acme", "api", map[string]string{"k.txt": "token-SHARED"}},
+		{"acme", "web", map[string]string{"conf/k.txt": "token-SHARED"}},
+	}, &hits)
+	e := githubEnumFor(t, srv, GitHubConfig{Org: "acme"})
+	s := store.NewMemory()
+	var ids []types.BlobID
+	require.NoError(t, e.Enumerate(context.Background(), func(_ []byte, id types.BlobID, p types.Provenance) error {
+		ids = append(ids, id)
+		return s.AddOccurrences(id, types.OccurrencesOf(p))
+	}))
+	require.Len(t, ids, 2)
+	require.Equal(t, ids[0], ids[1], "same content, same blob")
+	assert.Equal(t, []string{"github.com/acme/api k.txt", "github.com/acme/web conf/k.txt"}, occurrenceStrings(t, s, ids[0]))
 }

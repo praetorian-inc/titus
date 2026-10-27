@@ -2,7 +2,11 @@ package explore
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 func TestWrapLine(t *testing.T) {
@@ -81,5 +85,77 @@ func TestWrapLine(t *testing.T) {
 				t.Errorf("wrapLine(%q, %d) = %v, want %v", tt.input, tt.maxWidth, got, tt.want)
 			}
 		})
+	}
+}
+
+// --- Locations section (ENG-9178 T014) ---
+
+var (
+	occAPI1 = types.Occurrence{Kind: "git", Repository: "github.com/acme/api", Path: "config/a.yml",
+		Commit: "7d0e8151234567890", CommitDate: time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC), HostRecorded: true}
+	occAPI2 = types.Occurrence{Kind: "git", Repository: "github.com/acme/api", Path: "config/b.yml",
+		Commit: "abcdef0123456789", CommitDate: time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC), HostRecorded: true}
+	occWeb = types.Occurrence{Kind: "git", Repository: "github.com/acme/web", Path: "src/c.js",
+		Commit: "0011223344556677", CommitDate: time.Date(2026, 6, 17, 10, 0, 0, 0, time.UTC), HostRecorded: true}
+)
+
+func matchWith(line int, occs ...types.Occurrence) *matchRow {
+	m := &matchRow{Occurrences: occs}
+	m.Location.Source.Start.Line = line
+	return m
+}
+
+// plainLines renders a match and returns its ANSI-stripped lines.
+func plainLines(m *matchRow, sel map[string]bool, width int) []string {
+	raw := renderMatchDetails(m, sel, width)
+	out := make([]string, len(raw))
+	for i, l := range raw {
+		out[i] = stripAnsi(l)
+	}
+	return out
+}
+
+// locationBlock returns the Locations heading and the indented lines under it.
+func locationBlock(t *testing.T, lines []string) (string, []string) {
+	t.Helper()
+	for i, l := range lines {
+		if !strings.HasPrefix(l, "  Locations ") {
+			continue
+		}
+		var body []string
+		for _, b := range lines[i+1:] {
+			if !strings.HasPrefix(b, "    ") {
+				break
+			}
+			body = append(body, b)
+		}
+		return l, body
+	}
+	t.Fatalf("no Locations heading in %q", lines)
+	return "", nil
+}
+
+func expectedLines(occs []types.Occurrence, line int) []string {
+	disp := types.DisambiguateDisplay(occs)
+	out := make([]string, len(occs))
+	for i, o := range occs {
+		out[i] = "    " + types.SanitizeDisplay(types.FormatLine(o, line, disp[i]))
+	}
+	return out
+}
+
+// Design §7 test 1.
+func TestRenderLocations_OneLinePerLocationInStoreOrder(t *testing.T) {
+	m := matchWith(12, occAPI1, occAPI2, occWeb)
+	heading, body := locationBlock(t, plainLines(m, nil, 500))
+	if heading != "  Locations 3:" {
+		t.Errorf("heading = %q, want %q", heading, "  Locations 3:")
+	}
+	want := expectedLines(m.Occurrences, 12)
+	if !reflect.DeepEqual(body, want) {
+		t.Errorf("location lines =\n%q\nwant\n%q", body, want)
+	}
+	if want[0] != "    github.com/acme/api  config/a.yml:12  7d0e815  2026-06-15" {
+		t.Errorf("formatter text drifted: %q", want[0])
 	}
 }

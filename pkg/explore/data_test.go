@@ -3,6 +3,7 @@ package explore
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -49,13 +50,15 @@ func TestBuildFindingRow(t *testing.T) {
 		},
 	}
 
-	row := buildFindingRow(finding, matches, ruleMap, nil)
+	// Each match is on the zero blob, which has one location: the location count
+	// counts locations, so two matches give 2.
+	row := buildFindingRow(finding, matches, ruleMap, storeWithOneLocation(t, types.BlobID{}))
 
 	if row.RuleName != "AWS API Key" {
 		t.Errorf("expected rule name 'AWS API Key', got '%s'", row.RuleName)
 	}
-	if row.MatchCount != 2 {
-		t.Errorf("expected 2 matches, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 2 {
+		t.Errorf("location count = %d, want 2", got)
 	}
 	if row.ValidationStatus != "valid" {
 		t.Errorf("expected validation 'valid', got '%s'", row.ValidationStatus)
@@ -198,12 +201,12 @@ func TestGroupMatchesByFinding_CustomRule(t *testing.T) {
 
 	// Sanity: buildFindingRow surfaces the friendly name from m.RuleName
 	// when the rule is missing from ruleMap.
-	row := buildFindingRow(finding, paired, ruleMap, nil)
+	row := buildFindingRow(finding, paired, ruleMap, storeWithOneLocation(t, types.BlobID{}))
 	if row.RuleName != "PowerShell Hardcoded Credential" {
 		t.Errorf("expected RuleName fallback to match-record RuleName, got %q", row.RuleName)
 	}
-	if row.MatchCount != 2 {
-		t.Errorf("expected MatchCount=2, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 2 {
+		t.Errorf("expected location count 2, got %d", got)
 	}
 }
 
@@ -324,8 +327,8 @@ func TestBuildFindingRow_CustomRule_NoMatches(t *testing.T) {
 	if row.RuleName != "custom.nodata.1" {
 		t.Errorf("expected RuleName fallback to RuleID, got %q", row.RuleName)
 	}
-	if row.MatchCount != 0 {
-		t.Errorf("expected MatchCount 0, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 0 {
+		t.Errorf("expected location count 0, got %d", got)
 	}
 	if len(row.Matches) != 0 {
 		t.Errorf("expected 0 match rows, got %d", len(row.Matches))
@@ -351,14 +354,14 @@ func TestBuildFindingRow_CustomRule_EmptyMatchRuleName(t *testing.T) {
 	}
 	ruleMap := map[string]*types.Rule{}
 
-	row := buildFindingRow(finding, matches, ruleMap, nil)
+	row := buildFindingRow(finding, matches, ruleMap, storeWithOneLocation(t, types.BlobID{}))
 
 	// Rule name must never be empty — should fall back to RuleID at minimum
 	if row.RuleName == "" {
 		t.Error("RuleName should never be empty; expected fallback to RuleID")
 	}
-	if row.MatchCount != 1 {
-		t.Errorf("expected MatchCount 1, got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 1 {
+		t.Errorf("expected location count 1, got %d", got)
 	}
 }
 
@@ -405,6 +408,9 @@ func TestLoadData_CustomRuleFindingHasMatches(t *testing.T) {
 	if err := s.AddMatch(match); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
+	if err := s.AddProvenance(blobID, types.FileProvenance{FilePath: "config.env"}); err != nil {
+		t.Fatalf("AddProvenance: %v", err)
+	}
 
 	findingID := types.ComputeFindingID(customRule.StructuralID, groups)
 	finding := &types.Finding{
@@ -431,8 +437,8 @@ func TestLoadData_CustomRuleFindingHasMatches(t *testing.T) {
 	row := data.findings[0]
 
 	// The fix (PR #232): custom rule finding must have its match populated
-	if row.MatchCount != 1 {
-		t.Errorf("expected MatchCount 1 (regression: was 0 before fix), got %d", row.MatchCount)
+	if got := (findingsPane{}).locationCount(row); got != 1 {
+		t.Errorf("expected location count 1 (regression: was 0 before fix), got %d", got)
 	}
 	if len(row.Matches) != 1 {
 		t.Errorf("expected 1 match row, got %d", len(row.Matches))
@@ -444,4 +450,36 @@ func TestLoadData_CustomRuleFindingHasMatches(t *testing.T) {
 	if row.RuleID != "acme.api.1" {
 		t.Errorf("expected RuleID 'acme.api.1', got %q", row.RuleID)
 	}
+}
+
+// storeWithOneLocation returns a memory store in which blobID has exactly one
+// location, a plain file. Fixtures that count locations use it so that each
+// match on blobID contributes one location.
+func storeWithOneLocation(t *testing.T, blobID types.BlobID) *store.MemoryStore {
+	t.Helper()
+	s := store.NewMemory()
+	if err := s.AddProvenance(blobID, types.FileProvenance{FilePath: "config.env"}); err != nil {
+		t.Fatalf("AddProvenance: %v", err)
+	}
+	return s
+}
+
+// occurrenceFixture returns a memory store holding one blob with three
+// locations (github.com/acme/api twice, github.com/acme/web once), and a match
+// on that blob. It is the C-EXPLORE-1 input.
+func occurrenceFixture(t *testing.T) (*store.MemoryStore, *types.Match) {
+	t.Helper()
+	s := store.NewMemory()
+	blobID := types.ComputeBlobID([]byte("AKIAIOSFODNN7EXAMPLE"))
+	date := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	occs := []types.Occurrence{
+		{Kind: "git", Repository: "github.com/acme/web", Path: ".env", Commit: "3333333cccccccc", CommitDate: date},
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config/b.env", Commit: "2222222bbbbbbbb", CommitDate: date},
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config/a.env", Commit: "1111111aaaaaaaa", CommitDate: date},
+	}
+	if err := s.AddOccurrences(blobID, occs); err != nil {
+		t.Fatalf("AddOccurrences: %v", err)
+	}
+	m := &types.Match{StructuralID: "m1", BlobID: blobID, RuleID: "np.aws.1", RuleName: "AWS API Key"}
+	return s, m
 }

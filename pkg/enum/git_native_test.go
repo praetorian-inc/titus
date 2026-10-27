@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -139,10 +140,12 @@ func TestNativeGitEnumerator_Deduplication(t *testing.T) {
 	enumerator.WalkAll = true
 
 	var callCount int
-	blobIDs := make(map[types.BlobID]int)
+	var locations []string
 	err := enumerator.enumerateAllHistoryNative(context.Background(), func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 		callCount++
-		blobIDs[blobID]++
+		for _, l := range prov.(types.GitProvenance).Locations {
+			locations = append(locations, l.Path)
+		}
 		return nil
 	})
 
@@ -150,14 +153,12 @@ func TestNativeGitEnumerator_Deduplication(t *testing.T) {
 		t.Fatalf("enumerate failed: %v", err)
 	}
 
+	// One callback for the shared blob, carrying both of its paths.
 	if callCount != 1 {
 		t.Errorf("expected callback called 1 time (deduplication), got %d", callCount)
 	}
-
-	for id, count := range blobIDs {
-		if count > 1 {
-			t.Errorf("blob ID %s appeared %d times, expected 1", id.Hex(), count)
-		}
+	if want := []string{"file1.txt", "file2.txt"}; !slices.Equal(locations, want) {
+		t.Errorf("locations = %v, want %v", locations, want)
 	}
 }
 
@@ -470,4 +471,88 @@ func gitAddCommit(t *testing.T, dir, msg string) {
 	t.Helper()
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", msg)
+}
+
+// nativeRun collects every callback of a native history walk, keyed by blob.
+type nativeRun struct {
+	calls map[types.BlobID]int
+	provs map[types.BlobID]types.GitProvenance
+}
+
+func runNative(t *testing.T, e *GitEnumerator) nativeRun {
+	t.Helper()
+	r := nativeRun{calls: map[types.BlobID]int{}, provs: map[types.BlobID]types.GitProvenance{}}
+	err := e.enumerateAllHistoryNative(context.Background(), func(_ []byte, id types.BlobID, prov types.Provenance) error {
+		r.calls[id]++
+		r.provs[id] = prov.(types.GitProvenance)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("enumerateAllHistoryNative: %v", err)
+	}
+	return r
+}
+
+func nativeEnum(root string) *GitEnumerator {
+	e := NewGitEnumerator(Config{Root: root})
+	e.WalkAll = true
+	return e
+}
+
+// C-ONECALLBACK-1 + C-HISTPATHS-1: one blob at two paths gives exactly one
+// callback whose Locations hold both paths, each with its earliest commit.
+func TestNativeGitEnumerator_OneCallbackEveryLocation(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	secret := fakeTokenLine('a')
+	writeFile(t, filepath.Join(dir, "config.yml"), secret)
+	a := commitAt(t, dir, "A", "2026-01-01T00:00:00Z")
+	if err := os.MkdirAll(filepath.Join(dir, "deploy"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "deploy", "config.yml"), secret)
+	b := commitAt(t, dir, "B", "2026-02-01T00:00:00Z")
+	writeFile(t, filepath.Join(dir, "unrelated.txt"), "x\n")
+	commitAt(t, dir, "C", "2026-03-01T00:00:00Z")
+
+	r := runNative(t, nativeEnum(dir))
+	x := types.ComputeBlobID([]byte(secret))
+	if got := r.calls[x]; got != 1 {
+		t.Fatalf("callbacks_for_blob_X = %d, want 1", got)
+	}
+	p := r.provs[x]
+	want := []locWant{{"config.yml", a}, {"deploy/config.yml", b}}
+	if got := locsOf(p.Locations); !slices.Equal(got, want) {
+		t.Fatalf("provenance_paths = %v, want %v", got, want)
+	}
+	if p.BlobPath != "config.yml" || p.Commit == nil || p.Commit.CommitID != a {
+		t.Errorf("primary = (%q, %v), want (config.yml, %s)", p.BlobPath, p.Commit, a)
+	}
+	for id, n := range r.calls {
+		if n != 1 {
+			t.Errorf("blob %s got %d callbacks, want 1", id.Hex(), n)
+		}
+	}
+}
+
+// C-HISTPATHS-2: add, delete, re-add of the same path keeps the earliest commit.
+func TestNativeGitEnumerator_ReAddKeepsEarliest(t *testing.T) {
+	skipIfNoGit(t)
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	const body = "k: v\n"
+	writeFile(t, filepath.Join(dir, "a.yml"), body)
+	a := commitAt(t, dir, "A", "2026-01-01T00:00:00Z")
+	runGit(t, dir, "rm", "-q", "a.yml")
+	commitAt(t, dir, "B", "2026-02-01T00:00:00Z")
+	writeFile(t, filepath.Join(dir, "a.yml"), body)
+	commitAt(t, dir, "C", "2026-03-01T00:00:00Z")
+
+	r := runNative(t, nativeEnum(dir))
+	p := r.provs[types.ComputeBlobID([]byte(body))]
+	want := []locWant{{"a.yml", a}}
+	if got := locsOf(p.Locations); !slices.Equal(got, want) {
+		t.Fatalf("locations = %v, want %v", got, want)
+	}
 }

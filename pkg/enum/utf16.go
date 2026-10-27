@@ -5,6 +5,8 @@ import (
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 // utf16SniffLimit is how much of a file is examined when guessing an encoding
@@ -132,9 +134,27 @@ func sniffUTF16(content []byte) (bigEndian, ok bool) {
 // textContent transcodes UTF-16 content to UTF-8 and reports whether the result
 // should be scanned as text. Callers must use the returned slice.
 func textContent(content []byte) ([]byte, bool) {
+	text, isText, _ := decodeText(content)
+	return text, isText
+}
+
+// decodeText is textContent that also reports whether content was
+// transcoded, so text differs from the bytes it was given.
+func decodeText(content []byte) (text []byte, isText, transcoded bool) {
 	if decoded, isUTF16 := decodeUTF16(content); isUTF16 {
-		return decoded, true
+		return decoded, true, true
 	}
 
-	return content, !isBinary(content)
+	return content, !isBinary(content), false
+}
+
+// textBlobID is the BlobID of text, the result of decodeText for a git blob
+// whose object id is gitID. In a SHA-1 repository the object id is the
+// BlobID of the raw bytes, so it is kept unless decodeText transcoded them;
+// otherwise text is hashed as the filesystem enumerator hashes it.
+func textBlobID(gitID types.BlobID, text []byte, transcoded, sha256 bool) types.BlobID {
+	if sha256 || transcoded {
+		return types.ComputeBlobID(text)
+	}
+	return gitID
 }

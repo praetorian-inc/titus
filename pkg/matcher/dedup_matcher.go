@@ -45,6 +45,11 @@ func (d *dedupMatcher) DrainTimedOut() ([]*types.Match, error) {
 	return d.dedup.Deduplicate(matches), nil
 }
 
+// HasPendingRetry forwards to the wrapped matcher.
+func (d *dedupMatcher) HasPendingRetry(blobID types.BlobID) bool {
+	return HasPendingRetry(d.inner, blobID)
+}
+
 func (d *dedupMatcher) Close() error {
 	return d.inner.Close()
 }

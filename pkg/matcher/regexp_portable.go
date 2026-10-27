@@ -42,16 +42,16 @@ type retryJob struct {
 // Unlike HyperscanMatcher which uses a two-stage pipeline (Hyperscan for location + Go regexp for captures),
 // PortableRegexpMatcher performs pattern matching and capture extraction in a single pass using regexp2.
 //
-// Thread Safety: PortableRegexpMatcher is NOT safe for concurrent use.
-// If you need to scan multiple files concurrently, create separate matcher instances per goroutine.
+// Thread Safety: Match and MatchWithBlobID are safe for concurrent use on the same instance.
+// Each call owns its own location-keyed Deduplicator, so one blob's matches can never be
+// suppressed as duplicates of another blob's (the same secret in two files is two matches).
 // The regexCache and groupNameCache are read-only after initialization (safe for concurrent reads).
-// Calling Match() serially on the same instance is safe, but concurrent Match() calls on the same
-// instance may race due to the shared dedup state.
+// The retry queue and blacklist are mutex-protected. DrainTimedOut temporarily raises the
+// per-regex timeout, so call it only after every concurrent Match call has returned.
 type PortableRegexpMatcher struct {
 	rules          []*types.Rule
-	regexCache     map[string]*regexp2.Regexp   // read-only after init, safe for concurrent reads
-	groupNameCache map[string][]string          // read-only after init, safe for concurrent reads
-	dedup          *Deduplicator
+	regexCache     map[string]*regexp2.Regexp // read-only after init, safe for concurrent reads
+	groupNameCache map[string][]string        // read-only after init, safe for concurrent reads
 	contextLines   int
 	warnf          func(string, ...any)
 	matchTimeout   time.Duration // initial per-match timeout; 500ms by default
@@ -59,9 +59,10 @@ type PortableRegexpMatcher struct {
 	// retryMu protects retryJobs, retryDropped, and (together with blacklistMu)
 	// co-ordinates the cap check. retryJobs is written by parallel workers and
 	// drained single-threaded by DrainTimedOut after the main pass completes.
-	retryMu     sync.Mutex
-	retryJobs   []retryJob
-	retryDropped int // count of jobs dropped due to queue cap
+	retryMu      sync.Mutex
+	retryJobs    []retryJob
+	retryDropped int                       // count of jobs dropped due to queue cap
+	retryBlobs   map[types.BlobID]struct{} // blobs with a queued job; at most retryQueueCap entries
 
 	// blacklistMu protects blacklist, which tracks per-rule timeout counts.
 	blacklistMu sync.Mutex
@@ -96,7 +97,6 @@ func NewPortableRegexpWithTimeout(rules []*types.Rule, contextLines int, warnf f
 		rules:          rules,
 		regexCache:     make(map[string]*regexp2.Regexp),
 		groupNameCache: make(map[string][]string),
-		dedup:          NewContentDeduplicator(),
 		contextLines:   contextLines,
 		warnf:          warnf,
 		matchTimeout:   matchTimeout,
@@ -146,7 +146,10 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 		estimatedMatches = 10
 	}
 	matches := make([]*types.Match, 0, estimatedMatches)
-	m.dedup.Reset()
+	// Per-call, location-keyed: a repeated secret at different offsets (or in
+	// another blob scanned concurrently) is a distinct match. Collapsing equal
+	// secret values into one finding happens downstream via FindingID.
+	dedup := NewDeduplicator()
 	contentRunes := []rune(string(content))
 
 	for _, rule := range m.rules {
@@ -181,8 +184,8 @@ func (m *PortableRegexpMatcher) matchSequential(content []byte, blobID types.Blo
 			result := buildMatchResult(blobID, rule, match.Index, match.Length, []byte(match.String()), groups, namedGroups, content, m.contextLines)
 
 			// Deduplicate
-			if !m.dedup.IsDuplicate(result) {
-				m.dedup.Add(result)
+			if !dedup.IsDuplicate(result) {
+				dedup.Add(result)
 				matches = append(matches, result)
 			}
 
@@ -316,15 +319,18 @@ func (m *PortableRegexpMatcher) matchParallel(content []byte, blobID types.BlobI
 		estimatedMatches = 10
 	}
 	allMatches := make([]*types.Match, 0, estimatedMatches)
-	m.dedup.Reset()
+	// Per-call, location-keyed (see matchSequential). Workers split by rule over
+	// the whole content, not by chunk, so there are no overlapping regions; this
+	// only guards against an identical (rule, offset) match being emitted twice.
+	dedup := NewDeduplicator()
 
 	for r := range results {
 		if r.err != nil {
 			return nil, r.err
 		}
 		for _, match := range r.matches {
-			if !m.dedup.IsDuplicate(match) {
-				m.dedup.Add(match)
+			if !dedup.IsDuplicate(match) {
+				dedup.Add(match)
 				allMatches = append(allMatches, match)
 			}
 		}
@@ -380,10 +386,23 @@ func (m *PortableRegexpMatcher) enqueueOrBlacklist(j retryJob) {
 	m.retryMu.Lock()
 	if len(m.retryJobs) < retryQueueCap {
 		m.retryJobs = append(m.retryJobs, j)
+		if m.retryBlobs == nil {
+			m.retryBlobs = make(map[types.BlobID]struct{})
+		}
+		m.retryBlobs[j.blobID] = struct{}{}
 	} else {
 		m.retryDropped++
 	}
 	m.retryMu.Unlock()
+}
+
+// HasPendingRetry reports whether a retry job for blobID is queued for
+// DrainTimedOut.
+func (m *PortableRegexpMatcher) HasPendingRetry(blobID types.BlobID) bool {
+	m.retryMu.Lock()
+	defer m.retryMu.Unlock()
+	_, ok := m.retryBlobs[blobID]
+	return ok
 }
 
 // DrainTimedOut replays any blobs that timed out during the main parallel scan,
@@ -399,6 +418,7 @@ func (m *PortableRegexpMatcher) DrainTimedOut() ([]*types.Match, error) {
 	m.retryMu.Lock()
 	jobs := m.retryJobs
 	m.retryJobs = nil
+	m.retryBlobs = nil
 	dropped := m.retryDropped
 	m.retryMu.Unlock()
 

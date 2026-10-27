@@ -1,17 +1,19 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/fatih/color"
 	"github.com/praetorian-inc/titus/pkg/rule"
-	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
@@ -19,10 +21,10 @@ import (
 )
 
 var (
-	reportDatastore      string
-	reportFormat         string
-	reportColor          string
-	summaryFormat        string
+	reportDatastore    string
+	reportFormat       string
+	reportColor        string
+	summaryFormat      string
 	reportShowRejected bool
 )
 
@@ -262,7 +264,7 @@ func runReport(cmd *cobra.Command, args []string) error {
 	case "json":
 		return outputReportJSON(cmd, s, findings, matches, ruleMap)
 	case "human":
-		return outputReportHuman(cmd, findings, matches, storePath, ruleMap)
+		return outputReportHuman(cmd, s, findings, matches, ruleMap)
 	case "sarif":
 		return outputReportSARIF(cmd, s, findings, matches, ruleMap)
 	default:
@@ -491,7 +493,50 @@ func formatSnippet(before, matching, after []byte, maxLen int) string {
 	return result
 }
 
-// formatSnippetWithParts separates snippet into parts for colored output
+// sanitizeSnippetText makes raw scanned content safe for a terminal. It keeps
+// '\n' (CRLF included) and '\t' verbatim so code stays readable, and applies
+// types.SanitizeDisplay to the text between them, which escapes ESC sequences
+// and other control bytes while leaving printable Unicode unchanged.
+func sanitizeSnippetText(s string) string {
+	// A CRLF line ending is a newline; only a lone \r is escaped.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	var b strings.Builder
+	b.Grow(len(s))
+	for {
+		i := strings.IndexAny(s, "\n\t")
+		if i < 0 {
+			b.WriteString(types.SanitizeDisplay(s))
+			return b.String()
+		}
+		b.WriteString(types.SanitizeDisplay(s[:i]))
+		b.WriteByte(s[i])
+		s = s[i+1:]
+	}
+}
+
+// trimSplitCR drops the \r that ends part when next starts with \n: a CRLF
+// line ending split across two snippet parts, which is a newline and not a
+// stray carriage return.
+func trimSplitCR(part, next string) string {
+	if strings.HasSuffix(part, "\r") && strings.HasPrefix(next, "\n") {
+		return part[:len(part)-1]
+	}
+	return part
+}
+
+// sanitized returns p with its content parts made safe for a terminal.
+func (p snippetParts) sanitized() snippetParts {
+	p.before = trimSplitCR(p.before, p.matching+p.after)
+	p.matching = trimSplitCR(p.matching, p.after)
+	p.before = sanitizeSnippetText(p.before)
+	p.matching = sanitizeSnippetText(p.matching)
+	p.after = sanitizeSnippetText(p.after)
+	return p
+}
+
+// formatSnippetWithParts separates snippet into parts for colored output.
+// Truncation works on the raw bytes; each content part is sanitized for
+// terminal display afterwards.
 func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetParts {
 	full := string(before) + string(matching) + string(after)
 
@@ -503,7 +548,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 			matching: string(matching),
 			after:    string(after),
 			suffix:   "",
-		}
+		}.sanitized()
 	}
 
 	// Find where the match sits in the combined string
@@ -519,7 +564,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 			matching: string(matching[:maxLen-6]),
 			after:    "",
 			suffix:   "...",
-		}
+		}.sanitized()
 	}
 
 	// Calculate how much context we can show around the match
@@ -570,73 +615,47 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 		parts.suffix = "..."
 	}
 
-	return parts
+	return parts.sanitized()
 }
 
-// outputReportSARIF writes findings in SARIF 2.1.0 format with score metadata.
-// Each finding's matches are included as SARIF results; score data is embedded
-// in result.properties so downstream consumers (GitHub Code Scanning, etc.) can
+// outputReportSARIF writes findings in SARIF 2.1.0 format with score metadata,
+// one result per location of each match's blob. Score data is embedded in
+// result.properties so downstream consumers (GitHub Code Scanning, etc.) can
 // use the severity tiers without re-computing them.
 func outputReportSARIF(cmd *cobra.Command, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
-	report := sarif.NewReport()
+	rules := slices.SortedFunc(maps.Values(ruleMap), func(a, b *types.Rule) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
 
-	// Add all rules from the rule map
-	for _, r := range ruleMap {
-		report.AddRule(r)
-	}
-
-	// Build finding lookup by ID for score retrieval
 	findingByID := make(map[string]*types.Finding, len(findings))
 	for _, f := range findings {
 		findingByID[f.ID] = f
 	}
-
-	// Cache provenance by blob ID to avoid repeated store queries
-	provenanceCache := make(map[types.BlobID]string)
-
-	for _, match := range matches {
-		filePath, ok := provenanceCache[match.BlobID]
+	scoreFor := func(m *types.Match) *types.Score {
+		r, ok := ruleMap[m.RuleID]
 		if !ok {
-			prov, err := s.GetProvenance(match.BlobID)
-			if err != nil {
-				filePath = match.BlobID.Hex()
-			} else {
-				filePath = prov.Path()
-			}
-			provenanceCache[match.BlobID] = filePath
+			return nil
 		}
-
-		// Look up score from the corresponding finding
-		var score *types.Score
-		if r, ok := ruleMap[match.RuleID]; ok {
-			fid := types.ComputeFindingID(r.StructuralID, match.Groups)
-			if f, ok := findingByID[fid]; ok {
-				score = f.Score
-			}
+		if f, ok := findingByID[types.ComputeFindingID(r.StructuralID, m.Groups)]; ok {
+			return f.Score
 		}
-		report.AddResultWithScore(match, filePath, score)
+		return nil
 	}
-
-	jsonBytes, err := report.ToJSON()
-	if err != nil {
-		return fmt.Errorf("serializing SARIF: %w", err)
-	}
-
-	_, err = cmd.OutOrStdout().Write(jsonBytes)
-	if err != nil {
-		return fmt.Errorf("writing SARIF output: %w", err)
-	}
-
-	return nil
+	return writeSARIF(cmd.OutOrStdout(), s, rules, matches, scoreFor)
 }
 
-// jsonMatch is a shadow type for types.Match that adds a file_path field to
-// the JSON output without modifying the shared types.Match struct. Embedding
-// *types.Match exposes all existing fields; the outer FilePath field takes
-// precedence over any same-named field on the embedded struct.
+// jsonMatch is a shadow type for types.Match that adds file_path and
+// locations to the JSON output without modifying the shared types.Match
+// struct. Embedding *types.Match exposes all existing fields; the outer fields
+// take precedence over any same-named field on the embedded struct. file_path
+// is the first location's path (kept for existing consumers); locations lists
+// every location and is never null.
 type jsonMatch struct {
 	*types.Match
-	FilePath string `json:"file_path"`
+	FilePath  string         `json:"file_path"`
+	Locations []jsonLocation `json:"locations"`
+	// LocationsTruncated marks a blob with more locations than were recorded.
+	LocationsTruncated bool `json:"locations_truncated,omitempty"`
 }
 
 // jsonFinding is a shadow type for types.Finding that replaces the Matches
@@ -653,8 +672,8 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 	// Group matches by finding ID using content-based computation.
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 
-	// Cache provenance path lookups to avoid redundant store queries.
-	provenanceCache := make(map[types.BlobID]string)
+	// Cache location lookups per blob to avoid redundant store queries.
+	locationCache := make(map[types.BlobID]blobLocations)
 
 	// Build the output slice using the shadow types so we don't mutate
 	// the shared types.Finding/types.Match structs.
@@ -663,17 +682,24 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 		ms := matchesByFinding[f.ID]
 		jms := make([]jsonMatch, 0, len(ms))
 		for _, m := range ms {
-			filePath, ok := provenanceCache[m.BlobID]
+			locs, ok := locationCache[m.BlobID]
 			if !ok {
-				prov, err := s.GetProvenance(m.BlobID)
-				if err != nil {
-					filePath = m.BlobID.Hex()
-				} else {
-					filePath = prov.Path()
+				var err error
+				if locs, err = loadBlobLocations(s, m); err != nil {
+					return err
 				}
-				provenanceCache[m.BlobID] = filePath
+				locationCache[m.BlobID] = locs
 			}
-			jms = append(jms, jsonMatch{Match: m, FilePath: filePath})
+			filePath := m.BlobID.Hex()
+			if len(locs.occs) > 0 {
+				filePath = locs.occs[0].Path
+			}
+			jms = append(jms, jsonMatch{
+				Match:              m,
+				FilePath:           filePath,
+				Locations:          toJSONLocations(m, locs.occs),
+				LocationsTruncated: locs.truncated,
+			})
 		}
 		out = append(out, jsonFinding{Finding: f, Matches: jms})
 	}
@@ -683,7 +709,15 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 	return encoder.Encode(out)
 }
 
-func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, datastorePath string, ruleMap map[string]*types.Rule) error {
+// fullMatches is how many matches of a finding the human report prints in
+// full; later matches print only their location lines.
+const fullMatches = 3
+
+// outputReportHuman writes findings in NoseyParker-style text. The first three
+// matches of a finding print in full (header, blob, snippet, locations); every
+// further match prints only its location lines. Every location of every match
+// is printed, one line each, through writeLocationLines.
+func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
 	out := cmd.OutOrStdout()
 
 	// Determine if colors should be enabled based on --color flag
@@ -700,23 +734,13 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 			color.NoColor = false
 		}
 	}
-	s := newStyles(!color.NoColor)
-
-	// Resolve datastore path (same logic as runReport)
-	storePath := datastorePath
-	info, err := os.Stat(storePath)
-	if err == nil && info.IsDir() {
-		storePath = filepath.Join(storePath, "datastore.db")
-	}
-
-	store, err := store.New(store.Config{Path: storePath})
-	if err != nil {
-		return fmt.Errorf("opening datastore for provenance: %w", err)
-	}
-	defer func() { _ = store.Close() }()
+	st := newStyles(!color.NoColor)
 
 	// Build content-based finding-to-match map
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
+
+	// Cache location lookups per blob to avoid redundant store queries.
+	locationCache := make(map[types.BlobID]blobLocations)
 
 	totalFindings := len(findings)
 
@@ -724,13 +748,13 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 	for i, f := range findings {
 		// Finding header - "Finding N/M" in findingHeading style, "(id xyz)" with ID in id style
 		_, _ = fmt.Fprintf(out, "%s (%s %s)\n",
-			s.findingHeading.Sprintf("Finding %d/%d", i+1, totalFindings),
-			s.heading.Sprint("id"),
-			s.id.Sprint(f.ID))
+			st.findingHeading.Sprintf("Finding %d/%d", i+1, totalFindings),
+			st.heading.Sprint("id"),
+			st.id.Sprint(f.ID))
 
 		// Score badge — printed immediately after the finding header when Score is set.
 		if f.Score != nil {
-			severityColor := s.heading // default to bold for unknown tiers
+			severityColor := st.heading // default to bold for unknown tiers
 			switch f.Score.SuggestedSeverity {
 			case "critical":
 				severityColor = color.New(color.FgHiRed, color.Bold)
@@ -745,7 +769,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				severityColor.DisableColor()
 			}
 			_, _ = fmt.Fprintf(out, "%s %d/100 (%s)\n",
-				s.heading.Sprint("Score:"),
+				st.heading.Sprint("Score:"),
 				f.Score.Final,
 				severityColor.Sprint(f.Score.SuggestedSeverity))
 		}
@@ -759,14 +783,14 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				ownerStr += " [" + f.Owner.AccountID + "]"
 			}
 			_, _ = fmt.Fprintf(out, "%s %s\n",
-				s.heading.Sprint("Owner:"),
-				s.metadata.Sprint(ownerStr))
+				st.heading.Sprint("Owner:"),
+				st.metadata.Sprint(types.SanitizeDisplay(ownerStr)))
 		}
 
 		if len(f.Resources) > 0 {
 			_, _ = fmt.Fprintf(out, "%s %s\n",
-				s.heading.Sprint("Resources:"),
-				s.metadata.Sprint(formatResourceSummary(f.Resources)))
+				st.heading.Sprint("Resources:"),
+				st.metadata.Sprint(formatResourceSummary(f.Resources)))
 			for _, r := range f.Resources {
 				detail := r.Type + ": " + r.Name
 				if r.Count > 0 {
@@ -778,7 +802,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				if r.Region != "" {
 					detail += " [" + r.Region + "]"
 				}
-				_, _ = fmt.Fprintf(out, "  %s\n", s.metadata.Sprint(detail))
+				_, _ = fmt.Fprintf(out, "  %s\n", st.metadata.Sprint(types.SanitizeDisplay(detail)))
 			}
 		}
 
@@ -787,70 +811,58 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 		if r, ok := ruleMap[f.RuleID]; ok {
 			ruleName = r.Name
 		}
-		_, _ = fmt.Fprintf(out, "%s %s\n", s.heading.Sprint("Rule:"), s.ruleName.Sprint(ruleName))
+		_, _ = fmt.Fprintf(out, "%s %s\n", st.heading.Sprint("Rule:"), st.ruleName.Sprint(ruleName))
 
 		// Capture groups - "Group N:" in heading style, value in match style
 		for j, group := range f.Groups {
 			_, _ = fmt.Fprintf(out, "%s %s\n",
-				s.heading.Sprintf("Group %d:", j+1),
-				s.match.Sprint(string(group)))
+				st.heading.Sprintf("Group %d:", j+1),
+				st.match.Sprint(sanitizeSnippetText(string(group))))
 		}
 
-		// Matches for this finding
+		// Matches for this finding: the first fullMatches in full, the rest as
+		// location lines only. Nothing is truncated.
 		findingMatches := matchesByFinding[f.ID]
-		if len(findingMatches) > 3 {
-			_, _ = fmt.Fprintf(out, "Showing 3/%d matches:\n", len(findingMatches))
-			findingMatches = findingMatches[:3]
-		}
-
 		for k, match := range findingMatches {
+			locs, ok := locationCache[match.BlobID]
+			if !ok {
+				var err error
+				if locs, err = loadBlobLocations(s, match); err != nil {
+					return err
+				}
+				locationCache[match.BlobID] = locs
+			}
+			line := match.Location.Source.Start.Line
+			if k >= fullMatches {
+				writeLocationLines(out, line, locs.occs, st.metadata)
+				writeLocationsTruncated(out, locs.truncated, st.metadata)
+				continue
+			}
+
 			// Match header - "Match N/M" in heading style, "(id xyz)" with ID in id style
 			_, _ = fmt.Fprintf(out, "\n    %s (%s %s)\n",
-				s.heading.Sprintf("Match %d/%d", k+1, len(matchesByFinding[f.ID])),
-				s.heading.Sprint("id"),
-				s.id.Sprint(match.StructuralID))
-
-			// File path from provenance - "File:" in heading style, path in metadata style
-			prov, err := store.GetProvenance(match.BlobID)
-			if err == nil && prov != nil {
-				label := "File:"
-				switch prov.Kind() {
-				case "archive", "extended":
-					label = "Source:"
-				}
-				_, _ = fmt.Fprintf(out, "    %s %s\n",
-					s.heading.Sprint(label),
-					s.metadata.Sprint(prov.Path()))
-				if gp, ok := prov.(types.GitProvenance); ok && gp.Commit != nil && !gp.Commit.CommitterTimestamp.IsZero() {
-					_, _ = fmt.Fprintf(out, "    %s %s\n",
-						s.heading.Sprint("Date:"),
-						s.metadata.Sprint(gp.Commit.CommitterTimestamp.Format("2006-01-02 15:04:05")))
-				}
-			}
+				st.heading.Sprintf("Match %d/%d", k+1, len(findingMatches)),
+				st.heading.Sprint("id"),
+				st.id.Sprint(match.StructuralID))
 
 			// Blob info - "Blob:" in heading style, ID in metadata style
 			_, _ = fmt.Fprintf(out, "    %s %s\n",
-				s.heading.Sprint("Blob:"),
-				s.metadata.Sprint(match.BlobID.Hex()))
-
-			// Line info - "Lines:" in heading style
-			if match.Location.Source.Start.Line > 0 {
-				_, _ = fmt.Fprintf(out, "    %s %d:%d-%d:%d\n",
-					s.heading.Sprint("Lines:"),
-					match.Location.Source.Start.Line, match.Location.Source.Start.Column,
-					match.Location.Source.End.Line, match.Location.Source.End.Column)
-			}
+				st.heading.Sprint("Blob:"),
+				st.metadata.Sprint(match.BlobID.Hex()))
 
 			// Context snippet with colored matching portion
 			parts := formatSnippetWithParts(match.Snippet.Before, match.Snippet.Matching, match.Snippet.After, 500)
 			if parts.prefix != "" || parts.before != "" || parts.matching != "" || parts.after != "" || parts.suffix != "" {
-				_, _ = fmt.Fprintf(out, "\n        %s%s%s%s%s\n",
+				_, _ = fmt.Fprintf(out, "\n        %s%s%s%s%s\n\n",
 					parts.prefix,
 					parts.before,
-					s.match.Sprint(parts.matching),
+					st.match.Sprint(parts.matching),
 					parts.after,
 					parts.suffix)
 			}
+
+			writeLocationLines(out, line, locs.occs, st.metadata)
+			writeLocationsTruncated(out, locs.truncated, st.metadata)
 		}
 
 		_, _ = fmt.Fprintf(out, "\n\n")
@@ -877,5 +889,6 @@ func formatResourceSummary(resources []types.ResourceInfo) string {
 		parts = append(parts, fmt.Sprintf("%d %s", n, typ))
 	}
 	sort.Strings(parts)
-	return strings.Join(parts, ", ")
+	// Resource types come from remote APIs; sanitize for terminal display.
+	return types.SanitizeDisplay(strings.Join(parts, ", "))
 }

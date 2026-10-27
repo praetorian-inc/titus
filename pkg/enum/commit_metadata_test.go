@@ -1,89 +1,79 @@
 package enum
 
 import (
-	"context"
-	"path/filepath"
+	"bytes"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
+
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
-// TestCollectCommitMetadata_RenamedPath verifies that paths introduced by a
-// rename are still mapped to the introducing commit. Git's log machinery
-// reports `git mv old new` as a rename (`R`) rather than a delete + add, so
-// filtering on `--diff-filter=A` alone misses the post-rename path and leaves
-// every blob committed at that path without commit metadata. The filter must
-// also include `R` (and `C` for copies).
-func TestCollectCommitMetadata_RenamedPath(t *testing.T) {
-	skipIfNoGit(t)
+// --- fixture helpers -------------------------------------------------------
 
-	tmpDir := t.TempDir()
-	initGitRepo(t, tmpDir)
-
-	// Add a file at the original path.
-	writeFile(t, filepath.Join(tmpDir, "old.txt"), "hello")
-	gitAddCommit(t, tmpDir, "Add old.txt")
-
-	// Rename it.
-	runGit(t, tmpDir, "mv", "old.txt", "new.txt")
-	runGit(t, tmpDir, "commit", "-m", "Rename to new.txt")
-
-	// Modify the renamed file so there's a post-rename commit too.
-	writeFile(t, filepath.Join(tmpDir, "new.txt"), "hello world")
-	gitAddCommit(t, tmpDir, "Update new.txt")
-
-	commitMap, err := collectCommitMetadataForRepo(context.Background(), tmpDir, true /* firstAdded */)
-	if err != nil {
-		t.Fatalf("collectCommitMetadataForRepo: %v", err)
+// commitAt stages everything and commits with fixed author and committer
+// dates, returning the full commit id.
+func commitAt(t *testing.T, dir, msg, date string, extra ...string) string {
+	t.Helper()
+	runGit(t, dir, "add", "-A")
+	args := []string{"commit", "-q", "--allow-empty", "--no-gpg-sign"}
+	if msg != "" {
+		args = append(args, "-m", msg)
 	}
+	runGitEnv(t, dir, []string{"GIT_AUTHOR_DATE=" + date, "GIT_COMMITTER_DATE=" + date}, append(args, extra...)...)
+	return gitOutput(t, dir, "rev-parse", "HEAD")
+}
 
-	if _, ok := commitMap["old.txt"]; !ok {
-		t.Errorf("expected old.txt in commit map, got keys: %v", keys(commitMap))
-	}
-	if _, ok := commitMap["new.txt"]; !ok {
-		t.Errorf("expected new.txt in commit map (rename target), got keys: %v", keys(commitMap))
+func runGitEnv(t *testing.T, dir string, env []string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
 
-// TestCollectCommitMetadata_PlainAdd verifies the unchanged behaviour for
-// regular file additions: every newly added path lands in the commit map
-// and is mapped to the commit that introduced it.
-func TestCollectCommitMetadata_PlainAdd(t *testing.T) {
-	skipIfNoGit(t)
-
-	tmpDir := t.TempDir()
-	initGitRepo(t, tmpDir)
-
-	writeFile(t, filepath.Join(tmpDir, "a.txt"), "a")
-	gitAddCommit(t, tmpDir, "Add a.txt")
-	writeFile(t, filepath.Join(tmpDir, "b.txt"), "b")
-	gitAddCommit(t, tmpDir, "Add b.txt")
-
-	commitMap, err := collectCommitMetadataForRepo(context.Background(), tmpDir, true)
-	if err != nil {
-		t.Fatalf("collectCommitMetadataForRepo: %v", err)
-	}
-
-	for _, want := range []string{"a.txt", "b.txt"} {
-		meta, ok := commitMap[want]
-		if !ok {
-			t.Errorf("expected %s in commit map, got keys: %v", want, keys(commitMap))
-			continue
-		}
-		if meta.CommitID == "" {
-			t.Errorf("%s: empty CommitID", want)
-		}
-		if meta.AuthorEmail == "" {
-			t.Errorf("%s: empty AuthorEmail", want)
-		}
-		if meta.AuthorTimestamp.IsZero() {
-			t.Errorf("%s: zero AuthorTimestamp", want)
-		}
-	}
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	return gitInput(t, dir, nil, args...)
 }
 
-func keys[K comparable, V any](m map[K]V) []K {
-	out := make([]K, 0, len(m))
-	for k := range m {
-		out = append(out, k)
+func gitInput(t *testing.T, dir string, stdin []byte, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, stderr.String())
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func hashBlob(t *testing.T, dir, content string) string {
+	t.Helper()
+	return gitInput(t, dir, []byte(content), "hash-object", "-w", "--stdin")
+}
+
+type locWant struct {
+	path   string
+	commit string
+}
+
+func locsOf(locs []types.GitLocation) []locWant {
+	out := make([]locWant, 0, len(locs))
+	for _, l := range locs {
+		w := locWant{path: l.Path}
+		if l.Commit != nil {
+			w.commit = l.Commit.CommitID
+		}
+		out = append(out, w)
 	}
 	return out
 }

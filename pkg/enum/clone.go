@@ -1,6 +1,7 @@
 package enum
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/praetorian-inc/titus/pkg/repoid"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -32,6 +34,10 @@ type CloneEnumerator struct {
 	Delay  time.Duration // minimum delay between clones (from --rate-limit)
 	Jitter time.Duration // maximum delay between clones (from --jitter); actual delay is random(Delay, Jitter)
 	Token  string        // API token for authenticated cloning (passed via ephemeral credential helper)
+
+	// buildIndex builds the filesystem-mode history index; nil means
+	// buildBlobIndex. Tests replace it to force an index failure.
+	buildIndex func(context.Context, string) (*blobIndex, error)
 }
 
 // NewCloneEnumerator creates a new clone-based enumerator.
@@ -104,15 +110,30 @@ func (e *CloneEnumerator) Enumerate(ctx context.Context, callback func(content [
 		}
 
 		if err := e.cloneAndScan(ctx, repo, callback); err != nil {
-			// Log error and continue to next repo
-			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", repo.Name, err)
+			// Log error and continue to next repo. Never print CloneURL: it
+			// may carry a token. The id and error carry repo-derived text,
+			// so escape them for the terminal (R6-3).
+			id, _ := cloneIdentity(repo)
+			fmt.Fprintf(os.Stderr, "warning: skipping %s: %s\n", types.SanitizeDisplay(id), types.SanitizeDisplay(err.Error()))
 			continue
 		}
 	}
 	return nil
 }
 
+// cloneIdentity returns the repository value for a clone: the normalized
+// CloneURL when it is a network remote (credentials, port and ".git"
+// stripped), otherwise the listed name as typed. No host is guessed (SEC-3).
+func cloneIdentity(repo RepoInfo) (id string, remote bool) {
+	if id, ok := repoid.Normalize(repo.CloneURL); ok {
+		return id, true
+	}
+	return typedRepoIdentity(cmp.Or(repo.Name, repo.CloneURL)), false
+}
+
 func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
+	id, remote := cloneIdentity(repo)
+
 	tmpDir, err := os.MkdirTemp("", "titus-clone-*")
 	if err != nil {
 		return fmt.Errorf("creating temp dir: %w", err)
@@ -147,7 +168,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 	}
 	cloneArgs = append(cloneArgs, repo.CloneURL, clonePath)
 
-	fmt.Fprintf(os.Stderr, "Cloning %s...\n", repo.Name)
+	fmt.Fprintf(os.Stderr, "Cloning %s...\n", types.SanitizeDisplay(id)) // R6-3
 	cmd := exec.CommandContext(ctx, "git", cloneArgs...)
 	cmd.Stderr = os.Stderr
 
@@ -161,48 +182,110 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 		)
 	}
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cloning %s: %w", repo.Name, err)
+		return fmt.Errorf("cloning %s: %w", id, err)
 	}
 
 	cloneConfig := e.config
 	cloneConfig.Root = clonePath
 
 	if e.Git {
-		// Git history mode: walk all commits
+		// Git history mode: walk all commits. The native enumerator already
+		// reports every location of each blob; only the identity changes.
+		// RepoRoot is cleared because the temp clone is deleted.
 		gitEnum := NewGitEnumerator(cloneConfig)
 		if depth == 0 {
 			gitEnum.WalkAll = true
 		}
 		return gitEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 			if gp, ok := prov.(types.GitProvenance); ok {
-				gp.RepoPath = repo.Name
+				gp.RepoPath, gp.RemoteIdentity, gp.RepoRoot, gp.RepoTop = id, remote, "", ""
 				return callback(content, blobID, gp)
 			}
 			return callback(content, blobID, prov)
 		})
 	}
 
-	// Filesystem mode (default): fast scan of working tree
-	// Collect commit metadata for current files (best-effort; nil map is safe)
-	commitMap, _ := collectCommitMetadataForRepo(ctx, clonePath, false)
+	// Filesystem mode (default): fast scan of the working tree. Commit
+	// metadata comes from the blob index, best effort: on error every file is
+	// still scanned, without commit metadata, and marked as possibly missing
+	// locations (R1).
+	build := e.buildIndex
+	if build == nil {
+		build = buildBlobIndex
+	}
+	idx, err := build(ctx, clonePath)
+	if err != nil {
+		idx = unavailableIndex()
+		if ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "titus: git history index unavailable: %s; files are scanned without commit metadata and marked as possibly missing locations\n", types.SanitizeDisplay(err.Error())) // R6-3
+		}
+	}
+	idx.writeWarnings(os.Stderr)
 
 	return NewFilesystemEnumerator(cloneConfig).Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
-		// Rewrite file provenance to include repo name
-		if fp, ok := prov.(types.FileProvenance); ok {
-			// Convert absolute temp path to repo-relative path
-			relPath, err := filepath.Rel(clonePath, fp.FilePath)
-			if err != nil {
-				relPath = fp.FilePath
-			}
-			gp := types.GitProvenance{
-				RepoPath: repo.Name,
-				BlobPath: relPath,
-			}
-			if commitMap != nil {
-				gp.Commit = commitMap[relPath]
-			}
-			return callback(content, blobID, gp)
+		fp, ok := prov.(types.FileProvenance)
+		if !ok {
+			return callback(content, blobID, prov)
 		}
-		return callback(content, blobID, prov)
+		rel, err := filepath.Rel(clonePath, fp.FilePath)
+		if err != nil {
+			rel = fp.FilePath
+		}
+		rel = filepath.ToSlash(rel)
+		commit, truncated := committedAt(idx, blobID, fp.FilePath, rel)
+		loc := types.GitLocation{Path: rel, Commit: commit}
+		return callback(content, blobID, types.GitProvenance{
+			RepoPath:           id,
+			BlobPath:           rel,
+			Commit:             loc.Commit,
+			RemoteIdentity:     remote,
+			Locations:          []types.GitLocation{loc},
+			LocationsTruncated: truncated,
+		})
 	})
+}
+
+// committedAt returns the commit recorded in idx for the blob at rel, and
+// whether the index dropped a location of that blob at its size limit or
+// could not be built (R1), in which case the commit may be missing or not
+// the earliest. The scanned content may be a decoded form of the file
+// (UTF-16), whose raw bytes are a different blob, so the file is marked when
+// either id is marked: the raw file is hashed whenever the index marks any
+// blob and the decoded id alone does not settle it. Commit metadata comes
+// from the decoded id when the index has it, else from the raw id. The raw
+// file is not read when nothing is marked and the decoded id has entries.
+// When the raw file cannot be read and the index marks any blob, the file is
+// marked: its raw id is unknown, so it cannot be shown to be unmarked. An
+// index that could not be built marks every blob and holds no commit, so the
+// file is marked without reading it.
+func committedAt(idx *blobIndex, blobID types.BlobID, file, rel string) (*types.CommitMetadata, bool) {
+	if idx.marksAll() {
+		return nil, true
+	}
+	truncated := idx.locationsTruncated(blobID)
+	locs := idx.lookup(blobID)
+	if len(locs) > 0 && (truncated || !idx.marksAny()) {
+		return commitForPath(locs, rel), truncated
+	}
+	// #nosec G304 -- file is a FileProvenance path the filesystem enumerator walked inside this enumerator's own clone directory.
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return commitForPath(locs, rel), truncated || idx.marksAny()
+	}
+	if rawID := types.ComputeBlobID(raw); rawID != blobID {
+		truncated = truncated || idx.locationsTruncated(rawID)
+		if len(locs) == 0 {
+			locs = idx.lookup(rawID)
+		}
+	}
+	return commitForPath(locs, rel), truncated
+}
+
+func commitForPath(locs []types.GitLocation, rel string) *types.CommitMetadata {
+	for _, l := range locs {
+		if l.Path == rel {
+			return l.Commit
+		}
+	}
+	return nil
 }

@@ -2,12 +2,14 @@ package enum
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
 
+	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -148,4 +150,38 @@ func TestCloneEnumerator_ContextCancellation(t *testing.T) {
 		return nil
 	})
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// --- clone ----------------------------------------------------------------
+
+func TestCloneEnumerator_SameBlobTwoRepos(t *testing.T) {
+	root := t.TempDir()
+	makeRemoteFixture(t, root, "acme", "api", map[string]string{"k.txt": "token-SHARED"})
+	makeRemoteFixture(t, root, "acme", "web", map[string]string{"conf/k.txt": "token-SHARED"})
+	redirectHTTPSToLocal(t, root)
+
+	for _, gitMode := range []bool{false, true} {
+		t.Run(fmt.Sprintf("git=%v", gitMode), func(t *testing.T) {
+			e := NewCloneEnumerator([]RepoInfo{
+				{Name: "acme/api", CloneURL: fakeCredURL("https", "github.com/acme/api.git")},
+				{Name: "acme/web", CloneURL: fakeCredURL("https", "github.com/acme/web.git")},
+			}, Config{})
+			e.Git = gitMode
+			s := store.NewMemory()
+			var mu sync.Mutex // filesystem mode calls back from parallel readers
+			var ids []types.BlobID
+			require.NoError(t, e.Enumerate(context.Background(), func(_ []byte, id types.BlobID, p types.Provenance) error {
+				if isDotGit(p) {
+					return nil
+				}
+				mu.Lock()
+				ids = append(ids, id)
+				mu.Unlock()
+				return s.AddOccurrences(id, types.OccurrencesOf(p))
+			}))
+			require.Len(t, ids, 2)
+			require.Equal(t, ids[0], ids[1], "same content, same blob")
+			assert.Equal(t, []string{"github.com/acme/api k.txt", "github.com/acme/web conf/k.txt"}, occurrenceStrings(t, s, ids[0]))
+		})
+	}
 }

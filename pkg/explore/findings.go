@@ -1,11 +1,15 @@
 package explore
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 // sortField defines which column to sort by.
@@ -21,7 +25,7 @@ const (
 )
 
 var sortFieldNames = [sortFieldCount]string{
-	"Rule Name", "Matches", "Validation", "Confidence", "Status",
+	"Rule Name", "Locations", "Validation", "Confidence", "Status",
 }
 
 // findingsPane is the top-right findings table.
@@ -35,6 +39,15 @@ type findingsPane struct {
 	focused bool
 	sortBy  sortField
 	sortAsc bool
+	// repoFilter is the Repository facet selection; the count column and its
+	// sort count only locations visible under it.
+	repoFilter map[string]bool
+	// counts caches locationCount per finding under repoFilter. It is a new
+	// map whenever the filter changes, never cleared in place, so copies of
+	// the pane with different filters keep their own counts. A row change
+	// keeps it: a finding's count depends only on its own locations and the
+	// filter, and both are fixed after load.
+	counts map[*findingRow]int
 
 	// Column widths
 	colRuleName   int
@@ -50,14 +63,76 @@ func newFindingsPane(rows []*findingRow) findingsPane {
 		allRows: rows,
 		rows:    rows,
 		sortAsc: true,
+		counts:  make(map[*findingRow]int),
 	}
 	fp.sort()
 	return fp
 }
 
+// setRepoFilter sets the Repository facet selection that the count column
+// counts under. Call it before setFilteredRows when the selection changes.
+// Callers pass a fresh map and never modify it afterwards.
+func (fp *findingsPane) setRepoFilter(sel map[string]bool) {
+	fp.repoFilter = sel
+	fp.counts = make(map[*findingRow]int)
+}
+
+// locationCount is the number of the finding's locations visible under the
+// repo filter, summed over its matches. It is the count cell and its sort key.
+// Locations do not change after load, so each count is computed once per
+// filter and then read from fp.counts.
+func (fp findingsPane) locationCount(f *findingRow) int {
+	if n, ok := fp.counts[f]; ok {
+		return n
+	}
+	n := 0
+	for _, mr := range f.Matches {
+		n += len(visibleOccurrences(mr.Occurrences, fp.repoFilter))
+	}
+	if fp.counts != nil {
+		fp.counts[f] = n
+	}
+	return n
+}
+
+// locationCell is the Locs cell: the location count, marked "?" when a match
+// failed to load its locations or they were truncated, so the count is a
+// lower bound (S1).
+func (fp findingsPane) locationCell(f *findingRow) string {
+	n := strconv.Itoa(fp.locationCount(f))
+	if locationsUnknown(f) {
+		return n + "?"
+	}
+	return n
+}
+
+// compareBool orders false before true.
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
+}
+
+// setFilteredRows replaces the shown rows and re-sorts them, because the
+// location count, and so the order, depends on the current repo filter. The
+// cursor follows the selected finding when it is still shown.
 func (fp *findingsPane) setFilteredRows(rows []*findingRow) {
+	sel := fp.selectedFinding()
 	fp.rows = rows
-	if fp.cursor >= len(fp.rows) {
+	fp.sort()
+	fp.restoreCursor(sel)
+}
+
+// restoreCursor puts the cursor on sel if it is among the rows, otherwise
+// clamps it into range.
+func (fp *findingsPane) restoreCursor(sel *findingRow) {
+	if i := slices.Index(fp.rows, sel); sel != nil && i >= 0 {
+		fp.cursor = i
+	} else if fp.cursor >= len(fp.rows) {
 		fp.cursor = max(0, len(fp.rows)-1)
 	}
 	fp.ensureVisible()
@@ -101,43 +176,44 @@ func (fp findingsPane) Update(msg tea.Msg) (findingsPane, tea.Cmd) {
 			fp.cursor = max(fp.cursor-fp.visibleRows(), 0)
 			fp.ensureVisible()
 		case keyMatches(msg, defaultKeys.SortNext):
+			sel := fp.selectedFinding()
 			fp.sortBy = (fp.sortBy + 1) % sortFieldCount
 			fp.sort()
+			fp.restoreCursor(sel)
 		}
 	}
 
 	return fp, nil
 }
 
+// sort orders the rows by the current field and direction. It is stable, so
+// rows with equal keys keep their relative order.
 func (fp *findingsPane) sort() {
+	var compare func(a, b *findingRow) int
 	switch fp.sortBy {
 	case sortByRuleName:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.RuleName < b.RuleName }, fp.sortAsc)
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.RuleName, b.RuleName) }
 	case sortByMatches:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.MatchCount < b.MatchCount }, fp.sortAsc)
-	case sortByValidation:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.ValidationStatus < b.ValidationStatus }, fp.sortAsc)
-	case sortByConfidence:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.Confidence < b.Confidence }, fp.sortAsc)
-	case sortByStatus:
-		sortSlice(fp.rows, func(a, b *findingRow) bool { return a.AnnotationStatus < b.AnnotationStatus }, fp.sortAsc)
-	}
-}
-
-func sortSlice[T any](s []T, less func(a, b T) bool, asc bool) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0; j-- {
-			if asc {
-				if less(s[j], s[j-1]) {
-					s[j], s[j-1] = s[j-1], s[j]
-				}
-			} else {
-				if less(s[j-1], s[j]) {
-					s[j], s[j-1] = s[j-1], s[j]
-				}
-			}
+		// locationCount is cached per filter, so the comparator stays cheap.
+		// An unknown count ("N?") sorts after a known count of the same N.
+		compare = func(a, b *findingRow) int {
+			return cmp.Or(cmp.Compare(fp.locationCount(a), fp.locationCount(b)),
+				compareBool(locationsUnknown(a), locationsUnknown(b)))
 		}
+	case sortByValidation:
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.ValidationStatus, b.ValidationStatus) }
+	case sortByConfidence:
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.Confidence, b.Confidence) }
+	case sortByStatus:
+		compare = func(a, b *findingRow) int { return cmp.Compare(a.AnnotationStatus, b.AnnotationStatus) }
+	default:
+		return
 	}
+	if !fp.sortAsc {
+		asc := compare
+		compare = func(a, b *findingRow) int { return asc(b, a) }
+	}
+	slices.SortStableFunc(fp.rows, compare)
 }
 
 func (fp findingsPane) View() string {
@@ -146,7 +222,7 @@ func (fp findingsPane) View() string {
 	}
 
 	// Calculate column widths
-	contentWidth := fp.width - 4 // borders
+	contentWidth := max(0, fp.width-4) // borders; never negative in a tiny terminal
 	fp.colMatches = 8
 	fp.colValidation = 8
 	fp.colConfidence = 8
@@ -170,13 +246,13 @@ func (fp findingsPane) View() string {
 		return ""
 	}
 
-	header := fmt.Sprintf(" %-*s %-*s %*s %-*s %*s %-*s",
-		fp.colRuleName, "Rule Name"+sortIndicator(sortByRuleName),
-		fp.colGroups, "Groups",
-		fp.colMatches, "Matches"+sortIndicator(sortByMatches),
-		fp.colValidation, "Valid"+sortIndicator(sortByValidation),
+	header := fmt.Sprintf(" %s %s %*s %s %*s %s",
+		cell("Rule Name"+sortIndicator(sortByRuleName), fp.colRuleName),
+		cell("Groups", fp.colGroups),
+		fp.colMatches, "Locs"+sortIndicator(sortByMatches),
+		cell("Valid"+sortIndicator(sortByValidation), fp.colValidation),
 		fp.colConfidence, "Conf"+sortIndicator(sortByConfidence),
-		fp.colStatus, "Status"+sortIndicator(sortByStatus),
+		cell("Status"+sortIndicator(sortByStatus), fp.colStatus),
 	)
 	b.WriteString(headerRowStyle.Width(contentWidth).Render(truncateString(header, contentWidth)))
 	b.WriteString("\n")
@@ -199,13 +275,13 @@ func (fp findingsPane) View() string {
 		}
 		statusStr := renderAnnotationStatus(row.AnnotationStatus)
 
-		line := fmt.Sprintf(" %-*s %-*s %*d %-*s %*s %-*s",
-			fp.colRuleName, truncateString(row.RuleName, fp.colRuleName),
-			fp.colGroups, groupStr,
-			fp.colMatches, row.MatchCount,
-			fp.colValidation, valStr,
+		line := fmt.Sprintf(" %s %s %*s %s %*s %s",
+			cell(types.SanitizeDisplay(row.RuleName), fp.colRuleName),
+			cell(groupStr, fp.colGroups),
+			fp.colMatches, fp.locationCell(row),
+			cell(valStr, fp.colValidation),
 			fp.colConfidence, confStr,
-			fp.colStatus, statusStr,
+			cell(statusStr, fp.colStatus),
 		)
 
 		if isCurrent && fp.focused {
@@ -269,4 +345,11 @@ func formatGroups(groups [][]byte) string {
 		parts[i] = sanitizeForDisplay(g)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// cell fits s to a column of width terminal cells: truncated when wider, padded
+// when narrower. It measures display width, so wide or styled text keeps the
+// columns after it aligned, where a %-*s verb would pad by bytes.
+func cell(s string, width int) string {
+	return padRight(truncateString(s, width), width)
 }

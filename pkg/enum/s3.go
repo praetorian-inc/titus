@@ -67,8 +67,9 @@ func (e *S3Enumerator) Enumerate(ctx context.Context, callback func(content []by
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				// Log warning but continue scanning other objects
-				fmt.Fprintf(os.Stderr, "[warn] S3 object %s: %v\n", aws.ToString(obj.Key), err)
+				// Log warning but continue scanning other objects. The key is
+				// bucket content, so escape it for the terminal (R6-3).
+				fmt.Fprintf(os.Stderr, "[warn] S3 object %s: %s\n", types.SanitizeDisplay(aws.ToString(obj.Key)), types.SanitizeDisplay(err.Error()))
 			}
 		}
 	}

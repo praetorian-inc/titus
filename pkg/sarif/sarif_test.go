@@ -255,3 +255,46 @@ func TestSnippetInRegion(t *testing.T) {
 	assert.NotNil(t, region.Snippet)
 	assert.Equal(t, "SECRET_VALUE_HERE", region.Snippet.Text)
 }
+
+func occurrenceMatch() *types.Match {
+	return &types.Match{
+		RuleID:   "np.aws.1",
+		RuleName: "AWS API Key",
+		Location: types.Location{
+			Source: types.SourceSpan{
+				Start: types.SourcePoint{Line: 3, Column: 7},
+				End:   types.SourcePoint{Line: 3, Column: 27},
+			},
+		},
+		Snippet: types.Snippet{Matching: []byte("AKIAIOSFODNN7EXAMPLE")},
+	}
+}
+
+// Two SharePoint items in two sites with the same drive-relative path (Graph
+// parentReference.path, e.g. "/drive/root:/config") keep the path-based URI
+// but get distinct fingerprints, so code-scanning consumers do not dedupe them.
+func TestAddResultForOccurrence_SharePointSamePathDistinctFingerprints(t *testing.T) {
+	const path = "/drive/root:/config/app.env"
+	r := NewReport()
+	for _, url := range []string{
+		"https://acme.sharepoint.com/sites/eng/Shared%20Documents/config/app.env",
+		"https://acme.sharepoint.com/sites/ops/Shared%20Documents/config/app.env",
+	} {
+		p := types.ExtendedProvenance{Payload: map[string]any{
+			"source": "sharepoint", "site": "Team Site", "path": path, "title": "app.env", "url": url,
+		}}
+		occs := types.OccurrencesOf(p)
+		require.Len(t, occs, 1)
+		r.AddResultForOccurrence(occurrenceMatch(), occs[0], nil)
+	}
+
+	results := r.Runs[0].Results
+	require.Len(t, results, 2)
+	for _, res := range results {
+		assert.Equal(t, formatFileURI(path), res.Locations[0].PhysicalLocation.ArtifactLocation.URI)
+	}
+	assert.NotEqual(t,
+		results[0].PartialFingerprints[LocationFingerprintKey],
+		results[1].PartialFingerprints[LocationFingerprintKey],
+		"two SharePoint items need distinct fingerprints")
+}

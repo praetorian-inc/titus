@@ -1,0 +1,58 @@
+//go:build !wasm
+
+package store
+
+import (
+	"testing"
+
+	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func truncProv(path string, truncated bool) types.GitProvenance {
+	return types.GitProvenance{
+		RepoPath:           "github.com/acme/api",
+		BlobPath:           path,
+		Commit:             &types.CommitMetadata{CommitID: commitA.CommitID, AuthorName: "Ann"},
+		LocationsTruncated: truncated,
+	}
+}
+
+// truncByPath returns each git provenance row's LocationsTruncated flag by
+// blob path.
+func truncByPath(t *testing.T, s Store, id types.BlobID) map[string]bool {
+	t.Helper()
+	provs, err := s.GetAllProvenance(id)
+	require.NoError(t, err)
+	got := map[string]bool{}
+	for _, p := range provs {
+		g, ok := p.(types.GitProvenance)
+		require.True(t, ok)
+		got[g.BlobPath] = g.LocationsTruncated
+	}
+	return got
+}
+
+// ENG-9178: the flag round-trips through both stores without disturbing the
+// commit metadata read alongside it.
+func TestStore_LocationsTruncatedRoundTrip(t *testing.T) {
+	for _, f := range storeFactories {
+		t.Run(f.name, func(t *testing.T) {
+			s := f.open(t)
+			id := types.ComputeBlobID([]byte("roundtrip"))
+			require.NoError(t, s.AddBlob(id, 9))
+			require.NoError(t, s.AddProvenance(id, truncProv("on.yml", true)))
+			require.NoError(t, s.AddProvenance(id, truncProv("off.yml", false)))
+
+			assert.Equal(t, map[string]bool{"on.yml": true, "off.yml": false}, truncByPath(t, s, id))
+			provs, err := s.GetAllProvenance(id)
+			require.NoError(t, err)
+			for _, p := range provs {
+				g := p.(types.GitProvenance)
+				require.NotNil(t, g.Commit)
+				assert.Equal(t, "Ann", g.Commit.AuthorName)
+			}
+		})
+	}
+}
