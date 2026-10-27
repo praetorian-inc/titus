@@ -11,6 +11,13 @@ LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 CGO_ENABLED ?= 1
 GO_TAGS ?= vectorscan
 
+# When CGO is enabled, add netgo and osusergo to force Go's pure-Go DNS
+# resolver and user lookup. Static glibc's getaddrinfo dlopen()s NSS modules
+# at runtime, causing SIGSEGV when the host's NSS libraries are incompatible.
+ifeq ($(CGO_ENABLED),1)
+  GO_TAGS := $(GO_TAGS) netgo osusergo
+endif
+
 # Clear vectorscan tag when CGO is disabled (vectorscan requires CGO)
 ifeq ($(CGO_ENABLED),0)
   GO_TAGS :=
