@@ -195,7 +195,7 @@ func (e *GitLabEnumerator) enumerateProject(ctx context.Context, project *gitlab
 		blobs.add(node.ID, node.Path)
 	}
 
-	id := apiRepoIdentity(e.config.BaseURL, "gitlab.com", project.PathWithNamespace)
+	host, id := apiRepoIdentity(e.config.BaseURL, "gitlab.com", project.PathWithNamespace)
 	for paths := range blobs.all() {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -217,7 +217,7 @@ func (e *GitLabEnumerator) enumerateProject(ctx context.Context, project *gitlab
 			continue
 		}
 
-		if err := callback(content, types.ComputeBlobID(content), apiProvenance(id, paths)); err != nil {
+		if err := callback(content, types.ComputeBlobID(content), apiProvenance(host, id, paths)); err != nil {
 			return err
 		}
 	}

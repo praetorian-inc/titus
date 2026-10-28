@@ -1,6 +1,7 @@
 package explore
 
 import (
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -589,8 +590,20 @@ func TestBuildFindingRow_FileAddsNoFacetValue_ExtendedSourceDoes(t *testing.T) {
 // row (HostRecorded=false) keeps its stored repository string, so it is a
 // facet value of its own beside the host-qualified form.
 func TestBuildFindingRow_LegacyRowIsOwnFacetValue(t *testing.T) {
-	s := store.NewMemory()
+	// Only a SQLite datastore can hold a legacy row: the migration that added
+	// provenance.host leaves rows written before it NULL, while AddProvenance
+	// always binds a string. So write the row, then reset it to the migrated
+	// shape through a second connection.
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	s, err := store.New(store.Config{Path: dbPath})
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
 	blobID := types.ComputeBlobID([]byte("legacy"))
+	if err := s.AddBlob(blobID, 6); err != nil {
+		t.Fatalf("AddBlob: %v", err)
+	}
 	if err := s.AddOccurrences(blobID, []types.Occurrence{
 		{Kind: "git", Repository: "github.com/acme/api", Path: "a.env", Commit: "1111111aaaaaaaa"},
 	}); err != nil {
@@ -598,6 +611,16 @@ func TestBuildFindingRow_LegacyRowIsOwnFacetValue(t *testing.T) {
 	}
 	if err := s.AddProvenance(blobID, types.GitProvenance{RepoPath: "acme/api", BlobPath: "old.env"}); err != nil {
 		t.Fatalf("AddProvenance: %v", err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if res, err := db.Exec(`UPDATE provenance SET host = NULL WHERE blob_id = ? AND repo_path = ?`, blobID.Hex(), "acme/api"); err != nil {
+		t.Fatalf("null host: %v", err)
+	} else if n, _ := res.RowsAffected(); n != 1 {
+		t.Fatalf("fixture: nulled %d provenance rows, want 1", n)
 	}
 	m := &types.Match{StructuralID: "m1", BlobID: blobID, RuleID: "r"}
 

@@ -63,6 +63,42 @@ func TestOccurrencesOf_GitOnePerLocation(t *testing.T) {
 		AbsolutePath: filepath.Join("/src/api", "backup/config.yml"), WorkingTree: true, HostRecorded: true}, got[1])
 }
 
+// S-T003: the host a repository was scanned from reaches every occurrence of
+// that provenance (committed and working-tree), so host-aware selectors see it.
+// A provenance with no host leaves Host empty rather than inventing one.
+func TestOccurrencesOf_GitCopiesHost(t *testing.T) {
+	locs := []GitLocation{
+		{Path: "config.yml", Commit: &CommitMetadata{CommitID: "aaaa111", CommitterTimestamp: jun15}},
+		{Path: "backup/config.yml", WorkingTree: true},
+	}
+	for _, tt := range []struct {
+		name     string
+		host     string
+		wantHost string
+	}{
+		{"hosted", "github.com", "github.com"},
+		{"self-hosted", "gitlab.example.com", "gitlab.example.com"},
+		{"no host stays empty", "", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := OccurrencesOf(GitProvenance{
+				RepoPath: "github.com/acme/api", Host: tt.host, RepoRoot: "/src/api",
+				RemoteIdentity: true, Locations: locs,
+			})
+			require.Len(t, got, len(locs))
+			for _, o := range got {
+				assert.Equal(t, tt.wantHost, o.Host, "location %s", o.Path)
+				assert.True(t, o.HostRecorded)
+			}
+		})
+	}
+
+	// The primary (no Locations) occurrence carries the host too.
+	got := OccurrencesOf(GitProvenance{RepoPath: "github.com/acme/api", Host: "github.com", BlobPath: "a.txt", RemoteIdentity: true})
+	require.Len(t, got, 1)
+	assert.Equal(t, "github.com", got[0].Host)
+}
+
 func TestOccurrencesOf_GitRemotelessRepoKeepsAbsolutePath(t *testing.T) {
 	// C-FOLDERS-2: two remote-less repos with identical commits must not merge.
 	for _, root := range []string{"/x/one", "/x/two"} {

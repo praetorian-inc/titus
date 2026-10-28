@@ -1,8 +1,10 @@
 package store
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -75,6 +77,11 @@ type Store interface {
 	// of the given targetType. Useful when filtering many findings at once.
 	GetAnnotationsByType(targetType string) (map[string]string, error)
 
+	// ListSources returns every distinct recorded source across all blobs,
+	// deduplicated and sorted. It is a read on the root store, never on the
+	// ExecBatch store.
+	ListSources() ([]types.SourceRecord, error)
+
 	// Close closes the database connection.
 	Close() error
 }
@@ -111,6 +118,67 @@ func provenanceKeyOf(prov types.Provenance) (provenanceRowKey, error) {
 	default:
 		return provenanceRowKey{}, fmt.Errorf("unknown provenance type: %T", prov)
 	}
+}
+
+// provenanceSource maps a stored provenance key to its source record through
+// types.OccurrencesOf, so a listed Kind, Repository and Path are the values a
+// report selects on. host is the stored host column; hostRecorded is false only
+// for a git row with a NULL host.
+func provenanceSource(k provenanceRowKey, host string, hostRecorded bool) types.SourceRecord {
+	var p types.Provenance
+	switch k.kind {
+	case "git":
+		p = types.GitProvenance{RepoPath: k.repoPath, BlobPath: k.path}
+	case "extended":
+		var payload map[string]interface{}
+		_ = json.Unmarshal([]byte(k.path), &payload)
+		p = types.ExtendedProvenance{Payload: payload}
+	case "archive":
+		p = types.ArchiveProvenance{ArchivePath: k.path, MemberPath: k.repoPath}
+	default:
+		p = types.FileProvenance{FilePath: k.path}
+	}
+	o := types.OccurrencesOf(p)[0]
+	return types.SourceRecord{
+		Kind: o.Kind, Repository: o.Repository, Path: o.Path,
+		Host: host, HostRecorded: hostRecorded,
+	}
+}
+
+// mergeSources deduplicates records on every field of SourceRecord and merges
+// no field: a record with HostRecorded false and one with it true stay two
+// entries, as in report sources. The result is sorted by (Kind, Repository,
+// Host, Path, AbsolutePath) with HostRecorded false first, so both stores list
+// sources in one order. It never returns nil.
+func mergeSources(in []types.SourceRecord) []types.SourceRecord {
+	seen := make(map[types.SourceRecord]struct{}, len(in))
+	out := make([]types.SourceRecord, 0, len(in))
+	for _, r := range in {
+		if _, ok := seen[r]; ok {
+			continue
+		}
+		seen[r] = struct{}{}
+		out = append(out, r)
+	}
+	slices.SortFunc(out, func(a, b types.SourceRecord) int {
+		return cmp.Or(
+			cmp.Compare(a.Kind, b.Kind),
+			cmp.Compare(a.Repository, b.Repository),
+			cmp.Compare(a.Host, b.Host),
+			cmp.Compare(a.Path, b.Path),
+			cmp.Compare(a.AbsolutePath, b.AbsolutePath),
+			cmp.Compare(boolRank(a.HostRecorded), boolRank(b.HostRecorded)),
+		)
+	})
+	return out
+}
+
+// boolRank orders false before true.
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // mergedOccurrences merges location rows with provenance rows and never

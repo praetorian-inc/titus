@@ -261,8 +261,10 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	var committerName, committerEmail, committerTimestamp string
 	var commitMessage string
 	var truncated bool
+	var host string // non-NULL on every new write; '' when no host was resolved
 	if p, ok := prov.(types.GitProvenance); ok {
 		truncated = p.LocationsTruncated
+		host = p.Host
 	}
 	if p, ok := prov.(types.GitProvenance); ok && p.Commit != nil {
 		authorName = p.Commit.AuthorName
@@ -277,17 +279,22 @@ func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 		}
 		commitMessage = p.Commit.Message
 	}
-	_, err = s.e.Exec(`INSERT OR IGNORE INTO provenance
-		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message, locations_truncated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	// An existing row is kept unchanged except that a NULL host (written
+	// before the host was recorded) is filled; a recorded host is never
+	// overwritten.
+	_, err = s.e.Exec(`INSERT INTO provenance
+		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message, locations_truncated, host)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(blob_id, type, path, repo_path, commit_hash)
+		DO UPDATE SET host = excluded.host WHERE provenance.host IS NULL`,
 		blobID.Hex(), key.kind, key.path, key.repoPath, key.commitHash,
 		authorName, authorEmail, authorTimestamp,
 		committerName, committerEmail, committerTimestamp,
-		commitMessage, truncated)
+		commitMessage, truncated, host)
 	if err != nil || !truncated {
 		return err
 	}
-	// INSERT OR IGNORE keeps an existing row unchanged; the flag is sticky,
+	// The upsert keeps an existing row unchanged; the flag is sticky,
 	// so a truncated write marks an existing row and nothing clears it.
 	_, err = s.e.Exec(`UPDATE provenance SET locations_truncated = 1
 		WHERE blob_id = ? AND type = ? AND path = ? AND repo_path = ? AND commit_hash = ?`,
@@ -316,7 +323,7 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 	rows, err := s.e.Query(`SELECT type, path, repo_path, commit_hash,
 		author_name, author_email, author_timestamp,
 		committer_name, committer_email, committer_timestamp,
-		commit_message, locations_truncated FROM provenance WHERE blob_id = ?
+		commit_message, locations_truncated, host FROM provenance WHERE blob_id = ?
 		ORDER BY `+provenanceOrder, blobID.Hex())
 	if err != nil {
 		return nil, err
@@ -330,10 +337,11 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 		var committerName, committerEmail, committerTS sql.NullString
 		var commitMessage sql.NullString
 		var truncated sql.NullInt64
+		var host sql.NullString
 		if err := rows.Scan(&provType, &path, &repoPath, &commitHash,
 			&authorName, &authorEmail, &authorTS,
 			&committerName, &committerEmail, &committerTS,
-			&commitMessage, &truncated); err != nil {
+			&commitMessage, &truncated, &host); err != nil {
 			return nil, err
 		}
 		switch provType {
@@ -344,6 +352,8 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 				RepoPath:           repoPath.String,
 				BlobPath:           path.String,
 				LocationsTruncated: truncated.Int64 != 0,
+				Host:               host.String,
+				HostRecorded:       host.Valid,
 			}
 			if commitHash.Valid && commitHash.String != "" {
 				meta := &types.CommitMetadata{
@@ -423,11 +433,15 @@ func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Prove
 	return result, rows.Err()
 }
 
-const insertBlobLocation = `INSERT OR IGNORE INTO blob_locations
-	(blob_id, kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+// insertBlobLocation keeps an existing row unchanged except that an empty host
+// is filled by a non-empty one; a recorded host is never overwritten.
+const insertBlobLocation = `INSERT INTO blob_locations
+	(blob_id, kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(blob_id, kind, repository, path, absolute_path, commit_hash, working_tree)
+	DO UPDATE SET host = excluded.host WHERE blob_locations.host = '' AND excluded.host <> ''`
 
-const selectBlobLocations = `SELECT kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree
+const selectBlobLocations = `SELECT kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host
 	FROM blob_locations WHERE blob_id = ?
 	ORDER BY blob_id, repository, path, commit_hash, absolute_path, working_tree`
 
@@ -468,7 +482,7 @@ func (s *SQLiteStore) insertOccurrences(blobID types.BlobID, occs []types.Occurr
 		if o.WorkingTree {
 			workingTree = 1
 		}
-		if _, err := stmt.Exec(blob, o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit, commitTS, workingTree); err != nil {
+		if _, err := stmt.Exec(blob, o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit, commitTS, workingTree, o.Host); err != nil {
 			return fmt.Errorf("storing location: %w", err)
 		}
 	}
@@ -497,7 +511,7 @@ func (s *SQLiteStore) getLocations(blobID types.BlobID) ([]types.Occurrence, err
 	for rows.Next() {
 		o := types.Occurrence{HostRecorded: true}
 		var commitTS, workingTree int64
-		if err := rows.Scan(&o.Kind, &o.Repository, &o.Path, &o.AbsolutePath, &o.Commit, &commitTS, &workingTree); err != nil {
+		if err := rows.Scan(&o.Kind, &o.Repository, &o.Path, &o.AbsolutePath, &o.Commit, &commitTS, &workingTree, &o.Host); err != nil {
 			return nil, err
 		}
 		if commitTS != 0 {
@@ -505,6 +519,56 @@ func (s *SQLiteStore) getLocations(blobID types.BlobID) ([]types.Occurrence, err
 		}
 		o.WorkingTree = workingTree != 0
 		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// ListSources returns every distinct provenance and location source across all
+// blobs, merged and sorted by mergeSources. Each statement is read to the end
+// and closed before the next runs, because the store holds one connection.
+func (s *SQLiteStore) ListSources() ([]types.SourceRecord, error) {
+	prov, err := s.provenanceSources()
+	if err != nil {
+		return nil, fmt.Errorf("reading provenance sources: %w", err)
+	}
+	locs, err := s.locationSources()
+	if err != nil {
+		return nil, fmt.Errorf("reading location sources: %w", err)
+	}
+	return mergeSources(append(prov, locs...)), nil
+}
+
+func (s *SQLiteStore) provenanceSources() ([]types.SourceRecord, error) {
+	rows, err := s.e.Query(`SELECT DISTINCT type, COALESCE(repo_path,''), host, COALESCE(path,'') FROM provenance`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []types.SourceRecord
+	for rows.Next() {
+		var k provenanceRowKey
+		var host sql.NullString
+		if err := rows.Scan(&k.kind, &k.repoPath, &host, &k.path); err != nil {
+			return nil, err
+		}
+		out = append(out, provenanceSource(k, host.String, k.kind != "git" || host.Valid))
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLiteStore) locationSources() ([]types.SourceRecord, error) {
+	rows, err := s.e.Query(`SELECT DISTINCT kind, repository, host, path, absolute_path FROM blob_locations`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []types.SourceRecord
+	for rows.Next() {
+		r := types.SourceRecord{HostRecorded: true}
+		if err := rows.Scan(&r.Kind, &r.Repository, &r.Host, &r.Path, &r.AbsolutePath); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
 	}
 	return out, rows.Err()
 }

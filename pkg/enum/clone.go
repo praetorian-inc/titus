@@ -113,7 +113,7 @@ func (e *CloneEnumerator) Enumerate(ctx context.Context, callback func(content [
 			// Log error and continue to next repo. Never print CloneURL: it
 			// may carry a token. The id and error carry repo-derived text,
 			// so escape them for the terminal (R6-3).
-			id, _ := cloneIdentity(repo)
+			_, id, _ := cloneIdentity(repo)
 			fmt.Fprintf(os.Stderr, "warning: skipping %s: %s\n", types.SanitizeDisplay(id), types.SanitizeDisplay(err.Error()))
 			continue
 		}
@@ -123,16 +123,17 @@ func (e *CloneEnumerator) Enumerate(ctx context.Context, callback func(content [
 
 // cloneIdentity returns the repository value for a clone: the normalized
 // CloneURL when it is a network remote (credentials, port and ".git"
-// stripped), otherwise the listed name as typed. No host is guessed (SEC-3).
-func cloneIdentity(repo RepoInfo) (id string, remote bool) {
-	if id, ok := repoid.Normalize(repo.CloneURL); ok {
-		return id, true
+// stripped) with the resolver's host, otherwise the listed name as typed with
+// no host. No host is guessed (SEC-3).
+func cloneIdentity(repo RepoInfo) (host, id string, remote bool) {
+	if host, id, ok := repoid.NormalizeHost(repo.CloneURL); ok {
+		return host, id, true
 	}
-	return typedRepoIdentity(cmp.Or(repo.Name, repo.CloneURL)), false
+	return "", typedRepoIdentity(cmp.Or(repo.Name, repo.CloneURL)), false
 }
 
 func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
-	id, remote := cloneIdentity(repo)
+	host, id, remote := cloneIdentity(repo)
 
 	tmpDir, err := os.MkdirTemp("", "titus-clone-*")
 	if err != nil {
@@ -198,7 +199,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 		}
 		return gitEnum.Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {
 			if gp, ok := prov.(types.GitProvenance); ok {
-				gp.RepoPath, gp.RemoteIdentity, gp.RepoRoot, gp.RepoTop = id, remote, "", ""
+				gp.RepoPath, gp.Host, gp.RemoteIdentity, gp.RepoRoot, gp.RepoTop = id, host, remote, "", ""
 				return callback(content, blobID, gp)
 			}
 			return callback(content, blobID, prov)
@@ -236,6 +237,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 		loc := types.GitLocation{Path: rel, Commit: commit}
 		return callback(content, blobID, types.GitProvenance{
 			RepoPath:           id,
+			Host:               host,
 			BlobPath:           rel,
 			Commit:             loc.Commit,
 			RemoteIdentity:     remote,

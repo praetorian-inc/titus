@@ -60,18 +60,6 @@ func TestStore_Occurrences(t *testing.T) {
 			},
 		},
 		{
-			name: "C-OLDDS-2: legacy acme/api row and new github.com/acme/api row both show",
-			provs: []types.Provenance{
-				types.GitProvenance{RepoPath: "acme/api", BlobPath: "config.yml", Commit: commitA},
-				types.GitProvenance{RepoPath: "github.com/acme/api", BlobPath: "config.yml", Commit: commitA},
-			},
-			occs: [][]types.Occurrence{{gitOcc("github.com/acme/api", "config.yml", commitA)}},
-			want: []types.Occurrence{
-				{Kind: "git", Repository: "acme/api", Path: "config.yml", Commit: commitA.CommitID, CommitDate: commitA.CommitterTimestamp, HostRecorded: false},
-				gitOcc("github.com/acme/api", "config.yml", commitA),
-			},
-		},
-		{
 			name:  "C-FOLDERS-1: identical file in two folders keeps both absolute paths",
 			provs: []types.Provenance{types.FileProvenance{FilePath: "config.yml"}, types.FileProvenance{FilePath: "config.yml"}},
 			occs: [][]types.Occurrence{
@@ -173,6 +161,96 @@ func TestStore_Occurrences(t *testing.T) {
 			})
 		}
 	}
+}
+
+// nullProvenanceHost turns the host of every provenance row of blob into NULL,
+// the shape the ADD COLUMN host migration (schema.go addProvenanceHostColumn)
+// leaves on a row written before the column existed. Only a SQLite datastore
+// can hold such a row: AddProvenance always binds a string.
+func nullProvenanceHost(t *testing.T, s *SQLiteStore, blob types.BlobID) {
+	t.Helper()
+	_, err := s.db.Exec(`UPDATE provenance SET host = NULL WHERE blob_id = ? AND repo_path = ?`, blob.Hex(), "acme/api")
+	require.NoError(t, err)
+}
+
+// C-OLDDS-2 for SQLite only: memory cannot represent a legacy NULL host.
+func TestSQLiteStore_LegacyNullHostRowAndNewRowBothShow(t *testing.T) {
+	s, err := NewSQLite(filepath.Join(t.TempDir(), "ds.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	blob := types.ComputeBlobID([]byte("secret"))
+	require.NoError(t, s.AddBlob(blob, 6))
+	require.NoError(t, s.AddProvenance(blob, types.GitProvenance{RepoPath: "acme/api", BlobPath: "config.yml", Commit: commitA}))
+	nullProvenanceHost(t, s, blob)
+	require.NoError(t, s.AddProvenance(blob, types.GitProvenance{RepoPath: "github.com/acme/api", Host: "github.com", BlobPath: "config.yml", Commit: commitA}))
+	require.NoError(t, s.AddOccurrences(blob, []types.Occurrence{gitOcc("github.com/acme/api", "config.yml", commitA)}))
+
+	got, err := s.GetOccurrences(blob)
+
+	require.NoError(t, err)
+	assert.Equal(t, []types.Occurrence{
+		{Kind: "git", Repository: "acme/api", Path: "config.yml", Commit: commitA.CommitID, CommitDate: commitA.CommitterTimestamp, HostRecorded: false},
+		gitOcc("github.com/acme/api", "config.yml", commitA),
+	}, got)
+}
+
+// A git location known only through provenance (an --incremental scan of
+// content already stored writes provenance and no blob_locations row) keeps
+// the host the scan recorded.
+func TestStore_ProvenanceOnlyGitRowKeepsRecordedHost(t *testing.T) {
+	for _, f := range storeFactories {
+		t.Run(f.name, func(t *testing.T) {
+			s := f.open(t)
+			blob := types.ComputeBlobID([]byte("secret"))
+			require.NoError(t, s.AddBlob(blob, 6))
+			require.NoError(t, s.AddProvenance(blob, types.GitProvenance{
+				RepoPath: "github.com/acme/api", Host: "github.com", BlobPath: "config.yml", Commit: commitA,
+			}))
+
+			got, err := s.GetOccurrences(blob)
+
+			require.NoError(t, err)
+			want := gitOcc("github.com/acme/api", "config.yml", commitA)
+			want.Host = "github.com"
+			assert.Equal(t, []types.Occurrence{want}, got)
+		})
+	}
+}
+
+// A remote-less repo records host "" (enum git.go id.host is empty); that is
+// recorded-empty, distinct from a legacy NULL.
+func TestStore_ProvenanceOnlyGitRowWithEmptyHostIsRecorded(t *testing.T) {
+	for _, f := range storeFactories {
+		t.Run(f.name, func(t *testing.T) {
+			s := f.open(t)
+			blob := types.ComputeBlobID([]byte("secret"))
+			require.NoError(t, s.AddBlob(blob, 6))
+			require.NoError(t, s.AddProvenance(blob, types.GitProvenance{
+				RepoPath: "acme/api", BlobPath: "config.yml", Commit: commitA,
+			}))
+
+			got, err := s.GetOccurrences(blob)
+
+			require.NoError(t, err)
+			assert.Equal(t, []types.Occurrence{gitOcc("acme/api", "config.yml", commitA)}, got)
+		})
+	}
+}
+
+func TestSQLiteStore_ProvenanceOnlyGitRowWithNullHostIsNotRecorded(t *testing.T) {
+	s, err := NewSQLite(filepath.Join(t.TempDir(), "ds.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	blob := types.ComputeBlobID([]byte("secret"))
+	require.NoError(t, s.AddBlob(blob, 6))
+	require.NoError(t, s.AddProvenance(blob, types.GitProvenance{RepoPath: "acme/api", BlobPath: "config.yml", Commit: commitA}))
+	nullProvenanceHost(t, s, blob)
+
+	got, err := s.GetOccurrences(blob)
+
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.False(t, got[0].HostRecorded)
 }
 
 func TestStore_AddOccurrencesInsideExecBatch(t *testing.T) {

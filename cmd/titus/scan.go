@@ -148,16 +148,19 @@ type blobJob struct {
 	// known marks a blob an earlier --incremental scan already matched: it is
 	// not matched again, only its location is recorded.
 	known bool
+	// stored marks a blob already in the store under --incremental: it is
+	// never matched, and its provenance is recorded like a full scan's.
+	stored bool
 }
 
 // incrementalJob decides what --incremental does with job. A blob not yet in
 // the store is scanned as usual. A stored blob is known when it has matches,
 // or when this scan queued it in m for a timed-out rule retry: its matches
 // are still pending and drainTimedOutMatches adds them after the parallel
-// pass. A known blob is sent so the worker records this location (a new path
-// or commit) without matching the content again. Any other stored blob is
-// skipped, as it has nothing to report. skipped reports a stored blob, whose
-// content is not matched again either way.
+// pass. Every stored blob is sent, so the worker records this location (a new
+// path or commit) without matching the content again, as a full scan does. A
+// stored blob that is not known gets its provenance but no blob locations.
+// skipped reports a stored blob, whose content is not matched again.
 func incrementalJob(s store.Store, m matcher.Matcher, job *blobJob) (send, skipped bool, err error) {
 	exists, err := s.BlobExists(job.blobID)
 	if err != nil {
@@ -171,13 +174,14 @@ func incrementalJob(s store.Store, m matcher.Matcher, job *blobJob) (send, skipp
 		return false, false, fmt.Errorf("checking matches of blob: %w", err)
 	}
 	job.known = job.known || matcher.HasPendingRetry(m, job.blobID)
-	return job.known, true, nil
+	job.stored = true
+	return true, true, nil
 }
 
-// matchJob matches the content of job. A known blob already has its matches
-// in the store, so it returns none.
+// matchJob matches the content of job. A stored blob is not matched again, and
+// a known one already has its matches in the store, so it returns none.
 func matchJob(m matcher.Matcher, job blobJob) ([]*types.Match, error) {
-	if job.known {
+	if job.known || job.stored {
 		return nil, nil
 	}
 	return m.MatchWithBlobID(job.content, job.blobID)

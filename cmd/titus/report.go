@@ -17,6 +17,7 @@ import (
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
 
@@ -26,7 +27,42 @@ var (
 	reportColor        string
 	summaryFormat      string
 	reportShowRejected bool
+
+	// Selector flag values, bound separately for report and report summary so
+	// the two commands never share state.
+	reportRepos, reportNamespaces, reportPaths    []string
+	summaryRepos, summaryNamespaces, summaryPaths []string
 )
+
+// selectorHelp describes the selector flags shared by report and report
+// summary. It is appended to both commands' Long text.
+const selectorHelp = `
+
+Selecting by source:
+  --repo, --namespace and --path restrict the report to the recorded
+  locations they select. Each flag may be repeated, and a location selected by
+  any value of any flag is kept (union). A finding or match with no selected
+  location is left out, and the summary counts only what is kept.
+
+  --repo X selects locations whose repository equals X. X may be written with
+  the host (github.com/acme/api), without it (acme/api), or, for a local
+  scan, as its recorded absolute folder (/work/a/api).
+  --namespace X selects locations whose repository sits under X, matched by
+  whole path segments: acme/team selects acme/team/api but not
+  acme/team-other/api. X takes the same forms as for --repo.
+  --path X selects locations whose recorded path or absolute path equals X.
+  A comma is part of a path, so it is never split. An absolute folder is a
+  --repo and --namespace form, not a --path form.
+
+  Remaining limitation: a location marked (host not recorded) cannot be tied
+  to one host, so a host-qualified --repo or --namespace value may also select
+  it. It is matched by dropping the first segment of the value. Scan the
+  source again to record its host.
+
+  After a selected report, a note counts the (host not recorded) locations
+  that no --repo or --namespace value selected, and another states that
+  nothing matched when the selection leaves no findings. Run
+  'titus report sources' to list the values that select.`
 
 // styles holds color formatters matching NoseyParker color scheme
 type styles struct {
@@ -75,14 +111,14 @@ type snippetParts struct {
 var reportCmd = &cobra.Command{
 	Use:   "report",
 	Short: "Generate a report from scan results",
-	Long:  "Read findings from a datastore and output a summary report",
+	Long:  "Read findings from a datastore and output a summary report." + selectorHelp,
 	RunE:  runReport,
 }
 
 var summaryCmd = &cobra.Command{
 	Use:   "summary",
 	Short: "Show a summary of findings by rule type",
-	Long:  "Display total counts and per-rule breakdown of findings and matches",
+	Long:  "Display total counts and per-rule breakdown of findings and matches." + selectorHelp,
 	RunE:  runSummary,
 }
 
@@ -198,136 +234,77 @@ func init() {
 
 	reportCmd.AddCommand(summaryCmd)
 	summaryCmd.Flags().StringVar(&summaryFormat, "format", "human", "Output format: human, json")
+
+	addSelectorFlags(reportCmd.Flags(), &reportRepos, &reportNamespaces, &reportPaths)
+	addSelectorFlags(summaryCmd.Flags(), &summaryRepos, &summaryNamespaces, &summaryPaths)
 }
 
-func runReport(cmd *cobra.Command, args []string) error {
-	// Determine store path
-	storePath := reportDatastore
+// addSelectorFlags registers the repeatable source selector flags as local
+// flags. StringArray, not StringSlice: a comma is a legal path character.
+func addSelectorFlags(fs *pflag.FlagSet, repos, namespaces, paths *[]string) {
+	fs.StringArrayVar(repos, selectorFlagRepo, nil, "Only locations of this repository, with or without host (repeatable)")
+	fs.StringArrayVar(namespaces, selectorFlagNamespace, nil, "Only locations under this namespace, matched by whole path segments (repeatable)")
+	fs.StringArrayVar(paths, selectorFlagPath, nil, "Only locations with this recorded path or absolute path (repeatable)")
+}
 
-	// Check if it's :memory: (invalid for report)
-	if storePath == ":memory:" {
-		return fmt.Errorf("cannot report from in-memory store")
+// openReportStore opens the datastore a report command reads. A directory is
+// the datastore directory format; the database lives inside it.
+func openReportStore(path string) (store.Store, error) {
+	if path == ":memory:" {
+		return nil, fmt.Errorf("cannot report from in-memory store")
 	}
 
-	// Check if it's a directory (new datastore format)
-	info, err := os.Stat(storePath)
+	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("datastore not found: %s", storePath)
+		return nil, fmt.Errorf("datastore not found: %s", path)
 	}
 	if info.IsDir() {
-		// New datastore directory format - open datastore.db inside
-		storePath = filepath.Join(storePath, "datastore.db")
+		path = filepath.Join(path, "datastore.db")
 	}
 
-	// Open store
-	s, err := store.New(store.Config{
-		Path: storePath,
-	})
+	s, err := store.New(store.Config{Path: path})
 	if err != nil {
-		return fmt.Errorf("opening datastore: %w", err)
+		return nil, fmt.Errorf("opening datastore: %w", err)
 	}
-	defer func() { _ = s.Close() }()
+	return s, nil
+}
 
-	// Get findings
+// loadReportScope reads the findings and matches a report covers, with the
+// rule map, dropping rejected findings unless --show-rejected is set.
+func loadReportScope(s store.Store) ([]*types.Finding, []*types.Match, map[string]*types.Rule, error) {
 	findings, err := s.GetFindings()
 	if err != nil {
-		return fmt.Errorf("retrieving findings: %w", err)
+		return nil, nil, nil, fmt.Errorf("retrieving findings: %w", err)
 	}
 
-	// Get all matches for additional context
 	matches, err := s.GetAllMatches()
 	if err != nil {
-		return fmt.Errorf("retrieving matches: %w", err)
+		return nil, nil, nil, fmt.Errorf("retrieving matches: %w", err)
 	}
 
-	// Load rules for finding ID computation
 	loader := rule.NewLoader()
 	rules, err := loader.LoadBuiltinRules()
 	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
+		return nil, nil, nil, fmt.Errorf("loading rules: %w", err)
 	}
 	ruleMap := make(map[string]*types.Rule)
 	for _, r := range rules {
 		ruleMap[r.ID] = r
 	}
 
-	// Filter out findings with rejected annotations unless --show-rejected is set
 	if !reportShowRejected {
 		findings, matches, err = filterRejected(s, findings, matches, ruleMap)
 		if err != nil {
-			return fmt.Errorf("filtering rejected findings: %w", err)
+			return nil, nil, nil, fmt.Errorf("filtering rejected findings: %w", err)
 		}
 	}
-
-	// Output based on format
-	switch reportFormat {
-	case "json":
-		return outputReportJSON(cmd, s, findings, matches, ruleMap)
-	case "human":
-		return outputReportHuman(cmd, s, findings, matches, ruleMap)
-	case "sarif":
-		return outputReportSARIF(cmd, s, findings, matches, ruleMap)
-	default:
-		return fmt.Errorf("unknown output format: %s", reportFormat)
-	}
+	return findings, matches, ruleMap, nil
 }
 
-func runSummary(cmd *cobra.Command, args []string) error {
-	// Determine store path (inherited from parent report command)
-	storePath := reportDatastore
-
-	if storePath == ":memory:" {
-		return fmt.Errorf("cannot report from in-memory store")
-	}
-
-	info, err := os.Stat(storePath)
-	if err != nil {
-		return fmt.Errorf("datastore not found: %s", storePath)
-	}
-	if info.IsDir() {
-		storePath = filepath.Join(storePath, "datastore.db")
-	}
-
-	s, err := store.New(store.Config{
-		Path: storePath,
-	})
-	if err != nil {
-		return fmt.Errorf("opening datastore: %w", err)
-	}
-	defer func() { _ = s.Close() }()
-
-	findings, err := s.GetFindings()
-	if err != nil {
-		return fmt.Errorf("retrieving findings: %w", err)
-	}
-
-	matches, err := s.GetAllMatches()
-	if err != nil {
-		return fmt.Errorf("retrieving matches: %w", err)
-	}
-
-	loader := rule.NewLoader()
-	rules, err := loader.LoadBuiltinRules()
-	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
-	}
-	ruleMap := make(map[string]*types.Rule)
-	for _, r := range rules {
-		ruleMap[r.ID] = r
-	}
-
-	// Filter out findings with rejected annotations unless --show-rejected is set
-	if !reportShowRejected {
-		findings, matches, err = filterRejected(s, findings, matches, ruleMap)
-		if err != nil {
-			return fmt.Errorf("filtering rejected findings: %w", err)
-		}
-	}
-
-	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
-	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
-
-	// Determine color setting (inherited from parent)
+// resolveColor applies the --color flag to the global color setting and
+// reports whether color is enabled. auto enables color only on a terminal
+// with NO_COLOR unset.
+func resolveColor() bool {
 	switch reportColor {
 	case "always":
 		color.NoColor = false
@@ -340,15 +317,97 @@ func runSummary(cmd *cobra.Command, args []string) error {
 			color.NoColor = false
 		}
 	}
+	return !color.NoColor
+}
+
+func runReport(cmd *cobra.Command, args []string) error {
+	// Validate the selectors before the datastore is opened: an invalid one
+	// exits non-zero with no report body and never falls back to unfiltered.
+	sel, err := newReportSelector(reportRepos, reportNamespaces, reportPaths)
+	if err != nil {
+		return err
+	}
+
+	s, err := openReportStore(reportDatastore)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = s.Close() }()
+
+	findings, matches, ruleMap, err := loadReportScope(s)
+	if err != nil {
+		return err
+	}
+
+	rs, findings, matches, unselectedHNR, err := applySelection(s, sel, findings, matches, ruleMap)
+	if err != nil {
+		return fmt.Errorf("selecting locations: %w", err)
+	}
+	notices := selectionNotices(sel, unselectedHNR, len(findings))
+
+	// Output based on format
+	switch reportFormat {
+	case "json":
+		err = outputReportJSON(cmd, rs, findings, matches, ruleMap)
+	case "human":
+		err = outputReportHuman(cmd, rs, findings, matches, ruleMap)
+	case "sarif":
+		err = outputReportSARIF(cmd, rs, findings, matches, ruleMap)
+	default:
+		return fmt.Errorf("unknown output format: %s", reportFormat)
+	}
+	if err != nil {
+		return err
+	}
+	writeSelectionNotices(cmd, reportFormat == "human", notices)
+	return nil
+}
+
+func runSummary(cmd *cobra.Command, args []string) error {
+	// Validate the selectors before the datastore is opened.
+	sel, err := newReportSelector(summaryRepos, summaryNamespaces, summaryPaths)
+	if err != nil {
+		return err
+	}
+
+	// The datastore path and --color are inherited from the parent report command.
+	s, err := openReportStore(reportDatastore)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = s.Close() }()
+
+	findings, matches, ruleMap, err := loadReportScope(s)
+	if err != nil {
+		return err
+	}
+
+	// The summary reads only counts, never locations, so the returned store is
+	// not needed; the counts come from the retained findings and matches.
+	_, findings, matches, unselectedHNR, err := applySelection(s, sel, findings, matches, ruleMap)
+	if err != nil {
+		return fmt.Errorf("selecting locations: %w", err)
+	}
+	notices := selectionNotices(sel, unselectedHNR, len(findings))
+
+	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
+	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
+
+	colorEnabled := resolveColor()
 
 	switch summaryFormat {
 	case "json":
-		return outputSummaryJSON(cmd.OutOrStdout(), summary)
+		err = outputSummaryJSON(cmd.OutOrStdout(), summary)
 	case "human":
-		return outputSummaryHuman(cmd.OutOrStdout(), summary, !color.NoColor)
+		err = outputSummaryHuman(cmd.OutOrStdout(), summary, colorEnabled)
 	default:
 		return fmt.Errorf("unknown output format: %s", summaryFormat)
 	}
+	if err != nil {
+		return err
+	}
+	writeSelectionNotices(cmd, summaryFormat == "human", notices)
+	return nil
 }
 
 // =============================================================================
@@ -721,20 +780,7 @@ func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Find
 	out := cmd.OutOrStdout()
 
 	// Determine if colors should be enabled based on --color flag
-	switch reportColor {
-	case "always":
-		color.NoColor = false
-	case "never":
-		color.NoColor = true
-	default: // "auto"
-		// Check if stdout is a TTY and NO_COLOR is not set
-		if !term.IsTerminal(int(os.Stdout.Fd())) || os.Getenv("NO_COLOR") != "" {
-			color.NoColor = true
-		} else {
-			color.NoColor = false
-		}
-	}
-	st := newStyles(!color.NoColor)
+	st := newStyles(resolveColor())
 
 	// Build content-based finding-to-match map
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)

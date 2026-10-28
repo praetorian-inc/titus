@@ -200,6 +200,7 @@ func (e *GitEnumerator) enumerateSingleCommit(ctx context.Context, callback func
 		}
 		prov := types.GitProvenance{
 			RepoPath:       id.path,
+			Host:           id.host,
 			Commit:         meta,
 			BlobPath:       locs[0].Path,
 			RepoRoot:       id.root,
@@ -458,16 +459,16 @@ func gitSubject(msg string) string {
 
 // goGitOriginIdentity is originIdentity read through go-git: the last
 // remote.origin.url value, the one originIdentity reads, normalized.
-func goGitOriginIdentity(repo *git.Repository) (string, bool) {
+func goGitOriginIdentity(repo *git.Repository) (host, id string, ok bool) {
 	cfg, err := repo.Config()
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	origin, ok := cfg.Remotes["origin"]
-	if !ok || len(origin.URLs) == 0 {
-		return "", false
+	origin, found := cfg.Remotes["origin"]
+	if !found || len(origin.URLs) == 0 {
+		return "", "", false
 	}
-	return repoid.Normalize(origin.URLs[len(origin.URLs)-1])
+	return repoid.NormalizeHost(origin.URLs[len(origin.URLs)-1])
 }
 
 // objectSizer is implemented by storers that report an object's size without

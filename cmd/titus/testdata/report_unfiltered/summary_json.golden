@@ -1,0 +1,12 @@
+{
+  "total_findings": 10,
+  "total_matches": 10,
+  "rules": [
+    {
+      "rule_id": "np.aws.1",
+      "rule_name": "AWS API Key",
+      "findings": 10,
+      "matches": 10
+    }
+  ]
+}

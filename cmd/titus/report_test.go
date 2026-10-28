@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1451,7 +1452,8 @@ func reportFixture(t *testing.T, locs ...[]types.Occurrence) (store.Store, []*ty
 // given provenance rows (no blob_locations rows), in a SQLite datastore.
 func legacyFixture(t *testing.T, provs ...types.Provenance) (store.Store, []*types.Finding, []*types.Match, map[string]*types.Rule) {
 	t.Helper()
-	s, err := store.New(store.Config{Path: filepath.Join(t.TempDir(), "legacy.db")})
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	s, err := store.New(store.Config{Path: dbPath})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -1466,6 +1468,14 @@ func legacyFixture(t *testing.T, provs ...types.Provenance) (store.Store, []*typ
 	for _, p := range provs {
 		require.NoError(t, s.AddProvenance(blobID, p))
 	}
+	// AddProvenance writes '' (a recorded empty host); the migration that
+	// added provenance.host leaves a pre-existing row NULL. Reset to that
+	// shape so these rows are the legacy ones the fixture is named for.
+	legacyDB, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	_, err = legacyDB.Exec(`UPDATE provenance SET host = NULL WHERE blob_id = ?`, blobID.Hex())
+	require.NoError(t, err)
+	require.NoError(t, legacyDB.Close())
 	require.NoError(t, s.AddMatch(&types.Match{
 		StructuralID: "sm-legacy",
 		RuleID:       r.ID,

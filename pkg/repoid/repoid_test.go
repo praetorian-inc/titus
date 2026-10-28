@@ -10,6 +10,73 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// S-T003: the host recorded with an identity is the resolver's own value
+// (lowercased, userinfo and port removed), never a prefix cut from the id.
+func TestNormalizeHost(t *testing.T) {
+	const token = "tok_NEVERINHOST"
+	tests := []struct {
+		name     string
+		remote   string
+		wantHost string
+		wantID   string
+	}{
+		{"scp form", "git@github.com:acme/api.git", "github.com", "github.com/acme/api"},
+		{"userinfo and mixed-case host", "https://user:" + token + "@GitHub.com/acme/api.git", "github.com", "github.com/acme/api"},
+		{"port removed", "ssh://git@gitlab.example.com:2222/group/sub/api.git", "gitlab.example.com", "gitlab.example.com/group/sub/api"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, id, ok := NormalizeHost(tt.remote)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantHost, host)
+			assert.Equal(t, tt.wantID, id)
+			assert.NotContains(t, host, token)
+			assert.True(t, strings.HasPrefix(id, host+"/"), "id %q is host %q plus a path", id, host)
+			// Normalize is NormalizeHost without the host.
+			nid, nok := Normalize(tt.remote)
+			assert.True(t, nok)
+			assert.Equal(t, id, nid)
+		})
+	}
+
+	for _, remote := range []string{"", "acme/api", "../api", "file:///x", "https://h/o//r"} {
+		t.Run("rejected "+remote, func(t *testing.T) {
+			host, id, ok := NormalizeHost(remote)
+			assert.False(t, ok)
+			assert.Empty(t, host)
+			assert.Empty(t, id)
+		})
+	}
+}
+
+// S-T003: API-mode identities report the host they were built from, and "" when
+// no host was resolved (the path alone is the identity).
+func TestFromBaseURLHost(t *testing.T) {
+	tests := []struct {
+		name        string
+		baseURL     string
+		defaultHost string
+		fullPath    string
+		wantHost    string
+		wantID      string
+	}{
+		{"default host", "", "github.com", "acme/api", "github.com", "github.com/acme/api"},
+		{"self-hosted base url", "https://github.example.com/api/v3/", "github.com", "acme/api", "github.example.com", "github.example.com/acme/api"},
+		{"mixed-case base url with credentials and port", "https://u:tok@GitLab.Example.com:8443/", "gitlab.com", "acme/api", "gitlab.example.com", "gitlab.example.com/acme/api"},
+		{"unparseable base url borrows no default host", "://bad", "github.com", "acme/api", "", "acme/api"},
+		{"base url without host borrows no default host", "https://u:tok@/", "github.com", "acme/api", "", "acme/api"},
+		{"invalid path", "", "github.com", "../etc", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, id := FromBaseURLHost(tt.baseURL, tt.defaultHost, tt.fullPath)
+			assert.Equal(t, tt.wantHost, host)
+			assert.Equal(t, tt.wantID, id)
+			assert.Equal(t, id, FromBaseURL(tt.baseURL, tt.defaultHost, tt.fullPath))
+		})
+	}
+}
+
 // C-NORMALIZE-1: every origin form of one repository yields the same identity.
 func TestNormalize_SpecExamples(t *testing.T) {
 	for _, remote := range []string{

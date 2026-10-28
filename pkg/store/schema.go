@@ -204,6 +204,9 @@ func createProvenanceTable(db *sql.DB) error {
 	if err := addLocationsTruncatedColumn(db); err != nil {
 		return err
 	}
+	if err := addProvenanceHostColumn(db); err != nil {
+		return err
+	}
 
 	// Create index for efficient provenance lookup by blob_id
 	_, err = db.Exec(`
@@ -221,6 +224,32 @@ func addLocationsTruncatedColumn(db *sql.DB) error {
 	_, err := db.Exec(alter)
 	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		return fmt.Errorf("adding provenance.locations_truncated: %w", err)
+	}
+	return nil
+}
+
+// addProvenanceHostColumn adds provenance.host to a datastore created before
+// the column existed. The column is nullable: NULL marks a row written before
+// the host was recorded, and every new write binds a string (empty when no
+// host was resolved). Only SQLite's "duplicate column name" error is ignored.
+func addProvenanceHostColumn(db *sql.DB) error {
+	const alter = "ALTER TABLE provenance ADD COLUMN host TEXT"
+	_, err := db.Exec(alter)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		return fmt.Errorf("adding provenance.host: %w", err)
+	}
+	return nil
+}
+
+// addBlobLocationsHostColumn adds blob_locations.host to a datastore whose
+// table predates the column. Existing rows read as empty (no host recorded). The
+// column is outside the UNIQUE key. Only SQLite's "duplicate column name"
+// error is ignored.
+func addBlobLocationsHostColumn(db *sql.DB) error {
+	const alter = "ALTER TABLE blob_locations ADD COLUMN host TEXT NOT NULL DEFAULT ''"
+	_, err := db.Exec(alter)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		return fmt.Errorf("adding blob_locations.host: %w", err)
 	}
 	return nil
 }
@@ -245,6 +274,9 @@ func createBlobLocationsTable(db *sql.DB) error {
 			UNIQUE(blob_id, kind, repository, path, absolute_path, commit_hash, working_tree)
 		)
 	`); err != nil {
+		return err
+	}
+	if err := addBlobLocationsHostColumn(db); err != nil {
 		return err
 	}
 	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_blob_locations_blob_id ON blob_locations(blob_id)`)
