@@ -166,6 +166,30 @@ and fires last, stacking on top of whichever `set_score` won — e.g. a
 `site-admin` token (95) that owns 3+ orgs reaches the 100 ceiling after the
 final clamp.
 
+### `OrcaRouterGoScorer` — OrcaRouter Cyber Inference API Keys
+
+**Targets:** `kingfisher.orcarouter.1` (OrcaRouter `sk-orca-…` keys)
+
+OrcaRouter is an OpenAI-compatible AI gateway for security teams: one bearer
+key routes to many upstream model providers and to the gateway's OrcaCyber
+models. Its `GET https://api.orcarouter.ai/v1/models` response is the
+provider's own capability declaration, so every modifier below is decided from
+that catalog rather than from a model name. Entries that do not explicitly
+declare a chat-capable `supported_endpoint_types` value (`openai`,
+`anthropic`, `gemini`, `openai-response`) are excluded — capability is never
+inferred from an id. All four modifiers share a single catalog request.
+
+| Modifier | Priority | Kind | Condition | Effect |
+|----------|----------|------|-----------|--------|
+| `cyber-model-access` | 95 | `delta +10` | Catalog exposes at least one `orcacyber-` model | The key can drive OrcaCyber Ultra/Zero, which OrcaRouter only unlocks for business-verified security teams |
+| `broad-model-access` | 90 | `delta +10` | ≥ 10 chat-capable models | Paid-tier key with a broad routable catalog |
+| `limited-model-access` | 80 | `delta -15` | 1–9 chat-capable models | Narrow, likely free-tier or scoped key |
+| `revoked-key` | 10 | `set_score 5` | `GET /v1/models` returns 401/403 | Expired or revoked credential |
+
+Each modifier is dynamic (`--score-scope` required). The catalog response is
+bounded (2 MiB, 2000 entries) and the key is never written to a log, an error
+message, or the probe cache (entries are keyed by SHA-256 fingerprint).
+
 ---
 
 ## Writing Custom YAML Scorers

@@ -1,0 +1,36 @@
+# pkg/validator/validators/orcarouter.yaml
+# OrcaRouter Cyber Inference API Key Validator
+#
+# OrcaRouter is an OpenAI-compatible AI gateway for security teams: one bearer
+# key (`sk-orca-…`) authenticates against https://api.orcarouter.ai/v1 and
+# routes to many upstream model providers plus the gateway's OrcaCyber models.
+#
+# GET /v1/models lists the catalog the key is entitled to call. A 200 means
+# the leaked key is still active; 401/403 means it is revoked or invalid.
+# The endpoint does not bill inference, so validating a found key costs nothing
+# beyond the call itself.
+#
+# API documentation:
+#   https://www.orcarouter.ai/docs
+#   https://www.orcarouter.ai/cyber
+
+validators:
+
+- name: orcarouter-api-key
+  rule_ids:
+    - kingfisher.orcarouter.1
+
+  http:
+    method: GET
+    url: "https://api.orcarouter.ai/v1/models"
+    auth:
+      type: bearer
+      secret_group: "key"
+    headers:
+      - name: "Accept"
+        value: "application/json"
+
+    # 200 with a model catalog means the credential is live.
+    success_codes: [200]
+    # Revoked or invalid key.
+    failure_codes: [401, 403]

@@ -422,6 +422,7 @@ rulesets:
   - kingfisher.openweather.1            # OpenWeather Map API Key
   - kingfisher.opsgenie.1               # OpsGenie API Key
   - kingfisher.optimizely.1             # Optimizely Personal Access Token
+  - kingfisher.orcarouter.1             # OrcaRouter Cyber Inference API Key
   - kingfisher.owlbot.1                 # Owlbot API Key
   - kingfisher.packagecloud.1           # PackageCloud API Key
   - kingfisher.pagerduty.1              # PagerDuty API Key
