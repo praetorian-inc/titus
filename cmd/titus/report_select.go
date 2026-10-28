@@ -162,6 +162,18 @@ func dropFirst(x string) string {
 	return rest
 }
 
+// absoluteForm reports whether x is an absolute folder form after ToSlash: a
+// leading "/" or a drive prefix such as "C:/". It is textual, so it behaves
+// the same on every OS (filepath.IsAbs does not recognise "C:/" on unix). Such
+// a selector has no host segment.
+func absoluteForm(x string) bool {
+	if strings.HasPrefix(x, "/") {
+		return true
+	}
+	return len(x) >= 3 && x[1] == ':' && x[2] == '/' &&
+		(x[0] >= 'a' && x[0] <= 'z' || x[0] >= 'A' && x[0] <= 'Z')
+}
+
 // selects reports whether o is selected by any value of any flag.
 func (r *reportSelector) selects(o types.Occurrence) bool {
 	if !r.active() {
@@ -190,26 +202,27 @@ func (r *reportSelector) selects(o types.Occurrence) bool {
 
 // repoSelects: x equals any form of o. A record stored without a host is also
 // selected when x, minus its first segment, equals the stored repository
-// (the first segment is the host the user typed). It keeps its marker, and a
-// recorded host is never selected by a different host.
+// (the first segment is the host the user typed). An absolute folder form has
+// no host segment, so it never takes that fallback. A recorded host is never
+// selected by a different host.
 func repoSelects(x string, o types.Occurrence, forms []string, hnr bool) bool {
 	for _, f := range forms {
 		if f == x {
 			return true
 		}
 	}
-	return hnr && o.Repository != "" && dropFirst(x) == o.Repository
+	return hnr && o.Repository != "" && !absoluteForm(x) && dropFirst(x) == o.Repository
 }
 
 // namespaceSelects: x is a whole-segment prefix of any form of o, with the
-// same host-less extension as repoSelects.
+// same host-less extension as repoSelects (skipped for an absolute folder form).
 func namespaceSelects(x string, o types.Occurrence, forms []string, hnr bool) bool {
 	for _, f := range forms {
 		if segmentPrefix(x, f) {
 			return true
 		}
 	}
-	if hnr && o.Repository != "" {
+	if hnr && o.Repository != "" && !absoluteForm(x) {
 		if d := dropFirst(x); d != "" && segmentPrefix(d, o.Repository) {
 			return true
 		}
@@ -336,10 +349,10 @@ func selectionNotices(sel *reportSelector, unselectedHNR, retainedFindings int) 
 func writeSelectionNotices(cmd *cobra.Command, human bool, notices []string) {
 	for _, n := range notices {
 		if human {
-			fmt.Fprintln(cmd.OutOrStdout(), types.SanitizeDisplay(n))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), types.SanitizeDisplay(n))
 			continue
 		}
-		fmt.Fprintln(cmd.ErrOrStderr(), n)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), n)
 	}
 }
 

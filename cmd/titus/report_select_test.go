@@ -115,6 +115,16 @@ func suDS2() map[string]types.Occurrence {
 	}
 }
 
+// suDS3 is a legacy host-not-recorded row whose repository is work/a, beside a
+// local repository really scanned from /work/a. Both are rows a datastore can
+// hold: the first is a Titus <= v1.2.11 row, the second a current local scan.
+func suDS3() map[string]types.Occurrence {
+	return map[string]types.Occurrence{
+		"H1": suHNR("work/a", "legacy.txt"),
+		"A1": suLocal("repo-a", "/work/a", "real.txt"),
+	}
+}
+
 func suSelected(t *testing.T, sel *reportSelector, set map[string]types.Occurrence) []string {
 	t.Helper()
 	var got []string
@@ -261,6 +271,15 @@ func TestReportSelector_SelectsTable(t *testing.T) {
 		{"S-T003/HNR record selected by its listed form", suDS1, sel{repos: []string{"zzz/unrelated"}}, []string{"L10"}},
 		{"S-T003/HNR record selected by host-qualified form", suDS1, sel{repos: []string{"github.com/zzz/unrelated"}}, []string{"L10"}},
 		{"S-T003/recorded host is not selected by another host", suDS1, sel{repos: []string{"gitlab.example.com/other/api"}}, []string{}},
+		// An absolute-folder selector is never a host-qualified spelling: the
+		// first-segment extension must not turn "/work/a" or "C:/work/a" into
+		// "work/a" (INV-HNR-MATCH, absolute forms).
+		{"HNR-ABS/repo folder does not select hostless work/a", suDS3, sel{repos: []string{"/work/a"}}, []string{"A1"}},
+		{"HNR-ABS/namespace folder /work does not select hostless work/a", suDS3, sel{ns: []string{"/work"}}, []string{"A1"}},
+		{"HNR-ABS/namespace folder /work/a does not select hostless work/a", suDS3, sel{ns: []string{"/work/a"}}, []string{"A1"}},
+		{"HNR-ABS/repo drive form does not select hostless work/a", suDS3, sel{repos: []string{"C:/work/a"}}, []string{}},
+		{"HNR-ABS/control repo host-qualified selects hostless work/a", suDS3, sel{repos: []string{"github.com/work/a"}}, []string{"H1"}},
+		{"HNR-ABS/control namespace host-qualified selects hostless work/a", suDS3, sel{ns: []string{"github.com/work"}}, []string{"H1"}},
 		// paths (INV-PATH)
 		{"C-PATH-ABS-WT", suDS2, sel{paths: []string{"/work/a/api/config/app.env"}}, []string{"P2"}},
 		{"C-PATH-DISPLAYED", suDS2, sel{paths: []string{"config/app.env"}}, []string{"P1", "P2"}},
