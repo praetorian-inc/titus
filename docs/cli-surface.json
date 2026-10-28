@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "surfaceHash": "sha256:4d4da820671766fd35b8066eb3ac71db3ec866e2d13330488d29d7af05f8c5e5",
+  "surfaceHash": "sha256:c70ecebb12298bda984002a9af12acc57402a35d6bcc8d663289a8ea6cc4483f",
   "commands": [
     {
       "path": "titus",
@@ -2832,6 +2832,12 @@
           "usage": "code accessibility: \"public\" (no penalty), \"private\" (-25 to all scores),\nor \"auto\" (detect via git remote/GitHub API, defaults to private if undetermined)"
         },
         {
+          "name": "ami",
+          "type": "bool",
+          "default": "false",
+          "usage": "Treat target as an Amazon Machine Image (AMI ID or raw disk image)"
+        },
+        {
           "name": "asana-attachment-max-size",
           "type": "int64",
           "default": "52428800",
@@ -2956,6 +2962,11 @@
           "type": "int",
           "default": "0",
           "usage": "Number of parallel file readers (0 = NumCPU)"
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "usage": "AWS region for AMI scans (ami://region/ami-id overrides this; otherwise the SDK default)"
         },
         {
           "name": "rules",
