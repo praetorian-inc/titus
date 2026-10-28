@@ -30,6 +30,7 @@ type srcDoc struct {
 	} `json:"namespaces"`
 	Paths []struct {
 		Value    string `json:"value"`
+		Kind     string `json:"kind"`
 		Absolute bool   `json:"absolute"`
 	} `json:"paths"`
 	Unselectable []struct {
@@ -459,4 +460,86 @@ func TestReportSourcesAll_LegacyGenerationLabels(t *testing.T) {
 	require.NoError(t, h.err)
 	assert.Contains(t, h.stdout, "acme/quiet  (host not recorded)")
 	assert.NotContains(t, h.stdout, "(no findings)")
+}
+
+// kindsOf returns the recorded kinds listed for one path value, in order.
+func (d srcDoc) kindsOf(value string) []string {
+	var out []string
+	for _, p := range d.Paths {
+		if p.Value == value {
+			out = append(out, p.Kind)
+		}
+	}
+	return out
+}
+
+// A file named like an archive member renders as the same path value. `sources
+// all` keeps both entries apart by kind, in a fixed order, while `--path`
+// selection stays kind-blind and selects the findings of both.
+func TestReportSourcesAll_SamePathValueTwoKinds(t *testing.T) {
+	const value = "a.zip:t/creds.txt"
+	b := newDSBuilder(t)
+	fileFinding := b.finding("FILE")
+	b.addProv("FILE", types.FileProvenance{FilePath: value})
+	arcFinding := b.finding("ARC")
+	b.addProv("ARC", types.ArchiveProvenance{ArchivePath: "a.zip", MemberPath: "t/creds.txt"})
+	ds := b.done()
+
+	d, _ := srcRun(t, ds, true)
+	assert.Equal(t, []string{"archive", "file"}, d.kindsOf(value),
+		"one entry per kind for the shared value, sorted by kind")
+	again, _ := srcRun(t, ds, true)
+	assert.Equal(t, d.Paths, again.Paths, "listing is deterministic")
+
+	r := runRootSplit(t, reportCmdArgs(ds, nil, "--format", "json", "--path", value)...)
+	require.NoError(t, r.err, "stderr: %s", r.stderr)
+	var ids []string
+	for _, f := range selDecodeFindings(t, r.stdout) {
+		ids = append(ids, f.ID)
+	}
+	assert.ElementsMatch(t, []string{fileFinding, arcFinding}, ids, "selection ignores kind")
+}
+
+// Human output for `sources all` shows each path's kind after the value.
+func TestReportSourcesAll_HumanShowsPathKind(t *testing.T) {
+	b := newDSBuilder(t)
+	b.finding("FILE")
+	b.addProv("FILE", types.FileProvenance{FilePath: "notes.txt"})
+	b.finding("ARC")
+	b.addProv("ARC", types.ArchiveProvenance{ArchivePath: "a.zip", MemberPath: "t/creds.txt"})
+	b.finding("EXT")
+	b.addProv("EXT", types.ExtendedProvenance{Payload: map[string]any{"path": "s3://b/one.env"}})
+	ds := b.done()
+
+	r := runRootSplit(t, reportCmdArgs(ds, []string{"sources", "all"})...)
+	require.NoError(t, r.err, "stderr: %s", r.stderr)
+	lines := strings.Split(r.stdout, "\n")
+	for _, want := range []string{
+		"  notes.txt  file",
+		"  a.zip:t/creds.txt  archive",
+		"  s3://b/one.env  extended",
+	} {
+		assert.Contains(t, lines, want)
+	}
+}
+
+// Plain `sources` carries no kind: the key is absent from every path entry.
+func TestReportSources_PathsHaveNoKindKey(t *testing.T) {
+	b := newDSBuilder(t)
+	b.finding("FILE")
+	b.addProv("FILE", types.FileProvenance{FilePath: "notes.txt"})
+	b.finding("ARC")
+	b.addProv("ARC", types.ArchiveProvenance{ArchivePath: "a.zip", MemberPath: "t/creds.txt"})
+	ds := b.done()
+
+	r := runRootSplit(t, reportCmdArgs(ds, []string{"sources"}, "--format", "json")...)
+	require.NoError(t, r.err, "stderr: %s", r.stderr)
+	var raw struct {
+		Paths []map[string]any `json:"paths"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.stdout), &raw))
+	require.NotEmpty(t, raw.Paths)
+	for _, p := range raw.Paths {
+		assert.NotContains(t, p, "kind", "path %v", p["value"])
+	}
 }

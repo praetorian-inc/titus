@@ -105,9 +105,11 @@ type sourceNamespace struct {
 }
 
 // sourcePath is one path selector value. Absolute is true for a recorded
-// absolute path.
+// absolute path. Kind is the recorded kind; only 'sources all' sets it, and
+// selection ignores it.
 type sourcePath struct {
 	Value    string `json:"value"`
+	Kind     string `json:"kind,omitempty"`
 	Absolute bool   `json:"absolute"`
 }
 
@@ -129,8 +131,10 @@ type sourcesResult struct {
 
 // sourceSet collects deduplicated entries. Entries are comparable structs, so
 // each map is its own set; equal text with a different host record stays two
-// entries.
+// entries. pathKinds makes a path entry carry its kind, so equal text of
+// different kinds stays two entries.
 type sourceSet struct {
+	pathKinds    bool
 	repos        map[sourceRepo]struct{}
 	namespaces   map[sourceNamespace]struct{}
 	paths        map[sourcePath]struct{}
@@ -162,7 +166,11 @@ func (ss *sourceSet) add(o types.Occurrence) {
 		ss.namespaces[sourceNamespace{Value: v, HostRecorded: o.HostRecorded}] = struct{}{}
 	}
 	for _, v := range paths {
-		ss.paths[sourcePath{Value: v, Absolute: v == o.AbsolutePath}] = struct{}{}
+		p := sourcePath{Value: v, Absolute: v == o.AbsolutePath}
+		if ss.pathKinds {
+			p.Kind = o.Kind
+		}
+		ss.paths[p] = struct{}{}
 	}
 }
 
@@ -200,7 +208,8 @@ func (ss *sourceSet) result(scope string) sourcesResult {
 			return cmp.Or(cmp.Compare(a.Value, b.Value), compareRecorded(a.HostRecorded, b.HostRecorded))
 		}),
 		Paths: sortedKeys(ss.paths, func(a, b sourcePath) int {
-			return cmp.Or(cmp.Compare(a.Value, b.Value), compareRecorded(!a.Absolute, !b.Absolute))
+			return cmp.Or(cmp.Compare(a.Value, b.Value), cmp.Compare(a.Kind, b.Kind),
+				compareRecorded(!a.Absolute, !b.Absolute))
 		}),
 		Unselectable: sortedKeys(ss.unselectable, func(a, b sourceUnselectable) int {
 			return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Reason, b.Reason))
@@ -260,6 +269,7 @@ func writeSourcesAll(out io.Writer, s store.Store) error {
 		return fmt.Errorf("listing sources: %w", err)
 	}
 	set := newSourceSet()
+	set.pathKinds = true
 	for _, r := range records {
 		set.add(types.Occurrence{
 			Kind:         r.Kind,
@@ -325,7 +335,11 @@ func writeSourcesHuman(out io.Writer, res sourcesResult) error {
 	line("")
 	line("Paths (--path)")
 	for _, p := range res.Paths {
-		line("  %s", types.SanitizeDisplay(p.Value))
+		if p.Kind == "" {
+			line("  %s", types.SanitizeDisplay(p.Value))
+			continue
+		}
+		line("  %s  %s", types.SanitizeDisplay(p.Value), types.SanitizeDisplay(p.Kind))
 	}
 	if res.Scope == sourcesScopeAll {
 		line("")
