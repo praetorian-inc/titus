@@ -171,6 +171,18 @@ titus report --format sarif
 
 # Report from a specific datastore
 titus report --datastore path/to/titus.ds
+
+# Only findings from one repository (host-qualified as recorded, or without the host)
+titus report --repo github.com/acme/api
+
+# Repeat a selector, or combine selectors; a location matching any value is kept
+titus report --namespace github.com/acme --namespace gitlab.example.com/acme --path src/config.yaml
+
+# List the repository, namespace and path values that select current findings
+titus report sources
+
+# List every recorded source, including sources with no findings
+titus report sources all
 ```
 
 You can also control the output format at scan time with `--format`:

@@ -20,13 +20,15 @@ type pendingRetryMatcher struct {
 
 func (p pendingRetryMatcher) HasPendingRetry(id types.BlobID) bool { return p.pending[id] }
 
-// ENG-9178: --incremental scans a blob the store has never seen, skips a
-// stored blob that has no matches, and sends a stored blob with matches as
-// known, so its new location is recorded without matching it again. A stored
-// blob without matches yet whose timed-out rules this scan queued for retry
-// is sent as known too: its matches arrive from the retry pass, and skipping
-// it would drop this location (C2, review r3). Every stored case counts as
-// skipped.
+// ENG-9178: --incremental scans a blob the store has never seen and sends a
+// stored blob with matches as known, so its new location is recorded without
+// matching it again. A stored blob without matches yet whose timed-out rules
+// this scan queued for retry is sent as known too: its matches arrive from
+// the retry pass, and skipping it would drop this location (C2, review r3).
+// LAB-7490 T2-A: a stored blob without matches or a pending retry is sent as
+// well, marked stored but not known, so the worker records its provenance
+// like a full scan does; it is never matched again. Every stored case counts
+// as skipped, and every stored case carries job.stored.
 func TestIncrementalJob_SendSkipMatrix(t *testing.T) {
 	s := store.NewMemory()
 	t.Cleanup(func() { _ = s.Close() })
@@ -41,14 +43,14 @@ func TestIncrementalJob_SendSkipMatrix(t *testing.T) {
 	require.NoError(t, s.AddMatch(&types.Match{BlobID: matched, StructuralID: "m1", RuleID: "np.test.1", RuleName: "Test Rule"}))
 
 	for _, tc := range []struct {
-		name                         string
-		id                           types.BlobID
-		wantSend, wantSkip, wantKnow bool
+		name                                     string
+		id                                       types.BlobID
+		wantSend, wantSkip, wantKnow, wantStored bool
 	}{
-		{"unknown blob is scanned", types.ComputeBlobID([]byte("new")), true, false, false},
-		{"stored blob with matches is sent as known", matched, true, true, true},
-		{"stored blob without matches is skipped", clean, false, true, false},
-		{"stored blob without matches but a pending retry is sent as known", retrying, true, true, true},
+		{"unknown blob is scanned", types.ComputeBlobID([]byte("new")), true, false, false, false},
+		{"stored blob with matches is sent as known", matched, true, true, true, true},
+		{"stored blob without matches is sent for its provenance", clean, true, true, false, true},
+		{"stored blob without matches but a pending retry is sent as known", retrying, true, true, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			job := blobJob{blobID: tc.id}
@@ -57,23 +59,35 @@ func TestIncrementalJob_SendSkipMatrix(t *testing.T) {
 			assert.Equal(t, tc.wantSend, send, "send")
 			assert.Equal(t, tc.wantSkip, skipped, "skipped")
 			assert.Equal(t, tc.wantKnow, job.known, "known")
+			assert.Equal(t, tc.wantStored, job.stored, "stored")
 		})
 	}
 
-	// A matcher that queues no retries (nil here) leaves every stored blob
-	// without matches skipped, the pending-retry one included.
+	// A matcher that queues no retries (nil here) leaves a stored blob
+	// without matches not known, the pending-retry one included; it is still
+	// sent as stored for its provenance.
 	job := blobJob{blobID: retrying}
 	send, skipped, err := incrementalJob(s, nil, &job)
 	require.NoError(t, err)
-	assert.False(t, send, "send without a retrying matcher")
+	assert.True(t, send, "send without a retrying matcher")
 	assert.True(t, skipped, "skipped without a retrying matcher")
 	assert.False(t, job.known, "known without a retrying matcher")
+	assert.True(t, job.stored, "stored without a retrying matcher")
 }
 
 // ENG-9178: a known blob is not matched again; matchJob returns no matches
 // for it without touching the matcher (a nil matcher would panic).
 func TestMatchJob_KnownBlobNotMatched(t *testing.T) {
 	matches, err := matchJob(nil, blobJob{content: []byte("anything"), known: true})
+	require.NoError(t, err)
+	assert.Empty(t, matches)
+}
+
+// LAB-7490 T2-A: a stored blob that is not known is never matched either;
+// matchJob returns no matches for it without touching the matcher (a nil
+// matcher would panic).
+func TestMatchJob_StoredBlobNotMatched(t *testing.T) {
+	matches, err := matchJob(nil, blobJob{content: []byte("anything"), stored: true})
 	require.NoError(t, err)
 	assert.Empty(t, matches)
 }

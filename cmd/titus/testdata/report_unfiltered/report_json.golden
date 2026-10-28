@@ -1,0 +1,650 @@
+[
+  {
+    "ID": "b033cb5e0bb5fbc82b3f337e944761db6832daf4",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0Ix"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "84063447e34fcfc88351519455a05a9b6cd4cf53",
+        "StructuralID": "sm-B1-1",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0Ix"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0Ix",
+          "After": null
+        },
+        "file_path": "config/app.env",
+        "locations": [
+          {
+            "repository": "github.com/acme/api",
+            "path": "config/app.env",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000001",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": true
+          },
+          {
+            "repository": "github.com/other/api",
+            "path": "settings/app.env",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000002",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "49dcc4312f3073f9aa40503eb17129082d744584",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0Iy"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "f62d4d129a714eedc4eb23ca77c9da8dc479cdcd",
+        "StructuralID": "sm-B2-2",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0Iy"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0Iy",
+          "After": null
+        },
+        "file_path": "deploy.yml",
+        "locations": [
+          {
+            "repository": "gitlab.example.com/acme/api",
+            "path": "deploy.yml",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000003",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "cb9a96f836452e7593b45f5bc3850f241839f05b",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0Iz"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "3118b08c6c55437324a9a7e591f2565db45e05c7",
+        "StructuralID": "sm-B3-3",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0Iz"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0Iz",
+          "After": null
+        },
+        "file_path": "a.txt",
+        "locations": [
+          {
+            "repository": "github.com/acme/team/api",
+            "path": "a.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000004",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "d9cf7030a404dbf27959ea3ddde4ee1033c38d79",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0I0"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "c51d67fc1b9cfd0dd374c15fb2cdc7b0cf974798",
+        "StructuralID": "sm-B4-4",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0I0"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0I0",
+          "After": null
+        },
+        "file_path": "b.txt",
+        "locations": [
+          {
+            "repository": "gitlab.example.com/acme/team/sub/api",
+            "path": "b.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000005",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "17a1be81c5dad077626d05ee1517bab25f2c81ce",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0I1"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "b07612769011cd435d0d59a5fee1d4e89b1f6ce4",
+        "StructuralID": "sm-B5-5",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0I1"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0I1",
+          "After": null
+        },
+        "file_path": "c.txt",
+        "locations": [
+          {
+            "repository": "gitlab.example.com/acme/team-other/api",
+            "path": "c.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000006",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "2afa6f7b2431d369cc49b3806f21af2627a9ae15",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0I2"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "23cf28ccef749bff08b164f8334ea1ffba4c1a3e",
+        "StructuralID": "sm-B6-6",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0I2"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0I2",
+          "After": null
+        },
+        "file_path": "h1.txt",
+        "locations": [
+          {
+            "repository": "acme/api",
+            "path": "h1.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000007",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "56d10fddd14bcd62f8f19ce0a23d846e676f9792",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0I3"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "1f9a3c4f9a7d898209e8b04dd5ac9923b0020395",
+        "StructuralID": "sm-B7-7",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0I3"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0I3",
+          "After": null
+        },
+        "file_path": "h2.txt",
+        "locations": [
+          {
+            "repository": "api",
+            "path": "h2.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000008",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "2159b411f1fe157b0550b4ef0ffe356ed1d3c645",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0I4"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "1329f6b2abd5a1386b30180ca45694f7343b9e8b",
+        "StructuralID": "sm-B8-8",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0I4"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0I4",
+          "After": null
+        },
+        "file_path": "h3.txt",
+        "locations": [
+          {
+            "repository": "team/api",
+            "path": "h3.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "0000000000000000000000000000000000000009",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "6dd7595d87858e8bcc05b351357a45467474c86d",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0I5"
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "426e8a3de5740f2a013504bd5b7149e0102b800b",
+        "StructuralID": "sm-B9-9",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 13
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0I5"
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0I5",
+          "After": null
+        },
+        "file_path": "h4.txt",
+        "locations": [
+          {
+            "repository": "zzz/unrelated",
+            "path": "h4.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 13
+              }
+            },
+            "commit": "000000000000000000000000000000000000000a",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ID": "81fd7c7c39976e69d40c32115c2c27ce37a8499f",
+    "RuleID": "np.aws.1",
+    "Groups": [
+      "c2VsX0IxMA=="
+    ],
+    "Score": null,
+    "Matches": [
+      {
+        "BlobID": "41310c5c1705410b5baff3de5b2e0d39c3a686ad",
+        "StructuralID": "sm-B10-10",
+        "FindingID": "",
+        "RuleID": "np.aws.1",
+        "RuleName": "AWS API Key",
+        "Location": {
+          "Offset": {
+            "Start": 0,
+            "End": 0
+          },
+          "Source": {
+            "Start": {
+              "Line": 3,
+              "Column": 7
+            },
+            "End": {
+              "Line": 3,
+              "Column": 14
+            }
+          }
+        },
+        "Groups": [
+          "c2VsX0IxMA=="
+        ],
+        "NamedGroups": null,
+        "Snippet": {
+          "Before": null,
+          "Matching": "c2VsX0IxMA==",
+          "After": null
+        },
+        "file_path": "d.txt",
+        "locations": [
+          {
+            "repository": "github.com/acmecorp/api",
+            "path": "d.txt",
+            "range": {
+              "start": {
+                "line": 3,
+                "column": 7
+              },
+              "end": {
+                "line": 3,
+                "column": 14
+              }
+            },
+            "commit": "000000000000000000000000000000000000000b",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "absolute_path": null,
+            "host_recorded": true
+          }
+        ]
+      }
+    ]
+  }
+]

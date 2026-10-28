@@ -31,6 +31,7 @@ type blobEntry struct {
 // repoIdentity is the repository identity stamped on every provenance record.
 type repoIdentity struct {
 	path   string // normalized remote identity, or the typed root
+	host   string // resolver host of the origin remote; "" when there is no normalizable origin
 	root   string // absolute scan root
 	top    string // absolute repository top level when root is below it; "" when root is the top level
 	remote bool   // path is a normalized remote identity
@@ -61,11 +62,12 @@ func gitBinaryAvailable() bool {
 func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback func(content []byte, blobID types.BlobID, prov types.Provenance) error) error {
 	root := e.config.Root
 	var (
-		rl       revList
-		idx      *blobIndex
-		indexErr error
-		remoteID string
-		remoteOK bool
+		rl         revList
+		idx        *blobIndex
+		indexErr   error
+		remoteHost string
+		remoteID   string
+		remoteOK   bool
 		// top is the repository's top level when root is below it.
 		top string
 		// treeBlobs are the blobs under trees that refs point at directly;
@@ -88,7 +90,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		return nil
 	})
 	g.Go(func() error {
-		remoteID, remoteOK = originIdentity(gctx, root)
+		remoteHost, remoteID, remoteOK = originIdentity(gctx, root)
 		top = repoTop(gctx, root)
 		return nil
 	})
@@ -115,7 +117,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 	idx.stats.malformed += rl.malformed
 	writeEnumWarnings(warn, idx, rl.overlong)
 
-	id := e.repoIdentity(remoteID, remoteOK)
+	id := e.repoIdentity(remoteHost, remoteID, remoteOK)
 	id.top = top
 	err := e.streamBlobContents(ctx, &rl, idx, id, callback)
 	writeMissingWarning(warn, rl.missing)
@@ -148,15 +150,16 @@ func (e *GitEnumerator) warnWriter() io.Writer {
 }
 
 // repoIdentity resolves the identity for the scanned root: the normalized
-// origin remote when there is one, otherwise the root as the user typed it.
-func (e *GitEnumerator) repoIdentity(remoteID string, remoteOK bool) repoIdentity {
+// origin remote and its resolver host when there is one, otherwise the root as
+// the user typed it with no host.
+func (e *GitEnumerator) repoIdentity(remoteHost, remoteID string, remoteOK bool) repoIdentity {
 	root := e.config.Root
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		abs = root
 	}
 	if remoteOK {
-		return repoIdentity{path: remoteID, root: abs, remote: true}
+		return repoIdentity{path: remoteID, host: remoteHost, root: abs, remote: true}
 	}
 	return repoIdentity{path: typedRepoIdentity(root), root: abs}
 }
@@ -178,13 +181,14 @@ func RemoteURL(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// originIdentity returns the normalized identity of the origin remote.
-func originIdentity(ctx context.Context, dir string) (string, bool) {
+// originIdentity returns the resolver host and normalized identity of the
+// origin remote.
+func originIdentity(ctx context.Context, dir string) (host, id string, ok bool) {
 	u, err := RemoteURL(ctx, dir)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	return repoid.Normalize(u)
+	return repoid.NormalizeHost(u)
 }
 
 // writeEnumWarnings prints the index warnings, folding rev-list's over-long
@@ -617,6 +621,7 @@ func blobProvenance(blob blobEntry, idx *blobIndex, id repoIdentity) types.GitPr
 	}
 	return types.GitProvenance{
 		RepoPath:           id.path,
+		Host:               id.host,
 		Commit:             locs[0].Commit,
 		BlobPath:           locs[0].Path,
 		RepoRoot:           id.root,

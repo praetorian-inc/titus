@@ -235,7 +235,7 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 		blobs.add(entry.GetSHA(), entry.GetPath())
 	}
 
-	id := apiRepoIdentity(e.config.BaseURL, "github.com", repo.GetFullName())
+	host, id := apiRepoIdentity(e.config.BaseURL, "github.com", repo.GetFullName())
 	src := githubBlobSource{owner: repo.GetOwner().GetLogin(), name: repo.GetName(), ref: branch, id: id}
 	for paths := range blobs.all() {
 		if err := ctx.Err(); err != nil {
@@ -257,7 +257,7 @@ func (e *GitHubEnumerator) enumerateRepo(ctx context.Context, repo *github.Repos
 		}
 
 		// Commit metadata is not available from the tree API.
-		if err := callback(data, types.ComputeBlobID(data), apiProvenance(id, paths)); err != nil {
+		if err := callback(data, types.ComputeBlobID(data), apiProvenance(host, id, paths)); err != nil {
 			return err
 		}
 	}

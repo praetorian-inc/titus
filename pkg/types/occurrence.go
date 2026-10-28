@@ -25,15 +25,26 @@ type Occurrence struct {
 	Commit       string    // full hash; "" = none
 	CommitDate   time.Time // zero = none
 	WorkingTree  bool
-	HostRecorded bool // false only for legacy git rows
+	HostRecorded bool   // false only for legacy git rows
+	Host         string // git only: GitProvenance.Host copied verbatim; "" when none was resolved; never printed
+}
+
+// SourceRecord is one distinct recorded source, for the source inventory.
+type SourceRecord struct {
+	Kind         string // provenance type / location kind: "git", "file", extended kind
+	Repository   string // displayed repository; "" for non-git kinds
+	Host         string // recorded host; "" when none was resolved
+	HostRecorded bool   // false only for a git provenance row with host IS NULL (written by Titus <= v1.2.11, not yet rescanned); location rows are always true
+	Path         string
+	AbsolutePath string // only from blob_locations rows; "" otherwise
 }
 
 const (
-	shortCommitLen     = 7
-	commitDateLayout   = "2006-01-02"
-	fieldSeparator     = "  "
-	labelWorkingTree   = "working tree"
-	labelHostNotRecord = "host not recorded"
+	shortCommitLen       = 7
+	commitDateLayout     = "2006-01-02"
+	fieldSeparator       = "  "
+	labelWorkingTree     = "working tree"
+	LabelHostNotRecorded = "host not recorded"
 )
 
 // OccurrencesOf returns every occurrence a provenance describes: one per
@@ -72,6 +83,7 @@ func gitOccurrences(g GitProvenance) []Occurrence {
 		o := Occurrence{
 			Kind:         g.Kind(),
 			Repository:   g.RepoPath,
+			Host:         g.Host,
 			Path:         l.Path,
 			WorkingTree:  l.WorkingTree,
 			HostRecorded: true,
@@ -271,7 +283,7 @@ func FormatLine(o Occurrence, line int, display string) string {
 		}
 	}
 	if o.Kind == "git" && !o.HostRecorded {
-		fields = append(fields, labelHostNotRecord)
+		fields = append(fields, LabelHostNotRecorded)
 	}
 	return strings.Join(fields, fieldSeparator)
 }

@@ -29,28 +29,50 @@ var remoteSchemes = map[string]bool{
 // anything that fails validation return ("", false); the raw input is never
 // returned.
 func Normalize(remote string) (id string, ok bool) {
+	_, id, ok = NormalizeHost(remote)
+	return id, ok
+}
+
+// NormalizeHost is Normalize that also returns the host the identity was built
+// from. The host is the resolver's own validated, lowercased value (userinfo
+// and port already removed), never a prefix cut from id. When ok is false,
+// host and id are both "".
+func NormalizeHost(remote string) (host, id string, ok bool) {
 	if hasTransportPrefix(remote) {
-		return "", false
+		return "", "", false
 	}
-	var host, path string
+	var path string
 	if strings.Contains(remote, "://") {
 		host, path, ok = parseURL(remote)
 	} else {
 		host, path, ok = parseSCP(remote)
 	}
 	if !ok {
-		return "", false
+		return "", "", false
 	}
-	return join(host, path)
+	id, ok = join(host, path)
+	if !ok {
+		return "", "", false
+	}
+	return host, id, true
 }
 
 // FromBaseURL joins the host of baseURL (or defaultHost when baseURL is empty)
-// with fullPath. Used for API-mode identities (GitHub/GitLab, incl. --url).
+// with fullPath. Used for API-mode identities (GitHub/GitLab, including a
+// self-hosted base URL).
 // When baseURL is set but has no usable host, it returns fullPath without a
 // host rather than guessing one. It returns "" when fullPath is not a valid
 // repository path.
 func FromBaseURL(baseURL, defaultHost, fullPath string) string {
-	host := defaultHost
+	_, id := FromBaseURLHost(baseURL, defaultHost, fullPath)
+	return id
+}
+
+// FromBaseURLHost is FromBaseURL that also returns the host used. host is ""
+// when no host was resolved, in which case id is the path alone. When fullPath
+// is not a valid repository path, host and id are both "".
+func FromBaseURLHost(baseURL, defaultHost, fullPath string) (host, id string) {
+	host = defaultHost
 	if baseURL != "" {
 		host = ""
 		if u, err := url.Parse(baseURL); err == nil {
@@ -59,12 +81,15 @@ func FromBaseURL(baseURL, defaultHost, fullPath string) string {
 	}
 	if host == "" {
 		if path, ok := cleanPath(fullPath); ok {
-			return path
+			return "", path
 		}
-		return ""
+		return "", ""
 	}
-	id, _ := join(host, fullPath)
-	return id
+	id, ok := join(host, fullPath)
+	if !ok {
+		return "", ""
+	}
+	return host, id
 }
 
 // RedactUserinfo is the display-safe form of a stored repository value that

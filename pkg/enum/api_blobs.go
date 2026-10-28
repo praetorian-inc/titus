@@ -19,12 +19,13 @@ import (
 
 // apiRepoIdentity returns the repository value for an API enumerator: the
 // configured base URL's host (or defaultHost) joined with fullPath. A path
-// repoid rejects falls back to the display-safe name with no host.
-func apiRepoIdentity(baseURL, defaultHost, fullPath string) string {
-	if id := repoid.FromBaseURL(baseURL, defaultHost, fullPath); id != "" {
-		return id
+// repoid rejects falls back to the display-safe name with no host. The host is
+// the resolver's, "" for a host-less base URL or a rejected path.
+func apiRepoIdentity(baseURL, defaultHost, fullPath string) (host, id string) {
+	if host, id := repoid.FromBaseURLHost(baseURL, defaultHost, fullPath); id != "" {
+		return host, id
 	}
-	return typedRepoIdentity(fullPath)
+	return "", typedRepoIdentity(fullPath)
 }
 
 // blobKey identifies one blob of a tree listing. An entry with no SHA is
@@ -67,13 +68,13 @@ func (b *blobPaths) all() iter.Seq[[]string] {
 
 // apiProvenance is the provenance of one blob found through a hosting API:
 // every path (sorted), no commit, and no local root.
-func apiProvenance(id string, paths []string) types.GitProvenance {
+func apiProvenance(host, id string, paths []string) types.GitProvenance {
 	slices.Sort(paths)
 	locs := make([]types.GitLocation, len(paths))
 	for i, p := range paths {
 		locs[i] = types.GitLocation{Path: p}
 	}
-	return types.GitProvenance{RepoPath: id, BlobPath: paths[0], RemoteIdentity: true, Locations: locs}
+	return types.GitProvenance{RepoPath: id, Host: host, BlobPath: paths[0], RemoteIdentity: true, Locations: locs}
 }
 
 // overSizeLimit reports whether n bytes exceed the configured limit

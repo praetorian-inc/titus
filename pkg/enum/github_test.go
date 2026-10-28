@@ -152,16 +152,22 @@ func TestGitHubEnumerator_SameBlobTwoRepos(t *testing.T) {
 
 func TestAPIRepoIdentity(t *testing.T) {
 	tests := []struct {
-		name, baseURL, defaultHost, fullPath, want string
+		name, baseURL, defaultHost, fullPath, want, wantHost string
 	}{
-		{"default host", "", "github.com", "acme/api", "github.com/acme/api"},
-		{"enterprise github host", "https://github.example.com", "github.com", "acme/api", "github.example.com/acme/api"},
-		{"self-managed gitlab host", "https://gitlab.example.com", "gitlab.com", "acme/api", "gitlab.example.com/acme/api"},
-		{"invalid path falls back to sanitized typed name", "https://", "github.com", "acme/api\x1b", `acme/api\x1b`},
+		{"default host", "", "github.com", "acme/api", "github.com/acme/api", "github.com"},
+		{"enterprise github host", "https://github.example.com", "github.com", "acme/api", "github.example.com/acme/api", "github.example.com"},
+		{"self-managed gitlab host", "https://gitlab.example.com", "gitlab.com", "acme/api", "gitlab.example.com/acme/api", "gitlab.example.com"},
+		// LAB-7490 T1-A/T3-A: the host is the resolver's (repoid.FromBaseURLHost),
+		// "" when the path is rejected, so no host is stored for a typed-name fallback.
+		{"invalid path falls back to sanitized typed name", "https://", "github.com", "acme/api\x1b", `acme/api\x1b`, ""},
+		// repoid.FromBaseURLHost lowercases the base URL host through cleanHost.
+		{"base URL host is normalized to lower case", "https://GitHub.Example.COM", "github.com", "acme/api", "github.example.com/acme/api", "github.example.com"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, apiRepoIdentity(tt.baseURL, tt.defaultHost, tt.fullPath))
+			host, id := apiRepoIdentity(tt.baseURL, tt.defaultHost, tt.fullPath)
+			assert.Equal(t, tt.want, id)
+			assert.Equal(t, tt.wantHost, host)
 		})
 	}
 }

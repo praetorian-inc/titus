@@ -30,6 +30,7 @@ type MemoryStore struct {
 	findings   map[string]*types.Finding     // keyed by structural_id
 	provenance map[string][]types.Provenance // keyed by BlobID.Hex()
 	provKeys   map[provenanceKey]struct{}    // mirrors the SQLite provenance UNIQUE key
+	provHosts  map[provenanceKey]*string     // mirrors provenance.host; nil is NULL (never written)
 
 	occurrences  map[string][]types.Occurrence // keyed by BlobID.Hex()
 	locationKeys map[locationKey]struct{}      // mirrors the blob_locations UNIQUE key
@@ -56,6 +57,7 @@ func NewMemory() *MemoryStore {
 		findings:     make(map[string]*types.Finding),
 		provenance:   make(map[string][]types.Provenance),
 		provKeys:     make(map[provenanceKey]struct{}),
+		provHosts:    make(map[provenanceKey]*string),
 		occurrences:  make(map[string][]types.Occurrence),
 		locationKeys: make(map[locationKey]struct{}),
 	}
@@ -126,11 +128,21 @@ func (m *MemoryStore) AddProvenance(blobID types.BlobID, prov types.Provenance) 
 	}
 	key := blobID.Hex()
 	pk := provenanceKey{blob: key, provenanceRowKey: rowKey}
+	// The host is captured before storedProvenance drops it; every new write
+	// stores a non-nil pointer (empty when no host was resolved).
+	var host string
+	if g, ok := prov.(types.GitProvenance); ok {
+		host = g.Host
+	}
 	if _, exists := m.provKeys[pk]; exists {
+		if m.provHosts[pk] == nil {
+			m.provHosts[pk] = &host // fill a NULL host; a recorded host is kept
+		}
 		m.markLocationsTruncated(key, rowKey, prov)
 		return nil
 	}
 	m.provKeys[pk] = struct{}{}
+	m.provHosts[pk] = &host
 	m.provenance[key] = append(m.provenance[key], storedProvenance(prov))
 	return nil
 }
@@ -157,7 +169,8 @@ func (m *MemoryStore) markLocationsTruncated(blob string, rowKey provenanceRowKe
 
 // storedProvenance drops the GitProvenance fields the SQLite provenance table
 // does not persist, so both stores return the same rows. Locations now live in
-// the occurrence rows.
+// the occurrence rows. Host is dropped too: SQLite does not read provenance.host
+// back into a row, so AddProvenance keeps it in provHosts instead.
 func storedProvenance(prov types.Provenance) types.Provenance {
 	g, ok := prov.(types.GitProvenance)
 	if !ok {
@@ -167,6 +180,7 @@ func storedProvenance(prov types.Provenance) types.Provenance {
 	g.RepoRoot = ""
 	g.RepoTop = ""
 	g.RemoteIdentity = false
+	g.Host = ""
 	return g
 }
 
@@ -183,6 +197,7 @@ func (m *MemoryStore) AddOccurrences(blobID types.BlobID, occs []types.Occurrenc
 			absolutePath: o.AbsolutePath, commit: o.Commit, workingTree: o.WorkingTree,
 		}
 		if _, exists := m.locationKeys[lk]; exists {
+			m.fillLocationHost(key, lk, o.Host)
 			continue
 		}
 		m.locationKeys[lk] = struct{}{}
@@ -196,6 +211,53 @@ func (m *MemoryStore) AddOccurrences(blobID types.BlobID, occs []types.Occurrenc
 		m.occurrences[key] = append(m.occurrences[key], o)
 	}
 	return nil
+}
+
+// fillLocationHost sets an empty stored host on the row with key lk when a
+// later write carries a non-empty one, as the SQLite upsert does. A recorded
+// host is never overwritten. Callers hold m.mu.
+func (m *MemoryStore) fillLocationHost(blob string, lk locationKey, host string) {
+	if host == "" {
+		return
+	}
+	rows := m.occurrences[blob]
+	for i := range rows {
+		o := &rows[i]
+		if o.Kind == lk.kind && o.Repository == lk.repository && o.Path == lk.path &&
+			o.AbsolutePath == lk.absolutePath && o.Commit == lk.commit && o.WorkingTree == lk.workingTree {
+			if o.Host == "" {
+				o.Host = host
+			}
+			return
+		}
+	}
+}
+
+// ListSources returns every distinct provenance and location source, merged
+// and sorted by mergeSources, as the SQLite store does.
+func (m *MemoryStore) ListSources() ([]types.SourceRecord, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var in []types.SourceRecord
+	for pk := range m.provKeys {
+		r := types.SourceRecord{Kind: pk.kind, Repository: pk.repoPath, Path: pk.path}
+		host := m.provHosts[pk]
+		if host != nil {
+			r.Host = *host
+		}
+		r.HostRecorded = r.Kind != "git" || host != nil
+		in = append(in, r)
+	}
+	for _, rows := range m.occurrences {
+		for _, o := range rows {
+			in = append(in, types.SourceRecord{
+				Kind: o.Kind, Repository: o.Repository, Host: o.Host, HostRecorded: true,
+				Path: o.Path, AbsolutePath: o.AbsolutePath,
+			})
+		}
+	}
+	return mergeSources(in), nil
 }
 
 // GetOccurrences returns the stored occurrences of a blob merged with its

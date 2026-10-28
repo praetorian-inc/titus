@@ -241,7 +241,7 @@ func (m *worktreeMerge) gitCallback(ctx context.Context) blobCallback {
 		first := !m.seen[id]
 		m.seen[id] = true
 		if isGit && m.ident == nil {
-			m.ident = &types.GitProvenance{RepoPath: gp.RepoPath, RepoRoot: gp.RepoRoot, RepoTop: gp.RepoTop, RemoteIdentity: gp.RemoteIdentity}
+			m.ident = &types.GitProvenance{RepoPath: gp.RepoPath, Host: gp.Host, RepoRoot: gp.RepoRoot, RepoTop: gp.RepoTop, RemoteIdentity: gp.RemoteIdentity}
 		}
 		if !first && isGit {
 			m.settleDeferred(id, gp)
@@ -508,9 +508,9 @@ func (m *worktreeMerge) identity(ctx context.Context, g *GitEnumerator) types.Gi
 		gp.RepoRoot = cmp.Or(gp.RepoRoot, m.absRoot)
 		return gp
 	}
-	remote, ok := originIdentity(ctx, g.config.Root)
-	id := g.repoIdentity(remote, ok)
-	return types.GitProvenance{RepoPath: id.path, RepoRoot: id.root, RemoteIdentity: id.remote}
+	host, remote, ok := originIdentity(ctx, g.config.Root)
+	id := g.repoIdentity(host, remote, ok)
+	return types.GitProvenance{RepoPath: id.path, Host: id.host, RepoRoot: id.root, RemoteIdentity: id.remote}
 }
 
 // headBlobs maps each blob path in HEAD's tree under dir, relative to dir,
