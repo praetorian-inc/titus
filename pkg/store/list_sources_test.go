@@ -443,6 +443,31 @@ func TestListSources_NonGitKindsAlwaysRecorded(t *testing.T) {
 	}
 }
 
+// A provenance-only source (no findings, no location rows) is listed with the
+// Kind, Repository and Path a report selects on, not the raw provenance
+// columns: an archive member is no repository, and an extended record lists its
+// payload path, not the stored JSON.
+func TestListSources_ProvenanceOnlyKindsUseOccurrenceForm(t *testing.T) {
+	for _, f := range storeFactories {
+		t.Run(f.name, func(t *testing.T) {
+			s := f.open(t)
+			require.NoError(t, s.AddBlob(lsBlob("arc"), 3))
+			require.NoError(t, s.AddProvenance(lsBlob("arc"), types.ArchiveProvenance{ArchivePath: "a.zip", MemberPath: "t/creds.txt"}))
+			require.NoError(t, s.AddBlob(lsBlob("ext"), 3))
+			require.NoError(t, s.AddProvenance(lsBlob("ext"), types.ExtendedProvenance{
+				Payload: map[string]interface{}{"path": "/wiki/Page", "source": "confluence", "id": "42"},
+			}))
+
+			got := lsSources(t, s)
+
+			assert.ElementsMatch(t, []types.SourceRecord{
+				{Kind: "archive", Repository: "", Path: "a.zip:t/creds.txt", HostRecorded: true},
+				{Kind: "extended", Repository: "", Path: "/wiki/Page", HostRecorded: true},
+			}, got)
+		})
+	}
+}
+
 // S-T009: the host columns migrate idempotently on every shape a user can
 // hold, and have the documented nullability.
 func TestOpen_HostColumnsMigrationIsIdempotent(t *testing.T) {

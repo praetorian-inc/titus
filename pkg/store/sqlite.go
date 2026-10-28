@@ -543,14 +543,12 @@ func (s *SQLiteStore) provenanceSources() ([]types.SourceRecord, error) {
 	defer func() { _ = rows.Close() }()
 	var out []types.SourceRecord
 	for rows.Next() {
-		var r types.SourceRecord
+		var k provenanceRowKey
 		var host sql.NullString
-		if err := rows.Scan(&r.Kind, &r.Repository, &host, &r.Path); err != nil {
+		if err := rows.Scan(&k.kind, &k.repoPath, &host, &k.path); err != nil {
 			return nil, err
 		}
-		r.Host = host.String
-		r.HostRecorded = r.Kind != "git" || host.Valid
-		out = append(out, r)
+		out = append(out, provenanceSource(k, host.String, k.kind != "git" || host.Valid))
 	}
 	return out, rows.Err()
 }

@@ -162,7 +162,7 @@ func (ss *sourceSet) add(o types.Occurrence) {
 		ss.namespaces[sourceNamespace{Value: v, HostRecorded: o.HostRecorded}] = struct{}{}
 	}
 	for _, v := range paths {
-		ss.paths[sourcePath{Value: v, Absolute: v == o.AbsolutePath && v != o.Path}] = struct{}{}
+		ss.paths[sourcePath{Value: v, Absolute: v == o.AbsolutePath}] = struct{}{}
 	}
 }
 

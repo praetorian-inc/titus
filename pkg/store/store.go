@@ -120,6 +120,31 @@ func provenanceKeyOf(prov types.Provenance) (provenanceRowKey, error) {
 	}
 }
 
+// provenanceSource maps a stored provenance key to its source record through
+// types.OccurrencesOf, so a listed Kind, Repository and Path are the values a
+// report selects on. host is the stored host column; hostRecorded is false only
+// for a git row with a NULL host.
+func provenanceSource(k provenanceRowKey, host string, hostRecorded bool) types.SourceRecord {
+	var p types.Provenance
+	switch k.kind {
+	case "git":
+		p = types.GitProvenance{RepoPath: k.repoPath, BlobPath: k.path}
+	case "extended":
+		var payload map[string]interface{}
+		_ = json.Unmarshal([]byte(k.path), &payload)
+		p = types.ExtendedProvenance{Payload: payload}
+	case "archive":
+		p = types.ArchiveProvenance{ArchivePath: k.path, MemberPath: k.repoPath}
+	default:
+		p = types.FileProvenance{FilePath: k.path}
+	}
+	o := types.OccurrencesOf(p)[0]
+	return types.SourceRecord{
+		Kind: o.Kind, Repository: o.Repository, Path: o.Path,
+		Host: host, HostRecorded: hostRecorded,
+	}
+}
+
 // mergeSources deduplicates records on every field of SourceRecord and merges
 // no field: a record with HostRecorded false and one with it true stay two
 // entries, as in report sources. The result is sorted by (Kind, Repository,

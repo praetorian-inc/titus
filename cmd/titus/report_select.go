@@ -42,6 +42,9 @@ type reportSelector struct {
 // opened, and an invalid value is a usage error that never falls back to
 // unfiltered output.
 func newReportSelector(repos, namespaces, paths []string) (*reportSelector, error) {
+	// Repository and namespace forms are compared with "/" separators, so a
+	// Windows folder value is normalized to the same form.
+	repos, namespaces = toSlashAll(repos), toSlashAll(namespaces)
 	for _, v := range repos {
 		if err := validateSelectorValue(selectorFlagRepo, v, false); err != nil {
 			return nil, err
@@ -58,6 +61,15 @@ func newReportSelector(repos, namespaces, paths []string) (*reportSelector, erro
 		}
 	}
 	return &reportSelector{repos: repos, namespaces: namespaces, paths: paths}, nil
+}
+
+// toSlashAll returns vs with each value passed through filepath.ToSlash.
+func toSlashAll(vs []string) []string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		out[i] = filepath.ToSlash(v)
+	}
+	return out
 }
 
 // validateSelectorValue rejects an empty or whitespace-only value for any
@@ -101,10 +113,10 @@ func (r *reportSelector) filtersRepositories() bool {
 // prefix of it with a non-empty remainder, the repository without that host.
 func repositoryForms(o types.Occurrence) []string {
 	var forms []string
-	if o.Repository != "" {
-		forms = append(forms, o.Repository)
+	if repo := filepath.ToSlash(o.Repository); repo != "" {
+		forms = append(forms, repo)
 		if o.Host != "" {
-			if rest, ok := strings.CutPrefix(o.Repository, o.Host+"/"); ok && rest != "" {
+			if rest, ok := strings.CutPrefix(repo, o.Host+"/"); ok && rest != "" {
 				forms = append(forms, rest)
 			}
 		}
@@ -130,8 +142,7 @@ func absoluteFolder(o types.Occurrence) string {
 	if o.Kind != "git" || o.AbsolutePath == "" || o.Path == "" {
 		return ""
 	}
-	suffix := string(filepath.Separator) + filepath.FromSlash(o.Path)
-	return strings.TrimSuffix(o.AbsolutePath, suffix)
+	return strings.TrimSuffix(filepath.ToSlash(o.AbsolutePath), "/"+o.Path)
 }
 
 // hostNotRecorded reports whether o is a git record stored without a host.

@@ -241,13 +241,12 @@ func (m *MemoryStore) ListSources() ([]types.SourceRecord, error) {
 
 	var in []types.SourceRecord
 	for pk := range m.provKeys {
-		r := types.SourceRecord{Kind: pk.kind, Repository: pk.repoPath, Path: pk.path}
-		host := m.provHosts[pk]
-		if host != nil {
-			r.Host = *host
+		var host string
+		hp := m.provHosts[pk]
+		if hp != nil {
+			host = *hp
 		}
-		r.HostRecorded = r.Kind != "git" || host != nil
-		in = append(in, r)
+		in = append(in, provenanceSource(pk.provenanceRowKey, host, pk.kind != "git" || hp != nil))
 	}
 	for _, rows := range m.occurrences {
 		for _, o := range rows {

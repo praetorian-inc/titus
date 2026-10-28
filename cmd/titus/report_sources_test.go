@@ -207,6 +207,54 @@ func TestReportSources_Paths(t *testing.T) {
 	}
 }
 
+// A file recorded by its absolute path has Path == AbsolutePath: the one listed
+// value is absolute. A relative file path is listed as relative and its
+// resolved path as absolute.
+func TestSourceSet_AbsoluteFlag(t *testing.T) {
+	t.Run("path equal to absolute path is absolute", func(t *testing.T) {
+		o := suFile("/abs/in/t/creds.txt")
+		if o.Path != o.AbsolutePath {
+			t.Skipf("filepath.Abs rewrites %q on this platform", o.Path)
+		}
+		ss := newSourceSet()
+		ss.add(o)
+		got := ss.result(sourcesScopeAll).Paths
+		assert.Equal(t, []sourcePath{{Value: "/abs/in/t/creds.txt", Absolute: true}}, got)
+	})
+	t.Run("relative path is false and resolved path is true", func(t *testing.T) {
+		o := suFile("notes.txt")
+		ss := newSourceSet()
+		ss.add(o)
+		got := ss.result(sourcesScopeAll).Paths
+		assert.ElementsMatch(t, []sourcePath{
+			{Value: "notes.txt", Absolute: false},
+			{Value: o.AbsolutePath, Absolute: true},
+		}, got)
+	})
+}
+
+// An archive member is a path, never a repository or namespace: `sources all`
+// lists the member path, and that path selects the member's finding.
+func TestReportSourcesAll_ArchiveMemberIsAPath(t *testing.T) {
+	b := newDSBuilder(t)
+	b.finding("ARC")
+	b.addProv("ARC", types.ArchiveProvenance{ArchivePath: "a.zip", MemberPath: "t/creds.txt"})
+	ds := b.done()
+
+	d, _ := srcRun(t, ds, true)
+
+	assert.NotContains(t, d.repoValues(), "t/creds.txt")
+	assert.NotContains(t, d.repoValues(), "a.zip:t/creds.txt")
+	assert.NotContains(t, d.namespaceValues(), "t")
+	assert.Empty(t, d.Repos, "no archive-derived repository")
+	assert.Empty(t, d.Namespaces, "no archive-derived namespace")
+	require.Contains(t, d.pathValues(), "a.zip:t/creds.txt")
+
+	r := runRootSplit(t, reportCmdArgs(ds, nil, "--format", "json", "--path", "a.zip:t/creds.txt")...)
+	require.NoError(t, r.err, "stderr: %s", r.stderr)
+	assert.Len(t, selDecodeFindings(t, r.stdout), 1, "the listed path selects the archive blob's finding")
+}
+
 // C-SOURCES-FORMATS and S-T004: human and JSON list the same values; sarif
 // and unknown formats are rejected.
 func TestReportSources_Formats(t *testing.T) {
