@@ -125,8 +125,9 @@ func LocationsTruncated(provs []Provenance) bool {
 
 // MergeOccurrences reconciles location rows with provenance rows for one blob.
 // Every row is kept. A provenance row is added only when no row covers it; an
-// uncovered git provenance is a legacy row and is marked HostRecorded=false,
-// with any userinfo redacted from its stored repository. A covered extended
+// uncovered git provenance takes its Host and HostRecorded from the stored row
+// (false for a legacy row whose host was never recorded), with any userinfo
+// redacted from its stored repository. A covered extended
 // row takes its Source from the covering provenance, since location rows do
 // not store it. A commitless,
 // non-working-tree git occurrence is dropped when another occurrence of the
@@ -148,7 +149,8 @@ func MergeOccurrences(rows []Occurrence, provs []Provenance) []Occurrence {
 				continue
 			}
 			if o.Kind == "git" {
-				o.HostRecorded = false
+				g, _ := p.(GitProvenance)
+				o.HostRecorded = g.HostRecorded
 				o.Repository = repoid.RedactUserinfo(o.Repository)
 			}
 			all = append(all, o)

@@ -323,7 +323,7 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 	rows, err := s.e.Query(`SELECT type, path, repo_path, commit_hash,
 		author_name, author_email, author_timestamp,
 		committer_name, committer_email, committer_timestamp,
-		commit_message, locations_truncated FROM provenance WHERE blob_id = ?
+		commit_message, locations_truncated, host FROM provenance WHERE blob_id = ?
 		ORDER BY `+provenanceOrder, blobID.Hex())
 	if err != nil {
 		return nil, err
@@ -337,10 +337,11 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 		var committerName, committerEmail, committerTS sql.NullString
 		var commitMessage sql.NullString
 		var truncated sql.NullInt64
+		var host sql.NullString
 		if err := rows.Scan(&provType, &path, &repoPath, &commitHash,
 			&authorName, &authorEmail, &authorTS,
 			&committerName, &committerEmail, &committerTS,
-			&commitMessage, &truncated); err != nil {
+			&commitMessage, &truncated, &host); err != nil {
 			return nil, err
 		}
 		switch provType {
@@ -351,6 +352,8 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 				RepoPath:           repoPath.String,
 				BlobPath:           path.String,
 				LocationsTruncated: truncated.Int64 != 0,
+				Host:               host.String,
+				HostRecorded:       host.Valid,
 			}
 			if commitHash.Valid && commitHash.String != "" {
 				meta := &types.CommitMetadata{

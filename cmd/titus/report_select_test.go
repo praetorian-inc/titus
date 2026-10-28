@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -513,17 +514,22 @@ func TestSelectorValues_EveryListedValueValidatesAndSelects(t *testing.T) {
 
 // suStores runs a test against every Store implementation, as the occurrence
 // suite in pkg/store does.
+//
+// open returns the store and its datastore path. The memory store is never
+// persisted, so it has no path and cannot hold a legacy row (a NULL
+// provenance.host); a test that needs one runs for SQLite only.
 var suStores = []struct {
 	name string
-	open func(t *testing.T) store.Store
+	open func(t *testing.T) (store.Store, string)
 }{
-	{"sqlite", func(t *testing.T) store.Store {
-		s, err := store.New(store.Config{Path: filepath.Join(t.TempDir(), "ds.db")})
+	{"sqlite", func(t *testing.T) (store.Store, string) {
+		path := filepath.Join(t.TempDir(), "ds.db")
+		s, err := store.New(store.Config{Path: path})
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
-		return s
+		return s, path
 	}},
-	{"memory", func(t *testing.T) store.Store { return store.NewMemory() }},
+	{"memory", func(t *testing.T) (store.Store, string) { return store.NewMemory(), "" }},
 }
 
 // suAddRecorded records a location the way a scan does: a provenance row and
@@ -534,11 +540,24 @@ func suAddRecorded(t *testing.T, s store.Store, blob types.BlobID, p types.GitPr
 	require.NoError(t, s.AddOccurrences(blob, types.OccurrencesOf(p)))
 }
 
-// suAddHNR records a location that only has a provenance row, which both
-// stores read back as host not recorded.
-func suAddHNR(t *testing.T, s store.Store, blob types.BlobID, repo, path string) {
+// suAddHNR records a location the way a datastore written before the host was
+// recorded holds it: a provenance row whose host is NULL, with no location
+// row. A fresh AddProvenance writes an empty string (a recorded empty host), and the
+// migration that added provenance.host leaves old rows NULL, so the row is
+// written and then reset to the migrated shape. dbPath is the SQLite
+// datastore file; the memory store cannot hold such a row.
+func suAddHNR(t *testing.T, s store.Store, dbPath string, blob types.BlobID, repo, path string) {
 	t.Helper()
+	require.NotEmpty(t, dbPath, "only a SQLite datastore can hold a host-not-recorded row")
 	require.NoError(t, s.AddProvenance(blob, types.GitProvenance{RepoPath: repo, BlobPath: path, Commit: suCommit(3)}))
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	res, err := db.Exec(`UPDATE provenance SET host = NULL WHERE blob_id = ? AND repo_path = ? AND path = ?`, blob.Hex(), repo, path)
+	require.NoError(t, err)
+	n, err := res.RowsAffected()
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n, "the provenance row to legacy-ify exists")
 }
 
 func suRemoteProv(host, repo, path string, n int) types.GitProvenance {
@@ -570,19 +589,24 @@ func suLocationKeys(occs []types.Occurrence) []string {
 func TestSelectingStore_GetOccurrencesPrunesPerLocation(t *testing.T) {
 	for _, f := range suStores {
 		t.Run(f.name, func(t *testing.T) {
-			s := f.open(t)
+			s, dbPath := f.open(t)
+			legacy := dbPath != "" // only SQLite can hold a host-not-recorded row
 			b1 := types.ComputeBlobID([]byte("shared"))
 			b2 := types.ComputeBlobID([]byte("only-other"))
 			require.NoError(t, s.AddBlob(b1, 6))
 			require.NoError(t, s.AddBlob(b2, 10))
 			suAddRecorded(t, s, b1, suRemoteProv("github.com", "acme/api", "config/app.env", 1))
 			suAddRecorded(t, s, b1, suRemoteProv("github.com", "other/api", "settings/app.env", 2))
-			suAddHNR(t, s, b1, "legacy/api", "h.txt")
+			wantRaw := 2
+			if legacy {
+				suAddHNR(t, s, dbPath, b1, "legacy/api", "h.txt")
+				wantRaw = 3
+			}
 			suAddRecorded(t, s, b2, suRemoteProv("github.com", "other/api", "x.txt", 3))
 
 			raw1, err := s.GetOccurrences(b1)
 			require.NoError(t, err)
-			require.Len(t, raw1, 3, "precondition: three recorded locations")
+			require.Len(t, raw1, wantRaw, "precondition: the locations stored for the blob")
 
 			t.Run("S-T011/second-stored location only", func(t *testing.T) {
 				sel, err := newReportSelector([]string{"github.com/other/api"}, nil, nil)
@@ -622,6 +646,9 @@ func TestSelectingStore_GetOccurrencesPrunesPerLocation(t *testing.T) {
 				assert.Empty(t, got)
 			})
 			t.Run("S-T011/host-not-recorded location keeps its marker", func(t *testing.T) {
+				if !legacy {
+					t.Skip("the memory store is never persisted, so it cannot hold a host-not-recorded row")
+				}
 				sel, err := newReportSelector([]string{"github.com/legacy/api"}, nil, nil)
 				require.NoError(t, err)
 				ss := &selectingStore{Store: s, sel: sel, cache: map[types.BlobID]selectedBlob{}}
@@ -665,7 +692,8 @@ func TestApplySelection_RetainsAndCounts(t *testing.T) {
 
 	for _, f := range suStores {
 		t.Run(f.name, func(t *testing.T) {
-			s := f.open(t)
+			s, dbPath := f.open(t)
+			legacy := dbPath != "" // only SQLite can hold a host-not-recorded row
 			b1 := types.ComputeBlobID([]byte("b1"))
 			b2 := types.ComputeBlobID([]byte("b2"))
 			b3 := types.ComputeBlobID([]byte("b3"))
@@ -677,8 +705,20 @@ func TestApplySelection_RetainsAndCounts(t *testing.T) {
 			suAddRecorded(t, s, b1, suRemoteProv("github.com", "acme/api", "config/app.env", 1))
 			suAddRecorded(t, s, b1, suRemoteProv("github.com", "other/api", "settings/app.env", 2))
 			suAddRecorded(t, s, b2, suRemoteProv("gitlab.example.com", "acme/api", "deploy.yml", 3))
-			suAddHNR(t, s, b3, "legacy/api", "h1.txt")
-			suAddHNR(t, s, b3, "legacy/api", "h2.txt")
+			// The memory store cannot hold host-less rows, so B3 has no
+			// locations there and nothing is counted.
+			unselectedHNR := 0
+			if legacy {
+				suAddHNR(t, s, dbPath, b3, "legacy/api", "h1.txt")
+				suAddHNR(t, s, dbPath, b3, "legacy/api", "h2.txt")
+				unselectedHNR = 2
+			}
+			skipWithoutLegacy := func(t *testing.T) {
+				t.Helper()
+				if !legacy {
+					t.Skip("the memory store is never persisted, so it cannot hold a host-not-recorded row")
+				}
+			}
 
 			f1, g1 := mkFinding("tok_one")
 			f2, g2 := mkFinding("tok_two")
@@ -724,13 +764,14 @@ func TestApplySelection_RetainsAndCounts(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, []string{f1.ID}, ids(gotF))
 				assert.Equal(t, []string{"m1"}, sids(gotM))
-				assert.Equal(t, 2, n, "B3's two host-less locations are unselected")
+				assert.Equal(t, unselectedHNR, n, "B3's host-less locations (SQLite only) are unselected")
 				occs, err := gotS.GetOccurrences(b1)
 				require.NoError(t, err)
 				assert.Equal(t, []string{"github.com/other/api settings/app.env"}, suLocationKeys(occs))
 			})
 
 			t.Run("S-T007/host-less count is per blob, not per match", func(t *testing.T) {
+				skipWithoutLegacy(t)
 				sel, err := newReportSelector([]string{"github.com/acme/api"}, nil, nil)
 				require.NoError(t, err)
 				_, gotF, gotM, n, err := applySelection(s, sel, findings, matches, ruleMap)
@@ -741,6 +782,7 @@ func TestApplySelection_RetainsAndCounts(t *testing.T) {
 			})
 
 			t.Run("S-T007/selected host-less locations are not counted", func(t *testing.T) {
+				skipWithoutLegacy(t)
 				sel, err := newReportSelector([]string{"legacy/api"}, nil, nil)
 				require.NoError(t, err)
 				_, gotF, gotM, n, err := applySelection(s, sel, findings, matches, ruleMap)
@@ -751,6 +793,7 @@ func TestApplySelection_RetainsAndCounts(t *testing.T) {
 			})
 
 			t.Run("S-T007/namespace selection counts the unselected host-less locations", func(t *testing.T) {
+				skipWithoutLegacy(t)
 				sel, err := newReportSelector(nil, []string{"github.com"}, nil)
 				require.NoError(t, err)
 				_, gotF, _, n, err := applySelection(s, sel, findings, matches, ruleMap)
@@ -766,7 +809,7 @@ func TestApplySelection_RetainsAndCounts(t *testing.T) {
 				require.NoError(t, err)
 				assert.Empty(t, gotF)
 				assert.Empty(t, gotM)
-				assert.Equal(t, 2, n)
+				assert.Equal(t, unselectedHNR, n)
 			})
 
 			t.Run("C-UNION-MIXED/path selector retains by location", func(t *testing.T) {

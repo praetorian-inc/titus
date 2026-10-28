@@ -487,6 +487,13 @@ type scanJSONMatchForTest struct {
 // sets is restored when the test ends.
 func scanForTest(t *testing.T, target, output, format string, git bool) []byte {
 	t.Helper()
+	return scanExcludingForTest(t, target, output, format, git, "")
+}
+
+// scanExcludingForTest is scanForTest with --rules-exclude set, so a scan can
+// store a blob without matching it (the rule is enabled, then excluded).
+func scanExcludingForTest(t *testing.T, target, output, format string, git bool, exclude string) []byte {
+	t.Helper()
 	rulesFile := filepath.Join(t.TempDir(), "rules.yml")
 	writeRulesYAML(t, rulesFile, []ruleStub{{ID: locTestRuleID, BaseScore: 50}})
 
@@ -500,7 +507,12 @@ func scanForTest(t *testing.T, target, output, format string, git bool) []byte {
 	})
 	scanRulesPath = rulesFile
 	scanRulesInclude = `^test\.locations\.`
-	scanRulesExclude = ""
+	scanRulesExclude = exclude
+	if exclude != "" {
+		// An exclusion that leaves no rule is a scan error; keep one builtin
+		// family that cannot match the synthetic secret.
+		scanRulesInclude = `^test\.locations\.|^np\.aws\.`
+	}
 	scanRuleset = "default"
 	scanOutputPath = output
 	scanOutputFormat = format

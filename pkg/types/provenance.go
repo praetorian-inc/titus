@@ -41,6 +41,11 @@ type GitProvenance struct {
 	// returned it. "" is a recorded value (no host was resolved), not an
 	// absent one.
 	Host string `json:",omitempty"`
+	// HostRecorded is set by a store when it reads a row back: true when the
+	// row's host was recorded (Host may still be ""), false when it never was
+	// (a NULL host, or a datastore that predates the column). It is not part
+	// of the provenance a scan writes, so it is never serialized.
+	HostRecorded bool `json:"-"`
 	// RemoteIdentity is true when RepoPath is a normalized remote identity
 	// (host/owner/repo) rather than a local folder.
 	RemoteIdentity bool `json:",omitempty"`

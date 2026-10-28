@@ -169,8 +169,8 @@ func (m *MemoryStore) markLocationsTruncated(blob string, rowKey provenanceRowKe
 
 // storedProvenance drops the GitProvenance fields the SQLite provenance table
 // does not persist, so both stores return the same rows. Locations now live in
-// the occurrence rows. Host is dropped too: SQLite does not read provenance.host
-// back into a row, so AddProvenance keeps it in provHosts instead.
+// the occurrence rows. Host is dropped too: AddProvenance keeps it in provHosts,
+// the mirror of provenance.host, and withHosts restores it on read.
 func storedProvenance(prov types.Provenance) types.Provenance {
 	g, ok := prov.(types.GitProvenance)
 	if !ok {
@@ -265,7 +265,7 @@ func (m *MemoryStore) GetOccurrences(blobID types.BlobID) ([]types.Occurrence, e
 	m.mu.RLock()
 	key := blobID.Hex()
 	rows := append([]types.Occurrence(nil), m.occurrences[key]...)
-	provs := append([]types.Provenance(nil), m.provenance[key]...)
+	provs := m.withHosts(key, m.provenance[key])
 	m.mu.RUnlock()
 
 	return mergedOccurrences(rows, provs), nil
@@ -280,7 +280,26 @@ func (m *MemoryStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance,
 	if provs == nil {
 		return []types.Provenance{}, nil
 	}
-	return sortedProvenance(provs), nil
+	return sortedProvenance(m.withHosts(blobID.Hex(), provs)), nil
+}
+
+// withHosts returns a copy of one blob's stored provenance rows in which each
+// git row carries the host recorded in provHosts, as SQLite reads provenance.host
+// back: HostRecorded is false only for a nil (NULL) entry. Callers hold m.mu.
+func (m *MemoryStore) withHosts(blob string, provs []types.Provenance) []types.Provenance {
+	out := slices.Clone(provs)
+	for i, p := range out {
+		g, ok := p.(types.GitProvenance)
+		if !ok {
+			continue
+		}
+		rowKey, _ := provenanceKeyOf(g) // stored rows passed provenanceKeyOf in AddProvenance
+		if hp := m.provHosts[provenanceKey{blob: blob, provenanceRowKey: rowKey}]; hp != nil {
+			g.Host, g.HostRecorded = *hp, true
+			out[i] = g
+		}
+	}
+	return out
 }
 
 // sortedProvenance returns a sorted copy of one blob's provenance rows, in
