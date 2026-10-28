@@ -1,0 +1,54 @@
+rules:
+
+- name: Coveo API Key
+  id: np.coveo.1
+  base_score: 50
+
+  # Coveo API keys are the literal prefix "xx" followed by a v4-style UUID
+  # (8-4-4-4-12 hex), e.g. xx564559b1-0045-48e1-953c-3addd1ee4457. The "xx"
+  # prefix is what distinguishes a Coveo key from a bare UUID, so it is required
+  # by the pattern; a UUID on its own does not match. Matching is case-insensitive
+  # because the hex digits may be upper- or lower-case.
+  pattern: |
+    (?xi)
+    \b
+    (?P<token>xx[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12})
+    \b
+
+  categories: [api, secret]
+
+  description: >
+    A Coveo API key was found. Coveo is a SaaS search and recommendation
+    platform; API keys authenticate calls to the Coveo Platform (Search API,
+    Usage Analytics API, and administrative APIs) as a bearer token. Privileges
+    vary per key: some are intentionally public, search-only keys embedded in
+    client-side code, while others grant privileged read/write access to indexed
+    (including secured) content, analytics data, or organization administration.
+    An attacker with a sufficiently privileged key could read or modify search
+    content, exfiltrate indexed data and analytics, or perform administrative
+    actions against the Coveo organization.
+
+    Validation note: a Coveo key cannot be validated in isolation. Every Coveo
+    API call is scoped to an organization and requires an organizationId (e.g.
+    passed as a query parameter or in the request path) that is not part of the
+    key and does not reliably appear alongside it. Because no standalone,
+    org-independent validation endpoint exists, no automated HTTP validator is
+    provided for this rule; confirm a key's validity and privilege level manually
+    against the owning organization (for example, an authenticated Search API or
+    organization endpoint using the correct organizationId).
+
+  references:
+  - https://docs.coveo.com/en/82
+  - https://docs.coveo.com/en/105
+  - https://docs.coveo.com/en/1718
+
+  examples:
+  - 'xx564559b1-0045-48e1-953c-3addd1ee4457'
+  - "accessToken: 'xx564559b1-0045-48e1-953c-3addd1ee4457'"
+  - 'xxABCDEF12-3456-4789-abcd-ef1234567890'
+
+  negative_examples:
+  - '564559b1-0045-48e1-953c-3addd1ee4457'           # bare UUID without the xx prefix
+  - 'xx564559b1-0045-48e1-953c'                       # truncated, missing final group
+  - 'xx564559b1004548e1953c3addd1ee4457'              # no hyphens, not UUID-structured
+  - 'xxg4559b1-0045-48e1-953c-3addd1ee4457'           # non-hex character in first group
