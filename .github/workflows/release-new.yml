@@ -72,6 +72,16 @@ jobs:
         file dist/titus-linux-amd64
         ldd dist/titus-linux-amd64 || true
 
+    - name: Assert release binary ships without the cgo DNS or user resolver
+      run: |
+        if strings -a dist/titus-linux-amd64 | grep -qE 'cgoLookupHostIP|mygetpwnam'; then
+          echo "ERROR: release binary contains the cgo (glibc) DNS/user resolvers"
+          echo "getaddrinfo/getpwnam SIGSEGV in static glibc builds on NSS lookups (golang/go#30310, sourceware#19341)"
+          echo "Keep the netgo osusergo tags on the release build lines."
+          exit 1
+        fi
+        echo "OK: no cgo resolver in release binary"
+
     - name: Verify binary runs
       run: dist/titus-linux-amd64 version
 
@@ -217,7 +227,7 @@ jobs:
         export CGO_LDFLAGS="/tmp/hs-install/lib/libhs.a -lc++"
 
         mkdir -p dist
-        GOWORK=off go build -tags "cgo vectorscan" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
+        GOWORK=off go build -tags "cgo vectorscan netgo osusergo" -ldflags '-s -w -X main.version=${{ env.VERSION }}' -o dist/titus-darwin-${{ matrix.arch }} ./cmd/titus
         chmod +x dist/titus-darwin-${{ matrix.arch }}
         file dist/titus-darwin-${{ matrix.arch }}
         otool -L dist/titus-darwin-${{ matrix.arch }}
@@ -341,7 +351,7 @@ jobs:
         pkg-config --cflags --libs libhs
 
         mkdir -p dist
-        go build -tags "cgo vectorscan" -ldflags '-s -w -extldflags "-static" -X main.version=${{ env.VERSION }}' -o dist/titus-windows-amd64.exe ./cmd/titus
+        go build -tags "cgo vectorscan netgo osusergo" -ldflags '-s -w -extldflags "-static" -X main.version=${{ env.VERSION }}' -o dist/titus-windows-amd64.exe ./cmd/titus
         ls -la dist/
 
     - name: Verify binary runs
