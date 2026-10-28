@@ -1,0 +1,13 @@
+validators:
+  - name: kickbox-api-key
+    rule_ids:
+      - kingfisher.kickbox.1
+    http:
+      method: GET
+      url: "https://api.kickbox.com/v2/verify?email=test@example.com"
+      auth:
+        type: query
+        secret_group: "1"
+        query_param: "apikey"
+      success_codes: [200]
+      failure_codes: [403]

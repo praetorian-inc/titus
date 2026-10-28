@@ -1,0 +1,12 @@
+validators:
+  - name: baremetrics-api-key
+    rule_ids:
+      - kingfisher.baremetrics.1
+    http:
+      method: GET
+      url: "https://api.baremetrics.com/v1/sources"
+      auth:
+        type: bearer
+        secret_group: "secret"
+      success_codes: [200]
+      failure_codes: [401, 403]
