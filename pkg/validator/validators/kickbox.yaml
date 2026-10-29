@@ -4,7 +4,7 @@ validators:
       - kingfisher.kickbox.1
     http:
       method: GET
-      url: "https://api.kickbox.com/v2/verify?email=test@example.com"
+      url: "https://api.kickbox.com/v2/balance"
       auth:
         type: query
         secret_group: "1"

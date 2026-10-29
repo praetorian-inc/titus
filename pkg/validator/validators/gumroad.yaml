@@ -6,9 +6,8 @@ validators:
       method: GET
       url: "https://api.gumroad.com/v2/user"
       auth:
-        type: query
+        type: bearer
         secret_group: "1"
-        query_param: "access_token"
       headers:
         - name: Accept
           value: application/json

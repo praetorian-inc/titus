@@ -27,7 +27,7 @@ func TestGumroad_Valid(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Accept"))
-		assert.NotEmpty(t, r.URL.Query().Get("access_token"))
+		assert.Contains(t, r.Header.Get("Authorization"), "Bearer ")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"success":true,"user":{"name":"test"}}`))
 	}))

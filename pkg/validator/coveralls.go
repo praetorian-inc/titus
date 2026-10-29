@@ -12,8 +12,9 @@ import (
 )
 
 var coverallsRepoPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`coveralls\.io/api/v1/repos/((?:github|bitbucket|gitlab)/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)`),
-	regexp.MustCompile(`coveralls\.io/((?:github|bitbucket|gitlab)/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)`),
+	regexp.MustCompile(`(?i)coveralls\.io/api/v1/repos/((?:github|bitbucket|gitlab)/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)`),
+	regexp.MustCompile(`(?i)coveralls\.io/repos/((?:github|bitbucket|gitlab)/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)`),
+	regexp.MustCompile(`(?i)coveralls\.io/((?:github|bitbucket|gitlab)/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)`),
 }
 
 type CoverallsValidator struct {

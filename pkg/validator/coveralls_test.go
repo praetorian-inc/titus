@@ -133,6 +133,16 @@ func TestExtractCoverallsRepo(t *testing.T) {
 			want:    "github/org/repo",
 		},
 		{
+			name:    "badge URL with /repos/ prefix",
+			snippet: types.Snippet{Before: []byte("https://coveralls.io/repos/github/org/repo/badge.svg")},
+			want:    "github/org/repo",
+		},
+		{
+			name:    "case insensitive",
+			snippet: types.Snippet{Before: []byte("Coveralls.IO/GitHub/octocat/hello-world")},
+			want:    "GitHub/octocat/hello-world",
+		},
+		{
 			name:    "no match",
 			snippet: types.Snippet{Before: []byte("no coveralls info here")},
 			want:    "",

@@ -33,7 +33,7 @@ func TestKickbox_Valid(t *testing.T) {
 	defer server.Close()
 
 	def := loadKickboxValidator(t)
-	def.HTTP.URL = server.URL + "/v2/verify?email=test@example.com"
+	def.HTTP.URL = server.URL + "/v2/balance"
 	v := NewHTTPValidator(def, nil)
 
 	match := &types.Match{
@@ -52,7 +52,7 @@ func TestKickbox_Invalid(t *testing.T) {
 	defer server.Close()
 
 	def := loadKickboxValidator(t)
-	def.HTTP.URL = server.URL + "/v2/verify?email=test@example.com"
+	def.HTTP.URL = server.URL + "/v2/balance"
 	v := NewHTTPValidator(def, nil)
 
 	match := &types.Match{
