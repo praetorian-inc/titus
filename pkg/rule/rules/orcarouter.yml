@@ -1,0 +1,37 @@
+rules:
+
+- name: OrcaRouter Cyber Inference API Key
+  id: kingfisher.orcarouter.1
+  base_score: 70
+
+  # OrcaRouter Cyber Inference is an OpenAI-compatible AI gateway for security
+  # teams: one bearer key routes to many upstream model providers and to the
+  # gateway's own OrcaCyber models. A leaked sk-orca- key is therefore a
+  # multi-provider credential with the blast radius of every provider behind it.
+  #
+  # Key shape: the literal "sk-orca-" prefix followed by the key body.
+  pattern: |
+    (?x)
+    \b
+    (?P<key>
+      sk-orca-[A-Za-z0-9_-]{24,}
+    )
+
+  categories: [api, secret]
+  min_entropy: 3.5
+
+  examples:
+  - |
+      curl https://api.orcarouter.ai/v1/models \
+        -H "Authorization: Bearer sk-orca-EXAMPLE-DO-NOT-USE-4mZ9vT2kL8nR3pW6xY1bC5dQ"
+
+  negative_examples:
+  - "Authorization: Bearer sk-orca-short"
+  - "ORCAROUTER_API_KEY=sk-orca-"
+  - "ORCAROUTER_API_KEY=sk-orca-YOUR_KEY_HERE"
+  - "ORCAROUTER_API_KEY=sk-orca-REPLACE_WITH_YOUR_KEY"
+
+  references:
+  - https://www.orcarouter.ai/cyber
+  - https://www.orcarouter.ai/models?tier=cyber
+  - https://www.orcarouter.ai/docs

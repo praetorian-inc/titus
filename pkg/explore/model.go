@@ -1,9 +1,11 @@
 package explore
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -236,13 +238,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.applyFilters()
 			return m, cmd
 		case paneFindings:
-			prevCursor := m.findings.cursor
+			// Compare findings, not cursor indexes: a re-sort can move a
+			// different finding under an unchanged cursor.
+			prev := m.findings.selectedFinding()
 			var cmd tea.Cmd
 			m.findings, cmd = m.findings.Update(msg)
-			if m.findings.cursor != prevCursor {
-				if f := m.findings.selectedFinding(); f != nil {
-					m.details.setFinding(f)
-				}
+			if f := m.findings.selectedFinding(); f != nil && f != prev {
+				m.details.setFinding(f)
 			}
 			return m, cmd
 		case paneDetails:
@@ -449,12 +451,18 @@ func (m *Model) renderStatusBar() string {
 		helpKeyStyle.Render("?"), helpDescStyle.Render("help"),
 	)
 
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 0 {
-		gap = 0
-	}
+	// Keep at least a 2-cell gap between the sections. When the bar is too
+	// narrow, truncate the help text so the bar never exceeds the width.
+	const minGap = 2
+	right = ansi.Truncate(right, max(0, m.width-lipgloss.Width(left)-minGap), "…")
+	gap := max(minGap, m.width-lipgloss.Width(left)-lipgloss.Width(right))
 
-	return left + strings.Repeat(" ", gap) + right
+	bar := left + strings.Repeat(" ", gap) + right
+	if m.width > 0 {
+		// The left section alone can be wider than a tiny terminal.
+		bar = ansi.Truncate(bar, m.width, "")
+	}
+	return bar
 }
 
 func (m *Model) renderOverlay() string {
@@ -475,7 +483,7 @@ func (m *Model) renderOverlay() string {
 		title = " Comment (enter to save, esc to cancel) "
 		overlayWidth = min(60, m.width-4)
 		overlayHeight = 5
-		content = fmt.Sprintf("\n  > %s_\n", m.commentInput)
+		content = fmt.Sprintf("\n  > %s_\n", types.SanitizeDisplay(m.commentInput))
 	case overlayExclude:
 		title = " Exclude Patterns (esc to close) "
 		overlayWidth = min(70, m.width-4)
@@ -528,14 +536,16 @@ func (m *Model) renderExcludeContent() string {
 	sb.WriteString("\n  Enter pattern (case-sensitive substring match on repo paths):\n")
 
 	if !m.excludeInListMode {
-		fmt.Fprintf(&sb, "  > %s_\n", m.excludeInput)
+		fmt.Fprintf(&sb, "  > %s_\n", types.SanitizeDisplay(m.excludeInput))
 	} else {
-		fmt.Fprintf(&sb, "    %s\n", m.excludeInput)
+		fmt.Fprintf(&sb, "    %s\n", types.SanitizeDisplay(m.excludeInput))
 	}
 
 	if len(m.excludePatterns) > 0 {
 		sb.WriteString("\n  Active patterns (tab to switch, x to delete):\n")
 		for i, p := range m.excludePatterns {
+			// Patterns stay raw for matching; only their display is escaped.
+			p = types.SanitizeDisplay(p)
 			if m.excludeInListMode && i == m.excludeCursor {
 				fmt.Fprintf(&sb, "  > %s\n", rejectStyle.Render(p))
 			} else {
@@ -623,7 +633,7 @@ func (m *Model) handleMouseScroll(x, y int, up bool) {
 
 	switch pane {
 	case paneFilters:
-		for i := 0; i < scrollLines; i++ {
+		for range scrollLines {
 			if up {
 				if m.filters.cursor > 0 {
 					m.filters.cursor--
@@ -638,7 +648,7 @@ func (m *Model) handleMouseScroll(x, y int, up bool) {
 
 	case paneFindings:
 		prevCursor := m.findings.cursor
-		for i := 0; i < scrollLines; i++ {
+		for range scrollLines {
 			if up {
 				if m.findings.cursor > 0 {
 					m.findings.cursor--
@@ -657,13 +667,14 @@ func (m *Model) handleMouseScroll(x, y int, up bool) {
 		}
 
 	case paneDetails:
-		for i := 0; i < scrollLines; i++ {
+		// Clamp the same way as the keyboard Up/Down keys, so a stale offset
+		// past the end never needs extra scrolls to take effect.
+		maxOff := m.details.maxOffset()
+		for range scrollLines {
 			if up {
-				if m.details.offset > 0 {
-					m.details.offset--
-				}
+				m.details.offset = max(0, min(m.details.offset, maxOff)-1)
 			} else {
-				m.details.offset++
+				m.details.offset = min(m.details.offset+1, maxOff)
 			}
 		}
 	}
@@ -689,6 +700,13 @@ func (m *Model) hitTestPane(x, y, contentHeight int) focusedPane {
 }
 
 func (m *Model) applyFilters() {
+	// The Repository facet narrows locations as well as findings. The
+	// findings pane takes the selection before its rows are set; the details
+	// pane accepts it in either order with setFinding.
+	sel := m.filters.facets.selectedValues(facetRepository)
+	m.findings.setRepoFilter(sel)
+	m.details.setRepoFilter(sel)
+
 	var filtered []*findingRow
 	for _, f := range m.data.findings {
 		if m.filters.facets.hasActiveFilters() && !m.filters.facets.matchesFinding(f) {
@@ -729,10 +747,8 @@ func (m *Model) copySecretToClipboard() tea.Cmd {
 	var secret string
 
 	// If viewing a match in details, copy the match's highlighted value
-	if m.focus == paneDetails && m.details.finding != nil {
-		matches := m.details.finding.Matches
-		if m.details.matchCursor < len(matches) {
-			match := matches[m.details.matchCursor]
+	if m.focus == paneDetails {
+		if match := m.details.selectedMatch(); match != nil {
 			secret = string(match.Snippet.Matching)
 		}
 	}
@@ -750,10 +766,12 @@ func (m *Model) copySecretToClipboard() tea.Cmd {
 	// Set clipboard via OSC 52 (written to terminal on next render)
 	m.pendingClipboard = secret
 
-	// Flash message
-	display := secret
-	if len(display) > 40 {
-		display = display[:40] + "..."
+	// Flash message: sanitize repo-controlled bytes before they reach the
+	// terminal, flatten newlines (the flash is a single line), and truncate
+	// by display width so a multibyte rune is never split.
+	display := strings.ReplaceAll(sanitizeForDisplay([]byte(secret)), "\n", ".")
+	if ansi.StringWidth(display) > 40 {
+		display = ansi.Truncate(display, 40, "...")
 	}
 	m.flashMsg = fmt.Sprintf("Copied: %s", display)
 
@@ -801,14 +819,8 @@ func (m *Model) moveNext() {
 			}
 		}
 	case paneDetails:
-		if m.finding() != nil && m.details.matchCursor < len(m.finding().Matches)-1 {
-			m.details.matchCursor++
-		}
+		m.details.nextMatch()
 	}
-}
-
-func (m *Model) finding() *findingRow {
-	return m.findings.selectedFinding()
 }
 
 func (m *Model) startComment() {
@@ -856,13 +868,8 @@ func (m *Model) openSource() tea.Cmd {
 		return nil
 	}
 
-	// Check if match has FileProvenance with a file that exists on disk
-	for _, prov := range match.Provenance {
-		if fp, ok := prov.(types.FileProvenance); ok {
-			if _, err := os.Stat(fp.FilePath); err == nil {
-				return m.openInPager(fp.FilePath, match.Location.Source.Start.Line)
-			}
-		}
+	if path, ok := onDiskPath(match); ok {
+		return m.openInPager(path, match.Location.Source.Start.Line)
 	}
 
 	// Fallback: show snippet in overlay
@@ -881,22 +888,74 @@ func (m *Model) openSource() tea.Cmd {
 	return nil
 }
 
+// onDiskPath returns the first scanned file of match that exists on disk: a
+// FileProvenance path, else a git working-tree location (which a --git scan
+// reports as GitProvenance, not FileProvenance). A committed location is
+// never returned; the file at its path may differ from the committed blob.
+func onDiskPath(match *matchRow) (string, bool) {
+	exists := func(p string) bool {
+		_, err := os.Stat(p)
+		return err == nil
+	}
+	for _, prov := range match.Provenance {
+		if fp, ok := prov.(types.FileProvenance); ok && exists(fp.FilePath) {
+			return fp.FilePath, true
+		}
+	}
+	for _, o := range match.Occurrences {
+		if o.Kind == "git" && o.WorkingTree && o.AbsolutePath != "" && exists(o.AbsolutePath) {
+			return o.AbsolutePath, true
+		}
+	}
+	return "", false
+}
+
 func (m *Model) openInPager(filePath string, line int) tea.Cmd {
-	pager := os.Getenv("PAGER")
-	if pager == "" {
-		pager = "less"
+	name, args, env := pagerCommand(filePath, line)
+	// #nosec G204 -- name is the user's own $PAGER (or less), run without a shell on a path they chose to open; pagerCommand hardens less.
+	c := exec.Command(name, args...)
+	if len(env) > 0 {
+		c.Env = append(os.Environ(), env...)
 	}
-
-	var args []string
-	if line > 0 && pager == "less" {
-		args = append(args, fmt.Sprintf("+%d", line))
-	}
-	args = append(args, filePath)
-
-	c := exec.Command(pager, args...)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return pagerFinishedMsg{err: err}
 	})
+}
+
+// pagerCommand returns the program, arguments and extra environment that show
+// path at line: $PAGER, or less when it is unset. An absolute path cannot
+// start with "-" or "+", so no pager reads it as an option or an initial
+// command. less, by bare name or by path, with or without .exe and in any
+// case (Windows and macOS file systems ignore case), also gets -L, so a LESSOPEN
+// preprocessor never runs on the file, "--" to end its options, and
+// LESSSECURE=1 in its environment, which turns off shell escapes, the editor
+// and input preprocessors.
+func pagerCommand(path string, line int) (name string, args, env []string) {
+	name = cmp.Or(os.Getenv("PAGER"), "less")
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	} else if !filepath.IsAbs(path) {
+		path = "." + string(filepath.Separator) + path
+	}
+	if isLess(name) {
+		args = append(args, "-L")
+		if line > 0 {
+			args = append(args, fmt.Sprintf("+%d", line))
+		}
+		args = append(args, "--")
+		env = []string{"LESSSECURE=1"}
+	}
+	return name, append(args, path), env
+}
+
+// isLess reports whether the pager name runs less: its base name, without a
+// ".exe" suffix in any case, is "less" in any case.
+func isLess(name string) bool {
+	base := filepath.Base(name)
+	if len(base) > len(".exe") && strings.EqualFold(base[len(base)-len(".exe"):], ".exe") {
+		base = base[:len(base)-len(".exe")]
+	}
+	return strings.EqualFold(base, "less")
 }
 
 func (m *Model) updateLayout() {

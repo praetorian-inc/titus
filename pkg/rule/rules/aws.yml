@@ -51,6 +51,12 @@ rules:
     (?::|=>|=)
     \s{0,30}
     ["'']?
+    (?:
+      (?: process\.env\.\w+ | process\.env\[\s*["'']\w+["'']\s*\] | ENV\[\s*["'']\w+["'']\s*\] | \$\{\w+ )
+      \s* (?: \|\| | \?\? | :- | \bor\b ) \s*
+      | (?: os\.environ\.get | os\.getenv | getenv ) \(\s* ["'']\w+["''] \s*,\s*
+    )?
+    ["'']?
     (?P<secret_key>[a-z0-9/+=]{40})
     (?: [^a-z0-9/+=] | $ )
 
@@ -73,6 +79,9 @@ rules:
   - 'aws_secret_access_key:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   - 'aws_secret_access_key => aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   - 'aws_access_key_id = FakeValues99ESPW3ALMEZ6U\n  aws_secret_access_key = FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/'
+  - 'awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/"'
+  - "AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', 'FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/')"
+  - 'export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/}'
 
   negative_examples:
   - 'export AWS_SECRET_ACCESS_KEY=ded7db27a4558e2ea9bbf0bf36ae0e8521618f366c'
@@ -84,6 +93,10 @@ rules:
   - '======================'
   - '//////////////////////'
   - '++++++++++++++++++++++'
+  # An env-var reference with no literal default has nothing to report (#403)
+  - 'aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY,'
+  - 'aws_secret_access_key: process.env.AWS_SECRET_ACCESS_KEY || getFromVault(), id = "FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/"'
+  - 'someOtherKey: process.env.AWS_SECRET_ACCESS_KEY || "FakeValues99cl9bqJFVA3iFUm+yqVe08HxhXFE/"'
 
 
 - name: AWS Account ID

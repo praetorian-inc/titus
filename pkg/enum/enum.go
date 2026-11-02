@@ -2,6 +2,7 @@ package enum
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -62,13 +63,22 @@ type Config struct {
 	NumReaders int
 }
 
+// withoutURL unwraps a *url.Error, which quotes the whole URL (credentials
+// included), keeping only the reason.
+func withoutURL(err error) error {
+	if ue, ok := errors.AsType[*url.Error](err); ok {
+		return ue.Err
+	}
+	return err
+}
+
 // ValidateBaseURL checks that a user-supplied base URL uses HTTP(S).
 // Returns an error for non-HTTP(S) schemes to prevent token leakage via file://, ftp://, etc.
 // Returns true if the scheme is plaintext HTTP (caller should warn about token security).
 func ValidateBaseURL(rawURL string) (insecure bool, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return false, fmt.Errorf("invalid base URL: %w", err)
+		return false, fmt.Errorf("invalid base URL: %w", withoutURL(err))
 	}
 
 	scheme := strings.ToLower(u.Scheme)

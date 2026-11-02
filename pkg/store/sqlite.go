@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -19,6 +20,7 @@ type dbLike interface {
 	Exec(query string, args ...any) (sql.Result, error)
 	QueryRow(query string, args ...any) *sql.Row
 	Query(query string, args ...any) (*sql.Rows, error)
+	Prepare(query string) (*sql.Stmt, error)
 }
 
 type SQLiteStore struct {
@@ -113,6 +115,17 @@ func (s *SQLiteStore) AddMatch(m *types.Match) error {
 		validationStatus, validationConfidence, validationMessage, validationTimestamp,
 		findingID, startLine, startColumn, endLine, endColumn)
 	return err
+}
+
+// HasMatches reports whether any match is stored for blobID. It reads one
+// row through idx_matches_blob_id.
+func (s *SQLiteStore) HasMatches(blobID types.BlobID) (bool, error) {
+	var one int
+	err := s.e.QueryRow("SELECT 1 FROM matches WHERE blob_id = ? LIMIT 1", blobID.Hex()).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (s *SQLiteStore) GetMatches(blobID types.BlobID) ([]*types.Match, error) {
@@ -240,45 +253,52 @@ func (s *SQLiteStore) FindingExists(structuralID string) (bool, error) {
 }
 
 func (s *SQLiteStore) AddProvenance(blobID types.BlobID, prov types.Provenance) error {
-	var provType, path, repoPath, commitHash string
+	key, err := provenanceKeyOf(prov)
+	if err != nil {
+		return err
+	}
 	var authorName, authorEmail, authorTimestamp string
 	var committerName, committerEmail, committerTimestamp string
 	var commitMessage string
-	switch p := prov.(type) {
-	case types.FileProvenance:
-		provType, path = "file", p.FilePath
-	case types.GitProvenance:
-		provType, path, repoPath = "git", p.BlobPath, p.RepoPath
-		if p.Commit != nil {
-			commitHash = p.Commit.CommitID
-			authorName = p.Commit.AuthorName
-			authorEmail = p.Commit.AuthorEmail
-			if !p.Commit.AuthorTimestamp.IsZero() {
-				authorTimestamp = p.Commit.AuthorTimestamp.Format(time.RFC3339)
-			}
-			committerName = p.Commit.CommitterName
-			committerEmail = p.Commit.CommitterEmail
-			if !p.Commit.CommitterTimestamp.IsZero() {
-				committerTimestamp = p.Commit.CommitterTimestamp.Format(time.RFC3339)
-			}
-			commitMessage = p.Commit.Message
-		}
-	case types.ExtendedProvenance:
-		provType = "extended"
-		payloadJSON, _ := json.Marshal(p.Payload)
-		path = string(payloadJSON)
-	case types.ArchiveProvenance:
-		provType, path, repoPath = "archive", p.ArchivePath, p.MemberPath
-	default:
-		return fmt.Errorf("unknown provenance type: %T", prov)
+	var truncated bool
+	var host string // non-NULL on every new write; '' when no host was resolved
+	if p, ok := prov.(types.GitProvenance); ok {
+		truncated = p.LocationsTruncated
+		host = p.Host
 	}
-	_, err := s.e.Exec(`INSERT OR IGNORE INTO provenance
-		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		blobID.Hex(), provType, path, repoPath, commitHash,
+	if p, ok := prov.(types.GitProvenance); ok && p.Commit != nil {
+		authorName = p.Commit.AuthorName
+		authorEmail = p.Commit.AuthorEmail
+		if !p.Commit.AuthorTimestamp.IsZero() {
+			authorTimestamp = p.Commit.AuthorTimestamp.Format(time.RFC3339)
+		}
+		committerName = p.Commit.CommitterName
+		committerEmail = p.Commit.CommitterEmail
+		if !p.Commit.CommitterTimestamp.IsZero() {
+			committerTimestamp = p.Commit.CommitterTimestamp.Format(time.RFC3339)
+		}
+		commitMessage = p.Commit.Message
+	}
+	// An existing row is kept unchanged except that a NULL host (written
+	// before the host was recorded) is filled; a recorded host is never
+	// overwritten.
+	_, err = s.e.Exec(`INSERT INTO provenance
+		(blob_id, type, path, repo_path, commit_hash, author_name, author_email, author_timestamp, committer_name, committer_email, committer_timestamp, commit_message, locations_truncated, host)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(blob_id, type, path, repo_path, commit_hash)
+		DO UPDATE SET host = excluded.host WHERE provenance.host IS NULL`,
+		blobID.Hex(), key.kind, key.path, key.repoPath, key.commitHash,
 		authorName, authorEmail, authorTimestamp,
 		committerName, committerEmail, committerTimestamp,
-		commitMessage)
+		commitMessage, truncated, host)
+	if err != nil || !truncated {
+		return err
+	}
+	// The upsert keeps an existing row unchanged; the flag is sticky,
+	// so a truncated write marks an existing row and nothing clears it.
+	_, err = s.e.Exec(`UPDATE provenance SET locations_truncated = 1
+		WHERE blob_id = ? AND type = ? AND path = ? AND repo_path = ? AND commit_hash = ?`,
+		blobID.Hex(), key.kind, key.path, key.repoPath, key.commitHash)
 	return err
 }
 
@@ -292,11 +312,19 @@ func (s *SQLiteStore) GetAllProvenance(blobID types.BlobID) ([]types.Provenance,
 	return result, nil
 }
 
+// provenanceOrder is the deterministic order of a blob's provenance rows
+// (SEC-15). It is a compile-time constant, never built from data. The columns
+// are the provenance UNIQUE key, so the order is total; type comes last as the
+// tiebreaker. BINARY collation compares bytes, as cmp.Compare does on Go
+// strings, so sortProvenance in the memory store yields the same order.
+const provenanceOrder = "blob_id, repo_path, path, commit_hash, type"
+
 func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provenance, error) {
 	rows, err := s.e.Query(`SELECT type, path, repo_path, commit_hash,
 		author_name, author_email, author_timestamp,
 		committer_name, committer_email, committer_timestamp,
-		commit_message FROM provenance WHERE blob_id = ?`, blobID.Hex())
+		commit_message, locations_truncated, host FROM provenance WHERE blob_id = ?
+		ORDER BY `+provenanceOrder, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -308,17 +336,25 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 		var authorName, authorEmail, authorTS sql.NullString
 		var committerName, committerEmail, committerTS sql.NullString
 		var commitMessage sql.NullString
+		var truncated sql.NullInt64
+		var host sql.NullString
 		if err := rows.Scan(&provType, &path, &repoPath, &commitHash,
 			&authorName, &authorEmail, &authorTS,
 			&committerName, &committerEmail, &committerTS,
-			&commitMessage); err != nil {
+			&commitMessage, &truncated, &host); err != nil {
 			return nil, err
 		}
 		switch provType {
 		case "file":
 			result = append(result, types.FileProvenance{FilePath: path.String})
 		case "git":
-			prov := types.GitProvenance{RepoPath: repoPath.String, BlobPath: path.String}
+			prov := types.GitProvenance{
+				RepoPath:           repoPath.String,
+				BlobPath:           path.String,
+				LocationsTruncated: truncated.Int64 != 0,
+				Host:               host.String,
+				HostRecorded:       host.Valid,
+			}
 			if commitHash.Valid && commitHash.String != "" {
 				meta := &types.CommitMetadata{
 					CommitID:       commitHash.String,
@@ -357,7 +393,7 @@ func (s *SQLiteStore) getAllProvenanceFull(blobID types.BlobID) ([]types.Provena
 }
 
 func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Provenance, error) {
-	rows, err := s.e.Query("SELECT type, path, repo_path, commit_hash FROM provenance WHERE blob_id = ?", blobID.Hex())
+	rows, err := s.e.Query("SELECT type, path, repo_path, commit_hash FROM provenance WHERE blob_id = ? ORDER BY "+provenanceOrder, blobID.Hex())
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +431,146 @@ func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Prove
 		return []types.Provenance{}, nil
 	}
 	return result, rows.Err()
+}
+
+// insertBlobLocation keeps an existing row unchanged except that an empty host
+// is filled by a non-empty one; a recorded host is never overwritten.
+const insertBlobLocation = `INSERT INTO blob_locations
+	(blob_id, kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(blob_id, kind, repository, path, absolute_path, commit_hash, working_tree)
+	DO UPDATE SET host = excluded.host WHERE blob_locations.host = '' AND excluded.host <> ''`
+
+const selectBlobLocations = `SELECT kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host
+	FROM blob_locations WHERE blob_id = ?
+	ORDER BY blob_id, repository, path, commit_hash, absolute_path, working_tree`
+
+// AddOccurrences inserts every occurrence with one prepared statement. On a
+// root store it opens its own transaction; on a txStore (inside ExecBatch) it
+// joins the caller's.
+func (s *SQLiteStore) AddOccurrences(blobID types.BlobID, occs []types.Occurrence) error {
+	if len(occs) == 0 {
+		return nil
+	}
+	if s.db == nil {
+		return s.insertOccurrences(blobID, occs)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	if err := (&SQLiteStore{e: tx}).insertOccurrences(blobID, occs); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *SQLiteStore) insertOccurrences(blobID types.BlobID, occs []types.Occurrence) error {
+	stmt, err := s.e.Prepare(insertBlobLocation)
+	if err != nil {
+		return fmt.Errorf("preparing location insert: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+	blob := blobID.Hex()
+	for _, o := range occs {
+		var commitTS int64
+		if !o.CommitDate.IsZero() {
+			commitTS = o.CommitDate.Unix()
+		}
+		var workingTree int64
+		if o.WorkingTree {
+			workingTree = 1
+		}
+		if _, err := stmt.Exec(blob, o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit, commitTS, workingTree, o.Host); err != nil {
+			return fmt.Errorf("storing location: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetOccurrences(blobID types.BlobID) ([]types.Occurrence, error) {
+	rows, err := s.getLocations(blobID)
+	if err != nil {
+		return nil, fmt.Errorf("reading locations: %w", err)
+	}
+	provs, err := s.GetAllProvenance(blobID)
+	if err != nil {
+		return nil, fmt.Errorf("reading provenance: %w", err)
+	}
+	return mergedOccurrences(rows, provs), nil
+}
+
+func (s *SQLiteStore) getLocations(blobID types.BlobID) ([]types.Occurrence, error) {
+	rows, err := s.e.Query(selectBlobLocations, blobID.Hex())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []types.Occurrence
+	for rows.Next() {
+		o := types.Occurrence{HostRecorded: true}
+		var commitTS, workingTree int64
+		if err := rows.Scan(&o.Kind, &o.Repository, &o.Path, &o.AbsolutePath, &o.Commit, &commitTS, &workingTree, &o.Host); err != nil {
+			return nil, err
+		}
+		if commitTS != 0 {
+			o.CommitDate = time.Unix(commitTS, 0).UTC()
+		}
+		o.WorkingTree = workingTree != 0
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// ListSources returns every distinct provenance and location source across all
+// blobs, merged and sorted by mergeSources. Each statement is read to the end
+// and closed before the next runs, because the store holds one connection.
+func (s *SQLiteStore) ListSources() ([]types.SourceRecord, error) {
+	prov, err := s.provenanceSources()
+	if err != nil {
+		return nil, fmt.Errorf("reading provenance sources: %w", err)
+	}
+	locs, err := s.locationSources()
+	if err != nil {
+		return nil, fmt.Errorf("reading location sources: %w", err)
+	}
+	return mergeSources(append(prov, locs...)), nil
+}
+
+func (s *SQLiteStore) provenanceSources() ([]types.SourceRecord, error) {
+	rows, err := s.e.Query(`SELECT DISTINCT type, COALESCE(repo_path,''), host, COALESCE(path,'') FROM provenance`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []types.SourceRecord
+	for rows.Next() {
+		var k provenanceRowKey
+		var host sql.NullString
+		if err := rows.Scan(&k.kind, &k.repoPath, &host, &k.path); err != nil {
+			return nil, err
+		}
+		out = append(out, provenanceSource(k, host.String, k.kind != "git" || host.Valid))
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLiteStore) locationSources() ([]types.SourceRecord, error) {
+	rows, err := s.e.Query(`SELECT DISTINCT kind, repository, host, path, absolute_path FROM blob_locations`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []types.SourceRecord
+	for rows.Next() {
+		r := types.SourceRecord{HostRecorded: true}
+		if err := rows.Scan(&r.Kind, &r.Repository, &r.Host, &r.Path, &r.AbsolutePath); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func (s *SQLiteStore) GetProvenance(blobID types.BlobID) (types.Provenance, error) {

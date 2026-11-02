@@ -2,9 +2,14 @@ package enum
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
+	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestGitHubEnumerator_Construction tests that we can create a GitHub enumerator.
@@ -85,5 +90,84 @@ func TestGitHubEnumerator_RequiresTarget(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("expected error when no owner/org/user specified, got nil")
+	}
+}
+
+func TestGitHubEnumerator_RemoteIdentityOneCallbackPerBlob(t *testing.T) {
+	repo := fakeGHRepo{"acme", "api", map[string]string{"a.txt": "token-DUP", "b/c.txt": "token-DUP", "d.txt": "token-ONE"}}
+	for _, tc := range []struct{ baseURL, want string }{
+		{"", "github.com/acme/api"},
+		{"https://github.example.com", "github.example.com/acme/api"},
+		{"https://GitHub.Example.com:8443/", "github.example.com/acme/api"},
+	} {
+		t.Run(tc.want+tc.baseURL, func(t *testing.T) {
+			var hits atomic.Int32
+			srv := newFakeGitHub(t, []fakeGHRepo{repo}, &hits)
+			e := githubEnumFor(t, srv, GitHubConfig{BaseURL: tc.baseURL, Owner: "acme", Repo: "api"})
+			calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
+
+			require.Len(t, calls, 2, "one callback per distinct blob")
+			requireContentBlobIDs(t, calls)
+			byContent := provByContent(t, calls)
+			dup := byContent["token-DUP"]
+			assert.Equal(t, tc.want, dup.RepoPath)
+			assert.True(t, dup.RemoteIdentity)
+			assert.Empty(t, dup.RepoRoot)
+			assert.Equal(t, []string{"a.txt", "b/c.txt"}, locationPaths(dup))
+			assert.Equal(t, "a.txt", dup.BlobPath)
+			assert.Equal(t, []string{"d.txt"}, locationPaths(byContent["token-ONE"]))
+			assert.EqualValues(t, 2, hits.Load(), "content fetched once per blob")
+			assert.NotContains(t, fmt.Sprintf("%+v", calls), "secret")
+		})
+	}
+}
+
+func TestGitHubEnumerator_ListRepoURLsNameHasNoCredential(t *testing.T) {
+	var hits atomic.Int32
+	srv := newFakeGitHub(t, []fakeGHRepo{{"acme", "api", map[string]string{"a": "b"}}}, &hits)
+	e := githubEnumFor(t, srv, GitHubConfig{BaseURL: "https://github.example.com", Org: "acme"})
+	repos, err := e.ListRepoURLs(context.Background())
+	require.NoError(t, err)
+	require.Len(t, repos, 1)
+	assert.Equal(t, "acme/api", repos[0].Name)
+}
+
+func TestGitHubEnumerator_SameBlobTwoRepos(t *testing.T) {
+	var hits atomic.Int32
+	srv := newFakeGitHub(t, []fakeGHRepo{
+		{"acme", "api", map[string]string{"k.txt": "token-SHARED"}},
+		{"acme", "web", map[string]string{"conf/k.txt": "token-SHARED"}},
+	}, &hits)
+	e := githubEnumFor(t, srv, GitHubConfig{Org: "acme"})
+	s := store.NewMemory()
+	var ids []types.BlobID
+	require.NoError(t, e.Enumerate(context.Background(), func(_ []byte, id types.BlobID, p types.Provenance) error {
+		ids = append(ids, id)
+		return s.AddOccurrences(id, types.OccurrencesOf(p))
+	}))
+	require.Len(t, ids, 2)
+	require.Equal(t, ids[0], ids[1], "same content, same blob")
+	assert.Equal(t, []string{"github.com/acme/api k.txt", "github.com/acme/web conf/k.txt"}, occurrenceStrings(t, s, ids[0]))
+}
+
+func TestAPIRepoIdentity(t *testing.T) {
+	tests := []struct {
+		name, baseURL, defaultHost, fullPath, want, wantHost string
+	}{
+		{"default host", "", "github.com", "acme/api", "github.com/acme/api", "github.com"},
+		{"enterprise github host", "https://github.example.com", "github.com", "acme/api", "github.example.com/acme/api", "github.example.com"},
+		{"self-managed gitlab host", "https://gitlab.example.com", "gitlab.com", "acme/api", "gitlab.example.com/acme/api", "gitlab.example.com"},
+		// LAB-7490 T1-A/T3-A: the host is the resolver's (repoid.FromBaseURLHost),
+		// "" when the path is rejected, so no host is stored for a typed-name fallback.
+		{"invalid path falls back to sanitized typed name", "https://", "github.com", "acme/api\x1b", `acme/api\x1b`, ""},
+		// repoid.FromBaseURLHost lowercases the base URL host through cleanHost.
+		{"base URL host is normalized to lower case", "https://GitHub.Example.COM", "github.com", "acme/api", "github.example.com/acme/api", "github.example.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, id := apiRepoIdentity(tt.baseURL, tt.defaultHost, tt.fullPath)
+			assert.Equal(t, tt.want, id)
+			assert.Equal(t, tt.wantHost, host)
+		})
 	}
 }

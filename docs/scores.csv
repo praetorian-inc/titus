@@ -177,6 +177,7 @@ kingfisher.mistral.1,60,medium,Mistral AI API key; European LLM provider with pa
 kingfisher.ollama.1,50,medium,Ollama hosted API key; primarily local/self-hosted tool but hosted service keys carry moderate billing risk.
 np.openai.1,70,high,OpenAI API key; GPT-4/o1 usage is expensive with high per-token costs; one of the highest financial exposure AI keys; widely targeted.
 kingfisher.openrouter.1,65,high,OpenRouter API key; proxies to many LLMs including expensive frontier models; aggregated billing across providers makes cost exposure significant.
+kingfisher.orcarouter.1,70,high,OrcaRouter Cyber Inference API key; OpenAI-compatible gateway that routes one bearer key to many upstream model providers plus the OrcaCyber models; aggregated billing and multi-provider reach make a leaked key high blast radius.
 kingfisher.perplexity.1,58,medium,Perplexity AI API key; search-augmented LLM with per-request billing.
 kingfisher.replicate.1,65,high,Replicate API token; runs diverse ML models on-demand with per-second GPU billing; high cost exposure.
 kingfisher.runway.1,65,high,Runway API key; video generation AI is computationally expensive with high per-second billing.

@@ -16,3 +16,5 @@
 --diff-filter  # git log --diff-filter=ARC, why pkg/enum/commit_metadata.go accepts renames and copies
 --stdin        # git hash-object --stdin, the command that produced the expected hashes in pkg/types/blobid_test.go
 --digest       # curl --user ... --digest, the Atlas API call pkg/scoring/mongodb_atlas.go's third pattern matches
+--porcelain    # git worktree list --porcelain, the linked-worktree HEAD read in pkg/enum/git_native_tagged.go
+--detach       # git worktree add --detach, the fixture helper in pkg/enum/git_worktree_tips_test.go

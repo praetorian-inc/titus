@@ -1,7 +1,8 @@
 package explore
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	"github.com/praetorian-inc/titus/pkg/types"
 )
@@ -89,8 +90,8 @@ func mapToFacetValues(id facetID, counts map[string]int) []*facetValue {
 	for v, c := range counts {
 		values = append(values, &facetValue{FacetID: id, Value: v, Count: c})
 	}
-	sort.Slice(values, func(i, j int) bool {
-		return values[i].Value < values[j].Value
+	slices.SortFunc(values, func(a, b *facetValue) int {
+		return cmp.Compare(a.Value, b.Value)
 	})
 	return values
 }
@@ -161,14 +162,12 @@ func (fs *facetState) matchesFinding(f *findingRow) bool {
 				return false
 			}
 		case facetRepository:
-			found := false
-			for _, repo := range f.Repositories {
-				if selected[repo] {
-					found = true
-					break
-				}
-			}
-			if !found {
+			// Repositories holds exactly the facet keys of the finding's
+			// occurrences, so this passes iff visibleOccurrences leaves at
+			// least one location of the finding. A finding with a match whose
+			// locations failed to load or were truncated is kept: the missing
+			// locations may be in the selection (S1).
+			if !locationsUnknown(f) && !slices.ContainsFunc(f.Repositories, func(repo string) bool { return selected[repo] }) {
 				return false
 			}
 		}
@@ -230,9 +229,8 @@ type findingRow struct {
 	RuleID           string
 	RuleName         string
 	Categories       []string
-	Repositories     []string // unique repo paths from match provenance
+	Repositories     []string // distinct non-empty facetKey values (repository, else extended source) across matches, sorted
 	Groups           [][]byte
-	MatchCount       int
 	ValidationStatus string  // aggregated: "valid", "invalid", "undetermined", or ""
 	Confidence       float64 // mean confidence across matches
 	AnnotationStatus string  // "accept", "reject", or ""
@@ -252,7 +250,48 @@ type matchRow struct {
 	ValidationStatus string
 	Confidence       float64
 	Message          string
-	Provenance       []types.Provenance
+	Provenance       []types.Provenance // raw rows, kept for actions that need full provenance
+	Occurrences      []types.Occurrence // every location, from store.GetOccurrences; shared by the matches of one blob, do not modify
+	LocationsErr     error              // why Occurrences could not be loaded; nil when they were
+	ProvenanceErr    error              // why Provenance could not be loaded; nil when it was
 	AnnotationStatus string
 	Comment          string
+}
+
+// locationsUnknown reports whether the location list of any match of f is
+// incomplete, because it failed to load or its provenance records that it
+// was truncated, so the location count of f and its repositories are only a
+// lower bound.
+func locationsUnknown(f *findingRow) bool {
+	return slices.ContainsFunc(f.Matches, matchLocationsUnknown)
+}
+
+// matchLocationsUnknown reports whether m's location list is incomplete: it
+// failed to load, or the git history index did not record every location.
+func matchLocationsUnknown(m *matchRow) bool {
+	return m.LocationsErr != nil || types.LocationsTruncated(m.Provenance)
+}
+
+// facetKey is an occurrence's Repository facet value: its repository, or for
+// an extended location its source (e.g. "confluence"). It is "" for a plain
+// file or a sourceless location, which have no facet value.
+func facetKey(o types.Occurrence) string {
+	return cmp.Or(o.Repository, o.Source)
+}
+
+// visibleOccurrences returns the occurrences shown under the Repository facet
+// selection. An empty selection shows all of them (the input slice itself). A
+// non-empty selection shows only occurrences whose facetKey is selected, so it
+// hides those with no facet key.
+func visibleOccurrences(occs []types.Occurrence, sel map[string]bool) []types.Occurrence {
+	if len(sel) == 0 {
+		return occs
+	}
+	var vis []types.Occurrence
+	for _, o := range occs {
+		if k := facetKey(o); k != "" && sel[k] {
+			vis = append(vis, o)
+		}
+	}
+	return vis
 }

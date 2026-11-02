@@ -3,7 +3,7 @@
 # titus CLI reference
 
 Every command, alias and flag below is derived from the cobra command tree, not from prose.
-Schema version 1, surface hash `sha256:4d4da820671766fd35b8066eb3ac71db3ec866e2d13330488d29d7af05f8c5e5`.
+Schema version 1, surface hash `sha256:102f2df35e4033b486feccac2a379fb7e0029e14e6b62a606d78b75230e29db2`.
 
 Regenerate with `make cli-docs` after adding, removing or renaming a command or a flag.
 
@@ -40,6 +40,8 @@ Regenerate with `make cli-docs` after adding, removing or renaming a command or 
 | [`titus linear`](#titus-linear) | *(none)* | (deprecated: use 'titus enum linear' instead) |
 | [`titus notion`](#titus-notion) | *(none)* | (deprecated: use 'titus enum notion' instead) |
 | [`titus report`](#titus-report) | *(none)* | Generate a report from scan results |
+| [`titus report sources`](#titus-report-sources) | *(none)* | List the values that select the reported findings |
+| [`titus report sources all`](#titus-report-sources-all) | *(none)* | List every recorded source, including sources with no findings |
 | [`titus report summary`](#titus-report-summary) | *(none)* | Show a summary of findings by rule type |
 | [`titus rules`](#titus-rules) | *(none)* | Manage detection rules |
 | [`titus rules list`](#titus-rules-list) | *(none)* | List available rules |
@@ -928,6 +930,9 @@ Generate a report from scan results
 | `--color` |  | string | `auto` | Color output: auto, always, never |
 | `--datastore` |  | string | `titus.ds` | Path to datastore directory or file |
 | `--format` |  | string | `human` | Output format: human, json, sarif |
+| `--namespace` |  | stringArray | `[]` | Only locations under this namespace, matched by whole path segments (repeatable) |
+| `--path` |  | stringArray | `[]` | Only locations with this recorded path or absolute path (repeatable) |
+| `--repo` |  | stringArray | `[]` | Only locations of this repository, with or without host (repeatable) |
 | `--show-rejected` |  | bool | `false` | Include findings marked as rejected via the explore command (hidden by default) |
 
 ### Inherited flags
@@ -935,6 +940,47 @@ Generate a report from scan results
 | Flag | Short | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `--quiet` | `-q` | bool | `false` | Quiet mode (errors only) |
+| `--verbose` | `-v` | bool | `false` | Verbose output |
+
+## `titus report sources`
+
+List the values that select the reported findings
+
+- Usage: `titus report sources`
+- Aliases: *(none)*
+
+### Flags
+
+| Flag | Short | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--format` |  | string | `human` | Output format: human, json |
+
+### Inherited flags
+
+| Flag | Short | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--color` |  | string | `auto` | Color output: auto, always, never |
+| `--datastore` |  | string | `titus.ds` | Path to datastore directory or file |
+| `--quiet` | `-q` | bool | `false` | Quiet mode (errors only) |
+| `--show-rejected` |  | bool | `false` | Include findings marked as rejected via the explore command (hidden by default) |
+| `--verbose` | `-v` | bool | `false` | Verbose output |
+
+## `titus report sources all`
+
+List every recorded source, including sources with no findings
+
+- Usage: `titus report sources all`
+- Aliases: *(none)*
+
+### Inherited flags
+
+| Flag | Short | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--color` |  | string | `auto` | Color output: auto, always, never |
+| `--datastore` |  | string | `titus.ds` | Path to datastore directory or file |
+| `--format` |  | string | `human` | Output format: human, json |
+| `--quiet` | `-q` | bool | `false` | Quiet mode (errors only) |
+| `--show-rejected` |  | bool | `false` | Include findings marked as rejected via the explore command (hidden by default) |
 | `--verbose` | `-v` | bool | `false` | Verbose output |
 
 ## `titus report summary`
@@ -949,6 +995,9 @@ Show a summary of findings by rule type
 | Flag | Short | Type | Default | Description |
 | --- | --- | --- | --- | --- |
 | `--format` |  | string | `human` | Output format: human, json |
+| `--namespace` |  | stringArray | `[]` | Only locations under this namespace, matched by whole path segments (repeatable) |
+| `--path` |  | stringArray | `[]` | Only locations with this recorded path or absolute path (repeatable) |
+| `--repo` |  | stringArray | `[]` | Only locations of this repository, with or without host (repeatable) |
 
 ### Inherited flags
 

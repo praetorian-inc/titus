@@ -2,9 +2,14 @@ package enum
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"github.com/praetorian-inc/titus/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func TestGitLabEnumerator_TokenOptional(t *testing.T) {
@@ -195,4 +200,33 @@ func TestGitLabEnumerator_Callback(t *testing.T) {
 
 	// With a real GitLab API mock, the callback would be called
 	// For structure verification, we just ensure no panic
+}
+
+func TestGitLabEnumerator_RemoteIdentityOneCallbackPerBlob(t *testing.T) {
+	files := map[string]string{"a.txt": "token-DUP", "b/c.txt": "token-DUP", "d.txt": "token-ONE"}
+	for _, tc := range []struct{ baseURL, want string }{
+		{"", "gitlab.com/grp/sub/api"},
+		{"https://gitlab.example.com/api/v4", "gitlab.example.com/grp/sub/api"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			var hits atomic.Int32
+			srv := newFakeGitLab(t, "grp/sub/api", files, &hits)
+			c, err := gitlab.NewClient("", gitlab.WithBaseURL(srv.URL+"/api/v4"))
+			require.NoError(t, err)
+			e := &GitLabEnumerator{client: c, config: GitLabConfig{BaseURL: tc.baseURL, Project: "grp/sub/api"}}
+			calls := collectBlobs(t, func(cb blobCallback) error { return e.Enumerate(context.Background(), cb) })
+
+			require.Len(t, calls, 2, "one callback per distinct blob")
+			requireContentBlobIDs(t, calls)
+			byContent := provByContent(t, calls)
+			dup := byContent["token-DUP"]
+			assert.Equal(t, tc.want, dup.RepoPath)
+			assert.True(t, dup.RemoteIdentity)
+			assert.Empty(t, dup.RepoRoot)
+			assert.Equal(t, []string{"a.txt", "b/c.txt"}, locationPaths(dup))
+			assert.Equal(t, []string{"d.txt"}, locationPaths(byContent["token-ONE"]))
+			assert.EqualValues(t, 2, hits.Load(), "content fetched once per blob")
+			assert.NotContains(t, fmt.Sprintf("%+v", calls), "secret")
+		})
+	}
 }

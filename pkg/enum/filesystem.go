@@ -43,7 +43,8 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 	var files []fileEntry
 	err = filepath.Walk(e.config.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			// The error names an untrusted path (R6-3).
+			fmt.Fprintf(os.Stderr, "warning: %s\n", types.SanitizeDisplay(err.Error()))
 			return nil
 		}
 
@@ -57,7 +58,20 @@ func (e *FilesystemEnumerator) Enumerate(ctx context.Context, callback func(cont
 			return nil
 		}
 
-		if info.Mode()&os.ModeSymlink != 0 && !e.config.FollowSymlinks {
+		if info.Mode()&os.ModeSymlink != 0 {
+			if !e.config.FollowSymlinks {
+				return nil
+			}
+			// A followed link is read through, so its target must be a
+			// regular file too.
+			if info, err = os.Stat(path); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: %s\n", types.SanitizeDisplay(err.Error())) // R6-3
+				return nil
+			}
+		}
+
+		// Reading a FIFO, socket or device blocks or never ends; skip it.
+		if !info.Mode().IsRegular() {
 			return nil
 		}
 
@@ -138,7 +152,7 @@ func (e *FilesystemEnumerator) processFile(ctx context.Context, path string, cal
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		fmt.Fprintf(os.Stderr, "warning: %s\n", types.SanitizeDisplay(err.Error())) // R6-3
 		return nil
 	}
 

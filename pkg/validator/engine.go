@@ -18,6 +18,7 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewSauceLabsValidator())
 	validators = append(validators, NewTwilioValidator())
 	validators = append(validators, NewAzureStorageValidator())
+	validators = append(validators, NewAzureADValidator())
 	validators = append(validators, NewPostgresValidator())
 	validators = append(validators, NewMySQLValidator())
 	validators = append(validators, NewSentryDSNValidator())
@@ -40,6 +41,8 @@ func NewDefaultEngine(workers int) *Engine {
 	validators = append(validators, NewConfluentValidator())
 	validators = append(validators, NewLookerValidator())
 	validators = append(validators, NewGCPValidator())
+	validators = append(validators, NewFreshdeskValidator())
+	validators = append(validators, NewHashiCorpValidator())
 
 	// Embedded YAML validators
 	embedded, err := LoadEmbeddedValidators()

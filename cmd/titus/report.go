@@ -1,30 +1,68 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/fatih/color"
 	"github.com/praetorian-inc/titus/pkg/rule"
-	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
 
 var (
-	reportDatastore      string
-	reportFormat         string
-	reportColor          string
-	summaryFormat        string
+	reportDatastore    string
+	reportFormat       string
+	reportColor        string
+	summaryFormat      string
 	reportShowRejected bool
+
+	// Selector flag values, bound separately for report and report summary so
+	// the two commands never share state.
+	reportRepos, reportNamespaces, reportPaths    []string
+	summaryRepos, summaryNamespaces, summaryPaths []string
 )
+
+// selectorHelp describes the selector flags shared by report and report
+// summary. It is appended to both commands' Long text.
+const selectorHelp = `
+
+Selecting by source:
+  --repo, --namespace and --path restrict the report to the recorded
+  locations they select. Each flag may be repeated, and a location selected by
+  any value of any flag is kept (union). A finding or match with no selected
+  location is left out, and the summary counts only what is kept.
+
+  --repo X selects locations whose repository equals X. X may be written with
+  the host (github.com/acme/api), without it (acme/api), or, for a local
+  scan, as its recorded absolute folder (/work/a/api).
+  --namespace X selects locations whose repository sits under X, matched by
+  whole path segments: acme/team selects acme/team/api but not
+  acme/team-other/api. X takes the same forms as for --repo.
+  --path X selects locations whose recorded path or absolute path equals X.
+  A comma is part of a path, so it is never split. An absolute folder is a
+  --repo and --namespace form, not a --path form.
+
+  Remaining limitation: a location marked (host not recorded) cannot be tied
+  to one host, so a host-qualified --repo or --namespace value may also select
+  it. It is matched by dropping the first segment of the value. Scan the
+  source again to record its host.
+
+  After a selected report, a note counts the (host not recorded) locations
+  that no --repo or --namespace value selected, and another states that
+  nothing matched when the selection leaves no findings. Run
+  'titus report sources' to list the values that select.`
 
 // styles holds color formatters matching NoseyParker color scheme
 type styles struct {
@@ -73,14 +111,14 @@ type snippetParts struct {
 var reportCmd = &cobra.Command{
 	Use:   "report",
 	Short: "Generate a report from scan results",
-	Long:  "Read findings from a datastore and output a summary report",
+	Long:  "Read findings from a datastore and output a summary report." + selectorHelp,
 	RunE:  runReport,
 }
 
 var summaryCmd = &cobra.Command{
 	Use:   "summary",
 	Short: "Show a summary of findings by rule type",
-	Long:  "Display total counts and per-rule breakdown of findings and matches",
+	Long:  "Display total counts and per-rule breakdown of findings and matches." + selectorHelp,
 	RunE:  runSummary,
 }
 
@@ -196,136 +234,77 @@ func init() {
 
 	reportCmd.AddCommand(summaryCmd)
 	summaryCmd.Flags().StringVar(&summaryFormat, "format", "human", "Output format: human, json")
+
+	addSelectorFlags(reportCmd.Flags(), &reportRepos, &reportNamespaces, &reportPaths)
+	addSelectorFlags(summaryCmd.Flags(), &summaryRepos, &summaryNamespaces, &summaryPaths)
 }
 
-func runReport(cmd *cobra.Command, args []string) error {
-	// Determine store path
-	storePath := reportDatastore
+// addSelectorFlags registers the repeatable source selector flags as local
+// flags. StringArray, not StringSlice: a comma is a legal path character.
+func addSelectorFlags(fs *pflag.FlagSet, repos, namespaces, paths *[]string) {
+	fs.StringArrayVar(repos, selectorFlagRepo, nil, "Only locations of this repository, with or without host (repeatable)")
+	fs.StringArrayVar(namespaces, selectorFlagNamespace, nil, "Only locations under this namespace, matched by whole path segments (repeatable)")
+	fs.StringArrayVar(paths, selectorFlagPath, nil, "Only locations with this recorded path or absolute path (repeatable)")
+}
 
-	// Check if it's :memory: (invalid for report)
-	if storePath == ":memory:" {
-		return fmt.Errorf("cannot report from in-memory store")
+// openReportStore opens the datastore a report command reads. A directory is
+// the datastore directory format; the database lives inside it.
+func openReportStore(path string) (store.Store, error) {
+	if path == ":memory:" {
+		return nil, fmt.Errorf("cannot report from in-memory store")
 	}
 
-	// Check if it's a directory (new datastore format)
-	info, err := os.Stat(storePath)
+	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("datastore not found: %s", storePath)
+		return nil, fmt.Errorf("datastore not found: %s", path)
 	}
 	if info.IsDir() {
-		// New datastore directory format - open datastore.db inside
-		storePath = filepath.Join(storePath, "datastore.db")
+		path = filepath.Join(path, "datastore.db")
 	}
 
-	// Open store
-	s, err := store.New(store.Config{
-		Path: storePath,
-	})
+	s, err := store.New(store.Config{Path: path})
 	if err != nil {
-		return fmt.Errorf("opening datastore: %w", err)
+		return nil, fmt.Errorf("opening datastore: %w", err)
 	}
-	defer func() { _ = s.Close() }()
+	return s, nil
+}
 
-	// Get findings
+// loadReportScope reads the findings and matches a report covers, with the
+// rule map, dropping rejected findings unless --show-rejected is set.
+func loadReportScope(s store.Store) ([]*types.Finding, []*types.Match, map[string]*types.Rule, error) {
 	findings, err := s.GetFindings()
 	if err != nil {
-		return fmt.Errorf("retrieving findings: %w", err)
+		return nil, nil, nil, fmt.Errorf("retrieving findings: %w", err)
 	}
 
-	// Get all matches for additional context
 	matches, err := s.GetAllMatches()
 	if err != nil {
-		return fmt.Errorf("retrieving matches: %w", err)
+		return nil, nil, nil, fmt.Errorf("retrieving matches: %w", err)
 	}
 
-	// Load rules for finding ID computation
 	loader := rule.NewLoader()
 	rules, err := loader.LoadBuiltinRules()
 	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
+		return nil, nil, nil, fmt.Errorf("loading rules: %w", err)
 	}
 	ruleMap := make(map[string]*types.Rule)
 	for _, r := range rules {
 		ruleMap[r.ID] = r
 	}
 
-	// Filter out findings with rejected annotations unless --show-rejected is set
 	if !reportShowRejected {
 		findings, matches, err = filterRejected(s, findings, matches, ruleMap)
 		if err != nil {
-			return fmt.Errorf("filtering rejected findings: %w", err)
+			return nil, nil, nil, fmt.Errorf("filtering rejected findings: %w", err)
 		}
 	}
-
-	// Output based on format
-	switch reportFormat {
-	case "json":
-		return outputReportJSON(cmd, s, findings, matches, ruleMap)
-	case "human":
-		return outputReportHuman(cmd, findings, matches, storePath, ruleMap)
-	case "sarif":
-		return outputReportSARIF(cmd, s, findings, matches, ruleMap)
-	default:
-		return fmt.Errorf("unknown output format: %s", reportFormat)
-	}
+	return findings, matches, ruleMap, nil
 }
 
-func runSummary(cmd *cobra.Command, args []string) error {
-	// Determine store path (inherited from parent report command)
-	storePath := reportDatastore
-
-	if storePath == ":memory:" {
-		return fmt.Errorf("cannot report from in-memory store")
-	}
-
-	info, err := os.Stat(storePath)
-	if err != nil {
-		return fmt.Errorf("datastore not found: %s", storePath)
-	}
-	if info.IsDir() {
-		storePath = filepath.Join(storePath, "datastore.db")
-	}
-
-	s, err := store.New(store.Config{
-		Path: storePath,
-	})
-	if err != nil {
-		return fmt.Errorf("opening datastore: %w", err)
-	}
-	defer func() { _ = s.Close() }()
-
-	findings, err := s.GetFindings()
-	if err != nil {
-		return fmt.Errorf("retrieving findings: %w", err)
-	}
-
-	matches, err := s.GetAllMatches()
-	if err != nil {
-		return fmt.Errorf("retrieving matches: %w", err)
-	}
-
-	loader := rule.NewLoader()
-	rules, err := loader.LoadBuiltinRules()
-	if err != nil {
-		return fmt.Errorf("loading rules: %w", err)
-	}
-	ruleMap := make(map[string]*types.Rule)
-	for _, r := range rules {
-		ruleMap[r.ID] = r
-	}
-
-	// Filter out findings with rejected annotations unless --show-rejected is set
-	if !reportShowRejected {
-		findings, matches, err = filterRejected(s, findings, matches, ruleMap)
-		if err != nil {
-			return fmt.Errorf("filtering rejected findings: %w", err)
-		}
-	}
-
-	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
-	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
-
-	// Determine color setting (inherited from parent)
+// resolveColor applies the --color flag to the global color setting and
+// reports whether color is enabled. auto enables color only on a terminal
+// with NO_COLOR unset.
+func resolveColor() bool {
 	switch reportColor {
 	case "always":
 		color.NoColor = false
@@ -338,15 +317,97 @@ func runSummary(cmd *cobra.Command, args []string) error {
 			color.NoColor = false
 		}
 	}
+	return !color.NoColor
+}
+
+func runReport(cmd *cobra.Command, args []string) error {
+	// Validate the selectors before the datastore is opened: an invalid one
+	// exits non-zero with no report body and never falls back to unfiltered.
+	sel, err := newReportSelector(reportRepos, reportNamespaces, reportPaths)
+	if err != nil {
+		return err
+	}
+
+	s, err := openReportStore(reportDatastore)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = s.Close() }()
+
+	findings, matches, ruleMap, err := loadReportScope(s)
+	if err != nil {
+		return err
+	}
+
+	rs, findings, matches, unselectedHNR, err := applySelection(s, sel, findings, matches, ruleMap)
+	if err != nil {
+		return fmt.Errorf("selecting locations: %w", err)
+	}
+	notices := selectionNotices(sel, unselectedHNR, len(findings))
+
+	// Output based on format
+	switch reportFormat {
+	case "json":
+		err = outputReportJSON(cmd, rs, findings, matches, ruleMap)
+	case "human":
+		err = outputReportHuman(cmd, rs, findings, matches, ruleMap)
+	case "sarif":
+		err = outputReportSARIF(cmd, rs, findings, matches, ruleMap)
+	default:
+		return fmt.Errorf("unknown output format: %s", reportFormat)
+	}
+	if err != nil {
+		return err
+	}
+	writeSelectionNotices(cmd, reportFormat == "human", notices)
+	return nil
+}
+
+func runSummary(cmd *cobra.Command, args []string) error {
+	// Validate the selectors before the datastore is opened.
+	sel, err := newReportSelector(summaryRepos, summaryNamespaces, summaryPaths)
+	if err != nil {
+		return err
+	}
+
+	// The datastore path and --color are inherited from the parent report command.
+	s, err := openReportStore(reportDatastore)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = s.Close() }()
+
+	findings, matches, ruleMap, err := loadReportScope(s)
+	if err != nil {
+		return err
+	}
+
+	// The summary reads only counts, never locations, so the returned store is
+	// not needed; the counts come from the retained findings and matches.
+	_, findings, matches, unselectedHNR, err := applySelection(s, sel, findings, matches, ruleMap)
+	if err != nil {
+		return fmt.Errorf("selecting locations: %w", err)
+	}
+	notices := selectionNotices(sel, unselectedHNR, len(findings))
+
+	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
+	summary := aggregateSummary(findings, matchesByFinding, ruleMap)
+
+	colorEnabled := resolveColor()
 
 	switch summaryFormat {
 	case "json":
-		return outputSummaryJSON(cmd.OutOrStdout(), summary)
+		err = outputSummaryJSON(cmd.OutOrStdout(), summary)
 	case "human":
-		return outputSummaryHuman(cmd.OutOrStdout(), summary, !color.NoColor)
+		err = outputSummaryHuman(cmd.OutOrStdout(), summary, colorEnabled)
 	default:
 		return fmt.Errorf("unknown output format: %s", summaryFormat)
 	}
+	if err != nil {
+		return err
+	}
+	writeSelectionNotices(cmd, summaryFormat == "human", notices)
+	return nil
 }
 
 // =============================================================================
@@ -491,7 +552,50 @@ func formatSnippet(before, matching, after []byte, maxLen int) string {
 	return result
 }
 
-// formatSnippetWithParts separates snippet into parts for colored output
+// sanitizeSnippetText makes raw scanned content safe for a terminal. It keeps
+// '\n' (CRLF included) and '\t' verbatim so code stays readable, and applies
+// types.SanitizeDisplay to the text between them, which escapes ESC sequences
+// and other control bytes while leaving printable Unicode unchanged.
+func sanitizeSnippetText(s string) string {
+	// A CRLF line ending is a newline; only a lone \r is escaped.
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	var b strings.Builder
+	b.Grow(len(s))
+	for {
+		i := strings.IndexAny(s, "\n\t")
+		if i < 0 {
+			b.WriteString(types.SanitizeDisplay(s))
+			return b.String()
+		}
+		b.WriteString(types.SanitizeDisplay(s[:i]))
+		b.WriteByte(s[i])
+		s = s[i+1:]
+	}
+}
+
+// trimSplitCR drops the \r that ends part when next starts with \n: a CRLF
+// line ending split across two snippet parts, which is a newline and not a
+// stray carriage return.
+func trimSplitCR(part, next string) string {
+	if strings.HasSuffix(part, "\r") && strings.HasPrefix(next, "\n") {
+		return part[:len(part)-1]
+	}
+	return part
+}
+
+// sanitized returns p with its content parts made safe for a terminal.
+func (p snippetParts) sanitized() snippetParts {
+	p.before = trimSplitCR(p.before, p.matching+p.after)
+	p.matching = trimSplitCR(p.matching, p.after)
+	p.before = sanitizeSnippetText(p.before)
+	p.matching = sanitizeSnippetText(p.matching)
+	p.after = sanitizeSnippetText(p.after)
+	return p
+}
+
+// formatSnippetWithParts separates snippet into parts for colored output.
+// Truncation works on the raw bytes; each content part is sanitized for
+// terminal display afterwards.
 func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetParts {
 	full := string(before) + string(matching) + string(after)
 
@@ -503,7 +607,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 			matching: string(matching),
 			after:    string(after),
 			suffix:   "",
-		}
+		}.sanitized()
 	}
 
 	// Find where the match sits in the combined string
@@ -519,7 +623,7 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 			matching: string(matching[:maxLen-6]),
 			after:    "",
 			suffix:   "...",
-		}
+		}.sanitized()
 	}
 
 	// Calculate how much context we can show around the match
@@ -570,73 +674,47 @@ func formatSnippetWithParts(before, matching, after []byte, maxLen int) snippetP
 		parts.suffix = "..."
 	}
 
-	return parts
+	return parts.sanitized()
 }
 
-// outputReportSARIF writes findings in SARIF 2.1.0 format with score metadata.
-// Each finding's matches are included as SARIF results; score data is embedded
-// in result.properties so downstream consumers (GitHub Code Scanning, etc.) can
+// outputReportSARIF writes findings in SARIF 2.1.0 format with score metadata,
+// one result per location of each match's blob. Score data is embedded in
+// result.properties so downstream consumers (GitHub Code Scanning, etc.) can
 // use the severity tiers without re-computing them.
 func outputReportSARIF(cmd *cobra.Command, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
-	report := sarif.NewReport()
+	rules := slices.SortedFunc(maps.Values(ruleMap), func(a, b *types.Rule) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
 
-	// Add all rules from the rule map
-	for _, r := range ruleMap {
-		report.AddRule(r)
-	}
-
-	// Build finding lookup by ID for score retrieval
 	findingByID := make(map[string]*types.Finding, len(findings))
 	for _, f := range findings {
 		findingByID[f.ID] = f
 	}
-
-	// Cache provenance by blob ID to avoid repeated store queries
-	provenanceCache := make(map[types.BlobID]string)
-
-	for _, match := range matches {
-		filePath, ok := provenanceCache[match.BlobID]
+	scoreFor := func(m *types.Match) *types.Score {
+		r, ok := ruleMap[m.RuleID]
 		if !ok {
-			prov, err := s.GetProvenance(match.BlobID)
-			if err != nil {
-				filePath = match.BlobID.Hex()
-			} else {
-				filePath = prov.Path()
-			}
-			provenanceCache[match.BlobID] = filePath
+			return nil
 		}
-
-		// Look up score from the corresponding finding
-		var score *types.Score
-		if r, ok := ruleMap[match.RuleID]; ok {
-			fid := types.ComputeFindingID(r.StructuralID, match.Groups)
-			if f, ok := findingByID[fid]; ok {
-				score = f.Score
-			}
+		if f, ok := findingByID[types.ComputeFindingID(r.StructuralID, m.Groups)]; ok {
+			return f.Score
 		}
-		report.AddResultWithScore(match, filePath, score)
+		return nil
 	}
-
-	jsonBytes, err := report.ToJSON()
-	if err != nil {
-		return fmt.Errorf("serializing SARIF: %w", err)
-	}
-
-	_, err = cmd.OutOrStdout().Write(jsonBytes)
-	if err != nil {
-		return fmt.Errorf("writing SARIF output: %w", err)
-	}
-
-	return nil
+	return writeSARIF(cmd.OutOrStdout(), s, rules, matches, scoreFor)
 }
 
-// jsonMatch is a shadow type for types.Match that adds a file_path field to
-// the JSON output without modifying the shared types.Match struct. Embedding
-// *types.Match exposes all existing fields; the outer FilePath field takes
-// precedence over any same-named field on the embedded struct.
+// jsonMatch is a shadow type for types.Match that adds file_path and
+// locations to the JSON output without modifying the shared types.Match
+// struct. Embedding *types.Match exposes all existing fields; the outer fields
+// take precedence over any same-named field on the embedded struct. file_path
+// is the first location's path (kept for existing consumers); locations lists
+// every location and is never null.
 type jsonMatch struct {
 	*types.Match
-	FilePath string `json:"file_path"`
+	FilePath  string         `json:"file_path"`
+	Locations []jsonLocation `json:"locations"`
+	// LocationsTruncated marks a blob with more locations than were recorded.
+	LocationsTruncated bool `json:"locations_truncated,omitempty"`
 }
 
 // jsonFinding is a shadow type for types.Finding that replaces the Matches
@@ -653,8 +731,8 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 	// Group matches by finding ID using content-based computation.
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
 
-	// Cache provenance path lookups to avoid redundant store queries.
-	provenanceCache := make(map[types.BlobID]string)
+	// Cache location lookups per blob to avoid redundant store queries.
+	locationCache := make(map[types.BlobID]blobLocations)
 
 	// Build the output slice using the shadow types so we don't mutate
 	// the shared types.Finding/types.Match structs.
@@ -663,17 +741,24 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 		ms := matchesByFinding[f.ID]
 		jms := make([]jsonMatch, 0, len(ms))
 		for _, m := range ms {
-			filePath, ok := provenanceCache[m.BlobID]
+			locs, ok := locationCache[m.BlobID]
 			if !ok {
-				prov, err := s.GetProvenance(m.BlobID)
-				if err != nil {
-					filePath = m.BlobID.Hex()
-				} else {
-					filePath = prov.Path()
+				var err error
+				if locs, err = loadBlobLocations(s, m); err != nil {
+					return err
 				}
-				provenanceCache[m.BlobID] = filePath
+				locationCache[m.BlobID] = locs
 			}
-			jms = append(jms, jsonMatch{Match: m, FilePath: filePath})
+			filePath := m.BlobID.Hex()
+			if len(locs.occs) > 0 {
+				filePath = locs.occs[0].Path
+			}
+			jms = append(jms, jsonMatch{
+				Match:              m,
+				FilePath:           filePath,
+				Locations:          toJSONLocations(m, locs.occs),
+				LocationsTruncated: locs.truncated,
+			})
 		}
 		out = append(out, jsonFinding{Finding: f, Matches: jms})
 	}
@@ -683,40 +768,25 @@ func outputReportJSON(cmd *cobra.Command, s store.Store, findings []*types.Findi
 	return encoder.Encode(out)
 }
 
-func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []*types.Match, datastorePath string, ruleMap map[string]*types.Rule) error {
+// fullMatches is how many matches of a finding the human report prints in
+// full; later matches print only their location lines.
+const fullMatches = 3
+
+// outputReportHuman writes findings in NoseyParker-style text. The first three
+// matches of a finding print in full (header, blob, snippet, locations); every
+// further match prints only its location lines. Every location of every match
+// is printed, one line each, through writeLocationLines.
+func outputReportHuman(cmd *cobra.Command, s store.Store, findings []*types.Finding, matches []*types.Match, ruleMap map[string]*types.Rule) error {
 	out := cmd.OutOrStdout()
 
 	// Determine if colors should be enabled based on --color flag
-	switch reportColor {
-	case "always":
-		color.NoColor = false
-	case "never":
-		color.NoColor = true
-	default: // "auto"
-		// Check if stdout is a TTY and NO_COLOR is not set
-		if !term.IsTerminal(int(os.Stdout.Fd())) || os.Getenv("NO_COLOR") != "" {
-			color.NoColor = true
-		} else {
-			color.NoColor = false
-		}
-	}
-	s := newStyles(!color.NoColor)
-
-	// Resolve datastore path (same logic as runReport)
-	storePath := datastorePath
-	info, err := os.Stat(storePath)
-	if err == nil && info.IsDir() {
-		storePath = filepath.Join(storePath, "datastore.db")
-	}
-
-	store, err := store.New(store.Config{Path: storePath})
-	if err != nil {
-		return fmt.Errorf("opening datastore for provenance: %w", err)
-	}
-	defer func() { _ = store.Close() }()
+	st := newStyles(resolveColor())
 
 	// Build content-based finding-to-match map
 	matchesByFinding := buildFindingMatchMap(findings, matches, ruleMap)
+
+	// Cache location lookups per blob to avoid redundant store queries.
+	locationCache := make(map[types.BlobID]blobLocations)
 
 	totalFindings := len(findings)
 
@@ -724,13 +794,13 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 	for i, f := range findings {
 		// Finding header - "Finding N/M" in findingHeading style, "(id xyz)" with ID in id style
 		_, _ = fmt.Fprintf(out, "%s (%s %s)\n",
-			s.findingHeading.Sprintf("Finding %d/%d", i+1, totalFindings),
-			s.heading.Sprint("id"),
-			s.id.Sprint(f.ID))
+			st.findingHeading.Sprintf("Finding %d/%d", i+1, totalFindings),
+			st.heading.Sprint("id"),
+			st.id.Sprint(f.ID))
 
 		// Score badge — printed immediately after the finding header when Score is set.
 		if f.Score != nil {
-			severityColor := s.heading // default to bold for unknown tiers
+			severityColor := st.heading // default to bold for unknown tiers
 			switch f.Score.SuggestedSeverity {
 			case "critical":
 				severityColor = color.New(color.FgHiRed, color.Bold)
@@ -745,7 +815,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				severityColor.DisableColor()
 			}
 			_, _ = fmt.Fprintf(out, "%s %d/100 (%s)\n",
-				s.heading.Sprint("Score:"),
+				st.heading.Sprint("Score:"),
 				f.Score.Final,
 				severityColor.Sprint(f.Score.SuggestedSeverity))
 		}
@@ -759,14 +829,14 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				ownerStr += " [" + f.Owner.AccountID + "]"
 			}
 			_, _ = fmt.Fprintf(out, "%s %s\n",
-				s.heading.Sprint("Owner:"),
-				s.metadata.Sprint(ownerStr))
+				st.heading.Sprint("Owner:"),
+				st.metadata.Sprint(types.SanitizeDisplay(ownerStr)))
 		}
 
 		if len(f.Resources) > 0 {
 			_, _ = fmt.Fprintf(out, "%s %s\n",
-				s.heading.Sprint("Resources:"),
-				s.metadata.Sprint(formatResourceSummary(f.Resources)))
+				st.heading.Sprint("Resources:"),
+				st.metadata.Sprint(formatResourceSummary(f.Resources)))
 			for _, r := range f.Resources {
 				detail := r.Type + ": " + r.Name
 				if r.Count > 0 {
@@ -778,7 +848,7 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 				if r.Region != "" {
 					detail += " [" + r.Region + "]"
 				}
-				_, _ = fmt.Fprintf(out, "  %s\n", s.metadata.Sprint(detail))
+				_, _ = fmt.Fprintf(out, "  %s\n", st.metadata.Sprint(types.SanitizeDisplay(detail)))
 			}
 		}
 
@@ -787,70 +857,58 @@ func outputReportHuman(cmd *cobra.Command, findings []*types.Finding, matches []
 		if r, ok := ruleMap[f.RuleID]; ok {
 			ruleName = r.Name
 		}
-		_, _ = fmt.Fprintf(out, "%s %s\n", s.heading.Sprint("Rule:"), s.ruleName.Sprint(ruleName))
+		_, _ = fmt.Fprintf(out, "%s %s\n", st.heading.Sprint("Rule:"), st.ruleName.Sprint(ruleName))
 
 		// Capture groups - "Group N:" in heading style, value in match style
 		for j, group := range f.Groups {
 			_, _ = fmt.Fprintf(out, "%s %s\n",
-				s.heading.Sprintf("Group %d:", j+1),
-				s.match.Sprint(string(group)))
+				st.heading.Sprintf("Group %d:", j+1),
+				st.match.Sprint(sanitizeSnippetText(string(group))))
 		}
 
-		// Matches for this finding
+		// Matches for this finding: the first fullMatches in full, the rest as
+		// location lines only. Nothing is truncated.
 		findingMatches := matchesByFinding[f.ID]
-		if len(findingMatches) > 3 {
-			_, _ = fmt.Fprintf(out, "Showing 3/%d matches:\n", len(findingMatches))
-			findingMatches = findingMatches[:3]
-		}
-
 		for k, match := range findingMatches {
+			locs, ok := locationCache[match.BlobID]
+			if !ok {
+				var err error
+				if locs, err = loadBlobLocations(s, match); err != nil {
+					return err
+				}
+				locationCache[match.BlobID] = locs
+			}
+			line := match.Location.Source.Start.Line
+			if k >= fullMatches {
+				writeLocationLines(out, line, locs.occs, st.metadata)
+				writeLocationsTruncated(out, locs.truncated, st.metadata)
+				continue
+			}
+
 			// Match header - "Match N/M" in heading style, "(id xyz)" with ID in id style
 			_, _ = fmt.Fprintf(out, "\n    %s (%s %s)\n",
-				s.heading.Sprintf("Match %d/%d", k+1, len(matchesByFinding[f.ID])),
-				s.heading.Sprint("id"),
-				s.id.Sprint(match.StructuralID))
-
-			// File path from provenance - "File:" in heading style, path in metadata style
-			prov, err := store.GetProvenance(match.BlobID)
-			if err == nil && prov != nil {
-				label := "File:"
-				switch prov.Kind() {
-				case "archive", "extended":
-					label = "Source:"
-				}
-				_, _ = fmt.Fprintf(out, "    %s %s\n",
-					s.heading.Sprint(label),
-					s.metadata.Sprint(prov.Path()))
-				if gp, ok := prov.(types.GitProvenance); ok && gp.Commit != nil && !gp.Commit.CommitterTimestamp.IsZero() {
-					_, _ = fmt.Fprintf(out, "    %s %s\n",
-						s.heading.Sprint("Date:"),
-						s.metadata.Sprint(gp.Commit.CommitterTimestamp.Format("2006-01-02 15:04:05")))
-				}
-			}
+				st.heading.Sprintf("Match %d/%d", k+1, len(findingMatches)),
+				st.heading.Sprint("id"),
+				st.id.Sprint(match.StructuralID))
 
 			// Blob info - "Blob:" in heading style, ID in metadata style
 			_, _ = fmt.Fprintf(out, "    %s %s\n",
-				s.heading.Sprint("Blob:"),
-				s.metadata.Sprint(match.BlobID.Hex()))
-
-			// Line info - "Lines:" in heading style
-			if match.Location.Source.Start.Line > 0 {
-				_, _ = fmt.Fprintf(out, "    %s %d:%d-%d:%d\n",
-					s.heading.Sprint("Lines:"),
-					match.Location.Source.Start.Line, match.Location.Source.Start.Column,
-					match.Location.Source.End.Line, match.Location.Source.End.Column)
-			}
+				st.heading.Sprint("Blob:"),
+				st.metadata.Sprint(match.BlobID.Hex()))
 
 			// Context snippet with colored matching portion
 			parts := formatSnippetWithParts(match.Snippet.Before, match.Snippet.Matching, match.Snippet.After, 500)
 			if parts.prefix != "" || parts.before != "" || parts.matching != "" || parts.after != "" || parts.suffix != "" {
-				_, _ = fmt.Fprintf(out, "\n        %s%s%s%s%s\n",
+				_, _ = fmt.Fprintf(out, "\n        %s%s%s%s%s\n\n",
 					parts.prefix,
 					parts.before,
-					s.match.Sprint(parts.matching),
+					st.match.Sprint(parts.matching),
 					parts.after,
 					parts.suffix)
 			}
+
+			writeLocationLines(out, line, locs.occs, st.metadata)
+			writeLocationsTruncated(out, locs.truncated, st.metadata)
 		}
 
 		_, _ = fmt.Fprintf(out, "\n\n")
@@ -877,5 +935,6 @@ func formatResourceSummary(resources []types.ResourceInfo) string {
 		parts = append(parts, fmt.Sprintf("%d %s", n, typ))
 	}
 	sort.Strings(parts)
-	return strings.Join(parts, ", ")
+	// Resource types come from remote APIs; sanitize for terminal display.
+	return types.SanitizeDisplay(strings.Join(parts, ", "))
 }

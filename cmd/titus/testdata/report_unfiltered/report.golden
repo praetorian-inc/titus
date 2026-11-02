@@ -1,0 +1,121 @@
+Finding 1/10 (id b033cb5e0bb5fbc82b3f337e944761db6832daf4)
+Rule: AWS API Key
+Group 1: sel_B1
+
+    Match 1/1 (id sm-B1-1)
+    Blob: 84063447e34fcfc88351519455a05a9b6cd4cf53
+
+        sel_B1
+
+    github.com/acme/api  config/app.env:3  0000000  2026-06-15
+    github.com/other/api  settings/app.env:3  0000000  2026-06-15
+
+
+Finding 2/10 (id 49dcc4312f3073f9aa40503eb17129082d744584)
+Rule: AWS API Key
+Group 1: sel_B2
+
+    Match 1/1 (id sm-B2-2)
+    Blob: f62d4d129a714eedc4eb23ca77c9da8dc479cdcd
+
+        sel_B2
+
+    gitlab.example.com/acme/api  deploy.yml:3  0000000  2026-06-15
+
+
+Finding 3/10 (id cb9a96f836452e7593b45f5bc3850f241839f05b)
+Rule: AWS API Key
+Group 1: sel_B3
+
+    Match 1/1 (id sm-B3-3)
+    Blob: 3118b08c6c55437324a9a7e591f2565db45e05c7
+
+        sel_B3
+
+    github.com/acme/team/api  a.txt:3  0000000  2026-06-15
+
+
+Finding 4/10 (id d9cf7030a404dbf27959ea3ddde4ee1033c38d79)
+Rule: AWS API Key
+Group 1: sel_B4
+
+    Match 1/1 (id sm-B4-4)
+    Blob: c51d67fc1b9cfd0dd374c15fb2cdc7b0cf974798
+
+        sel_B4
+
+    gitlab.example.com/acme/team/sub/api  b.txt:3  0000000  2026-06-15
+
+
+Finding 5/10 (id 17a1be81c5dad077626d05ee1517bab25f2c81ce)
+Rule: AWS API Key
+Group 1: sel_B5
+
+    Match 1/1 (id sm-B5-5)
+    Blob: b07612769011cd435d0d59a5fee1d4e89b1f6ce4
+
+        sel_B5
+
+    gitlab.example.com/acme/team-other/api  c.txt:3  0000000  2026-06-15
+
+
+Finding 6/10 (id 2afa6f7b2431d369cc49b3806f21af2627a9ae15)
+Rule: AWS API Key
+Group 1: sel_B6
+
+    Match 1/1 (id sm-B6-6)
+    Blob: 23cf28ccef749bff08b164f8334ea1ffba4c1a3e
+
+        sel_B6
+
+    acme/api  h1.txt:3  0000000  2026-06-15  host not recorded
+
+
+Finding 7/10 (id 56d10fddd14bcd62f8f19ce0a23d846e676f9792)
+Rule: AWS API Key
+Group 1: sel_B7
+
+    Match 1/1 (id sm-B7-7)
+    Blob: 1f9a3c4f9a7d898209e8b04dd5ac9923b0020395
+
+        sel_B7
+
+    api  h2.txt:3  0000000  2026-06-15  host not recorded
+
+
+Finding 8/10 (id 2159b411f1fe157b0550b4ef0ffe356ed1d3c645)
+Rule: AWS API Key
+Group 1: sel_B8
+
+    Match 1/1 (id sm-B8-8)
+    Blob: 1329f6b2abd5a1386b30180ca45694f7343b9e8b
+
+        sel_B8
+
+    team/api  h3.txt:3  0000000  2026-06-15  host not recorded
+
+
+Finding 9/10 (id 6dd7595d87858e8bcc05b351357a45467474c86d)
+Rule: AWS API Key
+Group 1: sel_B9
+
+    Match 1/1 (id sm-B9-9)
+    Blob: 426e8a3de5740f2a013504bd5b7149e0102b800b
+
+        sel_B9
+
+    zzz/unrelated  h4.txt:3  0000000  2026-06-15  host not recorded
+
+
+Finding 10/10 (id 81fd7c7c39976e69d40c32115c2c27ce37a8499f)
+Rule: AWS API Key
+Group 1: sel_B10
+
+    Match 1/1 (id sm-B10-10)
+    Blob: 41310c5c1705410b5baff3de5b2e0d39c3a686ad
+
+        sel_B10
+
+    github.com/acmecorp/api  d.txt:3  0000000  2026-06-15
+
+

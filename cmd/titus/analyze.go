@@ -320,7 +320,7 @@ func outputAnalyzeHuman(cmd *cobra.Command, results []analyzedFinding, ruleMap m
 			}
 			valStr := valColor.Sprint(af.validation.Status)
 			if af.validation.Message != "" {
-				valStr += " — " + s.metadata.Sprint(af.validation.Message)
+				valStr += " — " + s.metadata.Sprint(types.SanitizeDisplay(af.validation.Message))
 			}
 			_, _ = fmt.Fprintf(out, "  %s %s\n",
 				s.heading.Sprint("Validation:"),
@@ -358,7 +358,7 @@ func outputAnalyzeHuman(cmd *cobra.Command, results []analyzedFinding, ruleMap m
 			}
 			_, _ = fmt.Fprintf(out, "  %s %s\n",
 				s.heading.Sprint("Owner:"),
-				s.metadata.Sprint(ownerStr))
+				s.metadata.Sprint(types.SanitizeDisplay(ownerStr)))
 		}
 
 		if len(f.Resources) > 0 {
@@ -376,14 +376,14 @@ func outputAnalyzeHuman(cmd *cobra.Command, results []analyzedFinding, ruleMap m
 				if r.Region != "" {
 					detail += " [" + r.Region + "]"
 				}
-				_, _ = fmt.Fprintf(out, "    %s\n", s.metadata.Sprint(detail))
+				_, _ = fmt.Fprintf(out, "    %s\n", s.metadata.Sprint(types.SanitizeDisplay(detail)))
 			}
 		}
 
 		for j, group := range f.Groups {
 			_, _ = fmt.Fprintf(out, "  %s %s\n",
 				s.heading.Sprintf("Group %d:", j+1),
-				s.match.Sprint(string(group)))
+				s.match.Sprint(sanitizeSnippetText(string(group))))
 		}
 
 		if f.Score != nil && len(f.Score.Applied) > 0 {

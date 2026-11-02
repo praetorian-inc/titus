@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/praetorian-inc/titus/pkg/types"
 )
 
 // filterPane is the left-side faceted search tree.
@@ -169,8 +171,19 @@ func (fp filterPane) View() string {
 					marker = " "
 				}
 			}
-			label := truncateString(item.Label, fp.width-12)
-			countStr := facetCountStyle.Render(fmt.Sprintf("(%d)", count))
+			countText := fmt.Sprintf("(%d)", count)
+			// Shrink the label further for a wide count, so the count suffix
+			// always fits.
+			labelWidth := min(fp.width-12, fp.width-8-ansi.StringWidth(countText))
+			label := types.SanitizeDisplay(item.Label)
+			if item.FacetID == facetRepository {
+				// Keep the end of a repository name: owner/repo distinguishes
+				// repositories on the same host.
+				label = truncateStringLeft(label, labelWidth)
+			} else {
+				label = truncateString(label, labelWidth)
+			}
+			countStr := facetCountStyle.Render(countText)
 			if marker == "+" {
 				line = fmt.Sprintf("   %s %s %s", facetSelectedStyle.Render(marker), facetSelectedStyle.Render(label), countStr)
 			} else {
@@ -192,7 +205,7 @@ func (fp filterPane) View() string {
 
 	// Fill remaining lines
 	for i := visibleEnd - fp.offset; i < fp.visibleRows(); i++ {
-		b.WriteString(strings.Repeat(" ", fp.width-2))
+		b.WriteString(strings.Repeat(" ", max(0, fp.width-2)))
 		if i < fp.visibleRows()-1 {
 			b.WriteString("\n")
 		}
@@ -246,13 +259,42 @@ func truncateString(s string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
 	}
-	if len(s) <= maxLen {
+	if ansi.StringWidth(s) <= maxLen {
 		return s
 	}
 	if maxLen <= 3 {
-		return s[:maxLen]
+		return ansi.Truncate(s, maxLen, "")
 	}
-	return s[:maxLen-3] + "..."
+	return ansi.Truncate(s, maxLen, "...")
+}
+
+// truncateStringLeft is truncateString from the left: it drops the start of s
+// and prefixes "..." so the end stays visible.
+func truncateStringLeft(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	w := ansi.StringWidth(s)
+	if w <= maxLen {
+		return s
+	}
+	prefix, n := "...", w-maxLen+3
+	if maxLen <= 3 {
+		prefix, n = "", w-maxLen
+	}
+	// TruncateLeft keeps a wide rune that straddles the cut, which leaves the
+	// result one cell too wide; cutting one more cell drops that rune.
+	out := ansi.TruncateLeft(s, n, prefix)
+	if ansi.StringWidth(out) > maxLen {
+		out = ansi.TruncateLeft(s, n+1, prefix)
+	}
+	// When the last rune is wider than the room left after "...", the extra
+	// cut drops every rune and TruncateLeft returns "" without the prefix.
+	// Return the bare marker so the label still reads as truncated.
+	if out == "" {
+		out = prefix
+	}
+	return out
 }
 
 func padRight(s string, width int) string {

@@ -261,3 +261,79 @@ func TestLoadAnalyzeRules_UnknownType(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no rules match")
 }
+
+func sanitizeAnalyzeResults(tc sanitizeCase) []analyzedFinding {
+	return []analyzedFinding{{
+		finding: &types.Finding{
+			ID:        "test-finding-1",
+			RuleID:    "np.test.1",
+			Groups:    tc.groups,
+			Owner:     tc.owner,
+			Resources: tc.resources,
+		},
+		validation: &types.ValidationResult{Status: types.StatusValid, Confidence: 1.0, Message: tc.message},
+	}}
+}
+
+func TestOutputAnalyzeHuman_SanitizesFindingContent(t *testing.T) {
+	prev := reportColor
+	reportColor = "never"
+	t.Cleanup(func() { reportColor = prev })
+	ruleMap := map[string]*types.Rule{"np.test.1": {ID: "np.test.1", Name: "Test Rule"}}
+
+	for _, tc := range sanitizeCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, buf := newAnalyzeCmd()
+			require.NoError(t, outputAnalyzeHuman(cmd, sanitizeAnalyzeResults(tc), ruleMap))
+			out := buf.String()
+
+			assertNoTerminalControls(t, out)
+			lines := outputLines(out)
+			assert.Contains(t, lines, "  Validation: valid — "+tc.wantMessage)
+			assert.Contains(t, lines, "  Group 1: "+tc.wantGroup)
+			assert.Contains(t, lines, "  Owner: "+tc.wantOwner)
+			assert.Contains(t, lines, "  Resources: "+tc.wantSummary)
+			assert.Contains(t, lines, "    "+tc.wantDetail)
+		})
+	}
+}
+
+// A group with a tab and a non-ASCII rune renders byte for byte.
+func TestOutputAnalyzeHuman_KeepsTabsAndUnicodeReadable(t *testing.T) {
+	prev := reportColor
+	reportColor = "never"
+	t.Cleanup(func() { reportColor = prev })
+	ruleMap := map[string]*types.Rule{"np.test.1": {ID: "np.test.1", Name: "Test Rule"}}
+
+	cmd, buf := newAnalyzeCmd()
+	require.NoError(t, outputAnalyzeHuman(cmd, sanitizeAnalyzeResults(sanitizeCase{groups: readableGroups, message: "ok"}), ruleMap))
+	out := buf.String()
+
+	assertNoTerminalControls(t, out)
+	assert.Contains(t, outputLines(out), "  Group 1: ab\tcé")
+}
+
+// Analyze JSON keeps the exact bytes; encoding/json escapes ESC as \u001b.
+// Groups are strings here, so the group is valid UTF-8: encoding/json would
+// replace an invalid byte such as 0x9b with U+FFFD regardless of this change.
+func TestOutputAnalyzeJSON_KeepsRawFindingContent(t *testing.T) {
+	tc := sanitizeCases()[0]
+	tc.groups = [][]byte{[]byte("tok\x1b[2J")}
+	ruleMap := map[string]*types.Rule{"np.test.1": {ID: "np.test.1", Name: "Test Rule"}}
+	cmd, buf := newAnalyzeCmd()
+	require.NoError(t, outputAnalyzeJSON(cmd, sanitizeAnalyzeResults(tc), ruleMap))
+	data := buf.String()
+
+	assert.NotContains(t, data, "\x1b", "raw escape byte must be JSON-escaped")
+	assert.Contains(t, data, `tok\u001b[2J`)
+
+	var out analyzeOutput
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+	require.Len(t, out.Findings, 1)
+	f := out.Findings[0]
+	assert.Equal(t, []string{string(tc.groups[0])}, f.Groups)
+	assert.Equal(t, tc.owner, f.Owner)
+	assert.Equal(t, tc.resources, f.Resources)
+	require.NotNil(t, f.Validation)
+	assert.Equal(t, tc.message, f.Validation.Message)
+}

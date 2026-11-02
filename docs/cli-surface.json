@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "surfaceHash": "sha256:4d4da820671766fd35b8066eb3ac71db3ec866e2d13330488d29d7af05f8c5e5",
+  "surfaceHash": "sha256:102f2df35e4033b486feccac2a379fb7e0029e14e6b62a606d78b75230e29db2",
   "commands": [
     {
       "path": "titus",
@@ -2670,6 +2670,74 @@
           "usage": "Output format: human, json, sarif"
         },
         {
+          "name": "namespace",
+          "type": "stringArray",
+          "default": "[]",
+          "usage": "Only locations under this namespace, matched by whole path segments (repeatable)"
+        },
+        {
+          "name": "path",
+          "type": "stringArray",
+          "default": "[]",
+          "usage": "Only locations with this recorded path or absolute path (repeatable)"
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "repo",
+          "type": "stringArray",
+          "default": "[]",
+          "usage": "Only locations of this repository, with or without host (repeatable)"
+        },
+        {
+          "name": "show-rejected",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include findings marked as rejected via the explore command (hidden by default)"
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus report sources",
+      "use": "sources",
+      "short": "List the values that select the reported findings",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "color",
+          "type": "string",
+          "default": "auto",
+          "usage": "Color output: auto, always, never",
+          "inherited": true
+        },
+        {
+          "name": "datastore",
+          "type": "string",
+          "default": "titus.ds",
+          "usage": "Path to datastore directory or file",
+          "inherited": true
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: human, json"
+        },
+        {
           "name": "quiet",
           "shorthand": "q",
           "type": "bool",
@@ -2681,7 +2749,60 @@
           "name": "show-rejected",
           "type": "bool",
           "default": "false",
-          "usage": "Include findings marked as rejected via the explore command (hidden by default)"
+          "usage": "Include findings marked as rejected via the explore command (hidden by default)",
+          "inherited": true
+        },
+        {
+          "name": "verbose",
+          "shorthand": "v",
+          "type": "bool",
+          "default": "false",
+          "usage": "Verbose output",
+          "inherited": true
+        }
+      ]
+    },
+    {
+      "path": "titus report sources all",
+      "use": "all",
+      "short": "List every recorded source, including sources with no findings",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "color",
+          "type": "string",
+          "default": "auto",
+          "usage": "Color output: auto, always, never",
+          "inherited": true
+        },
+        {
+          "name": "datastore",
+          "type": "string",
+          "default": "titus.ds",
+          "usage": "Path to datastore directory or file",
+          "inherited": true
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "human",
+          "usage": "Output format: human, json",
+          "inherited": true
+        },
+        {
+          "name": "quiet",
+          "shorthand": "q",
+          "type": "bool",
+          "default": "false",
+          "usage": "Quiet mode (errors only)",
+          "inherited": true
+        },
+        {
+          "name": "show-rejected",
+          "type": "bool",
+          "default": "false",
+          "usage": "Include findings marked as rejected via the explore command (hidden by default)",
+          "inherited": true
         },
         {
           "name": "verbose",
@@ -2720,12 +2841,30 @@
           "usage": "Output format: human, json"
         },
         {
+          "name": "namespace",
+          "type": "stringArray",
+          "default": "[]",
+          "usage": "Only locations under this namespace, matched by whole path segments (repeatable)"
+        },
+        {
+          "name": "path",
+          "type": "stringArray",
+          "default": "[]",
+          "usage": "Only locations with this recorded path or absolute path (repeatable)"
+        },
+        {
           "name": "quiet",
           "shorthand": "q",
           "type": "bool",
           "default": "false",
           "usage": "Quiet mode (errors only)",
           "inherited": true
+        },
+        {
+          "name": "repo",
+          "type": "stringArray",
+          "default": "[]",
+          "usage": "Only locations of this repository, with or without host (repeatable)"
         },
         {
           "name": "show-rejected",

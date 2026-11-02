@@ -34,6 +34,21 @@ type Matcher interface {
 	Close() error
 }
 
+// RetryReporter is implemented by matchers that queue timed-out work for
+// DrainTimedOut. Scan callers use it to keep the location of a blob whose
+// matches arrive only from the retry pass.
+type RetryReporter interface {
+	// HasPendingRetry reports whether a retry job for blobID is queued.
+	HasPendingRetry(blobID types.BlobID) bool
+}
+
+// HasPendingRetry reports whether m has a queued retry job for blobID. It is
+// false when m does not queue retries.
+func HasPendingRetry(m Matcher, blobID types.BlobID) bool {
+	r, ok := m.(RetryReporter)
+	return ok && r.HasPendingRetry(blobID)
+}
+
 // Config for matcher initialization.
 type Config struct {
 	// Rules to compile and load into the matcher

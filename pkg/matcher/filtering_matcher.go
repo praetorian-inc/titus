@@ -50,6 +50,11 @@ func (f *filteringMatcher) DrainTimedOut() ([]*types.Match, error) {
 	return f.filter(matches), nil
 }
 
+// HasPendingRetry forwards to the wrapped matcher.
+func (f *filteringMatcher) HasPendingRetry(blobID types.BlobID) bool {
+	return HasPendingRetry(f.inner, blobID)
+}
+
 func (f *filteringMatcher) Close() error {
 	return f.inner.Close()
 }

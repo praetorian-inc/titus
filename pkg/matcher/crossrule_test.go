@@ -19,6 +19,12 @@ func makeMatch(ruleID string, groups ...string) *types.Match {
 	}
 }
 
+func matchAt(ruleID string, start, end int64, groups ...string) *types.Match {
+	m := makeMatch(ruleID, groups...)
+	m.Location.Offset = types.OffsetSpan{Start: start, End: end}
+	return m
+}
+
 func makeRules(rules ...struct{ id, pattern string }) map[string]*types.Rule {
 	m := make(map[string]*types.Rule)
 	for _, r := range rules {
@@ -428,4 +434,126 @@ func TestCrossRule_ValidatorBeatsSpecificity(t *testing.T) {
 	require.Len(t, result, 1)
 	assert.Equal(t, "np.generic.2", result[0].RuleID,
 		"a validated generic match still beats an unvalidated specific match")
+}
+
+func TestCrossRule_GenericSubstringOfSpecific(t *testing.T) {
+	// The generic rule captured only a truncated substring of the key the
+	// provider-specific rule matched in full. They share no exact group value,
+	// but the generic value is contained in the specific value, so they must
+	// still cluster and the specific must win.
+	rules := map[string]*types.Rule{
+		"np.anthropic.1": {ID: "np.anthropic.1", Pattern: `sk-ant-[A-Za-z0-9_-]+`},
+		"np.generic.2": {
+			ID:         "np.generic.2",
+			Pattern:    `[A-Za-z0-9_-]+`,
+			Categories: []string{"generic"},
+		},
+	}
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	matches := []*types.Match{
+		matchAt("np.anthropic.1", 0, 24, "sk-ant-api03-key-asdf-AA"),
+		matchAt("np.generic.2", 3, 21, "ant-api03-key-asdf"),
+	}
+
+	result := dedup.Deduplicate(matches)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, "np.anthropic.1", result[0].RuleID)
+}
+
+func TestCrossRule_GenericDisjointOffsetNotMerged(t *testing.T) {
+	// A generic match whose value is a substring of a specific match but at a
+	// disjoint offset is an unrelated finding and must not be merged.
+	rules := map[string]*types.Rule{
+		"np.anthropic.1": {ID: "np.anthropic.1", Pattern: `sk-ant-[A-Za-z0-9_-]+`},
+		"np.generic.2": {
+			ID:         "np.generic.2",
+			Pattern:    `[A-Za-z0-9_-]+`,
+			Categories: []string{"generic"},
+		},
+	}
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	matches := []*types.Match{
+		matchAt("np.anthropic.1", 0, 21, "sk-ant-api03-key-asdf"),
+		matchAt("np.generic.2", 100, 118, "ant-api03-key-asdf"),
+	}
+
+	result := dedup.Deduplicate(matches)
+
+	require.Len(t, result, 2)
+}
+
+func TestCrossRule_BroadGenericDoesNotDropSpecifics(t *testing.T) {
+	// A single broad generic match overlaps two distinct provider-specific
+	// matches and its captured value is a substring of both. Dropping the
+	// generic must keep both specific findings rather than merging them.
+	rules := map[string]*types.Rule{
+		"np.anthropic.1": {ID: "np.anthropic.1", Pattern: `sk-ant-[A-Za-z0-9_-]+`},
+		"np.generic.2": {
+			ID:         "np.generic.2",
+			Pattern:    `[A-Za-z0-9_-]+`,
+			Categories: []string{"generic"},
+		},
+	}
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	matches := []*types.Match{
+		matchAt("np.anthropic.1", 0, 16, "sk-ant-api03-aaa"),
+		matchAt("np.anthropic.1", 50, 66, "sk-ant-api03-bbb"),
+		matchAt("np.generic.2", 0, 66, "api03"),
+	}
+
+	result := dedup.Deduplicate(matches)
+
+	require.Len(t, result, 2)
+	for _, m := range result {
+		assert.Equal(t, "np.anthropic.1", m.RuleID)
+	}
+}
+
+func TestCrossRule_GenericContextSubstringKeepsBothFindings(t *testing.T) {
+	// A broad username/password generic overlaps an Anthropic key, and its
+	// username capture ("ant") is a substring of the key. Its declared secret
+	// is the password, which is not a substring of the key, so the generic
+	// (its own distinct finding) must be kept.
+	rules := map[string]*types.Rule{
+		"np.anthropic.1": {ID: "np.anthropic.1", Pattern: `sk-ant-[A-Za-z0-9_-]+`},
+		"np.generic.3": {
+			ID:         "np.generic.3",
+			Pattern:    `user=...;pass=...`,
+			Categories: []string{"generic"},
+		},
+	}
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	matches := []*types.Match{
+		matchAt("np.anthropic.1", 20, 44, "sk-ant-api03-key-asdf-AA"),
+		matchAt("np.generic.3", 0, 60, "ant", "unrelated-password"),
+	}
+
+	result := dedup.Deduplicate(matches)
+
+	require.Len(t, result, 2)
+}
+
+func TestCrossRule_SpecificSubstringNotMerged(t *testing.T) {
+	// Two provider-specific matches where one value is a substring of the other
+	// must not be merged by the substring rule; it only applies to a generic
+	// paired with a specific.
+	rules := map[string]*types.Rule{
+		"np.foo.1": {ID: "np.foo.1", Pattern: `foo`},
+		"np.bar.1": {ID: "np.bar.1", Pattern: `bar`},
+	}
+	dedup := NewCrossRuleDeduplicator(rules, nil)
+
+	matches := []*types.Match{
+		makeMatch("np.foo.1", "abc123"),
+		makeMatch("np.bar.1", "abc123xyz"),
+	}
+
+	result := dedup.Deduplicate(matches)
+
+	require.Len(t, result, 2)
 }

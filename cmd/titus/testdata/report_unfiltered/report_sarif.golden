@@ -1,0 +1,4616 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "titus",
+          "version": "0.1.0",
+          "rules": [
+            {
+              "id": "kingfisher.1password.1",
+              "name": "1Password Service-Account Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.1password.com/docs/service-accounts/security"
+            },
+            {
+              "id": "kingfisher.1password.2",
+              "name": "1Password Account Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://support.1password.com/secret-key-security/"
+            },
+            {
+              "id": "kingfisher.ai21studio.1",
+              "name": "AI21 Studio API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.ai21.com/reference/authentication"
+            },
+            {
+              "id": "kingfisher.airbrake.1",
+              "name": "Airbrake User Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.airbrake.io/docs/devops-tools/api/#list-projects-v4"
+            },
+            {
+              "id": "kingfisher.airtable.1",
+              "name": "Airtable Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://airtable.com/developers/web/api/authentication"
+            },
+            {
+              "id": "kingfisher.airtable.2",
+              "name": "Airtable OAuth Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://airtable.com/developers/web/api/oauth-reference"
+            },
+            {
+              "id": "kingfisher.aiven.1",
+              "name": "Aiven API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://aiven.io/docs/tools/api"
+            },
+            {
+              "id": "kingfisher.alchemy.1",
+              "name": "Alchemy API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.alchemy.com/rpc/ethereum"
+            },
+            {
+              "id": "kingfisher.algolia.1",
+              "name": "Algolia Admin API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.algolia.2",
+              "name": "Algolia Application ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.alibabacloud.1",
+              "name": "Alibaba Access Key ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.alibabacloud.2",
+              "name": "Alibaba Access Key Secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.anypoint.1",
+              "name": "Anypoint API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.postman.com/salesforce-developers/salesforce-developers/documentation/oj0opxa/mulesoft-anypoint-platform-apis"
+            },
+            {
+              "id": "kingfisher.apify.1",
+              "name": "Apify API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.gitguardian.com/secrets-detection/secrets-detection-engine/detectors/specifics/apify_token"
+            },
+            {
+              "id": "kingfisher.apollo.1",
+              "name": "Apollo API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.apollo.io/reference/people-api-search"
+            },
+            {
+              "id": "kingfisher.asana.1",
+              "name": "Asana Client ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.asana.com/docs/authentication"
+            },
+            {
+              "id": "kingfisher.asana.2",
+              "name": "Asana Client Secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.asana.3",
+              "name": "Asana OAuth / Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.asana.com/docs/personal-access-token#example"
+            },
+            {
+              "id": "kingfisher.assemblyai.1",
+              "name": "AssemblyAI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.assemblyai.com/docs/api-reference/overview"
+            },
+            {
+              "id": "kingfisher.authress.1",
+              "name": "Authress Service Client Access Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://authress.io/knowledge-base/docs/authorization/service-clients/access-keys/"
+            },
+            {
+              "id": "kingfisher.azure.devops.1",
+              "name": "Azure DevOps Organization",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.azure.devops.2",
+              "name": "Azure DevOps Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/rest/api/azure/devops/profile/profiles/get?view=azure-devops-rest-7.1\u0026tabs=HTTP"
+            },
+            {
+              "id": "kingfisher.azureopenai.1",
+              "name": "Azure OpenAI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/rest/api/azureopenai/models/list?view=rest-azureopenai-2024-10-21\u0026tabs=HTTP"
+            },
+            {
+              "id": "kingfisher.azureopenai.2",
+              "name": "Azure OpenAI API Key (Extended Format)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/azure/ai-services/openai/reference"
+            },
+            {
+              "id": "kingfisher.azureopenai.host.1",
+              "name": "Azure OpenAI Host",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.azuresearch.key.1",
+              "name": "Azure Search Query Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/rest/api/searchservice/search-documents"
+            },
+            {
+              "id": "kingfisher.azuresearch.url.1",
+              "name": "Azure Search URL",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.azurestorage.1a",
+              "name": "Azure Storage Account Name (Connection String)",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.azurestorage.1b",
+              "name": "Azure Storage Account Name (Blob Endpoint)",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.azurestorage.1c",
+              "name": "Azure Storage Account Name (Label)",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.azurestorage.2",
+              "name": "Azure Storage Account Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.baremetrics.1",
+              "name": "Baremetrics API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.baremetrics.com/reference/sources"
+            },
+            {
+              "id": "kingfisher.baseten.1",
+              "name": "Baseten API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.baseten.co/examples/vllm"
+            },
+            {
+              "id": "kingfisher.beamer.1",
+              "name": "Beamer API token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://getbeamer-api.pages.dev/"
+            },
+            {
+              "id": "kingfisher.bitly.1",
+              "name": "Bitly Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://dev.bitly.com/api-reference#Authentication"
+            },
+            {
+              "id": "kingfisher.buildkite.1",
+              "name": "Buildkite API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://buildkite.com/docs/apis/rest-api/access-token"
+            },
+            {
+              "id": "kingfisher.cerebras.1",
+              "name": "Cerebras AI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.cerebras.net/"
+            },
+            {
+              "id": "kingfisher.circleci.1",
+              "name": "CircleCI API Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://circleci.com/docs/api-developers-guide/#using-the-api-securely-wtih-curl"
+            },
+            {
+              "id": "kingfisher.circleci.2",
+              "name": "CircleCI API Project Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://circleci.com/docs/api/v1/index.html#projects"
+            },
+            {
+              "id": "kingfisher.cisco.1",
+              "name": "Cisco Enable Password",
+              "shortDescription": {
+                "text": "A Cisco IOS enable password or enable secret was found in a\nnetwork device configuration. Enable passwords grant privileged\nEXEC mode access to the device.\n"
+              },
+              "helpUri": "https://www.cisco.com/c/en/us/td/docs/ios/security/command/reference/sec_book/sec_e1.html"
+            },
+            {
+              "id": "kingfisher.cisco.2",
+              "name": "SNMP Read-Write Community String",
+              "shortDescription": {
+                "text": "An SNMP read-write community string was found in a network device\nconfiguration. RW community strings allow full management access\nto the device via SNMP, including configuration changes.\n"
+              },
+              "helpUri": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/snmp/configuration/xe-16/snmp-xe-16-book.html"
+            },
+            {
+              "id": "kingfisher.cisco.3",
+              "name": "Cisco PAC Key",
+              "shortDescription": {
+                "text": "A Cisco Protected Access Credential (PAC) key was found.\nPAC keys are used in 802.1x EAP-FAST authentication and\ncan be used to impersonate the RADIUS server.\n"
+              }
+            },
+            {
+              "id": "kingfisher.cisco.4",
+              "name": "Network Config NVRAM Indicator",
+              "shortDescription": {
+                "text": "A network device NVRAM configuration dump indicator was found.\nThis line appears at the top of Cisco IOS running-config exports,\nindicating the file likely contains device credentials and\nconfiguration details.\n"
+              }
+            },
+            {
+              "id": "kingfisher.ciscomeraki.1",
+              "name": "Cisco Meraki API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.cisco.com/meraki/api-v1/overview/"
+            },
+            {
+              "id": "kingfisher.clarifai.1",
+              "name": "Clarifai API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.gitguardian.com/secrets-detection/secrets-detection-engine/detectors/specifics/clarifai_key"
+            },
+            {
+              "id": "kingfisher.clay.1",
+              "name": "Clay API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://university.clay.com/docs/http-api-integration-overview"
+            },
+            {
+              "id": "kingfisher.clearbit.1",
+              "name": "Clearbit API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.clickhouse.1",
+              "name": "ClickHouse Cloud Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://clickhouse.com/docs/en/cloud/security/service-accounts"
+            },
+            {
+              "id": "kingfisher.clickhouse.2",
+              "name": "ClickHouse Cloud Key ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.clojars.1",
+              "name": "Clojars Username",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.clojars.2",
+              "name": "Clojars API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://github.com/clojars/clojars-web/wiki/API"
+            },
+            {
+              "id": "kingfisher.cloudflare.1",
+              "name": "Cloudflare API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.cloudflare.com/api/resources/user/subresources/tokens/methods/verify/"
+            },
+            {
+              "id": "kingfisher.cloudflare.2",
+              "name": "Cloudflare CA Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.cloudflare.com/api/keys/"
+            },
+            {
+              "id": "kingfisher.cloudinary.1",
+              "name": "Cloudinary URL Credential",
+              "shortDescription": {
+                "text": "A Cloudinary API environment URL was found. The CLOUDINARY_URL value packs\nthe cloud name, API key, and API secret into a single connection string of\nthe form cloudinary://\u003capi_key\u003e:\u003capi_secret\u003e@\u003ccloud_name\u003e. An attacker with\nthis credential can call the Cloudinary Admin API to list, upload, overwrite,\nand delete media assets, rotate delivery settings, and run transformations\nthat consume paid quota, giving them full control over the account's media.\n"
+              },
+              "helpUri": "https://cloudinary.com/documentation/developer_onboarding_faq"
+            },
+            {
+              "id": "kingfisher.cloudsight.1",
+              "name": "CloudSight API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://cloudsight.docs.apiary.io/#introduction/authentication"
+            },
+            {
+              "id": "kingfisher.codacy.1",
+              "name": "Codacy API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.codecov.1",
+              "name": "Codecov Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.codecov.com/reference/api-overview"
+            },
+            {
+              "id": "kingfisher.coderabbit.1",
+              "name": "CodeRabbit API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://coderabbit.ai/"
+            },
+            {
+              "id": "kingfisher.cohere.1",
+              "name": "Cohere API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.cohere.com/reference/list-connectors"
+            },
+            {
+              "id": "kingfisher.coinbase.1",
+              "name": "Coinbase Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.cloud.coinbase.com/wallet-sdk/docs/api-keys"
+            },
+            {
+              "id": "kingfisher.coinbase.2",
+              "name": "Coinbase CDP API Key (ECDSA)",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.coinbase.3",
+              "name": "Coinbase CDP API Key (Ed25519)",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.confluent.1",
+              "name": "Confluent Client ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.confluent.io/cloud/current/access-management/authenticate/api-keys.html"
+            },
+            {
+              "id": "kingfisher.confluent.2",
+              "name": "Confluent API Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.confluent.io/cloud/current/api.html#tag/API-Keys-(iamv2)/operation/getIamV2ApiKey"
+            },
+            {
+              "id": "kingfisher.confluent.3",
+              "name": "Confluent API Secret - Updated Format",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.confluent.io/cloud/current/api.html#tag/API-Keys-(iamv2)/operation/getIamV2ApiKey"
+            },
+            {
+              "id": "kingfisher.contentful.1",
+              "name": "Contentful Delivery API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.contentful.com/developers/docs/references/content-delivery-api/"
+            },
+            {
+              "id": "kingfisher.contentful.2",
+              "name": "Contentful Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.contentful.com/developers/docs/references/content-management-api/#/reference/users/user"
+            },
+            {
+              "id": "kingfisher.coveralls.1",
+              "name": "Coveralls Repo Identifier",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.coveralls.2",
+              "name": "Coveralls Personal API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.coveralls.io/api-repos-endpoint"
+            },
+            {
+              "id": "kingfisher.coze.1",
+              "name": "Coze Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.coze.com/docs/developer_guides/coze_api_overview"
+            },
+            {
+              "id": "kingfisher.credentials.1",
+              "name": "Credentials in a URL",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.curl.1",
+              "name": "Curl Basic Authentication Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://curl.se/docs/manpage.html#-u"
+            },
+            {
+              "id": "kingfisher.curl.2",
+              "name": "Curl Header Authentication",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://curl.se/docs/manpage.html#-H"
+            },
+            {
+              "id": "kingfisher.cursor.1",
+              "name": "Cursor Integrations (User) API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://cursor.com/docs/cloud-agent/api/endpoints"
+            },
+            {
+              "id": "kingfisher.customerio.1",
+              "name": "Customer.io Tracking API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.customer.io/integrations/api/#track-api"
+            },
+            {
+              "id": "kingfisher.customerio.2",
+              "name": "Customer.io App API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.customer.io/integrations/api/#app-api"
+            },
+            {
+              "id": "kingfisher.datadog.1",
+              "name": "Datadog Site Domain",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.datadog.2",
+              "name": "Datadog API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.datadoghq.com/account_management/api-app-keys/"
+            },
+            {
+              "id": "kingfisher.datadog.3",
+              "name": "Datadog Application Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.datadoghq.com/account_management/api-app-keys/"
+            },
+            {
+              "id": "kingfisher.datadog.4",
+              "name": "Datadog RUM Client Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.datadoghq.com/real_user_monitoring/browser/setup/"
+            },
+            {
+              "id": "kingfisher.datagov.1",
+              "name": "Data.gov API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.data.gov/docs/developer-manual/"
+            },
+            {
+              "id": "kingfisher.dbconn.csharp.1",
+              "name": "C# Database Connection Object with Password",
+              "shortDescription": {
+                "text": "A C# database connection object constructed with an inline connection\nstring containing a password was found.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/api/system.data.sqlclient.sqlconnection"
+            },
+            {
+              "id": "kingfisher.dbconn.perl.1",
+              "name": "Perl DBI Connection with Credentials",
+              "shortDescription": {
+                "text": "A Perl DBI database connection with hardcoded credentials was found.\nDBI-\u003econnect() takes a DSN, username, and password as arguments.\n"
+              },
+              "helpUri": "https://metacpan.org/pod/DBI"
+            },
+            {
+              "id": "kingfisher.dbconn.php.1",
+              "name": "PHP Database Connection with Credentials",
+              "shortDescription": {
+                "text": "A PHP MySQL database connection function call with hardcoded string\narguments was found. These typically contain host, username,\nand password parameters as literal strings.\n"
+              },
+              "helpUri": "https://www.php.net/manual/en/function.mysqli-connect.php"
+            },
+            {
+              "id": "kingfisher.dbconn.php.2",
+              "name": "PHP PostgreSQL Connection with Credentials",
+              "shortDescription": {
+                "text": "A PHP PostgreSQL connection using a DSN string with an embedded\npassword was found.\n"
+              },
+              "helpUri": "https://www.php.net/manual/en/function.pg-connect.php"
+            },
+            {
+              "id": "kingfisher.dbconn.python.1",
+              "name": "Python Database Connection with Credentials",
+              "shortDescription": {
+                "text": "A Python database connection call with a hardcoded password\nkeyword argument was found.\n"
+              },
+              "helpUri": "https://www.psycopg.org/docs/module.html"
+            },
+            {
+              "id": "kingfisher.dbconn.python.2",
+              "name": "Python Database Connection with DSN String",
+              "shortDescription": {
+                "text": "A Python database connection using a DSN string with an embedded\npassword was found.\n"
+              }
+            },
+            {
+              "id": "kingfisher.dbconn.ruby.1",
+              "name": "Ruby DBI Connection with Credentials",
+              "shortDescription": {
+                "text": "A Ruby DBI database connection with hardcoded credentials was found.\n"
+              }
+            },
+            {
+              "id": "kingfisher.deepgram.1",
+              "name": "Deepgram API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.deepgram.com/docs/authenticating"
+            },
+            {
+              "id": "kingfisher.deepseek.1",
+              "name": "DeepSeek API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api-docs.deepseek.com/"
+            },
+            {
+              "id": "kingfisher.definednetworking.1",
+              "name": "Defined Networking API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.defined.net/api/defined-networking-api/"
+            },
+            {
+              "id": "kingfisher.deviantart.1",
+              "name": "DeviantArt OAuth Client Secret",
+              "shortDescription": {
+                "text": "DeviantArt OAuth 2.0 client secret used for API authentication.\nAn attacker with this credential and the corresponding client_id can\nobtain access tokens via the client_credentials grant type, enabling\nunauthorized API access to DeviantArt resources. Potential impact\nincludes scraping private user data, impersonating applications, and\nabusing the DeviantArt API on behalf of the registered application.\n"
+              },
+              "helpUri": "https://www.deviantart.com/developers/authentication"
+            },
+            {
+              "id": "kingfisher.diffbot.1",
+              "name": "Diffbot API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.diffbot.com/reference/account"
+            },
+            {
+              "id": "kingfisher.discord.1",
+              "name": "Discord Webhook URL",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.discord.2",
+              "name": "Discord Bot Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.discord.3",
+              "name": "Discord Bot ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.disqus.1",
+              "name": "Disqus API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://disqus.com/api/docs/requests/"
+            },
+            {
+              "id": "kingfisher.docker.1",
+              "name": "Docker Registry Credentials (auths JSON)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://distribution.github.io/distribution/spec/api/"
+            },
+            {
+              "id": "kingfisher.dotnet.connstring.1",
+              "name": ".NET Connection String with Password",
+              "shortDescription": {
+                "text": "A .NET-style database connection string containing an explicit\npassword was found. These connection strings typically connect\nto SQL Server, MySQL, or PostgreSQL databases.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/framework/data/adonet/connection-strings"
+            },
+            {
+              "id": "kingfisher.dotnet.connstring.2",
+              "name": ".NET Connection String with Integrated Security",
+              "shortDescription": {
+                "text": "A .NET connection string using Windows Integrated Security (SSPI)\nwas found. While no password is exposed, this identifies database\nservers and indicates Windows authentication is in use.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/framework/data/adonet/connection-strings"
+            },
+            {
+              "id": "kingfisher.drone.1",
+              "name": "DroneCI Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.drone.io/api/overview/"
+            },
+            {
+              "id": "kingfisher.duffel.1",
+              "name": "Duffel API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://duffel.com/docs/api"
+            },
+            {
+              "id": "kingfisher.easypost.1",
+              "name": "EasyPost API token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.elevenlabs.1",
+              "name": "ElevenLabs API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://elevenlabs.io/docs/api-reference/authentication"
+            },
+            {
+              "id": "kingfisher.endorlabs.1",
+              "name": "Endor Labs API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.endorlabs.2",
+              "name": "Endor Labs API Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.endorlabs.com/rest-api/authentication/"
+            },
+            {
+              "id": "kingfisher.eraser.1",
+              "name": "Eraser API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://eraser.io/docs/api/authentication"
+            },
+            {
+              "id": "kingfisher.eventbrite.1",
+              "name": "Eventbrite API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.eventbrite.com/platform/docs/authentication"
+            },
+            {
+              "id": "kingfisher.exa.1",
+              "name": "Exa AI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.exa.ai/reference/answer"
+            },
+            {
+              "id": "kingfisher.fastly.1",
+              "name": "Fastly API token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.fastly.com/reference/api/#authentication"
+            },
+            {
+              "id": "kingfisher.fileio.1",
+              "name": "FileIO Secret Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.filezilla.1",
+              "name": "FileZilla base64 encoded password",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://forum.filezilla-project.org/viewtopic.php?style=246\u0026t=38820"
+            },
+            {
+              "id": "kingfisher.filezilla.2",
+              "name": "FileZilla stored password (Pass plaintext)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://stackoverflow.com/questions/29790136/filezilla-plain-text-password"
+            },
+            {
+              "id": "kingfisher.finicity.1",
+              "name": "Finicity API token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.finicity.2",
+              "name": "Finicity client secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.finnhub.1",
+              "name": "Finnhub API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://finnhub.io/docs/api"
+            },
+            {
+              "id": "kingfisher.firefox.1",
+              "name": "Firefox Encrypted Password",
+              "shortDescription": {
+                "text": "A Firefox or Thunderbird logins.json encrypted password was found.\nThese passwords are encrypted with the user's master password (or\na blank password if none is set) and can be decrypted with tools\nlike firefox_decrypt if the key4.db file is also available.\n"
+              },
+              "helpUri": "https://github.com/unode/firefox_decrypt"
+            },
+            {
+              "id": "kingfisher.firefox.2",
+              "name": "Firefox Encrypted Username",
+              "shortDescription": {
+                "text": "A Firefox or Thunderbird logins.json encrypted username was found.\nThe presence of encrypted credentials indicates a credential store\nthat may be decryptable if the key database is also accessible.\n"
+              }
+            },
+            {
+              "id": "kingfisher.fireworks.1",
+              "name": "Fireworks.ai API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://readme.fireworks.ai/reference/getting-started-with-the-api"
+            },
+            {
+              "id": "kingfisher.fleetbase.1",
+              "name": "Fleetbase API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.fleetbase.io/developers/api/"
+            },
+            {
+              "id": "kingfisher.flickr.1",
+              "name": "Flickr API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.flickr.com/services/api/"
+            },
+            {
+              "id": "kingfisher.flickr.2",
+              "name": "Flickr OAuth Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.flickr.com/services/api/"
+            },
+            {
+              "id": "kingfisher.flyio.1",
+              "name": "Fly.io API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://fly.io/docs/reference/graphql/"
+            },
+            {
+              "id": "kingfisher.foursquare.1",
+              "name": "Foursquare Client ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.foursquare.2",
+              "name": "Foursquare Client Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.foursquare.com/developer/reference/v2-authentication"
+            },
+            {
+              "id": "kingfisher.frame.io.1",
+              "name": "Frame.io API token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.frame.io/api/reference/operation/getMe/"
+            },
+            {
+              "id": "kingfisher.frameio.1",
+              "name": "Frame.io API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.frame.io/docs/api/authentication"
+            },
+            {
+              "id": "kingfisher.freshbooks.1",
+              "name": "FreshBooks Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.freshbooks.com/api/authentication"
+            },
+            {
+              "id": "kingfisher.freshdesk.1",
+              "name": "Freshdesk Domain",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.freshdesk.2",
+              "name": "Freshdesk API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.freshdesk.com/api/#authentication"
+            },
+            {
+              "id": "kingfisher.friendli.1",
+              "name": "Friendli.ai API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.friendli.ai/reference/authentication"
+            },
+            {
+              "id": "kingfisher.gcp.1",
+              "name": "GCP API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://cloud.google.com/iam/docs/service-account-creds"
+            },
+            {
+              "id": "kingfisher.gcp.3",
+              "name": "GCP Private Key ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://cloud.google.com/iam/docs/service-account-creds"
+            },
+            {
+              "id": "kingfisher.gitter.1",
+              "name": "Gitter Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.gitter.im/docs/authentication"
+            },
+            {
+              "id": "kingfisher.gocardless.1",
+              "name": "GoCardless API Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.google.oauth2.1",
+              "name": "Google OAuth2 Access Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.gpp.1",
+              "name": "Group Policy Preferences cpassword",
+              "shortDescription": {
+                "text": "A Group Policy Preferences (GPP) cpassword attribute was found.\nGPP passwords are AES-256 encrypted, but Microsoft published the\nprivate key in MSDN (MS14-025), making them trivially decryptable.\nThis is a critical finding on any Active Directory domain.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/security-updates/securitybulletins/2014/ms14-025"
+            },
+            {
+              "id": "kingfisher.guardian.1",
+              "name": "Guardian API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://open-platform.theguardian.com/documentation/"
+            },
+            {
+              "id": "kingfisher.gumroad.1",
+              "name": "Gumroad Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://gumroad.com/api"
+            },
+            {
+              "id": "kingfisher.harness.pat.1",
+              "name": "Harness Personal Access Token (PAT)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.harness.io/docs/platform/automation/api/api-quickstart/"
+            },
+            {
+              "id": "kingfisher.hereapi.1",
+              "name": "HERE API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://stackoverflow.com/questions/65610274/here-geocoding-api-not-working-inside-my-react-app"
+            },
+            {
+              "id": "kingfisher.honeycomb.1",
+              "name": "Honeycomb API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api-docs.honeycomb.io/api/auth"
+            },
+            {
+              "id": "kingfisher.hubspot.1",
+              "name": "HubSpot Private App Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.hubspot.com/docs/api/private-apps"
+            },
+            {
+              "id": "kingfisher.ibm.1",
+              "name": "IBM Cloud User API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://cloud.ibm.com/docs/account?topic=account-userapikey"
+            },
+            {
+              "id": "kingfisher.imagekit.1",
+              "name": "ImageKit Private API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://imagekit.io/docs/api-keys"
+            },
+            {
+              "id": "kingfisher.infracost.1",
+              "name": "Infracost API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.infracost.io/docs/api_reference/"
+            },
+            {
+              "id": "kingfisher.infura.1",
+              "name": "Infura API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.infura.io/docs"
+            },
+            {
+              "id": "kingfisher.instantly.1",
+              "name": "Instantly API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.instantly.ai/api/v2/analytics/getdailyaccountanalytics"
+            },
+            {
+              "id": "kingfisher.intercom.1",
+              "name": "Intercom API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.intercom.com/docs/build-an-integration/learn-more/rest-apis"
+            },
+            {
+              "id": "kingfisher.intra42.1",
+              "name": "Intra42 Client ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.intra.42.fr/apidoc/guides/getting_started"
+            },
+            {
+              "id": "kingfisher.intra42.2",
+              "name": "Intra42 Client Secret (s-s4t2ud/af)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.intra.42.fr/apidoc/guides/getting_started"
+            },
+            {
+              "id": "kingfisher.ionic.1",
+              "name": "Ionic API token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.ipstack.1",
+              "name": "IpStack API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://ipstack.com/documentation"
+            },
+            {
+              "id": "kingfisher.jdbc.1",
+              "name": "JDBC connection string with authority-inline credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html"
+            },
+            {
+              "id": "kingfisher.jdbc.2",
+              "name": "JDBC connection string with query-parameter credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.oracle.com/javase/8/docs/api/java/sql/DriverManager.html"
+            },
+            {
+              "id": "kingfisher.jdbc.3",
+              "name": "JDBC connection string with semicolon-property credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.microsoft.com/en-us/sql/connect/jdbc/building-the-connection-url"
+            },
+            {
+              "id": "kingfisher.jdbc.4",
+              "name": "JDBC Oracle connection string with slash credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.oracle.com/en/database/oracle/oracle-database/19/jjdbc/data-sources-and-URLs.html"
+            },
+            {
+              "id": "kingfisher.jira.1",
+              "name": "Jira Domain",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.jira.2",
+              "name": "Jira Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.jotform.1",
+              "name": "Jotform API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.jotform.com/docs/"
+            },
+            {
+              "id": "kingfisher.jumpcloud.1",
+              "name": "Jumpcloud API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.jumpcloud.com/api/"
+            },
+            {
+              "id": "kingfisher.kickbox.1",
+              "name": "Kickbox API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.klaviyo.1",
+              "name": "Klaviyo API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.klingai.1",
+              "name": "Kling AI Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.qingque.cn/d/home/eZQDkhg4h2Qg8SEVSUTBdzYeY"
+            },
+            {
+              "id": "kingfisher.langchain.1",
+              "name": "LangSmith Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.langchain.2",
+              "name": "LangSmith Service Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.lark.1",
+              "name": "LarkSuite Tenant Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://open.larksuite.com/document/home/introduction-to-scope-and-authorization/access-credentials"
+            },
+            {
+              "id": "kingfisher.lark.2",
+              "name": "LarkSuite User Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://open.larksuite.com/document/home/introduction-to-scope-and-authorization/access-credentials"
+            },
+            {
+              "id": "kingfisher.lark.3",
+              "name": "LarkSuite App Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://open.larksuite.com/document/home/introduction-to-scope-and-authorization/access-credentials"
+            },
+            {
+              "id": "kingfisher.launchdarkly.1",
+              "name": "LaunchDarkly Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.launchdarkly.com/sdk/api/"
+            },
+            {
+              "id": "kingfisher.launchdarkly.2",
+              "name": "LaunchDarkly Client-side ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.launchdarkly.com/sdk/client-side/javascript"
+            },
+            {
+              "id": "kingfisher.line.1",
+              "name": "Line Messaging API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.line.biz/en/reference/messaging-api/#get-consumption"
+            },
+            {
+              "id": "kingfisher.linear.1",
+              "name": "Linear API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://linear.app/developers/graphql"
+            },
+            {
+              "id": "kingfisher.lob.1",
+              "name": "Lob API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.lob.com/#section/Authentication"
+            },
+            {
+              "id": "kingfisher.lob.2",
+              "name": "Lob Publishable API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.lob.com/#section/Authentication"
+            },
+            {
+              "id": "kingfisher.looker.1",
+              "name": "Looker Base URL",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.looker.2",
+              "name": "Looker Client ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.cloud.google.com/looker/docs/api-auth"
+            },
+            {
+              "id": "kingfisher.looker.3",
+              "name": "Looker Client Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.cloud.google.com/looker/docs/api-auth"
+            },
+            {
+              "id": "kingfisher.mailjet.1",
+              "name": "MailJetSMS API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://dev.mailjet.com/sms/reference/overview/authentication/"
+            },
+            {
+              "id": "kingfisher.mailjet.2",
+              "name": "MailJet Basic Auth",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://dev.mailjet.com/email/reference/overview/authentication/"
+            },
+            {
+              "id": "kingfisher.mandrill.1",
+              "name": "Mandrill API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.mattermost.1",
+              "name": "Mattermost URL",
+              "shortDescription": {
+                "text": "A URL was found near a 'mattermost' or 'mm_url'/'mm_server'/etc keyword. This is a helper rule used for token validation against the detected Mattermost instance. The 'mm' prefix requires a separator followed by a URL-related keyword to avoid matching unrelated text that happens to start with 'mm' (e.g., tweet content, date formats).\n"
+              }
+            },
+            {
+              "id": "kingfisher.mattermost.2",
+              "name": "Mattermost Access Token",
+              "shortDescription": {
+                "text": "A Mattermost access token was found near a 'mattermost' or 'mm' keyword. Mattermost tokens are 26-character z-base-32 encoded strings used to authenticate API requests. An attacker could use the token to access the Mattermost instance as the associated user or bot.\n"
+              },
+              "helpUri": "https://developers.mattermost.com/api-documentation/"
+            },
+            {
+              "id": "kingfisher.mattermost.3",
+              "name": "Mattermost Incoming Webhook URL",
+              "shortDescription": {
+                "text": "A Mattermost incoming webhook URL was found. Webhook URLs allow posting messages to Mattermost channels without further authentication. An attacker could use the webhook URL to post messages, conduct phishing, or exfiltrate data through the channel.\n"
+              },
+              "helpUri": "https://developers.mattermost.com/integrate/webhooks/incoming/"
+            },
+            {
+              "id": "kingfisher.maxmind.1",
+              "name": "MaxMind License Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://dev.maxmind.com/geoip/docs/web-services"
+            },
+            {
+              "id": "kingfisher.maxmind.2",
+              "name": "MaxMind Account ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://dev.maxmind.com/geoip/docs/web-services"
+            },
+            {
+              "id": "kingfisher.mergify.1",
+              "name": "Mergify Application API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.mergify.com/api/"
+            },
+            {
+              "id": "kingfisher.messagebird.1",
+              "name": "MessageBird API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.messagebird.com/api/#authentication"
+            },
+            {
+              "id": "kingfisher.microsoftteamswebhook.1",
+              "name": "Microsoft Teams Webhook",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.mistral.1",
+              "name": "Mistral AI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.mistral.ai/getting-started/quickstart :contentReference[oaicite:1]{index=1}"
+            },
+            {
+              "id": "kingfisher.monday.1",
+              "name": "Monday.com API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.mongodb.1",
+              "name": "MongoDB API Private Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.mongodb.2",
+              "name": "MongoDB API PUBLIC Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.mongodb.3",
+              "name": "MongoDB URI Connection String",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.mongodb.4",
+              "name": "MongoDB Atlas Service Account Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.mysql.1",
+              "name": "MySQL URI with Credentials",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.netlify.1",
+              "name": "Netlify API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.netlify.2",
+              "name": "Netlify API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.ngrok.1",
+              "name": "Ngrok API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.notion.1",
+              "name": "Notion Legacy Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.notion.2",
+              "name": "Notion Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.notion.com/page/changelog#september-11-2024"
+            },
+            {
+              "id": "kingfisher.notion.3",
+              "name": "Notion OAuth Refresh Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.nvidia.nim.1",
+              "name": "NVIDIA NIM API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.nylas.1",
+              "name": "Nylas API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.nylas.com/docs/v3/auth/hosted-oauth-apikey/"
+            },
+            {
+              "id": "kingfisher.nylas.api_uri.1",
+              "name": "Nylas API URI",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.nytimes.1",
+              "name": "New York Times API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.nytimes.com/"
+            },
+            {
+              "id": "kingfisher.ollama.1",
+              "name": "Ollama API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://ollama.com/blog/turbo"
+            },
+            {
+              "id": "kingfisher.openrouter.1",
+              "name": "OpenRouter API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://openrouter.ai/docs/api/reference/authentication"
+            },
+            {
+              "id": "kingfisher.openweather.1",
+              "name": "OpenWeather Map API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://openweathermap.org/forecast5"
+            },
+            {
+              "id": "kingfisher.opsgenie.1",
+              "name": "OpsGenie API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.opsgenie.com/docs/api-overview"
+            },
+            {
+              "id": "kingfisher.optimizely.1",
+              "name": "Optimizely Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.developers.optimizely.com/web-experimentation/docs/rest-api-getting-started"
+            },
+            {
+              "id": "kingfisher.owlbot.1",
+              "name": "Owlbot API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://owlbot.info/"
+            },
+            {
+              "id": "kingfisher.packagecloud.1",
+              "name": "PackageCloud API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://packagecloud.io/docs/api"
+            },
+            {
+              "id": "kingfisher.pagerduty.1",
+              "name": "PagerDuty API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.pagerduty.com/api-reference/4555ca1c983d0-get-the-current-user"
+            },
+            {
+              "id": "kingfisher.pastebin.1",
+              "name": "Pastebin API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.paypal.1",
+              "name": "PayPal OAuth Client ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.paypal.2",
+              "name": "PayPal OAuth Secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.paystack.1",
+              "name": "Paystack API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://paystack.com/docs/api/authentication/"
+            },
+            {
+              "id": "kingfisher.pdflayer.1",
+              "name": "PdfLayer API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://pdflayer.com/documentation"
+            },
+            {
+              "id": "kingfisher.perplexity.1",
+              "name": "Perplexity AI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.perplexity.ai/guides/getting-started"
+            },
+            {
+              "id": "kingfisher.plaid.1",
+              "name": "Plaid Client ID (helper)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://plaid.com/docs/api/institutions/"
+            },
+            {
+              "id": "kingfisher.plaid.2",
+              "name": "Plaid Secret (Production)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://plaid.com/docs/api/institutions/"
+            },
+            {
+              "id": "kingfisher.plaid.3",
+              "name": "Plaid Secret (Sandbox)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://plaid.com/docs/api/institutions/"
+            },
+            {
+              "id": "kingfisher.plaid.4",
+              "name": "Plaid Access Token (Production)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://plaid.com/docs/quickstart/glossary/"
+            },
+            {
+              "id": "kingfisher.plaid.5",
+              "name": "Plaid Access Token (Sandbox)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://plaid.com/docs/quickstart/glossary/"
+            },
+            {
+              "id": "kingfisher.planetscale.1",
+              "name": "PlanetScale API Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.planetscale.2",
+              "name": "PlanetScale Username",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.posthog.1",
+              "name": "PostHog Project API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.posthog.2",
+              "name": "PostHog Personal API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.powershell.1",
+              "name": "PowerShell SecureString Conversion",
+              "shortDescription": {
+                "text": "A PowerShell ConvertTo-SecureString call with -AsPlainText was found.\nThis pattern converts a plaintext string to a SecureString, revealing\nthe credential value in the script source.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/convertto-securestring"
+            },
+            {
+              "id": "kingfisher.powershell.2",
+              "name": "PowerShell PSCredential Constructor",
+              "shortDescription": {
+                "text": "A PowerShell NetworkCredential constructor with hardcoded credentials\nwas found. This is the PowerShell-native syntax for creating\n.NET NetworkCredential objects with username and password.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/api/system.net.networkcredential"
+            },
+            {
+              "id": "kingfisher.prefect.1",
+              "name": "Prefect API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.prefect.io/latest/concepts/api_keys/"
+            },
+            {
+              "id": "kingfisher.privkey.1",
+              "name": "Contains encrypted RSA private key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.privkey.2",
+              "name": "Contains Private Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.pubnub.1",
+              "name": "PubNub Publish Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.pubnub.2",
+              "name": "PubNub Subscription Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.pulumi.1",
+              "name": "Pulumi API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.pulumi.com/docs/pulumi-cloud/reference/api-basics/"
+            },
+            {
+              "id": "kingfisher.rabbitmq.1",
+              "name": "RabbitMQ Credential",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.rabbitmq.com/docs/uri-spec"
+            },
+            {
+              "id": "kingfisher.rapidapi.1",
+              "name": "RapidAPI Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.rapidapi.com/docs/configuring-api-security"
+            },
+            {
+              "id": "kingfisher.rdp.1",
+              "name": "RDP File Saved Password",
+              "shortDescription": {
+                "text": "An RDP file contains a saved credential blob.\nThe \"password 51:b:\" field stores a DPAPI-encrypted password hash\nthat can be decrypted with the user's credentials on the originating host.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/windows-server/remote/remote-desktop-services/clients/rdp-files"
+            },
+            {
+              "id": "kingfisher.readme.1",
+              "name": "ReadMe API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.readme.com/main/reference/getproject-1"
+            },
+            {
+              "id": "kingfisher.recaptcha.1",
+              "name": "reCAPTCHA API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.replicate.1",
+              "name": "Replicate API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://replicate.com/docs/reference/http"
+            },
+            {
+              "id": "kingfisher.resend.api_key.1",
+              "name": "Resend API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://resend.com/docs/api-reference/introduction"
+            },
+            {
+              "id": "kingfisher.retellai.api_key.1",
+              "name": "Retell AI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.retellai.com/accounts/api-keys-overview"
+            },
+            {
+              "id": "kingfisher.riot.1",
+              "name": "Riot Platform Host",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.riot.2",
+              "name": "Riot Games API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.riotgames.com/docs/lol"
+            },
+            {
+              "id": "kingfisher.runway.1",
+              "name": "Runway API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.dev.runwayml.com/guides/setup"
+            },
+            {
+              "id": "kingfisher.s3uri.1",
+              "name": "S3 Bucket URI",
+              "shortDescription": {
+                "text": "An S3 or S3A bucket URI was found. This identifies cloud storage\nresources that may contain sensitive data. S3A URIs are used by\nHadoop/Spark for S3 access.\n"
+              },
+              "helpUri": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html"
+            },
+            {
+              "id": "kingfisher.scale.1",
+              "name": "Scale API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://scale.com/docs/api-reference/authentication"
+            },
+            {
+              "id": "kingfisher.scale.2",
+              "name": "Scale Callback Auth Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://scale.com/docs/api-reference/authentication#callback-authentication"
+            },
+            {
+              "id": "kingfisher.scalingo.1",
+              "name": "Scalingo API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.scalingo.com/apps/api/authentication"
+            },
+            {
+              "id": "kingfisher.scraperapi.1",
+              "name": "ScraperAPI Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.scraperapi.com/documentation/"
+            },
+            {
+              "id": "kingfisher.sendbird.1",
+              "name": "Sendbird Application ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.sendbird.2",
+              "name": "Sendbird API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://sendbird.com/docs/chat/platform-api/v3/prepare-to-use-api#2-authentication"
+            },
+            {
+              "id": "kingfisher.sendinblue.1",
+              "name": "Sendinblue API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.sendinblue.com/docs/authentication"
+            },
+            {
+              "id": "kingfisher.sentry.1",
+              "name": "Sentry Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.sentry.io/api/auth/"
+            },
+            {
+              "id": "kingfisher.sentry.2",
+              "name": "Sentry Organization Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.sentry.io/api/auth/"
+            },
+            {
+              "id": "kingfisher.sentry.3",
+              "name": "Sentry User Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.sentry.io/api/auth/"
+            },
+            {
+              "id": "kingfisher.sentry.4",
+              "name": "Sentry DSN",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.sentry.io/concepts/key-terms/dsn-explainer/"
+            },
+            {
+              "id": "kingfisher.shippo.1",
+              "name": "Shippo API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://goshippo.com/docs/reference"
+            },
+            {
+              "id": "kingfisher.shodan.1",
+              "name": "SHODAN API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.shodan.io/api"
+            },
+            {
+              "id": "kingfisher.snyk.1",
+              "name": "Snyk API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.sonarcloud.1",
+              "name": "SonarCloud API Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.sqlddl.1",
+              "name": "SQL Account Creation with Password",
+              "shortDescription": {
+                "text": "A SQL CREATE USER or CREATE LOGIN statement with an inline password\nwas found. This exposes database credentials in source code, scripts,\nor configuration files.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/sql/t-sql/statements/create-login-transact-sql"
+            },
+            {
+              "id": "kingfisher.sslmate.1",
+              "name": "SslMate API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://sslmate.com/help/reference/apiv2"
+            },
+            {
+              "id": "kingfisher.stabilityai.1",
+              "name": "Stability AI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://platform.stability.ai/docs/api-reference#v1-user-account"
+            },
+            {
+              "id": "kingfisher.statuspage.1",
+              "name": "Statuspage API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.statuspage.io/"
+            },
+            {
+              "id": "kingfisher.supabase.1",
+              "name": "Supabase Management Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://supabase.com/docs/reference/api/v1-get-an-organization"
+            },
+            {
+              "id": "kingfisher.supabase.2",
+              "name": "Supabase Project API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://supabase.com/docs/reference/api/v1-get-an-organization"
+            },
+            {
+              "id": "kingfisher.supabase.3",
+              "name": "Supabase Project URL",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://supabase.com/docs/guides/api"
+            },
+            {
+              "id": "kingfisher.tailscale.1",
+              "name": "Tailscale API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://tailscale.com/kb/1215/oauth-clients"
+            },
+            {
+              "id": "kingfisher.together.1",
+              "name": "Together.ai API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.together.ai/reference/authentication"
+            },
+            {
+              "id": "kingfisher.travisci.1",
+              "name": "Travis CI Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.travisci.2",
+              "name": "Travis CI Encrypted Variable",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.typeform.1",
+              "name": "Typeform API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.typeform.com/get-started/personal-access-token/"
+            },
+            {
+              "id": "kingfisher.unattend.1",
+              "name": "Windows Unattend.xml Administrator Password",
+              "shortDescription": {
+                "text": "A Windows unattend.xml file contains a local administrator password.\nThese passwords are typically Base64-encoded plaintext and grant\nfull administrative access to the system.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/"
+            },
+            {
+              "id": "kingfisher.unattend.2",
+              "name": "Windows Unattend.xml AutoLogon Password",
+              "shortDescription": {
+                "text": "A Windows unattend.xml file contains an AutoLogon password.\nAuto-logon credentials are stored in plaintext or Base64 and\nallow automatic login to the system without user interaction.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/"
+            },
+            {
+              "id": "kingfisher.uri.1",
+              "name": "URI with Username and Secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.vastai.1",
+              "name": "Vast.ai API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.vast.ai/api-reference/accounts/show-user"
+            },
+            {
+              "id": "kingfisher.vercel.1",
+              "name": "Vercel API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://vercel.com/docs/rest-api#authentication"
+            },
+            {
+              "id": "kingfisher.viewstate.1",
+              "name": "ASP.NET MachineKey Validation Key",
+              "shortDescription": {
+                "text": "An ASP.NET machineKey validation key was found. This key is used\nto compute the MAC for ViewState data. If exposed, an attacker\ncan forge ViewState payloads to achieve remote code execution\nvia .NET deserialization (ysoserial.net).\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/previous-versions/aspnet/w8h3skw9(v=vs.100)"
+            },
+            {
+              "id": "kingfisher.viewstate.2",
+              "name": "ASP.NET MachineKey Decryption Key",
+              "shortDescription": {
+                "text": "An ASP.NET machineKey decryption key was found. Combined with the\nvalidation key, this enables full ViewState forgery and .NET\ndeserialization attacks for remote code execution.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/previous-versions/aspnet/w8h3skw9(v=vs.100)"
+            },
+            {
+              "id": "kingfisher.voyageai.api_key",
+              "name": "Voyage AI API Key",
+              "shortDescription": {
+                "text": "Detects Voyage AI API keys used for embedding and retrieval models."
+              }
+            },
+            {
+              "id": "kingfisher.wandb.1",
+              "name": "Weights and Biases API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.wincmd.1",
+              "name": "Windows Scheduled Task with Credentials",
+              "shortDescription": {
+                "text": "A Windows schtasks command with credential flags was found.\nThe /rp (run password) and /p (password) flags pass credentials\nto scheduled task creation commands.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks-create"
+            },
+            {
+              "id": "kingfisher.wincmd.2",
+              "name": "Windows Net Use with Credentials",
+              "shortDescription": {
+                "text": "A Windows net use command with /user: flag and a password was found.\nThis maps a network drive with explicit credentials.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/net-use"
+            },
+            {
+              "id": "kingfisher.wincmd.3",
+              "name": "Windows Credential Manager Command",
+              "shortDescription": {
+                "text": "A Windows cmdkey command was found storing credentials.\ncmdkey manages the Windows Credential Manager; /add with /pass\nstores plaintext credentials.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmdkey"
+            },
+            {
+              "id": "kingfisher.xai.1",
+              "name": "xAI (Grok) API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://x.ai/api"
+            },
+            {
+              "id": "kingfisher.yandex.1",
+              "name": "Yandex API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://yandex.com/dev/dictionary"
+            },
+            {
+              "id": "kingfisher.yelp.1",
+              "name": "Yelp API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.developer.yelp.com/docs/places-authentication"
+            },
+            {
+              "id": "kingfisher.zhipu.1",
+              "name": "Zhipu (BigModel) API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "kingfisher.zohocrm.1",
+              "name": "Zoho CRM API Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.zoho.com/crm/developer/docs/api/v8/access-refresh.html"
+            },
+            {
+              "id": "kingfisher.zuplo.1",
+              "name": "Zuplo API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://zuplo.com/blog/api-key-authentication"
+            },
+            {
+              "id": "np.adafruit.1",
+              "name": "Adafruit IO Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://io.adafruit.com/api/docs"
+            },
+            {
+              "id": "np.adobe.1",
+              "name": "Adobe OAuth Client Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.adobe.com/developer-console/docs/guides/authentication/"
+            },
+            {
+              "id": "np.age.1",
+              "name": "Age Recipient (X25519 public key)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://age-encryption.org"
+            },
+            {
+              "id": "np.age.2",
+              "name": "Age Identity (X22519 secret key)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://age-encryption.org"
+            },
+            {
+              "id": "np.amplitude.1",
+              "name": "Amplitude API Key",
+              "shortDescription": {
+                "text": "Amplitude API Key used for product analytics and event tracking.\nAn attacker with this credential, combined with the secret key,\ncan export analytics data, user event streams, and behavioral\ndata via the Amplitude Export API.\n"
+              },
+              "helpUri": "https://www.docs.developers.amplitude.com/analytics/apis/export-api/"
+            },
+            {
+              "id": "np.ansible.1",
+              "name": "Ansible Vault Encrypted Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.ansible.com/ansible/latest/vault_guide/index.html"
+            },
+            {
+              "id": "np.anthropic.1",
+              "name": "Anthropic API Key",
+              "shortDescription": {
+                "text": "An Anthropic API key was found. Anthropic is an AI company. An attacker could use this API key to consume limited resources, cause denial-of-service, or access internal fine-tuned models.\n"
+              },
+              "helpUri": "https://docs.anthropic.com/en/api/getting-started"
+            },
+            {
+              "id": "np.appcenter.1",
+              "name": "Visual Studio App Center API Token",
+              "shortDescription": {
+                "text": "Visual Studio App Center API Token used to access mobile app build,\ntest, and distribution services. An attacker with this credential\ncan access app builds, download release artifacts, view crash reports,\nand manage app distribution groups.\n"
+              },
+              "helpUri": "https://openapi.appcenter.ms/"
+            },
+            {
+              "id": "np.appsync.1",
+              "name": "AWS AppSync API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/appsync/latest/devguide/security-authz.html#api-key-authorization"
+            },
+            {
+              "id": "np.arn.1",
+              "name": "Amazon Resource Name",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference-arns.html"
+            },
+            {
+              "id": "np.artifactory.1",
+              "name": "Artifactory API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://jfrog.com/help/r/jfrog-rest-apis/introduction-to-the-artifactory-rest-apis"
+            },
+            {
+              "id": "np.atlassian.1",
+              "name": "Atlassian Cloud API Token",
+              "shortDescription": {
+                "text": "An Atlassian Cloud API Token was found. An attacker could use this to access resources including Confluence wiki and Jira project management resources.\n"
+              },
+              "helpUri": "https://developer.atlassian.com/cloud/jira/software/basic-auth-for-rest-apis/"
+            },
+            {
+              "id": "np.auth0.1",
+              "name": "Auth0 Application Credentials",
+              "shortDescription": {
+                "text": "Auth0 OAuth credentials were found. Auth0 is an identity platform that provides authorization and authentication capabilities for applications. An attacker may be able to use these credentials to impersonate an application or access protected resources.\n"
+              },
+              "helpUri": "https://auth0.com/docs"
+            },
+            {
+              "id": "np.aws.1",
+              "name": "AWS API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html"
+            },
+            {
+              "id": "np.aws.2",
+              "name": "AWS Secret Access Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html"
+            },
+            {
+              "id": "np.aws.3",
+              "name": "AWS Account ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.aws.4",
+              "name": "AWS Session Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.aws.5",
+              "name": "Amazon MWS Auth Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.developer.amazonservices.com/en_US/dev_guide/index.html"
+            },
+            {
+              "id": "np.aws.6",
+              "name": "AWS API Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html"
+            },
+            {
+              "id": "np.azure.1",
+              "name": "Azure Connection String",
+              "shortDescription": {
+                "text": "Credentials in an Azure connection string were found. Depending on assigned privileges, these may allow an attacker read or write access to Azure storage.\n"
+              },
+              "helpUri": "https://azure.microsoft.com/en-us/blog/windows-azure-web-sites-how-application-strings-and-connection-strings-work/"
+            },
+            {
+              "id": "np.azure.2",
+              "name": "Azure App Configuration Connection String",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.microsoft.com/en-us/azure/azure-app-configuration/"
+            },
+            {
+              "id": "np.azure.3",
+              "name": "Azure DevOps Personal Access Token",
+              "shortDescription": {
+                "text": "An Azure DevOps Personal Access Token was found. Azure DevOps is a code hosting, testing, and deployment platform. Depending on the privileges granted to the token, an attacker may be able to use it to access source code, secrets, and build resources, enabling a supply chain attack.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate"
+            },
+            {
+              "id": "np.azure.4",
+              "name": "Azure DevOps Personal Access Token",
+              "shortDescription": {
+                "text": "An Azure DevOps Personal Access Token was found. Azure DevOps is a code hosting, testing, and deployment platform. Depending on the privileges granted to the token, an attacker may be able to use it to access source code, secrets, and build resources, enabling a supply chain attack.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate"
+            },
+            {
+              "id": "np.azure.5",
+              "name": "Azure API Management Subscription Key",
+              "shortDescription": {
+                "text": "Azure API Management subscription key used for authenticating API requests to Azure APIM gateway endpoints. An attacker with this credential can access APIs protected by the APIM gateway, potentially leading to unauthorized data access, API abuse, or rate limit circumvention. Impact depends on the scope of the subscription (all APIs, product, or single API) and the permissions granted. Note: Azure APIM subscription keys are instance-specific and validate against the specific APIM gateway URL. There is no universal validation endpoint.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/azure/api-management/api-management-subscriptions"
+            },
+            {
+              "id": "np.azure.6",
+              "name": "Azure Notification Hub Access Key",
+              "shortDescription": {
+                "text": "An Azure Notification Hub SharedAccessKey was found. Azure Notification Hubs is a scalable push notification engine for sending notifications to mobile platforms. This SharedAccessKey is used to generate Shared Access Signature (SAS) tokens for authenticating API requests. Depending on the associated access policy (DefaultListenSharedAccessSignature or DefaultFullSharedAccessSignature), an attacker with this key may be able to send push notifications, register devices, or manage the notification hub, potentially leading to unauthorized push notification spam, data exfiltration, or service disruption.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/azure/notification-hubs/notification-hubs-push-notification-security"
+            },
+            {
+              "id": "np.azure.7",
+              "name": "Azure AD Client Secret",
+              "shortDescription": {
+                "text": "Azure AD (Microsoft Entra ID) client secret in the new format with Q~ marker. Used for service principal authentication. An attacker with this secret and the corresponding tenant ID and client ID can authenticate as the service principal and access Azure resources according to its assigned RBAC roles.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/purview/sit-defn-azure-ad-client-secret"
+            },
+            {
+              "id": "np.azure.8",
+              "name": "Azure Service Principal Credentials",
+              "shortDescription": {
+                "text": "Azure service principal client secret detected via Azure-specific environment variable labels (AZURE_CLIENT_SECRET, ARM_CLIENT_SECRET). An attacker with this secret and the associated tenant ID and client ID can authenticate as the service principal and access Azure resources according to its assigned RBAC roles.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.environmentcredential"
+            },
+            {
+              "id": "np.azure.9",
+              "name": "Azure Cognitive Services Host",
+              "shortDescription": {
+                "text": "Azure Cognitive Services endpoint hostname was found. This indicates usage of Azure AI services such as Document Intelligence, Computer Vision, Speech, or Language services. The endpoint alone is not a credential but can be combined with API keys for unauthorized access to AI services.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/azure/ai-services/"
+            },
+            {
+              "id": "np.bitbucket.1",
+              "name": "Bitbucket App Password",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://support.atlassian.com/bitbucket-cloud/docs/app-passwords/"
+            },
+            {
+              "id": "np.blynk.1",
+              "name": "Blynk Device Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://blynk.io/"
+            },
+            {
+              "id": "np.blynk.2",
+              "name": "Blynk Organization Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.blynk.io/en/blynk.cloud/organization-https-api/get-organization-info"
+            },
+            {
+              "id": "np.blynk.3",
+              "name": "Blynk Organization Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.blynk.io/en/blynk.cloud/organization-https-api/get-organization-info"
+            },
+            {
+              "id": "np.blynk.8",
+              "name": "Blynk Organization Client Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.blynk.io/en/blynk.cloud/organization-https-api/authentication"
+            },
+            {
+              "id": "np.blynk.9",
+              "name": "Blynk Organization Client Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.blynk.io/en/blynk.cloud/organization-https-api/authentication"
+            },
+            {
+              "id": "np.branchio.1",
+              "name": "Branch.io Live Key",
+              "shortDescription": {
+                "text": "Branch.io Live API Key used for deep linking and attribution APIs.\nAn attacker with this credential, combined with the branch secret,\ncan access link data, modify deep linking configurations, and\nretrieve analytics data via the Branch API.\n"
+              },
+              "helpUri": "https://help.branch.io/developers-hub/docs/deep-linking-api"
+            },
+            {
+              "id": "np.branchio.2",
+              "name": "Branch.io Test Key",
+              "shortDescription": {
+                "text": "Branch.io Test API Key used for testing deep linking and attribution APIs.\nWhile test keys have limited scope, an attacker could use this to\nunderstand app configurations and deep linking setups.\n"
+              },
+              "helpUri": "https://help.branch.io/developers-hub/docs/deep-linking-api"
+            },
+            {
+              "id": "np.browserstack.1",
+              "name": "BrowserStack Access Key",
+              "shortDescription": {
+                "text": "BrowserStack Access Key used for automated browser testing APIs.\nAn attacker with this credential, combined with a username, can\nrun automated tests, access test results and screenshots, and\nconsume testing minutes via the BrowserStack Automate API.\n"
+              },
+              "helpUri": "https://www.browserstack.com/docs/automate/api-reference/selenium/introduction"
+            },
+            {
+              "id": "np.calendly.1",
+              "name": "Calendly Personal Access Token",
+              "shortDescription": {
+                "text": "Calendly Personal Access Token (v2 API) in JWT format used to access\nscheduling and event data. An attacker with this credential can read\nscheduled events, access invitee information, modify scheduling settings,\nand cancel or create events on behalf of the account owner.\n"
+              },
+              "helpUri": "https://developer.calendly.com/how-to-authenticate-with-personal-access-tokens"
+            },
+            {
+              "id": "np.ccn.1",
+              "name": "Credit Card Number (Visa)",
+              "shortDescription": {
+                "text": "Visa credit card number (starts with 4, 16 digits). Test/placeholder card numbers\nare filtered out. This finding indicates potential credit card number exposure that may require\nreview under PCI DSS or data protection regulations.\n"
+              }
+            },
+            {
+              "id": "np.ccn.2",
+              "name": "Credit Card Number (Mastercard)",
+              "shortDescription": {
+                "text": "Mastercard credit card number (starts with 51-55, 16 digits). Test/placeholder\ncard numbers are filtered out.\n"
+              }
+            },
+            {
+              "id": "np.ccn.3",
+              "name": "Credit Card Number (Amex)",
+              "shortDescription": {
+                "text": "American Express credit card number (starts with 34 or 37, 15 digits).\nTest/placeholder card numbers are filtered out.\n"
+              }
+            },
+            {
+              "id": "np.ccn.4",
+              "name": "Credit Card Number (Discover)",
+              "shortDescription": {
+                "text": "Discover credit card number (starts with 6011 or 65, 16 digits).\nTest/placeholder card numbers are filtered out.\n"
+              }
+            },
+            {
+              "id": "np.codeclimate.1",
+              "name": "CodeClimate Reporter ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://github.com/codeclimate/javascript-test-reporter"
+            },
+            {
+              "id": "np.cratesio.1",
+              "name": "crates.io API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://crates.io/data-access"
+            },
+            {
+              "id": "np.cypress.1",
+              "name": "Cypress Record Key",
+              "shortDescription": {
+                "text": "Cypress Record Key used to record test runs to the Cypress Dashboard.\nAn attacker with this credential can upload test results and recordings\nto the associated Cypress project, potentially polluting test data or\nconsuming usage quota on the Cypress Dashboard service.\n"
+              },
+              "helpUri": "https://docs.cypress.io/guides/guides/command-line#cypress-run"
+            },
+            {
+              "id": "np.databricks.1",
+              "name": "Databricks Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.databricks.com/en/dev-tools/auth/pat.html"
+            },
+            {
+              "id": "np.delighted.1",
+              "name": "Delighted API Key",
+              "shortDescription": {
+                "text": "Delighted API Key used for customer feedback and NPS survey APIs.\nAn attacker with this credential can access survey responses,\nNPS scores, customer feedback data, and manage survey campaigns\nvia the Delighted API.\n"
+              },
+              "helpUri": "https://app.delighted.com/docs/api"
+            },
+            {
+              "id": "np.deviantart.1",
+              "name": "DeviantArt Access Token",
+              "shortDescription": {
+                "text": "DeviantArt OAuth Access Token used for the DeviantArt API.\nAn attacker with this credential can access user profiles, browse\nand manage deviations (artwork), post comments, and perform actions\non behalf of the token owner via the DeviantArt OAuth2 API.\n"
+              },
+              "helpUri": "https://www.deviantart.com/developers/http/v1/20210526"
+            },
+            {
+              "id": "np.digitalocean.1",
+              "name": "DigitalOcean Application Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.digitalocean.com/reference/api/"
+            },
+            {
+              "id": "np.digitalocean.2",
+              "name": "DigitalOcean Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.digitalocean.com/reference/api/"
+            },
+            {
+              "id": "np.digitalocean.3",
+              "name": "DigitalOcean Refresh Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.digitalocean.com/reference/api/"
+            },
+            {
+              "id": "np.django.1",
+              "name": "Django Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.djangoproject.com/en/5.1/ref/settings/#std-setting-SECRET_KEY"
+            },
+            {
+              "id": "np.dockerhub.1",
+              "name": "Docker Hub Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.docker.com/security/for-developers/access-tokens/"
+            },
+            {
+              "id": "np.doppler.1",
+              "name": "Doppler CLI Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.doppler.com/reference/api"
+            },
+            {
+              "id": "np.doppler.2",
+              "name": "Doppler Personal Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.doppler.com/reference/api"
+            },
+            {
+              "id": "np.doppler.3",
+              "name": "Doppler Service Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.doppler.com/reference/api"
+            },
+            {
+              "id": "np.doppler.4",
+              "name": "Doppler Service Account Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.doppler.com/reference/api"
+            },
+            {
+              "id": "np.doppler.5",
+              "name": "Doppler SCIM Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.doppler.com/reference/api"
+            },
+            {
+              "id": "np.doppler.6",
+              "name": "Doppler Audit Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.doppler.com/reference/api"
+            },
+            {
+              "id": "np.dropbox.1",
+              "name": "Dropbox Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.dropbox.com/oauth-guide"
+            },
+            {
+              "id": "np.dtrack.1",
+              "name": "Dependency-Track API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.dependencytrack.org/integrations/rest-api/"
+            },
+            {
+              "id": "np.dynatrace.1",
+              "name": "Dynatrace Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.dynatrace.com/support/help/dynatrace-api"
+            },
+            {
+              "id": "np.facebook.1",
+              "name": "Facebook Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.facebook.com/docs/facebook-login/access-tokens/"
+            },
+            {
+              "id": "np.facebook.2",
+              "name": "Facebook Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.facebook.com/docs/facebook-login/access-tokens/"
+            },
+            {
+              "id": "np.facebook.3",
+              "name": "Facebook App Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developers.facebook.com/docs/facebook-login/access-tokens/"
+            },
+            {
+              "id": "np.figma.1",
+              "name": "Figma Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.figma.com/developers/api"
+            },
+            {
+              "id": "np.firebase.1",
+              "name": "Firebase Cloud Messaging Server Key",
+              "shortDescription": {
+                "text": "Firebase Cloud Messaging (FCM) server key used for sending push notifications\nto Android, iOS, and web applications. An attacker with this key can send\nunauthorized push notifications to all devices registered with the Firebase\nproject, potentially enabling phishing attacks, spam campaigns, or social\nengineering. The key grants full authority over FCM messaging for the project.\n"
+              },
+              "helpUri": "https://firebase.google.com/docs/cloud-messaging/server"
+            },
+            {
+              "id": "np.firebase.2",
+              "name": "Firebase Cloud Messaging Device Token",
+              "shortDescription": {
+                "text": "Firebase Cloud Messaging (FCM) registration token (device token) used to identify\na specific app instance on a device for receiving push notifications. While not\na server credential, leaked device tokens can be exploited to send unauthorized\npush notifications to specific users, enabling targeted phishing or spam attacks.\nThe 22-character prefix is the Firebase Instance ID.\n"
+              },
+              "helpUri": "https://firebase.google.com/docs/cloud-messaging/manage-tokens"
+            },
+            {
+              "id": "np.firecrawl.1",
+              "name": "Firecrawl API Key",
+              "shortDescription": {
+                "text": "A Firecrawl API Key was found. Firecrawl provides LLM-centric services for web scraping and crawling. An attacker could use this API key to consume limited, possibly paid resources, or cause denial-of-service.\n"
+              },
+              "helpUri": "https://www.firecrawl.dev"
+            },
+            {
+              "id": "np.gcs.1",
+              "name": "Google Cloud Storage Bucket",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://cloud.google.com/storage/docs/request-endpoints"
+            },
+            {
+              "id": "np.gcs.2",
+              "name": "Google Cloud Storage Bucket",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://cloud.google.com/storage/docs/request-endpoints"
+            },
+            {
+              "id": "np.generic.1",
+              "name": "Generic Secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.10",
+              "name": "Connection String in .NET Configuration",
+              "shortDescription": {
+                "text": "A possibly-sensitive connection string in .NET app configuration was found. This may allow an attacker direct access to a database.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/desktop/winforms/advanced/application-settings-overview"
+            },
+            {
+              "id": "np.generic.11",
+              "name": "Generic Password",
+              "shortDescription": {
+                "text": "A password was found. This may allow an attacker unintended access to a resource.\n"
+              }
+            },
+            {
+              "id": "np.generic.12",
+              "name": "Generic Password",
+              "shortDescription": {
+                "text": "A password was found. This may allow an attacker unintended access to a resource.\n"
+              }
+            },
+            {
+              "id": "np.generic.13",
+              "name": "Generic Username and Password",
+              "shortDescription": {
+                "text": "A password was found. This may allow an attacker unintended access to a resource.\n"
+              }
+            },
+            {
+              "id": "np.generic.14",
+              "name": "Generic Username and Password",
+              "shortDescription": {
+                "text": "A password was found. This may allow an attacker unintended access to a resource.\n"
+              }
+            },
+            {
+              "id": "np.generic.15",
+              "name": "Generic Secret",
+              "shortDescription": {
+                "text": "A password was found. This may allow an attacker unintended privileged access to a resource.\n"
+              }
+            },
+            {
+              "id": "np.generic.16",
+              "name": "Generic Secret",
+              "shortDescription": {
+                "text": "A password was found. This may allow an attacker unintended privileged access to a resource.\n"
+              }
+            },
+            {
+              "id": "np.generic.17",
+              "name": "Generic Password in JavaScript Object",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.18",
+              "name": "Generic Username and Password in JavaScript Object",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.19",
+              "name": "Hardcoded Credential in JSON Key-Value Pair",
+              "shortDescription": {
+                "text": "A hardcoded credential or identity was found in a JSON key-value structure.\nMany tools and frameworks store parameters as JSON objects with \"key\" and\n\"value\" fields. When credential fields like password, username,\nclient_secret, or API keys contain plaintext values rather than\nenvironment or template variables, the credential is exposed to anyone\nwith access to the file.\n"
+              }
+            },
+            {
+              "id": "np.generic.2",
+              "name": "Generic API Key",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.3",
+              "name": "Generic Username and Password",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.4",
+              "name": "Generic Username and Password",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.5",
+              "name": "Generic Password",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.6",
+              "name": "Generic Password",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.generic.7",
+              "name": "Credentials in .NET System.Net.NetworkCredential",
+              "shortDescription": {
+                "text": "A .NET `System.Net.NetworkCredential` value with hardcoded parameters was found. This may allow an attack access to a resource that uses basic, digest, NTLM, or Kerberos authentication.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/api/system.net.networkcredential"
+            },
+            {
+              "id": "np.generic.8",
+              "name": "Credentials in .NET System.DirectoryServices.DirectoryEntry",
+              "shortDescription": {
+                "text": "A .NET `System.DirectoryServices.DirectoryEntry` value was found with hardcoded credentials. This may allow an attacker access to an Active Directory instance.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/api/system.directoryservices.directoryentry"
+            },
+            {
+              "id": "np.generic.9",
+              "name": "Sensitive Value in .NET Configuration",
+              "shortDescription": {
+                "text": "A possibly-sensitive value in .NET app configuration was found. This may allow an attacker a way to bypass authentication or move laterally.\n"
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/dotnet/desktop/winforms/advanced/application-settings-overview"
+            },
+            {
+              "id": "np.gitalk.1",
+              "name": "Gitalk OAuth Credentials",
+              "shortDescription": {
+                "text": "Gitalk OAuth credentials were found. Gitalk is a GitHub-based commenting system. An attacker may be able to use these credentials to impersonate the Gitalk app and control its data.\n"
+              },
+              "helpUri": "https://gitalk.github.io"
+            },
+            {
+              "id": "np.github.1",
+              "name": "GitHub Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.github.2",
+              "name": "GitHub OAuth Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.github.3",
+              "name": "GitHub App Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.github.4",
+              "name": "GitHub Refresh Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.github.5",
+              "name": "GitHub Client ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.github.6",
+              "name": "GitHub Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.github.7",
+              "name": "GitHub Personal Access Token (fine-grained permissions)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.github.8",
+              "name": "GitHub App Installation Token (JWT format)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github"
+            },
+            {
+              "id": "np.gitlab.1",
+              "name": "GitLab Runner Registration Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.gitlab.com/runner/security/"
+            },
+            {
+              "id": "np.gitlab.2",
+              "name": "GitLab Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html"
+            },
+            {
+              "id": "np.gitlab.3",
+              "name": "GitLab Pipeline Trigger Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.gitlab.com/ee/ci/triggers/"
+            },
+            {
+              "id": "np.gitlab.4",
+              "name": "GitLab Routable Personal Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html"
+            },
+            {
+              "id": "np.google.1",
+              "name": "Google Client ID",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.google.2",
+              "name": "Google OAuth Client Secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.google.3",
+              "name": "Google OAuth Client Secret",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.google.4",
+              "name": "Google OAuth Access Token",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.google.5",
+              "name": "Google API Key",
+              "shortDescription": {
+                "text": "Google API key used for accessing Google Cloud APIs and services.\nKeys use the AIza prefix and are 39 characters total. An attacker\nwith this key can access any Google API the key is authorized for,\nincluding Maps, YouTube, Cloud, Gemini, and other services. Keys\nare associated with Google Cloud projects for quota and billing.\nGoogle considers API keys semi-public identifiers, but they can\nstill enable unauthorized API usage and incur billing charges.\n"
+              },
+              "helpUri": "https://cloud.google.com/docs/authentication/api-keys#securing"
+            },
+            {
+              "id": "np.google.6",
+              "name": "Google OAuth Credentials",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.google.7",
+              "name": "Google API Key (Base64 Encoded)",
+              "shortDescription": {
+                "text": "Base64-encoded Google API key. The original key uses the AIza prefix\n(39 characters total), which encodes to a 52-character base64 string\nstarting with QUl6YVN. Applications sometimes encode API keys to\nobfuscate them or for transport encoding. An attacker can decode the\nkey and use it to access Google Cloud APIs the key is authorized for.\n"
+              },
+              "helpUri": "https://cloud.google.com/docs/authentication/api-keys"
+            },
+            {
+              "id": "np.google.8",
+              "name": "Google Maps API Key",
+              "shortDescription": {
+                "text": "Google Maps API key identified by context (variable names containing\n'google', 'gmap', 'gmaps', or 'maps' near 'key' or 'token'). These keys\nuse the standard Google API format (AIza prefix, 39 characters) and can\naccess Maps JavaScript API, Geocoding, Places, Directions, and other\nMaps Platform services. Exposed keys can lead to quota theft and billing\ncharges on the key owner's Google Cloud account.\n"
+              },
+              "helpUri": "https://developers.google.com/maps/documentation/javascript/get-api-key"
+            },
+            {
+              "id": "np.gradle.1",
+              "name": "Hardcoded Gradle Credentials",
+              "shortDescription": {
+                "text": ""
+              }
+            },
+            {
+              "id": "np.grafana.1",
+              "name": "Grafana API Token",
+              "shortDescription": {
+                "text": "A Grafana API token was found. This is a legacy authentication method (deprecated). Grafana API keys provide programmatic access to Grafana dashboards and APIs. An attacker with this token can access monitoring dashboards, modify configurations, and potentially exfiltrate sensitive monitoring data. Grafana recommends migrating to Service Account Tokens.\n"
+              },
+              "helpUri": "https://grafana.com/docs/grafana/latest/developers/http_api/auth/"
+            },
+            {
+              "id": "np.grafana.2",
+              "name": "Grafana Cloud API Token",
+              "shortDescription": {
+                "text": "A Grafana Cloud API token was found. Grafana Cloud Access Policy tokens use the glc_ prefix and provide programmatic access to Grafana Cloud APIs. An attacker with this token can access cloud-based monitoring services, manipulate dashboards, query metrics, and potentially access sensitive observability data from your infrastructure.\n"
+              },
+              "helpUri": "https://grafana.com/docs/grafana-cloud/developer-resources/api-reference/cloud-api/"
+            },
+            {
+              "id": "np.grafana.3",
+              "name": "Grafana Service Account Token",
+              "shortDescription": {
+                "text": "A Grafana Service Account Token was found. Service accounts are the recommended method for authenticating applications with Grafana HTTP APIs, replacing legacy API keys. These tokens use a visually identifiable format with a glsa_ prefix and include a checksum for validation. An attacker with this token can access Grafana APIs with the permissions assigned to the service account, potentially reading dashboards, modifying configurations, or accessing monitoring data.\n"
+              },
+              "helpUri": "https://grafana.com/docs/grafana/latest/administration/service-accounts/"
+            },
+            {
+              "id": "np.groq.1",
+              "name": "Groq API Key",
+              "shortDescription": {
+                "text": "A Groq API Key was found. This may allow an attacker to consume limited resources or access proprietary fine-tuned ML models.\n"
+              },
+              "helpUri": "https://groq.com"
+            },
+            {
+              "id": "np.hashicorp.1",
+              "name": "Hashicorp Vault Service Token (\u003c v1.10)",
+              "shortDescription": {
+                "text": "A Hashicorp Vault service token was found. This may allow an attacker access to a secrets vault, and depending upon privileges, may be used to create additional tokens.\n"
+              },
+              "helpUri": "https://developer.hashicorp.com/vault/docs/concepts/tokens"
+            },
+            {
+              "id": "np.hashicorp.2",
+              "name": "Hashicorp Vault Batch Token (\u003c v1.10)",
+              "shortDescription": {
+                "text": "A Hashicorp Vault batch token was found. This may allow an attacker access to a secrets vault.\n"
+              },
+              "helpUri": "https://developer.hashicorp.com/vault/docs/concepts/tokens"
+            },
+            {
+              "id": "np.hashicorp.3",
+              "name": "Hashicorp Vault Recovery Token (\u003c v1.10)",
+              "shortDescription": {
+                "text": "A Hashicorp Vault recovery token was found. This may allow an attacker access to a secrets vault if they are able to start Vault in recovery mode.\n"
+              },
+              "helpUri": "https://developer.hashicorp.com/vault/docs/concepts/tokens"
+            },
+            {
+              "id": "np.hashicorp.4",
+              "name": "Hashicorp Vault Service Token (\u003e= v1.10)",
+              "shortDescription": {
+                "text": "A Hashicorp Vault service token was found. This may allow an attacker access to a secrets vault, and depending upon privileges, may be used to create additional tokens.\n"
+              },
+              "helpUri": "https://developer.hashicorp.com/vault/docs/concepts/tokens"
+            },
+            {
+              "id": "np.hashicorp.5",
+              "name": "Hashicorp Vault Batch Token (\u003e= v1.10)",
+              "shortDescription": {
+                "text": "A Hashicorp Vault batch token was found. This may allow an attacker access to a secrets vault.\n"
+              },
+              "helpUri": "https://developer.hashicorp.com/vault/docs/concepts/tokens"
+            },
+            {
+              "id": "np.hashicorp.6",
+              "name": "Hashicorp Vault Recovery Token (\u003e= v1.10)",
+              "shortDescription": {
+                "text": "A Hashicorp Vault recovery token was found. This may allow an attacker access to a secrets vault if they are able to start Vault in recovery mode.\n"
+              },
+              "helpUri": "https://developer.hashicorp.com/vault/docs/concepts/tokens"
+            },
+            {
+              "id": "np.hashicorp.7",
+              "name": "Hashicorp Vault Unseal Key",
+              "shortDescription": {
+                "text": "A Hashicorp Vault unseal key was found. This may allow an attacker the ability to decrypt a vault.\n"
+              },
+              "helpUri": "https://developer.hashicorp.com/vault/docs/concepts/seal"
+            },
+            {
+              "id": "np.helpscout.1",
+              "name": "Help Scout OAuth Client Secret",
+              "shortDescription": {
+                "text": "Help Scout OAuth Client Secret used with client_credentials flow.\nAn attacker with this credential and the client ID can obtain\nOAuth access tokens to read and modify mailboxes, conversations,\ncustomer profiles, and team data via the Help Scout Mailbox API.\n"
+              },
+              "helpUri": "https://developer.helpscout.com/mailbox-api/"
+            },
+            {
+              "id": "np.heroku.1",
+              "name": "Heroku API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://devcenter.heroku.com/articles/authentication"
+            },
+            {
+              "id": "np.html.1",
+              "name": "HTML Password Input Pre-populated Credential",
+              "shortDescription": {
+                "text": "A credential value was detected in the HTML value attribute of an \u003cinput type=\"password\"\u003e element. Web applications that pre-populate password fields expose credentials in HTTP response bodies and HTML source. Although the browser visually masks the field, the credential is plaintext in the page source and retrievable via browser developer tools, web proxy, or source-view. This pattern commonly indicates service account passwords stored in admin configuration panels.\n"
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/312.html"
+            },
+            {
+              "id": "np.http.1",
+              "name": "HTTP Basic Authentication",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://datatracker.ietf.org/doc/html/rfc7617"
+            },
+            {
+              "id": "np.http.2",
+              "name": "HTTP Bearer Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://datatracker.ietf.org/doc/html/rfc6750"
+            },
+            {
+              "id": "np.huggingface.1",
+              "name": "HuggingFace User Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://huggingface.co/docs/hub/security-tokens"
+            },
+            {
+              "id": "np.instagram.1",
+              "name": "Instagram Graph API Access Token",
+              "shortDescription": {
+                "text": "Instagram Graph API Access Token starting with IGQVJ prefix.\nAn attacker with this credential can access user profile data,\nread media posts and comments, and potentially manage\nInstagram business accounts connected to the token.\n"
+              },
+              "helpUri": "https://developers.facebook.com/docs/instagram-basic-display-api/"
+            },
+            {
+              "id": "np.iterable.1",
+              "name": "Iterable API Key",
+              "shortDescription": {
+                "text": "Iterable API Key used for marketing automation platform access.\nAn attacker with this credential can send emails and push notifications,\naccess user profile data, manage campaigns and workflows, export\nsubscriber lists, and modify audience segments via the Iterable API.\n"
+              },
+              "helpUri": "https://api.iterable.com/api/docs"
+            },
+            {
+              "id": "np.jamf.1",
+              "name": "JAMF Pro Credential",
+              "shortDescription": {
+                "text": "JAMF Pro credential used for mobile device management (MDM) API access.\nJAMF Pro is an enterprise endpoint management platform for Apple devices.\nAn attacker with this credential can access the JAMF Pro API to enumerate\nmanaged devices, deploy configuration profiles, execute remote commands\n(lock, wipe, restart), install software, and exfiltrate device inventory\ndata across all managed endpoints.\n"
+              },
+              "helpUri": "https://developer.jamf.com/jamf-pro/docs/jamf-pro-api-overview"
+            },
+            {
+              "id": "np.jenkins.1",
+              "name": "Jenkins Token or Crumb",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.jenkins.io/blog/2018/07/02/new-api-token-system/"
+            },
+            {
+              "id": "np.jenkins.2",
+              "name": "Jenkins Setup Admin Password",
+              "shortDescription": {
+                "text": "A Jenkins setup wizard admin user password was detected.\nThis password is used to configure a new Jenkins installation.\nAn attacker with possession of this password could control the Jenkins instance.\nThis could enable exfiltration of proprietary code, insertion of backdoors, or lateral movement to other resources.\n"
+              },
+              "helpUri": "https://www.jenkins.io/doc/book/installing/linux/#setup-wizard"
+            },
+            {
+              "id": "np.jina.1",
+              "name": "Jina Search Foundation API Key",
+              "shortDescription": {
+                "text": "A Jina Search Foundation API Key was found. This allows access to services including Jina Reader, Embeddings, Classifier, and Segmenter. An attacker could use this API key to consume limited, possibly paid resources, or cause denial-of-service.\n"
+              },
+              "helpUri": "https://jina.ai"
+            },
+            {
+              "id": "np.jwt.1",
+              "name": "JSON Web Token (base64url-encoded)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/JSON_Web_Token"
+            },
+            {
+              "id": "np.jwt.2",
+              "name": "JSON Web Token Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/JSON_Web_Token"
+            },
+            {
+              "id": "np.jwt.3",
+              "name": "JSON Web Token Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/JSON_Web_Token"
+            },
+            {
+              "id": "np.kagi.1",
+              "name": "Kagi API Key",
+              "shortDescription": {
+                "text": "A Kagi API Key was found. Kagi is an internet search company. An attacker may be able to use this API key to consume limited paid resources or access account information and settings.\n"
+              },
+              "helpUri": "https://help.kagi.com/kagi/api/overview.html"
+            },
+            {
+              "id": "np.keenio.1",
+              "name": "Keen.io API Key",
+              "shortDescription": {
+                "text": "Keen.io API Key used to access analytics and event data.\nAn attacker with this credential can read event collections,\nrun queries on analytics data, and depending on key type (read/write/master),\nmay be able to write events or manage project settings.\n"
+              },
+              "helpUri": "https://keen.io/docs/api/"
+            },
+            {
+              "id": "np.krb5.asrep.23.1",
+              "name": "Password Hash (Kerberos 5, etype 23, AS-REP)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://hashcat.net/wiki/doku.php?id=example_hashes"
+            },
+            {
+              "id": "np.kubernetes.1",
+              "name": "Kubernetes Bootstrap Token",
+              "shortDescription": {
+                "text": "A Kubernetes Boostrap Token was found.\nThis is a bearer token that allows a node to connect to a cluster.\nAn attacker may be able to use this token to create valid signatures that could be used to compromise TLS trust within the cluster.\n"
+              },
+              "helpUri": "https://kubernetes.io/docs/reference/access-authn-authz/bootstrap-tokens/#token-format"
+            },
+            {
+              "id": "np.kubernetes.2",
+              "name": "Kubernetes Bootstrap Token",
+              "shortDescription": {
+                "text": "A Kubernetes Boostrap Token was found.\nThis is a bearer token that allows a node to connect to a cluster.\nAn attacker may be able to use this token to create valid signatures that could be used to compromise TLS trust within the cluster.\n"
+              },
+              "helpUri": "https://kubernetes.io/docs/reference/access-authn-authz/bootstrap-tokens/#token-format"
+            },
+            {
+              "id": "np.linkedin.1",
+              "name": "LinkedIn Client ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.microsoft.com/en-us/linkedin/shared/api-guide/best-practices/secure-applications"
+            },
+            {
+              "id": "np.linkedin.2",
+              "name": "LinkedIn Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.microsoft.com/en-us/linkedin/shared/api-guide/best-practices/secure-applications"
+            },
+            {
+              "id": "np.linkedin.3",
+              "name": "LinkedIn Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow"
+            },
+            {
+              "id": "np.lokalise.1",
+              "name": "Lokalise API Token",
+              "shortDescription": {
+                "text": "Lokalise API Token used to access translation management data.\nAn attacker with this credential can read and modify translation\nprojects, download language files, manage contributors, and\nexport all localization data from the account.\n"
+              },
+              "helpUri": "https://developers.lokalise.com/reference/api-authentication"
+            },
+            {
+              "id": "np.mailchimp.1",
+              "name": "MailChimp API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://mailchimp.com/help/about-api-keys/"
+            },
+            {
+              "id": "np.mailgun.1",
+              "name": "Mailgun API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://documentation.mailgun.com/en/latest/api-intro.html#authentication-1"
+            },
+            {
+              "id": "np.mapbox.1",
+              "name": "Mapbox Public Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.mapbox.com/api/accounts/tokens/#token-format"
+            },
+            {
+              "id": "np.mapbox.2",
+              "name": "Mapbox Secret Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.mapbox.com/api/accounts/tokens/#token-format"
+            },
+            {
+              "id": "np.mapbox.3",
+              "name": "Mapbox Temporary Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.mapbox.com/api/accounts/tokens/#token-format"
+            },
+            {
+              "id": "np.mattermost.1",
+              "name": "Mattermost Personal Access Token",
+              "shortDescription": {
+                "text": "A Mattermost personal access token or bot token was found. Mattermost tokens are 26-character z-base-32 encoded strings generated from UUID v4. The z-base-32 character set excludes the letters 'l' and 'v' and the digits '0' and '2'. An attacker could use the token to access the Mattermost instance as the associated user or bot.\n"
+              },
+              "helpUri": "https://developers.mattermost.com/integrate/reference/personal-access-token/"
+            },
+            {
+              "id": "np.maven.1",
+              "name": "Maven Settings XML Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://maven.apache.org/settings.html#proxies"
+            },
+            {
+              "id": "np.mongodb.1",
+              "name": "Credentials in MongoDB Connection String",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.mongodb.com/docs/manual/reference/connection-string/"
+            },
+            {
+              "id": "np.msteams.1",
+              "name": "Microsoft Teams Webhook",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/what-are-webhooks-and-connectors"
+            },
+            {
+              "id": "np.nasa.1",
+              "name": "NASA API Key",
+              "shortDescription": {
+                "text": "A NASA API key was found. This API key allows access to several rate-limited APIs. An attacker could use this API key to consume limited resources and cause denial of service.\n"
+              },
+              "helpUri": "https://api.nasa.gov"
+            },
+            {
+              "id": "np.netrc.1",
+              "name": "netrc Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://everything.curl.dev/usingcurl/netrc"
+            },
+            {
+              "id": "np.newrelic.1",
+              "name": "New Relic License Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys"
+            },
+            {
+              "id": "np.newrelic.2",
+              "name": "New Relic License Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys"
+            },
+            {
+              "id": "np.newrelic.3",
+              "name": "New Relic API Service Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys"
+            },
+            {
+              "id": "np.newrelic.4",
+              "name": "New Relic Admin API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys"
+            },
+            {
+              "id": "np.newrelic.5",
+              "name": "New Relic Insights Insert Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys"
+            },
+            {
+              "id": "np.newrelic.6",
+              "name": "New Relic Insights Query Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys"
+            },
+            {
+              "id": "np.newrelic.7",
+              "name": "New Relic REST API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys"
+            },
+            {
+              "id": "np.newrelic.8",
+              "name": "New Relic Pixie API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.px.dev/reference/admin/api-keys/"
+            },
+            {
+              "id": "np.newrelic.9",
+              "name": "New Relic Pixie Deploy Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.px.dev/reference/admin/deploy-keys/"
+            },
+            {
+              "id": "np.npm.1",
+              "name": "NPM Access Token (fine-grained)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.npmjs.com/about-access-tokens"
+            },
+            {
+              "id": "np.nuget.1",
+              "name": "NuGet API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.microsoft.com/en-us/nuget/nuget-org/publish-a-package#create-api-keys"
+            },
+            {
+              "id": "np.odbc.1",
+              "name": "Credentials in ODBC Connection String",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/redshift/latest/mgmt/configure-odbc-connection.html"
+            },
+            {
+              "id": "np.okta.1",
+              "name": "Okta API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://devforum.okta.com/t/api-token-length/5519"
+            },
+            {
+              "id": "np.openai.1",
+              "name": "OpenAI API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://platform.openai.com/docs/api-reference"
+            },
+            {
+              "id": "np.particleio.1",
+              "name": "particle.io Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.particle.io/reference/cloud-apis/api/"
+            },
+            {
+              "id": "np.particleio.2",
+              "name": "particle.io Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.particle.io/reference/cloud-apis/api/"
+            },
+            {
+              "id": "np.pem.1",
+              "name": "PEM-Encoded Private Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail"
+            },
+            {
+              "id": "np.pem.2",
+              "name": "Base64-PEM-Encoded Private Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail"
+            },
+            {
+              "id": "np.pendo.1",
+              "name": "Pendo Integration Key",
+              "shortDescription": {
+                "text": "Pendo Integration Key used for product analytics and user guidance.\nAn attacker with this credential can access product usage analytics,\nfeature adoption data, user metadata, NPS survey responses, and\nguide configurations via the Pendo API.\n"
+              },
+              "helpUri": "https://engageapi.pendo.io/"
+            },
+            {
+              "id": "np.phpmailer.1",
+              "name": "PHPMailer Credentials",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://github.com/PHPMailer/PHPMailer"
+            },
+            {
+              "id": "np.postgres.1",
+              "name": "Credentials in PostgreSQL Connection URI",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING"
+            },
+            {
+              "id": "np.postman.1",
+              "name": "Postman API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://learning.postman.com/docs/developer/intro-api/"
+            },
+            {
+              "id": "np.postmark.1",
+              "name": "Postmark API Token",
+              "shortDescription": {
+                "text": "A Postmark API token was found. This may allow an attacker the ability to send email from a Postmark account, enabling phishing.\n"
+              },
+              "helpUri": "https://postmarkapp.com/developer/api/overview"
+            },
+            {
+              "id": "np.psexec.1",
+              "name": "Credentials in PsExec Invocation",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://learn.microsoft.com/en-us/sysinternals/downloads/psexec"
+            },
+            {
+              "id": "np.pwhash.1",
+              "name": "Password Hash (md5crypt)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/Crypt_(C)#MD5-based_scheme"
+            },
+            {
+              "id": "np.pwhash.2",
+              "name": "Password Hash (bcrypt)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/Bcrypt"
+            },
+            {
+              "id": "np.pwhash.3",
+              "name": "Password Hash (sha256crypt)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/Crypt_(C)#Key_derivation_functions_supported_by_crypt"
+            },
+            {
+              "id": "np.pwhash.4",
+              "name": "Password Hash (sha512crypt)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/Crypt_(C)#Key_derivation_functions_supported_by_crypt"
+            },
+            {
+              "id": "np.pwhash.5",
+              "name": "Password Hash (Cisco IOS PBKDF2 with SHA256)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://en.wikipedia.org/wiki/Crypt_(C)#Key_derivation_functions_supported_by_crypt"
+            },
+            {
+              "id": "np.pypi.1",
+              "name": "PyPI Upload Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://github.com/pypa/warehouse/issues/6051"
+            },
+            {
+              "id": "np.razorpay.1",
+              "name": "Razorpay API Key",
+              "shortDescription": {
+                "text": "Razorpay Live API Key used for payment processing in production.\nAn attacker with this credential and the corresponding key secret can\nprocess payments, issue refunds, access transaction history, and\nretrieve customer payment information via the Razorpay API.\n"
+              },
+              "helpUri": "https://razorpay.com/docs/api/"
+            },
+            {
+              "id": "np.razorpay.2",
+              "name": "Razorpay Test API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://razorpay.com/docs/api/"
+            },
+            {
+              "id": "np.reactapp.1",
+              "name": "React App Username",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://create-react-app.dev/docs/adding-custom-environment-variables/"
+            },
+            {
+              "id": "np.reactapp.2",
+              "name": "React App Password",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://create-react-app.dev/docs/adding-custom-environment-variables/"
+            },
+            {
+              "id": "np.redis.1",
+              "name": "Redis URI Connection String",
+              "shortDescription": {
+                "text": "Redis connection string with embedded credentials used for Redis server authentication.\nAn attacker with this connection string can authenticate to the Redis server and potentially\nread, modify, or delete cached data, execute commands, or compromise data integrity.\nPotential impact includes data exfiltration, cache poisoning, and denial of service.\n"
+              },
+              "helpUri": "https://redis.io/docs/latest/develop/clients/redis-py/connect/"
+            },
+            {
+              "id": "np.redis.2",
+              "name": "Python Redis Client Debug Output",
+              "shortDescription": {
+                "text": "Redis connection password extracted from Python redis-py client debug output or error messages.\nThis pattern detects credentials that may appear in application logs, error traces, or debugging output.\nAn attacker with access to these logs can extract the password and use it to authenticate to the Redis server,\npotentially leading to data exfiltration, cache manipulation, or service disruption.\n"
+              },
+              "helpUri": "https://github.com/redis/redis-py"
+            },
+            {
+              "id": "np.retool.1",
+              "name": "Retool Workflow API Key",
+              "shortDescription": {
+                "text": "A Retool workflow API key was found. These keys authorize workflow execution and can appear in HTTP headers or query parameters.\n"
+              },
+              "helpUri": "https://docs.retool.com/workflows/guides/webhooks"
+            },
+            {
+              "id": "np.rubygems.1",
+              "name": "RubyGems API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://guides.rubygems.org/rubygems-org-api/"
+            },
+            {
+              "id": "np.s3.1",
+              "name": "AWS S3 Bucket",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/general/latest/gr/rande.html"
+            },
+            {
+              "id": "np.s3.2",
+              "name": "AWS S3 Bucket",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.aws.amazon.com/general/latest/gr/rande.html"
+            },
+            {
+              "id": "np.salesforce.1",
+              "name": "Salesforce Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://help.salesforce.com/s/articleView?id=sf.remoteaccess_access_tokens.htm\u0026type=5"
+            },
+            {
+              "id": "np.sauce.1",
+              "name": "Sauce Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.saucelabs.com/dev/api/"
+            },
+            {
+              "id": "np.segment.1",
+              "name": "Segment Public API Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://segment.com/docs/api/public-api/"
+            },
+            {
+              "id": "np.sendgrid.1",
+              "name": "SendGrid API Key",
+              "shortDescription": {
+                "text": "SendGrid API Key used for email delivery services. An attacker with this\ncredential can send emails on behalf of the account, access email statistics,\nmanage templates, and potentially exfiltrate contact lists. Keys with full\naccess can modify account settings and billing information.\n"
+              },
+              "helpUri": "https://docs.sendgrid.com/ui/account-and-settings/api-keys"
+            },
+            {
+              "id": "np.shopify.1",
+              "name": "Shopify Domain",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://help.shopify.com/en/manual/domains"
+            },
+            {
+              "id": "np.shopify.2",
+              "name": "Shopify App Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://shopify.dev/apps/auth"
+            },
+            {
+              "id": "np.shopify.3",
+              "name": "Shopify Access Token (Public App)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://shopify.dev/apps/auth"
+            },
+            {
+              "id": "np.shopify.4",
+              "name": "Shopify Access Token (Custom App)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://shopify.dev/apps/auth"
+            },
+            {
+              "id": "np.shopify.5",
+              "name": "Shopify Access Token (Legacy Private App)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://shopify.dev/apps/auth"
+            },
+            {
+              "id": "np.slack.2",
+              "name": "Slack Bot Token",
+              "shortDescription": {
+                "text": "A Slack Bot Token was found. An attacker could use the token to impersonate or control the corresponding Slack bot.\n"
+              },
+              "helpUri": "https://api.slack.com/authentication"
+            },
+            {
+              "id": "np.slack.3",
+              "name": "Slack Webhook",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.slack.com/messaging/webhooks"
+            },
+            {
+              "id": "np.slack.4",
+              "name": "Slack User Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.slack.com/authentication"
+            },
+            {
+              "id": "np.slack.5",
+              "name": "Slack App Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.slack.com/authentication"
+            },
+            {
+              "id": "np.slack.6",
+              "name": "Slack Legacy Bot Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://api.slack.com/authentication"
+            },
+            {
+              "id": "np.slack.7",
+              "name": "Slack Workflow Webhook",
+              "shortDescription": {
+                "text": "A Slack Workflow Webhook URL was found. These URLs are used by Workflow Builder automations to trigger multi-step workflows. An attacker with this URL can invoke the workflow and potentially exfiltrate data, send messages, or trigger other automated actions without authentication.\n"
+              },
+              "helpUri": "https://slack.com/help/articles/360041352714-Create-more-advanced-workflows-using-webhooks"
+            },
+            {
+              "id": "np.slack.8",
+              "name": "Slack Trigger URL",
+              "shortDescription": {
+                "text": "A Slack Trigger URL was found. These URLs invoke custom automation functions with app-level permissions using Slack's next-generation automation platform. An attacker with this URL can trigger arbitrary custom functions, potentially exfiltrating data or performing privileged actions within the workspace without requiring user authentication.\n"
+              },
+              "helpUri": "https://api.slack.com/automation/triggers/webhook"
+            },
+            {
+              "id": "np.sonarqube.1",
+              "name": "SonarQube Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.sonarqube.org/latest/user-guide/user-token/"
+            },
+            {
+              "id": "np.sourcegraph.1",
+              "name": "Sourcegraph Access Token",
+              "shortDescription": {
+                "text": "A Sourcegraph Access Token was found. Sourcegraph is a code search and AI platform. Depending on permissions, an attacker may be able to use this token to access proprietary source code, move laterally to code hosting providers such as GitHub or GitLab, or administer the Sourcegraph organization settings.\n"
+              },
+              "helpUri": "https://sourcegraph.com/docs/api/graphql"
+            },
+            {
+              "id": "np.spotify.1",
+              "name": "Spotify Access Token",
+              "shortDescription": {
+                "text": "Spotify OAuth Access Token used to access the Spotify Web API.\nAn attacker with this credential can access the user's Spotify account\nincluding listening history, playlists, saved tracks, profile information,\nand depending on scopes, may be able to modify playlists and playback.\n"
+              },
+              "helpUri": "https://developer.spotify.com/documentation/web-api/"
+            },
+            {
+              "id": "np.square.1",
+              "name": "Square Access Token",
+              "shortDescription": {
+                "text": "Square Access Token (legacy format) used for payment processing APIs.\nAn attacker with this credential can process payments, access transaction\nhistory, manage inventory, and retrieve customer information via the\nSquare Connect API. Tokens with full access can modify account settings\nand financial data. Legacy tokens use the sq0atp- prefix; newer tokens\nuse a different format (EAAA prefix).\n"
+              },
+              "helpUri": "https://developer.squareup.com/docs/build-basics/access-tokens"
+            },
+            {
+              "id": "np.square.2",
+              "name": "Square OAuth Secret",
+              "shortDescription": {
+                "text": "Square OAuth Application Secret used for OAuth2 token exchange.\nAn attacker with this credential, combined with the application ID,\ncan obtain OAuth access tokens on behalf of merchants, potentially\ngaining access to payment processing, customer data, and financial\nrecords. The secret is used in the OAuth2 authorization flow to\nexchange authorization codes for access tokens.\n"
+              },
+              "helpUri": "https://developer.squareup.com/docs/oauth-api/overview"
+            },
+            {
+              "id": "np.stackhawk.1",
+              "name": "StackHawk API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://docs.stackhawk.com/web-app/"
+            },
+            {
+              "id": "np.stripe.1",
+              "name": "Stripe API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://stripe.com/docs/keys"
+            },
+            {
+              "id": "np.stripe.2",
+              "name": "Stripe API Test Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://stripe.com/docs/keys"
+            },
+            {
+              "id": "np.stripe.3",
+              "name": "Stripe Publishable API Key",
+              "shortDescription": {
+                "text": "Stripe (and compatible) publishable API key found in source code. Publishable keys\nare intentionally public — they are designed to be embedded in browser or mobile\napp code to associate payment forms with a merchant account. They cannot be used\nto initiate charges, read transaction data, or perform any sensitive operation.\nThis finding is informational and typically does not require remediation unless\nthe key appears alongside a secret key (sk_live_*) in the same context.\n"
+              },
+              "helpUri": "https://stripe.com/docs/keys"
+            },
+            {
+              "id": "np.tavily.1",
+              "name": "Tavily API Key",
+              "shortDescription": {
+                "text": "A Tavily API Key was found. Tavily provides web search capabilities for AI and LLM applications. An attacker could use this API key to consume limited, possibly paid resources, or cause denial-of-service.\n"
+              },
+              "helpUri": "https://docs.tavily.com/api-reference"
+            },
+            {
+              "id": "np.teamcity.1",
+              "name": "TeamCity API Token",
+              "shortDescription": {
+                "text": "A TeamCity REST API token was found. TeamCity is a CI/CD platform from JetBrains. An attacker may be able to use this token to access source code, secrets, and build resources, enabling a supply chain attack.\n"
+              },
+              "helpUri": "https://www.jetbrains.com/help/teamcity/rest/teamcity-rest-api-documentation.html"
+            },
+            {
+              "id": "np.telegram.1",
+              "name": "Telegram Bot Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://core.telegram.org/bots/api"
+            },
+            {
+              "id": "np.thingsboard.1",
+              "name": "ThingsBoard Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://thingsboard.io/docs/paas/reference/http-api/"
+            },
+            {
+              "id": "np.thingsboard.2",
+              "name": "ThingsBoard Provision Device Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://thingsboard.io/docs/paas/reference/http-api/"
+            },
+            {
+              "id": "np.thingsboard.3",
+              "name": "ThingsBoard Provision Device Secret",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://thingsboard.io/docs/paas/reference/http-api/"
+            },
+            {
+              "id": "np.truenas.1",
+              "name": "TrueNAS API Key (WebSocket)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.truenas.com/docs/api/core_websocket_api.html"
+            },
+            {
+              "id": "np.truenas.2",
+              "name": "TrueNAS API Key (REST API)",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.truenas.com/docs/api/core_websocket_api.html"
+            },
+            {
+              "id": "np.truenas.3",
+              "name": "TrueNAS API Key (keyword proximity)",
+              "shortDescription": {
+                "text": "A TrueNAS API key was found near a TrueNAS-related keyword such as \"truenas\", \"true_nas\", \"true-nas\", or \"tn_\". TrueNAS API keys follow the format {numeric_id}-{64 alphanumeric characters} and are used for programmatic authentication to TrueNAS CORE and SCALE APIs. An attacker with this key can authenticate to the TrueNAS instance as the associated user, access NAS data, modify storage configuration, and potentially gain full administrative control.\n"
+              },
+              "helpUri": "https://www.truenas.com/docs/api/core_websocket_api.html"
+            },
+            {
+              "id": "np.twilio.1",
+              "name": "Twilio API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.twilio.com/docs/usage/api"
+            },
+            {
+              "id": "np.twitch.1",
+              "name": "Twitch Stream Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://help.twitch.tv/s/article/twitch-stream-key-faq?language=en_US"
+            },
+            {
+              "id": "np.twitter.1",
+              "name": "Twitter/X Client ID",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.x.com/en/docs/authentication/overview"
+            },
+            {
+              "id": "np.twitter.2",
+              "name": "Twitter/X Secret Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.x.com/en/docs/authentication/overview"
+            },
+            {
+              "id": "np.twitter.3",
+              "name": "Twitter/X Bearer Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.x.com/en/docs/authentication/oauth-2-0/bearer-tokens"
+            },
+            {
+              "id": "np.twitter.4",
+              "name": "Twitter/X Access Token",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://developer.x.com/en/docs/authentication/oauth-1-0a"
+            },
+            {
+              "id": "np.vmware.1",
+              "name": "Credentials in Connect-VIServer Invocation",
+              "shortDescription": {
+                "text": "Credentials were found in a `Connect-VIServer` invocation. `Connect-VIServer` is a command to connect to a VMWare vCenter Server. An attacker may be able to use these credentials to authenticate to vSphere instances, and depending on the associated privileges, administrate the resources such as Virtual Machines.\n"
+              },
+              "helpUri": "https://developer.broadcom.com/powercli/latest/vmware.vimautomation.core/commands/connect-viserver"
+            },
+            {
+              "id": "np.wakatime.1",
+              "name": "WakaTime API Key",
+              "shortDescription": {
+                "text": "WakaTime API Key used to access developer time-tracking data.\nAn attacker with this credential can access coding activity metrics,\nproject names, language usage statistics, editor and OS details,\nand daily/weekly time reports for the associated developer account.\n"
+              },
+              "helpUri": "https://wakatime.com/developers"
+            },
+            {
+              "id": "np.wakatime.2",
+              "name": "WakaTime Prefixed API Key",
+              "shortDescription": {
+                "text": "WakaTime API Key with waka_ prefix for developer time-tracking.\nAn attacker with this credential can access coding activity metrics,\nproject names, language usage statistics, and time reports.\n"
+              },
+              "helpUri": "https://wakatime.com/developers"
+            },
+            {
+              "id": "np.wireguard.1",
+              "name": "WireGuard Private Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.wireguard.com/quickstart/"
+            },
+            {
+              "id": "np.wireguard.2",
+              "name": "WireGuard Preshared Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.wireguard.com/quickstart/"
+            },
+            {
+              "id": "np.wpengine.1",
+              "name": "WPEngine API Key",
+              "shortDescription": {
+                "text": "WPEngine API Key used to access WordPress hosting management.\nAn attacker with this credential can manage hosted WordPress\nsites, access site configurations, perform backups, and\npotentially modify site content and settings.\n"
+              },
+              "helpUri": "https://wpengineapi.com/"
+            },
+            {
+              "id": "np.youtube.1",
+              "name": "YouTube API Key",
+              "shortDescription": {
+                "text": "Google API key used for YouTube Data API v3 access. These keys use the\nAIza prefix shared by all Google API keys and are 39 characters total.\nAn attacker with this key can query the YouTube Data API to access\nvideo metadata, channel information, playlists, and search results.\nDepending on API restrictions, the key may also grant access to other\nGoogle services (Maps, Cloud, Gemini, etc.). Keys are associated with\nGoogle Cloud projects for quota and billing.\n"
+              },
+              "helpUri": "https://developers.google.com/youtube/v3/getting-started"
+            },
+            {
+              "id": "np.zapier.1",
+              "name": "Zapier Webhook URL",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://help.zapier.com/hc/en-us/articles/8496288690317-Trigger-Zaps-from-webhooks"
+            },
+            {
+              "id": "np.zendesk.1",
+              "name": "Zendesk API Token",
+              "shortDescription": {
+                "text": "Zendesk API Token used for customer support platform access.\nAn attacker with this credential and the associated email can\nread and modify support tickets, access customer data, manage\nuser accounts, and export help desk content via the Zendesk API.\n"
+              },
+              "helpUri": "https://developer.zendesk.com/api-reference/"
+            },
+            {
+              "id": "titus.wandb.1",
+              "name": "Weights and Biases API Key (v1)",
+              "shortDescription": {
+                "text": ""
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "config/app.env"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B1"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "2b6aa9150579d745b997eec00da7965def63d991a4fbc4ef8653d51ec8017870"
+          },
+          "properties": {
+            "repository": "github.com/acme/api",
+            "commit": "0000000000000000000000000000000000000001",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": true
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "settings/app.env"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B1"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "c007e999b3a9a5e3b6f53674fa3a671179c97fcf70aa4140b6ce486c18675239"
+          },
+          "properties": {
+            "repository": "github.com/other/api",
+            "commit": "0000000000000000000000000000000000000002",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": true
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "deploy.yml"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B2"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "cfa092d56e3301352c85ceb3dc69911cf0b09e4c62252d987076013419a87a30"
+          },
+          "properties": {
+            "repository": "gitlab.example.com/acme/api",
+            "commit": "0000000000000000000000000000000000000003",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": true
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "a.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B3"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "00f3ae8e47f9d8b8317324a4b06816e285538251538bcd5d37d8f37e9c3e6a9f"
+          },
+          "properties": {
+            "repository": "github.com/acme/team/api",
+            "commit": "0000000000000000000000000000000000000004",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": true
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "b.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B4"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "3a41cd95e29c3594bd6b38846d53386a10e0d3a0d03e556caaf53f1cfbe9fd6f"
+          },
+          "properties": {
+            "repository": "gitlab.example.com/acme/team/sub/api",
+            "commit": "0000000000000000000000000000000000000005",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": true
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "c.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B5"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "e314c76ea7fba3af23be6862ad6ab056ec9ab172bde490d35346a6e306e566a8"
+          },
+          "properties": {
+            "repository": "gitlab.example.com/acme/team-other/api",
+            "commit": "0000000000000000000000000000000000000006",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": true
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "h1.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B6"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "d7ed3cad31c6a1b4bcddf70c31abd04f431e3a83d03af5d30b1b7d4d7b4a5962"
+          },
+          "properties": {
+            "repository": "acme/api",
+            "commit": "0000000000000000000000000000000000000007",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": false
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "h2.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B7"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "83401d5d9c50fbb10a1988e33e52e8dfd79fb654ccad9e8819e7956d8dcccc68"
+          },
+          "properties": {
+            "repository": "api",
+            "commit": "0000000000000000000000000000000000000008",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": false
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "h3.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B8"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "2628d525ad60aa1647f64989b6d62d0b73668675b7350d18550ab2e8683182ee"
+          },
+          "properties": {
+            "repository": "team/api",
+            "commit": "0000000000000000000000000000000000000009",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": false
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "h4.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 13,
+                  "snippet": {
+                    "text": "sel_B9"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "f48cce5b5061ec7b0ebe302eeebd4fe36cdfd668f62ed27fff0569733764fff4"
+          },
+          "properties": {
+            "repository": "zzz/unrelated",
+            "commit": "000000000000000000000000000000000000000a",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": false
+          }
+        },
+        {
+          "ruleId": "np.aws.1",
+          "level": "warning",
+          "message": {
+            "text": "AWS API Key"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "d.txt"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 7,
+                  "endLine": 3,
+                  "endColumn": 14,
+                  "snippet": {
+                    "text": "sel_B10"
+                  }
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "titusLocation/v1": "1ef0167c5ff139bb468c9097c5ffe61263e17b0b5f1c469f46d6e2a343186b22"
+          },
+          "properties": {
+            "repository": "github.com/acmecorp/api",
+            "commit": "000000000000000000000000000000000000000b",
+            "commit_date": "2026-06-15T09:30:00Z",
+            "host_recorded": true
+          }
+        }
+      ]
+    }
+  ]
+}
