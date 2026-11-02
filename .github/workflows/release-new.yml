@@ -72,6 +72,29 @@ jobs:
         file dist/titus-linux-amd64
         ldd dist/titus-linux-amd64 || true
 
+    - name: Assert release binary ships without the cgo DNS or user resolver
+      run: |
+        set -euo pipefail
+        # Durable check: with netgo and osusergo in effect, neither package may
+        # compile a cgo resolver file for this target.
+        out=$(GOWORK=off CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+          go list -tags "cgo vectorscan netgo osusergo" \
+          -f '{{.ImportPath}} {{len .CgoFiles}}' net os/user)
+        echo "$out"
+        if echo "$out" | awk '$2 != 0 { exit 1 }'; then
+          :
+        else
+          echo "ERROR: net or os/user still compiles cgo resolver files for linux/amd64"
+          exit 1
+        fi
+        # Artifact check: the static binary must not carry the cgo resolvers.
+        if strings -a dist/titus-linux-amd64 | grep -qE 'cgoLookupHostIP|mygetpwnam'; then
+          echo "ERROR: release binary contains the cgo (glibc) DNS/user resolvers"
+          echo "getaddrinfo/getpwnam SIGSEGV in static glibc builds on NSS lookups (golang/go#30310, sourceware#19341)"
+          exit 1
+        fi
+        echo "OK: no cgo resolver in linux/amd64 release binary"
+
     - name: Verify binary runs
       run: dist/titus-linux-amd64 version
 
@@ -125,6 +148,29 @@ jobs:
         chmod +x dist/titus-linux-arm64
         file dist/titus-linux-arm64
         ldd dist/titus-linux-arm64 || true
+
+    - name: Assert release binary ships without the cgo DNS or user resolver
+      run: |
+        set -euo pipefail
+        # Durable check: with netgo and osusergo in effect, neither package may
+        # compile a cgo resolver file for this target.
+        out=$(GOWORK=off CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
+          go list -tags "cgo vectorscan netgo osusergo" \
+          -f '{{.ImportPath}} {{len .CgoFiles}}' net os/user)
+        echo "$out"
+        if echo "$out" | awk '$2 != 0 { exit 1 }'; then
+          :
+        else
+          echo "ERROR: net or os/user still compiles cgo resolver files for linux/arm64"
+          exit 1
+        fi
+        # Artifact check: the static binary must not carry the cgo resolvers.
+        if strings -a dist/titus-linux-arm64 | grep -qE 'cgoLookupHostIP|mygetpwnam'; then
+          echo "ERROR: release binary contains the cgo (glibc) DNS/user resolvers"
+          echo "getaddrinfo/getpwnam SIGSEGV in static glibc builds on NSS lookups (golang/go#30310, sourceware#19341)"
+          exit 1
+        fi
+        echo "OK: no cgo resolver in linux/arm64 release binary"
 
     - name: Verify binary runs
       run: dist/titus-linux-arm64 version
