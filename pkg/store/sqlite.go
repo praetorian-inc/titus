@@ -434,14 +434,20 @@ func (s *SQLiteStore) getAllProvenanceLegacy(blobID types.BlobID) ([]types.Prove
 }
 
 // insertBlobLocation keeps an existing row unchanged except that an empty host
-// is filled by a non-empty one; a recorded host is never overwritten.
+// is filled by a non-empty one (a recorded host is never overwritten), and a
+// resolved branch replaces the stored one (the latest scan's checkout wins) while
+// an empty branch never erases it.
 const insertBlobLocation = `INSERT INTO blob_locations
-	(blob_id, kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	(blob_id, kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host, branch)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(blob_id, kind, repository, path, absolute_path, commit_hash, working_tree)
-	DO UPDATE SET host = excluded.host WHERE blob_locations.host = '' AND excluded.host <> ''`
+	DO UPDATE SET
+		host = CASE WHEN blob_locations.host = '' AND excluded.host <> '' THEN excluded.host ELSE blob_locations.host END,
+		branch = CASE WHEN excluded.branch <> '' THEN excluded.branch ELSE blob_locations.branch END
+	WHERE (blob_locations.host = '' AND excluded.host <> '')
+		OR (excluded.branch <> '' AND excluded.branch <> blob_locations.branch)`
 
-const selectBlobLocations = `SELECT kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host
+const selectBlobLocations = `SELECT kind, repository, path, absolute_path, commit_hash, commit_ts, working_tree, host, branch
 	FROM blob_locations WHERE blob_id = ?
 	ORDER BY blob_id, repository, path, commit_hash, absolute_path, working_tree`
 
@@ -482,7 +488,7 @@ func (s *SQLiteStore) insertOccurrences(blobID types.BlobID, occs []types.Occurr
 		if o.WorkingTree {
 			workingTree = 1
 		}
-		if _, err := stmt.Exec(blob, o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit, commitTS, workingTree, o.Host); err != nil {
+		if _, err := stmt.Exec(blob, o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit, commitTS, workingTree, o.Host, o.Branch); err != nil {
 			return fmt.Errorf("storing location: %w", err)
 		}
 	}
@@ -511,7 +517,7 @@ func (s *SQLiteStore) getLocations(blobID types.BlobID) ([]types.Occurrence, err
 	for rows.Next() {
 		o := types.Occurrence{HostRecorded: true}
 		var commitTS, workingTree int64
-		if err := rows.Scan(&o.Kind, &o.Repository, &o.Path, &o.AbsolutePath, &o.Commit, &commitTS, &workingTree, &o.Host); err != nil {
+		if err := rows.Scan(&o.Kind, &o.Repository, &o.Path, &o.AbsolutePath, &o.Commit, &commitTS, &workingTree, &o.Host, &o.Branch); err != nil {
 			return nil, err
 		}
 		if commitTS != 0 {

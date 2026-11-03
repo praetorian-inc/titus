@@ -28,11 +28,11 @@ func locationMatch(blob string) *types.Match {
 	}
 }
 
-// C-REPORTJSON-1: every location carries exactly the 7 keys, with nulls for
-// absent values.
-func TestToJSONLocations_SevenKeysWithNulls(t *testing.T) {
+// C-REPORTJSON-1: every location carries exactly the 8 keys, with nulls for
+// absent values (branch included: null when none was resolved).
+func TestToJSONLocations_EightKeysWithNulls(t *testing.T) {
 	occs := []types.Occurrence{
-		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", CommitDate: commitDate, HostRecorded: true},
+		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", CommitDate: commitDate, Branch: "feature/login", HostRecorded: true},
 		{Kind: "file", Path: "e/f/g/h/config.yml", AbsolutePath: "/a/b/c/d/e/f/g/h/config.yml", HostRecorded: true},
 	}
 	data, err := json.Marshal(toJSONLocations(locationMatch("x"), occs))
@@ -41,7 +41,7 @@ func TestToJSONLocations_SevenKeysWithNulls(t *testing.T) {
 	var locs []map[string]any
 	require.NoError(t, json.Unmarshal(data, &locs))
 	require.Len(t, locs, 2)
-	wantKeys := []string{"absolute_path", "commit", "commit_date", "host_recorded", "path", "range", "repository"}
+	wantKeys := []string{"absolute_path", "branch", "commit", "commit_date", "host_recorded", "path", "range", "repository"}
 	for _, l := range locs {
 		keys := make([]string, 0, len(l))
 		for k := range l {
@@ -56,6 +56,7 @@ func TestToJSONLocations_SevenKeysWithNulls(t *testing.T) {
 	assert.Equal(t, "config.yml", git["path"])
 	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", git["commit"])
 	assert.Equal(t, "2024-05-01T12:00:00Z", git["commit_date"])
+	assert.Equal(t, "feature/login", git["branch"], "CASE-REPORT-1: JSON carries the branch string")
 	assert.Nil(t, git["absolute_path"])
 	assert.Equal(t, true, git["host_recorded"])
 	assert.Equal(t, map[string]any{
@@ -67,6 +68,7 @@ func TestToJSONLocations_SevenKeysWithNulls(t *testing.T) {
 	assert.Nil(t, file["repository"])
 	assert.Nil(t, file["commit"])
 	assert.Nil(t, file["commit_date"])
+	assert.Nil(t, file["branch"], "CASE-OMIT-REPORT-1: no branch is null, never \"\" or a placeholder")
 	assert.Equal(t, "e/f/g/h/config.yml", file["path"])
 	assert.Equal(t, "/a/b/c/d/e/f/g/h/config.yml", file["absolute_path"])
 }

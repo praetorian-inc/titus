@@ -254,6 +254,19 @@ func addBlobLocationsHostColumn(db *sql.DB) error {
 	return nil
 }
 
+// addBlobLocationsBranchColumn adds blob_locations.branch to a datastore whose
+// table predates the column. Existing rows read as empty (no branch resolved).
+// The column is outside the UNIQUE key. Only SQLite's "duplicate column name"
+// error is ignored.
+func addBlobLocationsBranchColumn(db *sql.DB) error {
+	const alter = "ALTER TABLE blob_locations ADD COLUMN branch TEXT NOT NULL DEFAULT ''"
+	_, err := db.Exec(alter)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		return fmt.Errorf("adding blob_locations.branch: %w", err)
+	}
+	return nil
+}
+
 // createBlobLocationsTable adds the table of every location of a matched
 // blob. It is additive and idempotent, so an older datastore gains it on its
 // next open and SchemaVersion is unchanged. Every UNIQUE column is NOT NULL
@@ -277,6 +290,9 @@ func createBlobLocationsTable(db *sql.DB) error {
 		return err
 	}
 	if err := addBlobLocationsHostColumn(db); err != nil {
+		return err
+	}
+	if err := addBlobLocationsBranchColumn(db); err != nil {
 		return err
 	}
 	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_blob_locations_blob_id ON blob_locations(blob_id)`)

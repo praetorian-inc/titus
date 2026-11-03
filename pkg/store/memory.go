@@ -170,7 +170,8 @@ func (m *MemoryStore) markLocationsTruncated(blob string, rowKey provenanceRowKe
 // storedProvenance drops the GitProvenance fields the SQLite provenance table
 // does not persist, so both stores return the same rows. Locations now live in
 // the occurrence rows. Host is dropped too: AddProvenance keeps it in provHosts,
-// the mirror of provenance.host, and withHosts restores it on read.
+// the mirror of provenance.host, and withHosts restores it on read. Commit.Branch
+// is dropped too: the provenance table has no branch column.
 func storedProvenance(prov types.Provenance) types.Provenance {
 	g, ok := prov.(types.GitProvenance)
 	if !ok {
@@ -181,6 +182,12 @@ func storedProvenance(prov types.Provenance) types.Provenance {
 	g.RepoTop = ""
 	g.RemoteIdentity = false
 	g.Host = ""
+	if g.Commit != nil && g.Commit.Branch != "" {
+		// Branch lives in the occurrence rows only, as in SQLite.
+		c := *g.Commit
+		c.Branch = ""
+		g.Commit = &c
+	}
 	return g
 }
 
@@ -198,6 +205,7 @@ func (m *MemoryStore) AddOccurrences(blobID types.BlobID, occs []types.Occurrenc
 		}
 		if _, exists := m.locationKeys[lk]; exists {
 			m.fillLocationHost(key, lk, o.Host)
+			m.fillLocationBranch(key, lk, o.Branch)
 			continue
 		}
 		m.locationKeys[lk] = struct{}{}
@@ -228,6 +236,24 @@ func (m *MemoryStore) fillLocationHost(blob string, lk locationKey, host string)
 			if o.Host == "" {
 				o.Host = host
 			}
+			return
+		}
+	}
+}
+
+// fillLocationBranch sets the stored branch of the row with key lk when a
+// later write carries a non-empty one, as the SQLite upsert does: a resolved
+// branch replaces, an empty one never erases. Callers hold m.mu.
+func (m *MemoryStore) fillLocationBranch(blob string, lk locationKey, branch string) {
+	if branch == "" {
+		return
+	}
+	rows := m.occurrences[blob]
+	for i := range rows {
+		o := &rows[i]
+		if o.Kind == lk.kind && o.Repository == lk.repository && o.Path == lk.path &&
+			o.AbsolutePath == lk.absolutePath && o.Commit == lk.commit && o.WorkingTree == lk.workingTree {
+			o.Branch = branch
 			return
 		}
 	}

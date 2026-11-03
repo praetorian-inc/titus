@@ -24,6 +24,7 @@ type Occurrence struct {
 	AbsolutePath string    // working tree, plain folder, and committed locations of remote-less repos; the item URL for SharePoint
 	Commit       string    // full hash; "" = none
 	CommitDate   time.Time // zero = none
+	Branch       string    // git only: CommitMetadata.Branch; "" when none was resolved
 	WorkingTree  bool
 	HostRecorded bool   // false only for legacy git rows
 	Host         string // git only: GitProvenance.Host copied verbatim; "" when none was resolved; never printed
@@ -44,6 +45,7 @@ const (
 	commitDateLayout     = "2006-01-02"
 	fieldSeparator       = "  "
 	labelWorkingTree     = "working tree"
+	labelBranch          = "branch"
 	LabelHostNotRecorded = "host not recorded"
 )
 
@@ -91,6 +93,7 @@ func gitOccurrences(g GitProvenance) []Occurrence {
 		if l.Commit != nil {
 			o.Commit = l.Commit.CommitID
 			o.CommitDate = l.Commit.CommitterTimestamp
+			o.Branch = l.Commit.Branch
 		}
 		// Committed content of a host-identified repository merges across
 		// folders; everything else stays separated by its absolute folder.
@@ -210,14 +213,17 @@ type identityKey struct {
 }
 
 func sortedUnique(occs []Occurrence) []Occurrence {
-	seen := make(map[identityKey]bool, len(occs))
+	seen := make(map[identityKey]int, len(occs)) // key -> index in out
 	out := occs[:0]
 	for _, o := range occs {
 		k := identityKey{o.Kind, o.Repository, o.Path, o.AbsolutePath, o.Commit, o.WorkingTree, o.HostRecorded}
-		if seen[k] {
+		if i, ok := seen[k]; ok {
+			// Branch is not part of the identity: a duplicate keeps the
+			// resolved one rather than erasing it.
+			out[i].Branch = cmp.Or(out[i].Branch, o.Branch)
 			continue
 		}
-		seen[k] = true
+		seen[k] = len(out)
 		out = append(out, o)
 	}
 	SortOccurrences(out)
@@ -262,15 +268,15 @@ func compareDate(a, b time.Time) int {
 }
 
 // FormatLine renders one human location line, with two spaces between fields:
-// "<repository>  <path>:<line>  <short commit>  <commit date>". An extended
-// location with no repository leads with its source instead, as in
-// "confluence  <path>:<line>". A missing repository or source, commit or date
-// is omitted; a working-tree location shows
+// "<repository>  <path>:<line>  <short commit>  <commit date>  branch <branch>".
+// An extended location with no repository leads with its source instead, as in
+// "confluence  <path>:<line>". A missing repository or source, commit, date or
+// branch is omitted; a working-tree location shows
 // "working tree" in place of the commit fields; a legacy git location ends
 // with "host not recorded". display replaces the path when non-empty (see
 // DisambiguateDisplay). Every field passes through SanitizeDisplay.
 func FormatLine(o Occurrence, line int, display string) string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if lead := cmp.Or(o.Repository, o.Source); lead != "" {
 		fields = append(fields, SanitizeDisplay(lead))
 	}
@@ -282,6 +288,9 @@ func FormatLine(o Occurrence, line int, display string) string {
 		fields = append(fields, SanitizeDisplay(o.Commit[:min(len(o.Commit), shortCommitLen)]))
 		if !o.CommitDate.IsZero() {
 			fields = append(fields, o.CommitDate.UTC().Format(commitDateLayout))
+		}
+		if o.Branch != "" {
+			fields = append(fields, labelBranch+" "+SanitizeDisplay(o.Branch))
 		}
 	}
 	if o.Kind == "git" && !o.HostRecorded {

@@ -23,7 +23,7 @@ type jsonRange struct {
 	End   jsonPos `json:"end"`
 }
 
-// jsonLocation is one location of a match in JSON output. All 7 keys are
+// jsonLocation is one location of a match in JSON output. All 8 keys are
 // always present; an absent value is null. Values are exact bytes, never
 // display-sanitized (encoding/json escapes control characters safely).
 type jsonLocation struct {
@@ -32,6 +32,7 @@ type jsonLocation struct {
 	Range        jsonRange `json:"range"`
 	Commit       *string   `json:"commit"`
 	CommitDate   *string   `json:"commit_date"` // RFC 3339
+	Branch       *string   `json:"branch"`      // null when none was resolved
 	AbsolutePath *string   `json:"absolute_path"`
 	HostRecorded bool      `json:"host_recorded"`
 }
@@ -82,6 +83,7 @@ func toJSONLocations(m *types.Match, occs []types.Occurrence) []jsonLocation {
 			Path:         o.Path,
 			Range:        rng,
 			Commit:       nonEmpty(o.Commit),
+			Branch:       nonEmpty(o.Branch),
 			AbsolutePath: nonEmpty(o.AbsolutePath),
 			HostRecorded: o.HostRecorded,
 		}

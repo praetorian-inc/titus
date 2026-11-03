@@ -77,6 +77,7 @@ type ResultProperties struct {
 	Source       string `json:"source,omitempty"` // extended locations, e.g. "confluence"
 	Commit       string `json:"commit,omitempty"`
 	CommitDate   string `json:"commit_date,omitempty"` // RFC 3339
+	Branch       string `json:"branch,omitempty"`      // git only; omitted when none was resolved
 	AbsolutePath string `json:"absolute_path,omitempty"`
 	WorkingTree  bool   `json:"working_tree,omitempty"`
 	HostRecorded *bool  `json:"host_recorded,omitempty"`
@@ -221,6 +222,7 @@ func (r *Report) AddResultForOccurrence(match *types.Match, o types.Occurrence, 
 	if !o.CommitDate.IsZero() {
 		res.Properties.CommitDate = o.CommitDate.UTC().Format(time.RFC3339)
 	}
+	res.Properties.Branch = o.Branch
 	res.Properties.AbsolutePath = o.AbsolutePath
 	res.Properties.WorkingTree = o.WorkingTree
 	if o.Kind == "git" {

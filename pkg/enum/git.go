@@ -175,6 +175,7 @@ func (e *GitEnumerator) enumerateSingleCommit(ctx context.Context, callback func
 		CommitterEmail:     commit.Committer.Email,
 		CommitterTimestamp: commit.Committer.When,
 		Message:            commit.Message,
+		Branch:             singleCommitBranch(ctx, repo, e.config.Root, commit.Hash, e.warnWriter()),
 	}
 
 	for _, b := range blobs {
@@ -291,13 +292,9 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 		return nil, nil, 0, err
 	}
 	p.x.stats.lostWorktreeHeads = lost
-	shallowList, err := repo.Storer.Shallow()
+	shallow, err := goGitShallow(repo)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to read shallow commits: %w", err)
-	}
-	shallow := make(map[plumbing.Hash]struct{}, len(shallowList))
-	for _, h := range shallowList {
-		shallow[h] = struct{}{}
 	}
 
 	// Trees and blobs a ref reaches only through a tag (M4) come first:
@@ -366,6 +363,7 @@ func goGitHistoryIndex(ctx context.Context, repo *git.Repository) ([]blobEntry, 
 		}
 	}
 	idx := p.finish()
+	idx.branch = resolveBranchesGoGit(ctx, repo)
 	idx.setTaggedTrees(tw.inTree, treeRefs)
 	return blobs, idx, len(tw.missing), nil
 }

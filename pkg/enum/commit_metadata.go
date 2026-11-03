@@ -84,6 +84,7 @@ type blobIndex struct {
 	arena   []byte      // hex commit ids and subjects
 	commits []commitRec
 	stats   indexStats
+	branch  *branchResolver // nil resolves no branch
 
 	compactions int // compact calls, parse and finish alike
 
@@ -183,6 +184,7 @@ func buildBlobIndex(ctx context.Context, repoPath string) (*blobIndex, error) {
 	case ctx.Err() != nil:
 		return nil, fmt.Errorf("git log: %w", ctx.Err())
 	}
+	idx.branch = resolveBranchesNative(ctx, repoPath)
 	return idx, nil
 }
 
@@ -638,6 +640,7 @@ func (x *blobIndex) commitMeta(id uint32) *types.CommitMetadata {
 		CommitterTimestamp: gitTime(c.committerUnix, c.committerOff, c.flags&commitTimeUnusable != 0),
 		Message:            string(x.arena[c.subj : c.subj+c.subjLen]),
 	}
+	m.Branch = x.branch.of(m.CommitID)
 	if x.meta == nil {
 		x.meta = make(map[uint32]*types.CommitMetadata)
 	}
@@ -693,6 +696,7 @@ func (x *blobIndex) writeWarnings(w io.Writer) {
 	if x == nil {
 		return
 	}
+	x.branch.writeWarnings(w)
 	s := x.stats
 	if s.overlong > 0 {
 		_, _ = fmt.Fprintf(w, "titus: skipped %d over-long git records\n", s.overlong)

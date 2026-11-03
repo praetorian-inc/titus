@@ -1026,7 +1026,7 @@ func TestScanE2E_UntrackedCopyIsWorkingTreeLocation(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"    acme-api  backup/config.yml:1  working tree",
-		"    acme-api  config.yml:1  " + commitA + "  2024-01-02",
+		"    acme-api  config.yml:1  " + commitA + "  2024-01-02  branch main",
 	}, humanLocationLines(renderHuman(t, s, findings, matches, ruleMap)))
 }
 

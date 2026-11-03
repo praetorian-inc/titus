@@ -86,6 +86,11 @@ type CommitMetadata struct {
 	CommitterEmail     string
 	CommitterTimestamp time.Time
 	Message            string
+	// Branch is the branch that contains CommitID: the checked-out branch
+	// when it does, else the only branch that does; empty when none or
+	// several do; never guessed. It is read from git, never from a host
+	// API, so one field serves every host.
+	Branch string `json:",omitempty"`
 }
 
 // ExtendedProvenance for custom sources (S3, HTTP, etc.).
