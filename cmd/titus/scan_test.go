@@ -967,12 +967,13 @@ func TestScanE2E_OriginURLNormalized(t *testing.T) {
 func TestScanE2E_CommitURL(t *testing.T) {
 	tests := []struct {
 		name, origin string
-		linked       bool
+		wantPrefix   string // expected CommitURL minus the sha; empty means nil
 	}{
-		{"github https origin", "https://github.com/acme/api.git", true},
-		{"github ssh origin", "git@github.com:acme/api.git", true},
-		{"no origin", "", false},
-		{"gitea origin", "https://gitea.example.com/acme/api.git", false},
+		{"github https origin", "https://github.com/acme/api.git", "https://github.com/acme/api/commit/"},
+		{"github ssh origin", "git@github.com:acme/api.git", "https://github.com/acme/api/commit/"},
+		{"gitlab origin", "https://gitlab.com/acme/api.git", "https://gitlab.com/acme/api/-/commit/"},
+		{"no origin", "", ""},
+		{"gitea origin", "https://gitea.example.com/acme/api.git", ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -993,8 +994,8 @@ func TestScanE2E_CommitURL(t *testing.T) {
 				}
 				committed++
 				assert.Equal(t, strPtr(sha), l.Commit)
-				if tc.linked {
-					assert.Equal(t, strPtr("https://github.com/acme/api/commit/"+sha), l.CommitURL)
+				if tc.wantPrefix != "" {
+					assert.Equal(t, strPtr(tc.wantPrefix+sha), l.CommitURL)
 				} else {
 					assert.Nil(t, l.CommitURL)
 				}
