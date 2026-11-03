@@ -102,7 +102,7 @@ func TestURL_RejectsUnsafeRepositoryPaths(t *testing.T) {
 		"carriage return": "acme/api\r",
 		"nul":             "acme/api\x00",
 		"non-ascii":       "acme/apï",
-		"bidi override":   "acme/‮api",
+		"bidi override":   "acme/\u202eapi",
 		"colon":           "acme:evil/api",
 	} {
 		t.Run(name, func(t *testing.T) {
