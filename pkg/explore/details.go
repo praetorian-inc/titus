@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/praetorian-inc/titus/pkg/commitlink"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -426,6 +427,9 @@ func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
 		lines = append(lines, "  "+fieldLabelStyle.Render(fmt.Sprintf("Locations %d:", len(vis))))
 		for i, o := range vis {
 			appendWrapped(types.SanitizeDisplay(types.FormatLine(o, m.Location.Source.Start.Line, disp[i])))
+			if u := commitlink.URL(o); u != "" {
+				appendWrapped(types.SanitizeDisplay(u))
+			}
 		}
 	}
 	if m.ProvenanceErr != nil {

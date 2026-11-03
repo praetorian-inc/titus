@@ -1635,6 +1635,14 @@
               "helpUri": "https://docs.developers.optimizely.com/web-experimentation/docs/rest-api-getting-started"
             },
             {
+              "id": "kingfisher.orcarouter.1",
+              "name": "OrcaRouter Cyber Inference API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.orcarouter.ai/cyber"
+            },
+            {
               "id": "kingfisher.owlbot.1",
               "name": "Owlbot API Key",
               "shortDescription": {
@@ -4266,6 +4274,7 @@
           "properties": {
             "repository": "github.com/acme/api",
             "commit": "0000000000000000000000000000000000000001",
+            "commit_url": "https://github.com/acme/api/commit/0000000000000000000000000000000000000001",
             "commit_date": "2026-06-15T09:30:00Z",
             "host_recorded": true
           }
@@ -4300,6 +4309,7 @@
           "properties": {
             "repository": "github.com/other/api",
             "commit": "0000000000000000000000000000000000000002",
+            "commit_url": "https://github.com/other/api/commit/0000000000000000000000000000000000000002",
             "commit_date": "2026-06-15T09:30:00Z",
             "host_recorded": true
           }
@@ -4606,6 +4616,7 @@
           "properties": {
             "repository": "github.com/acmecorp/api",
             "commit": "000000000000000000000000000000000000000b",
+            "commit_url": "https://github.com/acmecorp/api/commit/000000000000000000000000000000000000000b",
             "commit_date": "2026-06-15T09:30:00Z",
             "host_recorded": true
           }
