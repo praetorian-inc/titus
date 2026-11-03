@@ -139,8 +139,9 @@ func blobIndexLogArgs() []string {
 // blob its commit metadata, where rev-list and go-git skip that ref. The
 // tips go on stdin, so a repository with many refs never hits the argv limit.
 func buildBlobIndex(ctx context.Context, repoPath string) (*blobIndex, error) {
-	// The branch resolver's lazy walk outlives this call; a caller that wants
-	// it cancellable binds its scan context with bindContext.
+	// The branch resolver's lazy walk outlives this call, so it is bound to
+	// scanCtx below; a caller that wants it cancellable binds its scan context
+	// with bindContext. The synchronous HEAD walk runs under the cancellable ctx.
 	scanCtx := context.WithoutCancel(ctx)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -187,7 +188,8 @@ func buildBlobIndex(ctx context.Context, repoPath string) (*blobIndex, error) {
 	case ctx.Err() != nil:
 		return nil, fmt.Errorf("git log: %w", ctx.Err())
 	}
-	idx.branch = resolveBranchesNative(scanCtx, repoPath)
+	idx.branch = resolveBranchesNative(ctx, repoPath)
+	idx.bindContext(scanCtx)
 	return idx, nil
 }
 

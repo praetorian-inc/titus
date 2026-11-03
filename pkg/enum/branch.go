@@ -276,10 +276,13 @@ func overHead() *branchResolver {
 // hold, one rev-list of each branch with HEAD excluded, all streamed. It
 // never fails: whatever cannot be established is left empty.
 func resolveBranchesNative(ctx context.Context, root string) *branchResolver {
-	head := ""
-	if ref, err := symbolicHead(ctx, root); err == nil {
-		head = headBranchName(ref)
+	// symbolicHead returns "" with no error for a detached HEAD; an error is
+	// a failed check, and without HEAD the off-HEAD walk could not exclude it.
+	ref, err := symbolicHead(ctx, root)
+	if err != nil {
+		return &branchResolver{notes: []string{branchNoteHeadCheckFailed}}
 	}
+	head := headBranchName(ref)
 	b := newBranchBuilder(head)
 	if head != "" {
 		exists, err := nativeHeadExists(ctx, root)
@@ -549,21 +552,9 @@ func nativeRevList(ctx context.Context, root string, each func([32]byte) error, 
 // without the git binary. It walks the commit graph itself, as
 // goGitHistoryIndex does, so a shallow commit is a root as it is for git.
 func resolveBranchesGoGit(ctx context.Context, repo *git.Repository) *branchResolver {
-	head := ""
-	var headHash plumbing.Hash
-	if ref, err := repo.Reference(plumbing.HEAD, false); err == nil && ref.Type() == plumbing.SymbolicReference {
-		head = headBranchName(ref.Target().String())
-	}
-	if head != "" {
-		h, err := repo.ResolveRevision("HEAD^{commit}")
-		switch {
-		case err == nil:
-			headHash = *h
-		case errors.Is(err, plumbing.ErrReferenceNotFound):
-			head = "" // unborn: no commit is on HEAD
-		default:
-			return &branchResolver{notes: []string{branchNoteHeadCheckFailed}}
-		}
+	head, headHash, ok := goGitHead(repo)
+	if !ok {
+		return &branchResolver{notes: []string{branchNoteHeadCheckFailed}}
 	}
 	shallow, err := goGitShallow(repo)
 	if err != nil {
@@ -585,6 +576,37 @@ func resolveBranchesGoGit(ctx context.Context, repo *git.Repository) *branchReso
 	b.r.ctx = ctx
 	b.r.lazyOff = func(ctx context.Context) { b.offHeadGoGit(ctx, repo, shallow, headSet) }
 	return b.r
+}
+
+// goGitHead names the checked-out branch and its commit. head is "" for a
+// detached HEAD, a HEAD on a ref outside refs/heads, and an unborn branch (a
+// symbolic HEAD whose target ref does not exist). ok is false when HEAD cannot
+// be checked: any other error, or a branch ref whose commit cannot be loaded.
+func goGitHead(repo *git.Repository) (head string, commit plumbing.Hash, ok bool) {
+	ref, err := repo.Reference(plumbing.HEAD, false)
+	switch {
+	case errors.Is(err, plumbing.ErrReferenceNotFound):
+		return "", commit, true
+	case err != nil:
+		return "", commit, false
+	case ref.Type() != plumbing.SymbolicReference:
+		return "", commit, true
+	}
+	head = headBranchName(ref.Target().String())
+	if head == "" {
+		return "", commit, true
+	}
+	target, err := repo.Reference(plumbing.HEAD, true)
+	switch {
+	case errors.Is(err, plumbing.ErrReferenceNotFound):
+		return "", commit, true // unborn: no commit is on HEAD
+	case err != nil:
+		return "", commit, false
+	}
+	if _, err := object.GetCommit(repo.Storer, target.Hash()); err != nil {
+		return "", commit, false
+	}
+	return head, target.Hash(), true
 }
 
 // offHeadGoGit fills the off-HEAD part of the resolver.
@@ -645,11 +667,21 @@ func goGitBranchTips(repo *git.Repository) (map[string][]plumbing.Hash, error) {
 	tips := make(map[string][]plumbing.Hash)
 	refCount := 0
 	err = iter.ForEach(func(ref *plumbing.Reference) error {
-		if ref.Type() != plumbing.HashReference {
+		name := branchShortName(ref.Name().String(), remotes)
+		if name == "" {
 			return nil
 		}
-		name := branchShortName(ref.Name().String(), remotes)
-		if name == "" || ref.Hash().IsZero() {
+		if ref.Type() == plumbing.SymbolicReference {
+			// A symbolic branch ref counts as a name for its target's commit,
+			// as git for-each-ref reports it. A cycle (bounded by go-git) or
+			// a dangling target resolves to nothing and is skipped.
+			resolved, err := repo.Reference(ref.Name(), true)
+			if err != nil {
+				return nil
+			}
+			ref = resolved
+		}
+		if ref.Hash().IsZero() {
 			return nil
 		}
 		// git for-each-ref skips a ref whose object is missing: such a

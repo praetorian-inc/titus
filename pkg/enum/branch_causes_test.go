@@ -185,17 +185,12 @@ func TestBranchResolver_HeadCheckFailed_NoteAndNothingResolved(t *testing.T) {
 		assert.Equal(t, []string{branchNoteHeadCheckFailed}, r.notes)
 		assert.Equal(t, "titus: branch not recorded: could not check whether HEAD names a commit\n", branchWarnings(r))
 	})
-	// go-git reports a HEAD commit it cannot decode as plumbing.ErrReferenceNotFound,
-	// the unborn signal, so the check cannot fail this way there. The outcome is
-	// still closed: the walk of the branches reads the same object, fails, and
-	// attributes nothing, with a warning.
 	t.Run("go-git", func(t *testing.T) {
 		r := rs["go-git"]
 		for _, c := range []string{c1, f1} {
-			assert.Equal(t, "", r.of(c))
+			assert.Equal(t, "", r.of(c), "a failed check is not an unborn HEAD: nothing is attributed")
 		}
-		require.Len(t, r.notes, 1)
-		assert.Equal(t, offHeadNotePrefix+"could not read a branch's history", r.notes[0])
+		assert.Equal(t, []string{branchNoteHeadCheckFailed}, r.notes)
 	})
 }
 
