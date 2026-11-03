@@ -356,6 +356,54 @@ func TestAddResultForOccurrence_FingerprintStable(t *testing.T) {
 	assert.Equal(t, a.Runs[0].Results[0].PartialFingerprints, b.Runs[0].Results[0].PartialFingerprints)
 }
 
+// LAB-7526 C1: a gitlab.com commit location carries commit_url in its result
+// properties, and the location fingerprint is unchanged by the link. The
+// expected fingerprint was captured by running AddResultForOccurrence on the
+// code before the link existed.
+func TestAddResultForOccurrence_CommitURL(t *testing.T) {
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	r := NewReport()
+	r.AddResultForOccurrence(occurrenceMatch(), types.Occurrence{
+		Kind: "git", Repository: "gitlab.com/acme/widgets", Host: "gitlab.com", Path: "src/a.go",
+		Commit: commit, HostRecorded: true,
+	}, nil)
+	res := r.Runs[0].Results[0]
+	assert.Equal(t, map[string]string{LocationFingerprintKey: "76b45e6ac038a925a3ba0ab1a42dab4eda259e6f12ccfefd2d8903dcad2b1d64"}, res.PartialFingerprints)
+
+	data, err := r.ToJSON()
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(data, &doc))
+	props := doc["runs"].([]any)[0].(map[string]any)["results"].([]any)[0].(map[string]any)["properties"].(map[string]any)
+	assert.Equal(t, "https://gitlab.com/acme/widgets/-/commit/"+commit, props["commit_url"])
+}
+
+// LAB-7526 C3, C4, C5, C7: no link means the key is absent from the JSON.
+func TestAddResultForOccurrence_NoCommitURLWhenNoLink(t *testing.T) {
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	tests := []struct {
+		name string
+		occ  types.Occurrence
+	}{
+		{"C3 other gitlab host", types.Occurrence{Kind: "git", Repository: "gitlab.example.com/acme/widgets", Host: "gitlab.example.com", Path: "a.txt", Commit: commit, HostRecorded: true}},
+		{"C4 github.com", types.Occurrence{Kind: "git", Repository: "github.com/acme/widgets", Host: "github.com", Path: "a.txt", Commit: commit, HostRecorded: true}},
+		{"C5 working tree", types.Occurrence{Kind: "git", Repository: "gitlab.com/acme/widgets", Host: "gitlab.com", Path: "a.txt", WorkingTree: true, HostRecorded: true}},
+		{"C7 host not recorded", types.Occurrence{Kind: "git", Repository: "gitlab.com/acme/widgets", Path: "a.txt", Commit: commit}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewReport()
+			r.AddResultForOccurrence(occurrenceMatch(), tt.occ, nil)
+			data, err := r.ToJSON()
+			require.NoError(t, err)
+			var doc map[string]any
+			require.NoError(t, json.Unmarshal(data, &doc))
+			props := doc["runs"].([]any)[0].(map[string]any)["results"].([]any)[0].(map[string]any)["properties"].(map[string]any)
+			assert.NotContains(t, props, "commit_url")
+		})
+	}
+}
+
 // SEC-18: message.text is shown by SARIF viewers, so it is sanitized.
 func TestAddResult_MessageSanitized(t *testing.T) {
 	m := occurrenceMatch()

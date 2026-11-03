@@ -55,6 +55,7 @@
             },
             "commit": "0000000000000000000000000000000000000001",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": true
           },
@@ -73,6 +74,7 @@
             },
             "commit": "0000000000000000000000000000000000000002",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": true
           }
@@ -136,6 +138,7 @@
             },
             "commit": "0000000000000000000000000000000000000003",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": true
           }
@@ -199,6 +202,7 @@
             },
             "commit": "0000000000000000000000000000000000000004",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": true
           }
@@ -262,6 +266,7 @@
             },
             "commit": "0000000000000000000000000000000000000005",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": true
           }
@@ -325,6 +330,7 @@
             },
             "commit": "0000000000000000000000000000000000000006",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": true
           }
@@ -388,6 +394,7 @@
             },
             "commit": "0000000000000000000000000000000000000007",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": false
           }
@@ -451,6 +458,7 @@
             },
             "commit": "0000000000000000000000000000000000000008",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": false
           }
@@ -514,6 +522,7 @@
             },
             "commit": "0000000000000000000000000000000000000009",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": false
           }
@@ -577,6 +586,7 @@
             },
             "commit": "000000000000000000000000000000000000000a",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": false
           }
@@ -640,6 +650,7 @@
             },
             "commit": "000000000000000000000000000000000000000b",
             "commit_date": "2026-06-15T09:30:00Z",
+            "commit_url": null,
             "absolute_path": null,
             "host_recorded": true
           }

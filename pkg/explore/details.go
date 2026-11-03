@@ -426,6 +426,9 @@ func renderLocations(m *matchRow, sel map[string]bool, maxWidth int) []string {
 		lines = append(lines, "  "+fieldLabelStyle.Render(fmt.Sprintf("Locations %d:", len(vis))))
 		for i, o := range vis {
 			appendWrapped(types.SanitizeDisplay(types.FormatLine(o, m.Location.Source.Start.Line, disp[i])))
+			if url := types.CommitURL(o); url != "" {
+				appendWrapped(url)
+			}
 		}
 	}
 	if m.ProvenanceErr != nil {

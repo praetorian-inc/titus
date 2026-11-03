@@ -77,6 +77,7 @@ type ResultProperties struct {
 	Source       string `json:"source,omitempty"` // extended locations, e.g. "confluence"
 	Commit       string `json:"commit,omitempty"`
 	CommitDate   string `json:"commit_date,omitempty"` // RFC 3339
+	CommitURL    string `json:"commit_url,omitempty"`
 	AbsolutePath string `json:"absolute_path,omitempty"`
 	WorkingTree  bool   `json:"working_tree,omitempty"`
 	HostRecorded *bool  `json:"host_recorded,omitempty"`
@@ -218,6 +219,7 @@ func (r *Report) AddResultForOccurrence(match *types.Match, o types.Occurrence, 
 	res.Properties.Repository = o.Repository
 	res.Properties.Source = o.Source
 	res.Properties.Commit = o.Commit
+	res.Properties.CommitURL = types.CommitURL(o)
 	if !o.CommitDate.IsZero() {
 		res.Properties.CommitDate = o.CommitDate.UTC().Format(time.RFC3339)
 	}

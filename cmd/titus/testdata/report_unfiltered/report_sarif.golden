@@ -1635,6 +1635,14 @@
               "helpUri": "https://docs.developers.optimizely.com/web-experimentation/docs/rest-api-getting-started"
             },
             {
+              "id": "kingfisher.orcarouter.1",
+              "name": "OrcaRouter Cyber Inference API Key",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://www.orcarouter.ai/cyber"
+            },
+            {
               "id": "kingfisher.owlbot.1",
               "name": "Owlbot API Key",
               "shortDescription": {
