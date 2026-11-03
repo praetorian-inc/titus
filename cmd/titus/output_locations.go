@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/praetorian-inc/titus/pkg/commitlink"
 	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -32,9 +33,9 @@ type jsonLocation struct {
 	Range        jsonRange `json:"range"`
 	Commit       *string   `json:"commit"`
 	CommitDate   *string   `json:"commit_date"` // RFC 3339
-	CommitURL    *string   `json:"commit_url"`  // null when there is no link
 	AbsolutePath *string   `json:"absolute_path"`
 	HostRecorded bool      `json:"host_recorded"`
+	CommitURL    *string   `json:"commit_url"` // null when no link can be built
 }
 
 // matchLocations returns every location of the blob a match was found in,
@@ -83,9 +84,9 @@ func toJSONLocations(m *types.Match, occs []types.Occurrence) []jsonLocation {
 			Path:         o.Path,
 			Range:        rng,
 			Commit:       nonEmpty(o.Commit),
-			CommitURL:    nonEmpty(types.CommitURL(o)),
 			AbsolutePath: nonEmpty(o.AbsolutePath),
 			HostRecorded: o.HostRecorded,
+			CommitURL:    nonEmpty(commitlink.URL(o)),
 		}
 		if !o.CommitDate.IsZero() {
 			loc.CommitDate = nonEmpty(o.CommitDate.UTC().Format(time.RFC3339))
@@ -158,11 +159,12 @@ func writeLocationLines(w io.Writer, line int, occs []types.Occurrence, style *c
 			text = style.Sprint(text)
 		}
 		_, _ = fmt.Fprintf(w, "    %s\n", text)
-		if url := types.CommitURL(o); url != "" {
+		if u := commitlink.URL(o); u != "" {
+			link := types.SanitizeDisplay(u)
 			if style != nil {
-				url = style.Sprint(url)
+				link = style.Sprint(link)
 			}
-			_, _ = fmt.Fprintf(w, "    %s\n", url)
+			_, _ = fmt.Fprintf(w, "      %s\n", link)
 		}
 	}
 }

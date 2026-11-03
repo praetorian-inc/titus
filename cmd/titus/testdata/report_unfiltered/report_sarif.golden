@@ -4274,6 +4274,7 @@
           "properties": {
             "repository": "github.com/acme/api",
             "commit": "0000000000000000000000000000000000000001",
+            "commit_url": "https://github.com/acme/api/commit/0000000000000000000000000000000000000001",
             "commit_date": "2026-06-15T09:30:00Z",
             "host_recorded": true
           }
@@ -4308,6 +4309,7 @@
           "properties": {
             "repository": "github.com/other/api",
             "commit": "0000000000000000000000000000000000000002",
+            "commit_url": "https://github.com/other/api/commit/0000000000000000000000000000000000000002",
             "commit_date": "2026-06-15T09:30:00Z",
             "host_recorded": true
           }
@@ -4614,6 +4616,7 @@
           "properties": {
             "repository": "github.com/acmecorp/api",
             "commit": "000000000000000000000000000000000000000b",
+            "commit_url": "https://github.com/acmecorp/api/commit/000000000000000000000000000000000000000b",
             "commit_date": "2026-06-15T09:30:00Z",
             "host_recorded": true
           }

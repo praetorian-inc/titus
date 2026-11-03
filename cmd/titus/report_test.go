@@ -1663,7 +1663,7 @@ func TestOutputReport_MultiRepoLocations(t *testing.T) {
 }
 
 // C-REPORTJSON-1: file_path is kept, locations has every location, and each
-// location has exactly the 8 keys.
+// location has exactly the 7 keys.
 func TestOutputReportJSON_LocationsKeysAndFilePath(t *testing.T) {
 	s, findings, matches, ruleMap := reportFixture(t, []types.Occurrence{
 		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaaaaaaaa", CommitDate: reportCommitDate, HostRecorded: true},

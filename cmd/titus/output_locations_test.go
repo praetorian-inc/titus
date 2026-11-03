@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/fatih/color"
+	"github.com/praetorian-inc/titus/pkg/commitlink"
 	"github.com/praetorian-inc/titus/pkg/sarif"
 	"github.com/praetorian-inc/titus/pkg/store"
 	"github.com/praetorian-inc/titus/pkg/types"
@@ -28,19 +31,20 @@ func locationMatch(blob string) *types.Match {
 	}
 }
 
-// C-REPORTJSON-1: every location carries exactly the 8 keys, with nulls for
-// absent values.
+// C-REPORTJSON-1: every location carries exactly the 8 keys (the 7 location
+// keys plus commit_url, LAB-7527), with nulls for absent values.
 func TestToJSONLocations_EightKeysWithNulls(t *testing.T) {
 	occs := []types.Occurrence{
 		{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", CommitDate: commitDate, HostRecorded: true},
 		{Kind: "file", Path: "e/f/g/h/config.yml", AbsolutePath: "/a/b/c/d/e/f/g/h/config.yml", HostRecorded: true},
+		linkOcc("github.com", "acme/api", "config.yml", linkSHA1),
 	}
 	data, err := json.Marshal(toJSONLocations(locationMatch("x"), occs))
 	require.NoError(t, err)
 
 	var locs []map[string]any
 	require.NoError(t, json.Unmarshal(data, &locs))
-	require.Len(t, locs, 2)
+	require.Len(t, locs, 3)
 	wantKeys := []string{"absolute_path", "commit", "commit_date", "commit_url", "host_recorded", "path", "range", "repository"}
 	for _, l := range locs {
 		keys := make([]string, 0, len(l))
@@ -57,7 +61,7 @@ func TestToJSONLocations_EightKeysWithNulls(t *testing.T) {
 	assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", git["commit"])
 	assert.Equal(t, "2024-05-01T12:00:00Z", git["commit_date"])
 	assert.Nil(t, git["absolute_path"])
-	assert.Nil(t, git["commit_url"], "github.com location gets no GitLab link")
+	assert.Nil(t, git["commit_url"], "no host recorded on the occurrence, so no link")
 	assert.Equal(t, true, git["host_recorded"])
 	assert.Equal(t, map[string]any{
 		"start": map[string]any{"line": float64(3), "column": float64(7)},
@@ -68,9 +72,12 @@ func TestToJSONLocations_EightKeysWithNulls(t *testing.T) {
 	assert.Nil(t, file["repository"])
 	assert.Nil(t, file["commit"])
 	assert.Nil(t, file["commit_date"])
-	assert.Nil(t, file["commit_url"])
 	assert.Equal(t, "e/f/g/h/config.yml", file["path"])
 	assert.Equal(t, "/a/b/c/d/e/f/g/h/config.yml", file["absolute_path"])
+	assert.Nil(t, file["commit_url"])
+
+	linked := locs[2]
+	assert.Equal(t, "https://github.com/acme/api/commit/"+linkSHA1, linked["commit_url"])
 }
 
 func TestToJSONLocations_NoneIsEmptyArray(t *testing.T) {
@@ -192,86 +199,225 @@ func TestWriteLocationLines(t *testing.T) {
 		buf.String())
 }
 
+// ---------------------------------------------------------------------------
+// LAB-7527: commit_url
+// ---------------------------------------------------------------------------
+
 const (
-	gitlabCommitA = "0123456789abcdef0123456789abcdef01234567"
-	gitlabCommitB = "1111111111111111111111111111111111111111"
-	gitlabCommitC = "2222222222222222222222222222222222222222"
+	linkSHA1 = "0123456789abcdef0123456789abcdef01234567"
+	linkSHA2 = "fedcba9876543210fedcba9876543210fedcba98"
 )
 
-func gitlabOccurrence(commit string) types.Occurrence {
-	return types.Occurrence{Kind: "git", Repository: "gitlab.com/acme/widgets", Host: "gitlab.com", Path: "src/a.go", Commit: commit, CommitDate: commitDate, HostRecorded: true}
+// linkOcc returns the committed git occurrence a scan or API enumeration of
+// host/repo records, built through the same constructor the stores use.
+func linkOcc(host, repo, path, commit string) types.Occurrence {
+	return types.OccurrencesOf(types.GitProvenance{
+		RepoPath: host + "/" + repo, Host: host, RemoteIdentity: true, BlobPath: path,
+		Commit: &types.CommitMetadata{CommitID: commit, CommitterTimestamp: commitDate},
+	})[0]
 }
 
-// noLinkOccurrences returns the C3, C4, C5 and C7 inputs, none of which may
-// get a link.
-func noLinkOccurrences() (c3, c4, c5, c7 types.Occurrence) {
-	c3 = gitlabOccurrence(gitlabCommitA)
-	c3.Repository, c3.Host = "gitlab.example.com/acme/widgets", "gitlab.example.com"
-	c4 = gitlabOccurrence(gitlabCommitA)
-	c4.Repository, c4.Host = "github.com/acme/widgets", "github.com"
-	c5 = gitlabOccurrence("")
-	c5.WorkingTree = true
-	c7 = gitlabOccurrence(gitlabCommitA)
-	c7.Host, c7.HostRecorded = "", false
-	return
+// linkWorkingTreeOcc is the working-tree location of host/repo: no commit.
+func linkWorkingTreeOcc(host, repo, path string) types.Occurrence {
+	return types.OccurrencesOf(types.GitProvenance{
+		RepoPath: host + "/" + repo, Host: host, RemoteIdentity: true, BlobPath: path,
+		Locations: []types.GitLocation{{Path: path, WorkingTree: true}},
+	})[0]
 }
 
-// LAB-7526 C1 and C6 in the human lines: the URL is on its own line, indented
-// four spaces, directly under the location line it belongs to. C3, C4, C5 and
-// C7 print no link line.
-func TestWriteLocationLines_CommitURL(t *testing.T) {
-	c3, c4, c5, c7 := noLinkOccurrences()
-	tests := []struct {
-		name string
-		occs []types.Occurrence
-		want string
-	}{
-		{"C1 link under its location", []types.Occurrence{gitlabOccurrence(gitlabCommitA)}, "" +
-			"    gitlab.com/acme/widgets  src/a.go:3  0123456  2024-05-01\n" +
-			"    https://gitlab.com/acme/widgets/-/commit/" + gitlabCommitA + "\n"},
-		{"C6 each location links its own commit", []types.Occurrence{gitlabOccurrence(gitlabCommitB), gitlabOccurrence(gitlabCommitC)}, "" +
-			"    gitlab.com/acme/widgets  src/a.go:3  1111111  2024-05-01\n" +
-			"    https://gitlab.com/acme/widgets/-/commit/" + gitlabCommitB + "\n" +
-			"    gitlab.com/acme/widgets  src/a.go:3  2222222  2024-05-01\n" +
-			"    https://gitlab.com/acme/widgets/-/commit/" + gitlabCommitC + "\n"},
-		{"link only under the linkable location", []types.Occurrence{c4, gitlabOccurrence(gitlabCommitA)}, "" +
-			"    github.com/acme/widgets  src/a.go:3  0123456  2024-05-01\n" +
-			"    gitlab.com/acme/widgets  src/a.go:3  0123456  2024-05-01\n" +
-			"    https://gitlab.com/acme/widgets/-/commit/" + gitlabCommitA + "\n"},
-		{"C3 other gitlab host", []types.Occurrence{c3}, "    gitlab.example.com/acme/widgets  src/a.go:3  0123456  2024-05-01\n"},
-		{"C4 github.com", []types.Occurrence{c4}, "    github.com/acme/widgets  src/a.go:3  0123456  2024-05-01\n"},
-		{"C5 working tree", []types.Occurrence{c5}, "    gitlab.com/acme/widgets  src/a.go:3  working tree\n"},
-		{"C7 host not recorded", []types.Occurrence{c7}, "    gitlab.com/acme/widgets  src/a.go:3  0123456  2024-05-01  host not recorded\n"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			writeLocationLines(&buf, 3, tt.occs, nil)
-			assert.Equal(t, tt.want, buf.String())
+// linkNoCommitOcc is a commitless occurrence, as an API enumeration records.
+func linkNoCommitOcc(host, repo, path string) types.Occurrence {
+	return types.OccurrencesOf(types.GitProvenance{
+		RepoPath: host + "/" + repo, Host: host, RemoteIdentity: true, BlobPath: path,
+	})[0]
+}
+
+// linkLegacyOcc is a row written before hosts were recorded: no host, and
+// HostRecorded false as the store reports it.
+func linkLegacyOcc() types.Occurrence {
+	return types.Occurrence{Kind: "git", Repository: "acme/api", Path: "config.yml", Commit: linkSHA1, CommitDate: commitDate}
+}
+
+// linkCases are occurrences paired with the commit link they must produce
+// ("" is no link). The same table drives the JSON, human and SARIF tests.
+var linkCases = []struct {
+	name string
+	occ  types.Occurrence
+	want string
+}{
+	{"github.com", linkOcc("github.com", "acme/api", "config.yml", linkSHA1), "https://github.com/acme/api/commit/" + linkSHA1},
+	{"unsupported host", linkOcc("gitea.example.com", "acme/api", "config.yml", linkSHA1), ""},
+	{"github.com.evil host", linkOcc("github.com.evil", "acme/api", "config.yml", linkSHA1), ""},
+	{"github.example.com host", linkOcc("github.example.com", "acme/api", "config.yml", linkSHA1), ""},
+	{"legacy row, host not recorded", linkLegacyOcc(), ""},
+	{"no commit", linkNoCommitOcc("github.com", "acme/api", "config.yml"), ""},
+	{"working tree", linkWorkingTreeOcc("github.com", "acme/api", "config.yml"), ""},
+	{"file kind", types.Occurrence{Kind: "file", Path: "config.yml", AbsolutePath: "/w/config.yml", HostRecorded: true}, ""},
+	{"short commit", linkOcc("github.com", "acme/api", "config.yml", "abcdef0123"), ""},
+	{"control char in repository", types.Occurrence{
+		Kind: "git", Repository: "github.com/acme/ap\x1b[31mi", Host: "github.com", Path: "config.yml",
+		Commit: linkSHA1, CommitDate: commitDate, HostRecorded: true,
+	}, ""},
+}
+
+// Outcome A: commit_url is the exact link for a github.com occurrence and JSON
+// null for every case that has none; all 8 keys are always present.
+func TestToJSONLocations_CommitURL(t *testing.T) {
+	for _, tc := range linkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(toJSONLocations(locationMatch("x"), []types.Occurrence{tc.occ}))
+			require.NoError(t, err)
+			var locs []map[string]any
+			require.NoError(t, json.Unmarshal(data, &locs))
+			require.Len(t, locs, 1)
+			require.Len(t, locs[0], 8, "all 8 keys always present")
+			got, present := locs[0]["commit_url"]
+			require.True(t, present, "commit_url key is always present")
+			if tc.want == "" {
+				assert.Nil(t, got, "no link is JSON null")
+			} else {
+				assert.Equal(t, tc.want, got)
+			}
 		})
 	}
 }
 
-// LAB-7526: commit_url in report/scan JSON is the URL for C1 and C6 and null
-// for C3, C4, C5, C7 and non-git; the key is always present.
-func TestToJSONLocations_CommitURL(t *testing.T) {
-	c3, c4, c5, c7 := noLinkOccurrences()
-	file := types.Occurrence{Kind: "file", Path: "a.txt", HostRecorded: true}
+// Outcome B: each location links to its own recorded commit, not a shared one.
+func TestToJSONLocations_CommitURLIsPerLocationCommit(t *testing.T) {
+	occs := []types.Occurrence{
+		linkOcc("github.com", "acme/api", "config.yml", linkSHA1),
+		linkOcc("github.com", "acme/api", "config.yml", linkSHA2),
+	}
+	locs := toJSONLocations(locationMatch("x"), occs)
+	require.Len(t, locs, 2)
+	require.NotNil(t, locs[0].CommitURL)
+	require.NotNil(t, locs[1].CommitURL)
+	assert.Equal(t, "https://github.com/acme/api/commit/"+linkSHA1, *locs[0].CommitURL)
+	assert.Equal(t, "https://github.com/acme/api/commit/"+linkSHA2, *locs[1].CommitURL)
+}
 
-	occs := []types.Occurrence{gitlabOccurrence(gitlabCommitB), gitlabOccurrence(gitlabCommitC), c3, c4, c5, c7, file}
-	want := []any{
-		"https://gitlab.com/acme/widgets/-/commit/" + gitlabCommitB,
-		"https://gitlab.com/acme/widgets/-/commit/" + gitlabCommitC,
-		nil, nil, nil, nil, nil,
+// Outcome C: the link line directly follows its location line, indented 6
+// spaces; absent where no link can be built.
+func TestWriteLocationLines_CommitLink(t *testing.T) {
+	t.Run("link line follows its location line", func(t *testing.T) {
+		occs := []types.Occurrence{
+			linkOcc("github.com", "acme/api", "a.yml", linkSHA1),
+			linkOcc("github.com", "acme/web", "b.yml", linkSHA2),
+		}
+		var buf bytes.Buffer
+		writeLocationLines(&buf, 3, occs, nil)
+		assert.Equal(t, ""+
+			"    github.com/acme/api  a.yml:3  0123456  2024-05-01\n"+
+			"      https://github.com/acme/api/commit/"+linkSHA1+"\n"+
+			"    github.com/acme/web  b.yml:3  fedcba9  2024-05-01\n"+
+			"      https://github.com/acme/web/commit/"+linkSHA2+"\n",
+			buf.String())
+	})
+
+	t.Run("no link line", func(t *testing.T) {
+		for _, tc := range linkCases {
+			if tc.want != "" || tc.occ.Repository == "" {
+				continue
+			}
+			t.Run(tc.name, func(t *testing.T) {
+				var buf bytes.Buffer
+				writeLocationLines(&buf, 3, []types.Occurrence{tc.occ}, nil)
+				assert.Equal(t, 1, strings.Count(buf.String(), "\n"), "only the location line: %q", buf.String())
+				assert.NotContains(t, buf.String(), "https://")
+			})
+		}
+	})
+
+	t.Run("control characters never reach the terminal", func(t *testing.T) {
+		hostile := types.Occurrence{
+			Kind: "git", Repository: "github.com/acme/ap\x1b[31mi", Host: "github.com", Path: "config.yml",
+			Commit: linkSHA1, CommitDate: commitDate, HostRecorded: true,
+		}
+		var buf bytes.Buffer
+		writeLocationLines(&buf, 3, []types.Occurrence{hostile}, nil)
+		for _, r := range buf.String() {
+			assert.False(t, r < 0x20 && r != '\n' || r == 0x7f, "raw control character %q in %q", r, buf.String())
+		}
+		assert.NotContains(t, buf.String(), "https://", "the core refuses an unsafe repository, so no link line")
+		assert.Equal(t, 1, strings.Count(buf.String(), "\n"))
+	})
+
+	t.Run("link line carries the location line style", func(t *testing.T) {
+		prev := color.NoColor
+		color.NoColor = false
+		t.Cleanup(func() { color.NoColor = prev })
+		style := color.New(color.FgCyan)
+		o := linkOcc("github.com", "acme/api", "a.yml", linkSHA1)
+		url := "https://github.com/acme/api/commit/" + linkSHA1
+
+		var buf bytes.Buffer
+		writeLocationLines(&buf, 3, []types.Occurrence{o}, style)
+		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+		require.Len(t, lines, 2)
+		assert.Equal(t, "      "+style.Sprint(url), lines[1])
+		assert.Contains(t, lines[1], "\x1b[", "styled")
+	})
+}
+
+func sarifResultsFor(t *testing.T, occs []types.Occurrence) []sarif.Result {
+	t.Helper()
+	s := store.NewMemory()
+	m := locationMatch("blob")
+	require.NoError(t, s.AddOccurrences(m.BlobID, occs))
+	var buf bytes.Buffer
+	require.NoError(t, writeSARIF(&buf, s, nil, []*types.Match{m}, nil))
+	var rep sarif.Report
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &rep))
+	require.Len(t, rep.Runs, 1)
+	return rep.Runs[0].Results
+}
+
+// Outcome F: the commit_url property is present for a github occurrence and
+// its key is absent (omitempty) otherwise.
+func TestWriteSARIF_CommitURLProperty(t *testing.T) {
+	for _, tc := range linkCases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := store.NewMemory()
+			m := locationMatch("blob")
+			require.NoError(t, s.AddOccurrences(m.BlobID, []types.Occurrence{tc.occ}))
+			var buf bytes.Buffer
+			require.NoError(t, writeSARIF(&buf, s, nil, []*types.Match{m}, nil))
+
+			var raw struct {
+				Runs []struct {
+					Results []struct {
+						Properties map[string]any `json:"properties"`
+					} `json:"results"`
+				} `json:"runs"`
+			}
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &raw))
+			require.Len(t, raw.Runs[0].Results, 1)
+			props := raw.Runs[0].Results[0].Properties
+			got, present := props["commit_url"]
+			if tc.want == "" {
+				assert.False(t, present, "commit_url key is absent, not empty")
+			} else {
+				assert.Equal(t, tc.want, got)
+			}
+		})
 	}
-	data, err := json.Marshal(toJSONLocations(locationMatch("x"), occs))
-	require.NoError(t, err)
-	var locs []map[string]any
-	require.NoError(t, json.Unmarshal(data, &locs))
-	require.Len(t, locs, len(occs))
-	for i, l := range locs {
-		v, present := l["commit_url"]
-		assert.True(t, present, "location %d: commit_url key must always be present", i)
-		assert.Equal(t, want[i], v, "location %d", i)
-	}
+}
+
+// Outcome F: whether a link exists never changes a result's fingerprint.
+func TestWriteSARIF_FingerprintIndependentOfCommitLink(t *testing.T) {
+	linked := linkOcc("github.com", "acme/api", "config.yml", linkSHA1)
+	unlinked := linked
+	unlinked.Host = ""
+	require.NotEmpty(t, commitlink.URL(linked))
+	require.Empty(t, commitlink.URL(unlinked))
+
+	a := sarifResultsFor(t, []types.Occurrence{linked})
+	b := sarifResultsFor(t, []types.Occurrence{unlinked})
+	require.Len(t, a, 1)
+	require.Len(t, b, 1)
+	fp := a[0].PartialFingerprints[sarif.LocationFingerprintKey]
+	require.NotEmpty(t, fp)
+	assert.Equal(t, fp, b[0].PartialFingerprints[sarif.LocationFingerprintKey])
+	assert.NotEmpty(t, a[0].Properties.CommitURL)
+	assert.Empty(t, b[0].Properties.CommitURL)
 }
