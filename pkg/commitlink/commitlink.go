@@ -3,7 +3,8 @@
 // built only from recorded fields, never guessed, so a location with no
 // recorded commit or an unsupported host has no link.
 //
-// Each supported host lives in its own file and registers itself from init.
+// Each supported host lives in its own file and registers itself from init. A
+// file may also register a single-label host suffix with registerSuffix.
 package commitlink
 
 import (

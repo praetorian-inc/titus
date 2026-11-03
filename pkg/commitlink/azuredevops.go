@@ -5,7 +5,9 @@ import "strings"
 const adoHost = "https://dev.azure.com/"
 
 // Every Azure DevOps clone form links to the one canonical dev.azure.com
-// commit page; the legacy *.visualstudio.com hosts redirect there. Shapes
+// commit page; the legacy *.visualstudio.com hosts are documented to redirect
+// there (not verified against a live tenant). The ssh hosts map to
+// dev.azure.com because an SSH clone's origin identity is v3/org/project/repo. Shapes
 // that do not carry org, project and repo (project-less "org/_git/repo",
 // legacy "DefaultCollection/...") return "": mapping them is unverified.
 func init() {
