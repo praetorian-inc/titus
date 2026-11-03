@@ -20,9 +20,14 @@ import (
 
 // --- remote names containing "/" ---------------------------------------------
 
+// addRemote configures a remote by writing its config keys directly. Newer git
+// refuses `git remote add a/b` when "a" exists (a remote name that is a
+// subset of another), yet such a config is still readable, so the fixture
+// bypasses the porcelain to stay independent of the git version.
 func addRemote(t *testing.T, dir, name string) {
 	t.Helper()
-	runGit(t, dir, "remote", "add", name, "https://example.invalid/"+strings.ReplaceAll(name, "/", "-")+".git")
+	runGit(t, dir, "config", "remote."+name+".url", "https://example.invalid/"+strings.ReplaceAll(name, "/", "-")+".git")
+	runGit(t, dir, "config", "remote."+name+".fetch", "+refs/heads/*:refs/remotes/"+name+"/*")
 }
 
 // refs/remotes/a/b/c is branch "b/c" of remote "a" or branch "c" of remote
