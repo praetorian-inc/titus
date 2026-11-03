@@ -47,7 +47,9 @@ func validProjectPath(p string) bool {
 			return false
 		}
 		for _, c := range s {
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
+			switch {
+			case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+			default:
 				return false
 			}
 		}
@@ -62,7 +64,9 @@ func validCommitID(c string) bool {
 		return false
 	}
 	for _, r := range c {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f':
+		default:
 			return false
 		}
 	}
