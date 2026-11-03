@@ -44,7 +44,7 @@ func TestAddResultForOccurrence_NoCommitURL_AzureDevOps(t *testing.T) {
 		"two vs labels":       gitOccsForLink("a.b.visualstudio.com", "a.b.visualstudio.com/proj/_git/repo", adoSHA)[0],
 		"no commit":           gitOccsForLink("dev.azure.com", repo, "")[0],
 		"working tree":        wt,
-		"project-less":        gitOccsForLink("dev.azure.com", "dev.azure.com/acme/_git/repo", adoSHA)[0],
+		"no _git":             gitOccsForLink("dev.azure.com", "dev.azure.com/acme/proj/repo", adoSHA)[0],
 		"legacy not recorded": {Kind: "git", Repository: repo, Path: "h1.txt", Commit: adoSHA},
 	}
 	for name, o := range tests {

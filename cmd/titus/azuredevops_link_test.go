@@ -38,7 +38,7 @@ var adoNoLinkCases = []struct {
 	{"lookalike host", linkOcc("dev.azure.com.evil", "acme/proj/_git/repo", "src/a.go", linkSHA1)},
 	{"commitless ADO location", linkNoCommitOcc("dev.azure.com", "acme/proj/_git/repo", "src/a.go")},
 	{"working tree ADO location", linkWorkingTreeOcc("dev.azure.com", "acme/proj/_git/repo", "src/a.go")},
-	{"project-less ADO identity", linkOcc("dev.azure.com", "acme/_git/repo", "src/a.go", linkSHA1)},
+	{"ADO identity without _git", linkOcc("dev.azure.com", "acme/proj/repo", "src/a.go", linkSHA1)},
 	{"legacy ADO row, host not recorded", types.Occurrence{
 		Kind: "git", Repository: "dev.azure.com/acme/proj/_git/repo", Path: "src/a.go", Commit: linkSHA1, CommitDate: commitDate,
 	}},

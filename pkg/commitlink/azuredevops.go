@@ -7,21 +7,26 @@ const adoHost = "https://dev.azure.com/"
 // Every Azure DevOps clone form links to the one canonical dev.azure.com
 // commit page; the legacy *.visualstudio.com hosts are documented to redirect
 // there (not verified against a live tenant). The ssh hosts map to
-// dev.azure.com because an SSH clone's origin identity is v3/org/project/repo. Shapes
-// that do not carry org, project and repo (project-less "org/_git/repo",
-// legacy "DefaultCollection/...") return "": mapping them is unverified.
+// dev.azure.com because an SSH clone's origin identity is v3/org/project/repo.
+// The project is optional ("org/_git/repo"). On *.visualstudio.com a leading
+// legacy "DefaultCollection" segment is dropped; it is not part of
+// dev.azure.com URLs.
 func init() {
 	register("dev.azure.com", func(path, sha string) string {
-		if s := strings.Split(path, "/"); len(s) != 4 || s[2] != "_git" {
+		if !gitShape(strings.Split(path, "/"), 3) {
 			return ""
 		}
 		return adoHost + path + "/commit/" + sha
 	})
 	registerSuffix(".visualstudio.com", func(org, path, sha string) string {
-		if s := strings.Split(path, "/"); len(s) != 3 || s[1] != "_git" || !isOrgLabel(org) {
+		s := strings.Split(path, "/")
+		if len(s) > 0 && strings.EqualFold(s[0], "DefaultCollection") {
+			s = s[1:]
+		}
+		if !gitShape(s, 2) || !isOrgLabel(org) {
 			return ""
 		}
-		return adoHost + org + "/" + path + "/commit/" + sha
+		return adoHost + org + "/" + strings.Join(s, "/") + "/commit/" + sha
 	})
 	for _, host := range []string{"ssh.dev.azure.com", "vs-ssh.visualstudio.com"} {
 		register(host, sshURL)
@@ -49,4 +54,11 @@ func isOrgLabel(s string) bool {
 		}
 	}
 	return true
+}
+
+// gitShape reports whether s is a project-less (min segments) or
+// project-qualified (min+1 segments) path whose second-to-last segment is
+// "_git".
+func gitShape(s []string, min int) bool {
+	return (len(s) == min || len(s) == min+1) && s[len(s)-2] == "_git"
 }

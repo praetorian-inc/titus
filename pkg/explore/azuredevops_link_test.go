@@ -41,7 +41,7 @@ func TestRenderLocations_AzureDevOpsNoCommitLink(t *testing.T) {
 		"lookalike host": linkOccs(t, "dev.azure.com.evil", "dev.azure.com.evil/acme/proj/_git/repo", "a.env", linkSHA1, false),
 		"no commit":      linkOccs(t, "dev.azure.com", adoRepo, "a.env", "", false),
 		"working tree":   linkOccs(t, "dev.azure.com", adoRepo, "a.env", "", true),
-		"project-less":   linkOccs(t, "dev.azure.com", "dev.azure.com/acme/_git/repo", "a.env", linkSHA1, false),
+		"no _git":        linkOccs(t, "dev.azure.com", "dev.azure.com/acme/proj/repo", "a.env", linkSHA1, false),
 		"legacy": {
 			Kind: "git", Repository: adoRepo, Path: "a.env", Commit: linkSHA1,
 		},
