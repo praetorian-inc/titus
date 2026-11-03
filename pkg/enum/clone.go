@@ -221,6 +221,7 @@ func (e *CloneEnumerator) cloneAndScan(ctx context.Context, repo RepoInfo, callb
 			fmt.Fprintf(os.Stderr, "titus: git history index unavailable: %s; files are scanned without commit metadata and marked as possibly missing locations\n", types.SanitizeDisplay(err.Error())) // R6-3
 		}
 	}
+	idx.bindContext(ctx)
 	idx.writeWarnings(os.Stderr)
 
 	return NewFilesystemEnumerator(cloneConfig).Enumerate(ctx, func(content []byte, blobID types.BlobID, prov types.Provenance) error {

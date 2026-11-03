@@ -113,6 +113,7 @@ func (e *GitEnumerator) enumerateAllHistoryNative(ctx context.Context, callback 
 		}
 	}
 	idx.setTaggedTrees(treeBlobs, treeRefs)
+	idx.bindContext(ctx) // gctx ends with g.Wait; the branch walk runs during the scan
 	idx.stats.lostWorktreeHeads = lostHeads
 	idx.stats.malformed += rl.malformed
 	writeEnumWarnings(warn, idx, rl.overlong)

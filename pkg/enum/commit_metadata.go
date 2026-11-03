@@ -139,6 +139,9 @@ func blobIndexLogArgs() []string {
 // blob its commit metadata, where rev-list and go-git skip that ref. The
 // tips go on stdin, so a repository with many refs never hits the argv limit.
 func buildBlobIndex(ctx context.Context, repoPath string) (*blobIndex, error) {
+	// The branch resolver's lazy walk outlives this call; a caller that wants
+	// it cancellable binds its scan context with bindContext.
+	scanCtx := context.WithoutCancel(ctx)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -184,7 +187,7 @@ func buildBlobIndex(ctx context.Context, repoPath string) (*blobIndex, error) {
 	case ctx.Err() != nil:
 		return nil, fmt.Errorf("git log: %w", ctx.Err())
 	}
-	idx.branch = resolveBranchesNative(ctx, repoPath)
+	idx.branch = resolveBranchesNative(scanCtx, repoPath)
 	return idx, nil
 }
 
@@ -689,6 +692,13 @@ func (x *blobIndex) marksAny() bool {
 // index could not be built (unavailableIndex), so lookup finds nothing.
 func (x *blobIndex) marksAll() bool {
 	return x != nil && x.failed
+}
+
+// bindContext sets the context the branch resolver's off-HEAD walk runs under.
+func (x *blobIndex) bindContext(ctx context.Context) {
+	if x != nil {
+		x.branch.bindContext(ctx)
+	}
 }
 
 // writeWarnings prints one line per kind of record the index could not use.

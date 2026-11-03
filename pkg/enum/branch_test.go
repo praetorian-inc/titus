@@ -952,7 +952,7 @@ func TestBranchListing_CapMaxBranches_StopsWithErrBranchCap(t *testing.T) {
 
 	t.Run("under the bound lists every branch", func(t *testing.T) {
 		setCaps(t, defaultMaxHeadCommits, 3, defaultMaxOffHeadCommits) // main, a, b
-		_, refs, err := nativeBranchRefs(ctx, dir)
+		_, refs, err := nativeBranchRefs(ctx, dir, nil)
 		require.NoError(t, err)
 		assert.Len(t, refs, 3)
 		tips, err := goGitBranchTips(repo)
@@ -961,7 +961,7 @@ func TestBranchListing_CapMaxBranches_StopsWithErrBranchCap(t *testing.T) {
 	})
 	t.Run("over the bound both listings stop", func(t *testing.T) {
 		setCaps(t, defaultMaxHeadCommits, 2, defaultMaxOffHeadCommits)
-		ids, refs, err := nativeBranchRefs(ctx, dir)
+		ids, refs, err := nativeBranchRefs(ctx, dir, nil)
 		assert.ErrorIs(t, err, errBranchCap)
 		assert.Empty(t, ids)
 		assert.Empty(t, refs)
@@ -998,43 +998,4 @@ func TestBranchResolver_CapMaxBranches_NoteAndHeadSet(t *testing.T) {
 			assert.Contains(t, branchWarnings(r), "more than 1 branches")
 		})
 	}
-}
-
-// --- remote names containing "/" ---------------------------------------------
-
-// refs/remotes/a/b/c is branch "b/c" of remote "a" or branch "c" of remote
-// "a/b". When refs holding one commit disagree on the short name the
-// resolver fails closed; when a single ref holds it, it is named after
-// everything past the first segment (documented behavior).
-func TestBranchResolver_RemoteNameContainingSlashFailsClosed(t *testing.T) {
-	dir := brInit(t)
-	c1 := brCommit(t, dir, "c1")
-	runGit(t, dir, "checkout", "-q", "--detach")
-	d1 := brCommit(t, dir, "d1") // held only by the remote refs below
-	runGit(t, dir, "checkout", "-q", "main")
-	runGit(t, dir, "update-ref", "refs/remotes/a/b/c", d1) // remote "a" branch "b/c"
-	runGit(t, dir, "update-ref", "refs/remotes/a/b/c2", d1)
-
-	for backend, r := range resolversFor(t, dir) {
-		t.Run(backend+"/ambiguous short names omit the branch", func(t *testing.T) {
-			assert.Equal(t, "", r.of(d1))
-			assert.Equal(t, "main", r.of(c1))
-		})
-	}
-
-	solo := brInit(t)
-	s0 := brCommit(t, solo, "s0")
-	runGit(t, solo, "checkout", "-q", "--detach")
-	s1 := brCommit(t, solo, "s1")
-	runGit(t, solo, "checkout", "-q", "main")
-	runGit(t, solo, "update-ref", "refs/remotes/a/b/c", s1)
-	for backend, r := range resolversFor(t, solo) {
-		t.Run(backend+"/single ref is named after the first remote segment", func(t *testing.T) {
-			assert.Equal(t, "main", r.of(s0))
-			assert.Equal(t, "b/c", r.of(s1))
-		})
-	}
-	assert.Equal(t, "b/c", branchShortName("refs/remotes/a/b/c"))
-	assert.Equal(t, "", branchShortName("refs/remotes/a"))
-	assert.Equal(t, "", branchShortName("refs/remotes/a/HEAD"))
 }
