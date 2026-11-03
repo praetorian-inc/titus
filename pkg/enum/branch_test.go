@@ -231,7 +231,7 @@ func topoCases() []topoCase {
 			dir := brInit(t)
 			c0 := brCommit(t, dir, "c0")
 			want := map[string]string{c0: "main"}
-			for i, name := range []string{"feat/ünï-日本", "a.b+c@d", "release/1.0", "x=y#z", "bidi‮evil"} {
+			for i, name := range []string{"feat/ünï-日本", "a.b+c@d", "release/1.0", "x=y#z", "bidi\U0000202eevil"} {
 				runGit(t, dir, "checkout", "-q", "-b", name, c0)
 				want[brCommit(t, dir, fmt.Sprintf("odd%d", i))] = name
 			}

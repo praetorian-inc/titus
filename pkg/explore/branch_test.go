@@ -57,10 +57,10 @@ func TestRenderLocations_BranchPerLocation(t *testing.T) {
 func TestRenderLocations_BranchIsSanitized(t *testing.T) {
 	o := occAPI1
 	o.CommitDate = time.Time{}
-	o.Branch = "x‮\x1b[31my"
+	o.Branch = "x\U0000202e\x1b[31my"
 	got := branchLocationLines(t, o)
 	require.Len(t, got, 1)
 	assert.NotContains(t, got[0], "\x1b")
-	assert.NotContains(t, got[0], "‮")
+	assert.NotContains(t, got[0], "\U0000202e")
 	assert.True(t, strings.HasSuffix(got[0], `branch x\u{202e}\x1b[31my`), got[0])
 }
