@@ -57,7 +57,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": true
+            "host_recorded": true,
+            "commit_url": "https://github.com/acme/api/commit/0000000000000000000000000000000000000001"
           },
           {
             "repository": "github.com/other/api",
@@ -76,7 +77,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": true
+            "host_recorded": true,
+            "commit_url": "https://github.com/other/api/commit/0000000000000000000000000000000000000002"
           }
         ]
       }
@@ -140,7 +142,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": true
+            "host_recorded": true,
+            "commit_url": null
           }
         ]
       }
@@ -204,7 +207,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": true
+            "host_recorded": true,
+            "commit_url": null
           }
         ]
       }
@@ -268,7 +272,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": true
+            "host_recorded": true,
+            "commit_url": null
           }
         ]
       }
@@ -332,7 +337,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": true
+            "host_recorded": true,
+            "commit_url": null
           }
         ]
       }
@@ -396,7 +402,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": false
+            "host_recorded": false,
+            "commit_url": null
           }
         ]
       }
@@ -460,7 +467,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": false
+            "host_recorded": false,
+            "commit_url": null
           }
         ]
       }
@@ -524,7 +532,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": false
+            "host_recorded": false,
+            "commit_url": null
           }
         ]
       }
@@ -588,7 +597,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": false
+            "host_recorded": false,
+            "commit_url": null
           }
         ]
       }
@@ -652,7 +662,8 @@
             "commit_date": "2026-06-15T09:30:00Z",
             "branch": null,
             "absolute_path": null,
-            "host_recorded": true
+            "host_recorded": true,
+            "commit_url": "https://github.com/acmecorp/api/commit/000000000000000000000000000000000000000b"
           }
         ]
       }

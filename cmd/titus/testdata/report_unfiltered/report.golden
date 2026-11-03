@@ -8,7 +8,9 @@ Group 1: sel_B1
         sel_B1
 
     github.com/acme/api  config/app.env:3  0000000  2026-06-15
+      https://github.com/acme/api/commit/0000000000000000000000000000000000000001
     github.com/other/api  settings/app.env:3  0000000  2026-06-15
+      https://github.com/other/api/commit/0000000000000000000000000000000000000002
 
 
 Finding 2/10 (id 49dcc4312f3073f9aa40503eb17129082d744584)
@@ -117,5 +119,6 @@ Group 1: sel_B10
         sel_B10
 
     github.com/acmecorp/api  d.txt:3  0000000  2026-06-15
+      https://github.com/acmecorp/api/commit/000000000000000000000000000000000000000b
 
 

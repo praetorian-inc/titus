@@ -961,6 +961,70 @@ func TestScanE2E_OriginURLNormalized(t *testing.T) {
 	}
 }
 
+// TestScanE2E_CommitURL covers LAB-7527 outcome E: a --git scan of a repository
+// whose origin is on github.com links its committed location to the HEAD
+// commit, and a repository with no origin or a non-GitHub origin gets null.
+func TestScanE2E_CommitURL(t *testing.T) {
+	tests := []struct {
+		name, origin string
+		linked       bool
+	}{
+		{"github https origin", "https://github.com/acme/api.git", true},
+		{"github ssh origin", "git@github.com:acme/api.git", true},
+		{"no origin", "", false},
+		{"gitlab origin", "https://gitlab.com/acme/api.git", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := filepath.Join(t.TempDir(), "api")
+			gitRepoForTest(t, repo, tc.origin, map[string]string{"config.yml": locTestSecret})
+			head, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
+			require.NoError(t, err)
+			sha := strings.TrimSpace(string(head))
+			require.Len(t, sha, 40)
+
+			got := scanJSONMatches(t, scanForTest(t, repo, tempDatastore(t), "json", true))
+			require.Len(t, got, 1)
+			committed := 0
+			for _, l := range got[0].Locations {
+				if l.Commit == nil {
+					assert.Nil(t, l.CommitURL, "a location with no commit has no link")
+					continue
+				}
+				committed++
+				assert.Equal(t, strPtr(sha), l.Commit)
+				if tc.linked {
+					assert.Equal(t, strPtr("https://github.com/acme/api/commit/"+sha), l.CommitURL)
+				} else {
+					assert.Nil(t, l.CommitURL)
+				}
+			}
+			assert.Equal(t, 1, committed)
+		})
+	}
+}
+
+// TestOutputMatches_CommitURL is the encoder-level check of the same outcome
+// over occurrences built the way the stores build them.
+func TestOutputMatches_CommitURL(t *testing.T) {
+	s := store.NewMemory()
+	blobID := types.ComputeBlobID([]byte(locTestSecret))
+	require.NoError(t, s.AddOccurrences(blobID, types.OccurrencesOf(types.GitProvenance{
+		RepoPath: "github.com/acme/api", Host: "github.com", RemoteIdentity: true, BlobPath: "config.yml",
+		Commit: &types.CommitMetadata{CommitID: linkSHA1},
+	})))
+	match := &types.Match{BlobID: blobID, RuleID: locTestRuleID, RuleName: "Synthetic Rule 1"}
+
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	require.NoError(t, outputMatches(cmd, s, []*types.Match{match}))
+	got := scanJSONMatches(t, out.Bytes())
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Locations, 1)
+	assert.Equal(t, strPtr("https://github.com/acme/api/commit/"+linkSHA1), got[0].Locations[0].CommitURL)
+}
+
 // TestScanE2E_NoRemoteRepositoryAsTyped covers C-NOREMOTE-1: `titus scan e/f
 // --git` with no remote names the repository e/f and the path g/h/config.yml.
 func TestScanE2E_NoRemoteRepositoryAsTyped(t *testing.T) {

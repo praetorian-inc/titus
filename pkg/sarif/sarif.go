@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/praetorian-inc/titus/pkg/commitlink"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -76,6 +77,7 @@ type ResultProperties struct {
 	Repository   string `json:"repository,omitempty"`
 	Source       string `json:"source,omitempty"` // extended locations, e.g. "confluence"
 	Commit       string `json:"commit,omitempty"`
+	CommitURL    string `json:"commit_url,omitempty"`
 	CommitDate   string `json:"commit_date,omitempty"` // RFC 3339
 	Branch       string `json:"branch,omitempty"`      // git only; omitted when none was resolved
 	AbsolutePath string `json:"absolute_path,omitempty"`
@@ -219,6 +221,7 @@ func (r *Report) AddResultForOccurrence(match *types.Match, o types.Occurrence, 
 	res.Properties.Repository = o.Repository
 	res.Properties.Source = o.Source
 	res.Properties.Commit = o.Commit
+	res.Properties.CommitURL = commitlink.URL(o)
 	if !o.CommitDate.IsZero() {
 		res.Properties.CommitDate = o.CommitDate.UTC().Format(time.RFC3339)
 	}

@@ -348,6 +348,90 @@ func TestAddResultForOccurrence_NonGitOmitsHostRecorded(t *testing.T) {
 	assert.Empty(t, res.Properties.Repository)
 }
 
+// gitOccsForLink returns the occurrences types.OccurrencesOf yields for a
+// remote-identified git repository with one committed location per commit.
+func gitOccsForLink(host, repo string, commits ...string) []types.Occurrence {
+	locs := make([]types.GitLocation, len(commits))
+	for i, c := range commits {
+		locs[i] = types.GitLocation{Path: "config.yml", Commit: &types.CommitMetadata{CommitID: c}}
+	}
+	return types.OccurrencesOf(types.GitProvenance{
+		RepoPath: repo, Host: host, RemoteIdentity: true, BlobPath: "config.yml", Locations: locs,
+	})
+}
+
+func resultPropsJSON(t *testing.T, r *Report) map[string]any {
+	t.Helper()
+	data, err := r.ToJSON()
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(data, &doc))
+	res := doc["runs"].([]any)[0].(map[string]any)["results"].([]any)[0].(map[string]any)
+	return res["properties"].(map[string]any)
+}
+
+func TestAddResultForOccurrence_CommitURL_GitHub(t *testing.T) {
+	const sha = "7d0e8151234567890abcdef1234567890abcdef1"
+	r := NewReport()
+	r.AddResultForOccurrence(occurrenceMatch(), gitOccsForLink("github.com", "github.com/acme/api", sha)[0], nil)
+	want := "https://github.com/acme/api/commit/" + sha
+	assert.Equal(t, want, r.Runs[0].Results[0].Properties.CommitURL)
+	assert.Equal(t, want, resultPropsJSON(t, r)["commit_url"])
+}
+
+func TestAddResultForOccurrence_NoCommitURL(t *testing.T) {
+	const sha = "7d0e8151234567890abcdef1234567890abcdef1"
+	wt := gitOccsForLink("github.com", "github.com/acme/api", sha)[0]
+	wt.WorkingTree = true
+	noCommit := gitOccsForLink("github.com", "github.com/acme/api", "")[0]
+	tests := map[string]types.Occurrence{
+		"gitlab host":         gitOccsForLink("gitlab.com", "gitlab.com/acme/api", sha)[0],
+		"github.com.evil":     gitOccsForLink("github.com.evil", "github.com.evil/acme/api", sha)[0],
+		"github.example.com":  gitOccsForLink("github.example.com", "github.example.com/acme/api", sha)[0],
+		"empty host":          gitOccsForLink("", "github.com/acme/api", sha)[0],
+		"legacy not recorded": {Kind: "git", Repository: "acme/api", Path: "h1.txt", Commit: sha},
+		"no commit":           noCommit,
+		"working tree":        wt,
+		"file kind":           {Kind: "file", Path: "/tmp/x.env", Commit: sha, HostRecorded: true},
+	}
+	for name, o := range tests {
+		t.Run(name, func(t *testing.T) {
+			r := NewReport()
+			r.AddResultForOccurrence(occurrenceMatch(), o, nil)
+			assert.Empty(t, r.Runs[0].Results[0].Properties.CommitURL)
+			assert.NotContains(t, resultPropsJSON(t, r), "commit_url")
+		})
+	}
+}
+
+// Each location of a blob links its own recorded commit.
+func TestAddResultForOccurrence_CommitURL_PerLocationCommit(t *testing.T) {
+	c1, c2 := strings.Repeat("1", 40), strings.Repeat("2", 40)
+	r := NewReport()
+	for _, o := range gitOccsForLink("github.com", "github.com/acme/api", c1, c2) {
+		r.AddResultForOccurrence(occurrenceMatch(), o, nil)
+	}
+	require.Len(t, r.Runs[0].Results, 2)
+	assert.Equal(t, "https://github.com/acme/api/commit/"+c1, r.Runs[0].Results[0].Properties.CommitURL)
+	assert.Equal(t, "https://github.com/acme/api/commit/"+c2, r.Runs[0].Results[1].Properties.CommitURL)
+}
+
+// The link is derived from fields the fingerprint already covers, so adding
+// it does not change fingerprints that code scanning has already seen.
+func TestAddResultForOccurrence_CommitURL_FingerprintInvariant(t *testing.T) {
+	const sha = "7d0e8151234567890abcdef1234567890abcdef1"
+	linked := gitOccsForLink("github.com", "github.com/acme/api", sha)[0]
+	unlinked := linked
+	unlinked.Host = ""
+	a, b := NewReport(), NewReport()
+	a.AddResultForOccurrence(occurrenceMatch(), linked, nil)
+	b.AddResultForOccurrence(occurrenceMatch(), unlinked, nil)
+	require.NotEmpty(t, a.Runs[0].Results[0].Properties.CommitURL)
+	require.Empty(t, b.Runs[0].Results[0].Properties.CommitURL)
+	assert.Equal(t, a.Runs[0].Results[0].PartialFingerprints[LocationFingerprintKey],
+		b.Runs[0].Results[0].PartialFingerprints[LocationFingerprintKey])
+}
+
 func TestAddResultForOccurrence_FingerprintStable(t *testing.T) {
 	o := types.Occurrence{Kind: "git", Repository: "github.com/acme/api", Path: "config.yml", Commit: "abc", HostRecorded: true}
 	a, b := NewReport(), NewReport()
