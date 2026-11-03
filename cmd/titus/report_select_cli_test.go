@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,11 @@ import (
 //	selUnfilteredCases and writes r.stdout to <name>.golden
 //	GOWORK=off go test ./cmd/titus -run <that test>
 //	git -C <titus> worktree remove <dir>
+//
+// LAB-7527 amended these goldens by additions only (commit_url / link lines);
+// removing those lines reproduces the base output. The one non-addition is in
+// report_json.golden: each location's former last key, host_recorded, gains a
+// trailing comma because commit_url now follows it.
 
 type selJSONLoc struct {
 	Repository   *string `json:"repository"`
@@ -36,6 +42,7 @@ type selJSONLoc struct {
 	AbsolutePath *string `json:"absolute_path"`
 	Commit       *string `json:"commit"`
 	HostRecorded bool    `json:"host_recorded"`
+	CommitURL    *string `json:"commit_url"`
 }
 
 type selJSONMatch struct {
@@ -560,5 +567,121 @@ func TestReportSelect_RecordedAsTypedEndToEnd(t *testing.T) {
 			r := selRunOK(t, selArgs(ds, nil, "--format", "json", "--path", v.Value)...)
 			assert.Len(t, selDecodeFindings(t, r.stdout), 1, "--path %q", v.Value)
 		}
+	})
+}
+
+// LAB-7527 outcome D: commit_url on the DS1 datastore, asserted from the
+// command output independently of the goldens. DS1 commits are sequential
+// (location Ln has commit %040x of n), so each link names its own commit.
+func TestReportSelect_CommitURLOnDS1(t *testing.T) {
+	ds := seedDS1(t)
+	want := map[string]string{ // plan location name -> link ("" is none)
+		"L1":  "https://github.com/acme/api/commit/" + fmt.Sprintf("%040x", 1),
+		"L2":  "https://github.com/other/api/commit/" + fmt.Sprintf("%040x", 2),
+		"L3":  "", // gitlab.example.com
+		"L4":  "", // github.com subgroup path
+		"L5":  "",
+		"L6":  "",
+		"L7":  "", // legacy: host not recorded
+		"L8":  "",
+		"L9":  "",
+		"L10": "",
+		"L11": "https://github.com/acmecorp/api/commit/" + fmt.Sprintf("%040x", 11),
+	}
+
+	t.Run("json", func(t *testing.T) {
+		r := selRunOK(t, selArgs(ds, nil, "--format", "json")...)
+		got := map[string]string{}
+		for _, f := range selDecodeFindings(t, r.stdout) {
+			for _, m := range f.Matches {
+				for _, l := range m.Locations {
+					repo := ""
+					if l.Repository != nil {
+						repo = *l.Repository
+					}
+					name := ds1Names[repo+" "+l.Path]
+					require.NotEmpty(t, name, "unknown location %q %q", repo, l.Path)
+					if l.CommitURL != nil {
+						got[name] = *l.CommitURL
+					} else {
+						got[name] = ""
+					}
+				}
+			}
+		}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("json keys are always present", func(t *testing.T) {
+		r := selRunOK(t, selArgs(ds, nil, "--format", "json")...)
+		var raw []struct {
+			Matches []struct {
+				Locations []map[string]json.RawMessage `json:"locations"`
+			}
+		}
+		require.NoError(t, json.Unmarshal([]byte(r.stdout), &raw))
+		n := 0
+		for _, f := range raw {
+			for _, m := range f.Matches {
+				for _, l := range m.Locations {
+					n++
+					_, ok := l["commit_url"]
+					assert.True(t, ok, "commit_url key present on %s", l["path"])
+				}
+			}
+		}
+		assert.Equal(t, len(ds1Locations), n)
+	})
+
+	t.Run("sarif", func(t *testing.T) {
+		r := selRunOK(t, selArgs(ds, nil, "--format", "sarif")...)
+		var rep struct {
+			Runs []struct {
+				Results []struct {
+					Locations []struct {
+						PhysicalLocation struct {
+							ArtifactLocation struct {
+								URI string `json:"uri"`
+							} `json:"artifactLocation"`
+						} `json:"physicalLocation"`
+					} `json:"locations"`
+					Properties map[string]any `json:"properties"`
+				} `json:"results"`
+			} `json:"runs"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(r.stdout), &rep))
+		require.Len(t, rep.Runs, 1)
+		require.Len(t, rep.Runs[0].Results, len(ds1Locations))
+		got := map[string]string{}
+		for _, res := range rep.Runs[0].Results {
+			repo, _ := res.Properties["repository"].(string)
+			name := ds1Names[repo+" "+res.Locations[0].PhysicalLocation.ArtifactLocation.URI]
+			require.NotEmpty(t, name, "unknown SARIF result %v", res.Properties)
+			u, present := res.Properties["commit_url"]
+			if want[name] == "" {
+				assert.False(t, present, "%s: commit_url must be absent", name)
+			}
+			s, _ := u.(string)
+			got[name] = s
+		}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("human", func(t *testing.T) {
+		r := selRunOK(t, selArgs(ds, nil)...)
+		var links []string
+		for _, line := range strings.Split(r.stdout, "\n") {
+			if strings.Contains(line, "https://") {
+				assert.True(t, strings.HasPrefix(line, "      https://"), "6-space indent: %q", line)
+				links = append(links, strings.TrimSpace(line))
+			}
+		}
+		var wantLinks []string
+		for _, u := range want {
+			if u != "" {
+				wantLinks = append(wantLinks, u)
+			}
+		}
+		assert.ElementsMatch(t, wantLinks, links)
 	})
 }

@@ -1686,7 +1686,7 @@ func TestOutputReportJSON_LocationsKeysAndFilePath(t *testing.T) {
 	require.Len(t, locs, 2)
 	for _, l := range locs {
 		keys := slices.Sorted(maps.Keys(l))
-		assert.Equal(t, []string{"absolute_path", "commit", "commit_date", "host_recorded", "path", "range", "repository"}, keys)
+		assert.Equal(t, []string{"absolute_path", "commit", "commit_date", "commit_url", "host_recorded", "path", "range", "repository"}, keys)
 	}
 }
 
