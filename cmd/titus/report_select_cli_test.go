@@ -35,6 +35,8 @@ import (
 // removing those lines reproduces the base output. The one non-addition is in
 // report_json.golden: each location's former last key, host_recorded, gains a
 // trailing comma because commit_url now follows it.
+// LAB-7527 also added the kingfisher.orcarouter.1 rule block to report_sarif.golden
+// because origin/main's golden was stale (it predates pkg/rule/rules/orcarouter.yml).
 
 type selJSONLoc struct {
 	Repository   *string `json:"repository"`
