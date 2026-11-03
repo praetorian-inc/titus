@@ -3,7 +3,8 @@
 // built only from recorded fields, never guessed, so a location with no
 // recorded commit or an unsupported host has no link.
 //
-// Each supported host lives in its own file and registers itself from init.
+// Each supported host lives in its own file and registers itself from init. A
+// file may also register a single-label host suffix with registerSuffix.
 package commitlink
 
 import (
@@ -32,6 +33,41 @@ func register(host string, b builder) {
 	hosts[host] = b
 }
 
+// suffixBuilder is a builder for every host "<label><suffix>"; label is the
+// text before suffix, one DNS label with no dots.
+type suffixBuilder func(label, path, sha string) string
+
+var suffixes = map[string]suffixBuilder{}
+
+// registerSuffix adds the builder for every host of the form "<label><suffix>"
+// (suffix includes its leading dot). It panics on an empty or duplicate
+// suffix, which is a programmer error at init time.
+func registerSuffix(suffix string, b suffixBuilder) {
+	if suffix == "" {
+		panic("commitlink: registerSuffix with empty suffix")
+	}
+	if _, dup := suffixes[suffix]; dup {
+		panic("commitlink: duplicate suffix " + suffix)
+	}
+	suffixes[suffix] = b
+}
+
+// lookup returns the builder for host: an exact registration wins, else a
+// registered suffix with a single non-empty label before it.
+func lookup(host string) (builder, bool) {
+	if b, ok := hosts[host]; ok {
+		return b, true
+	}
+	for suffix, sb := range suffixes {
+		label, ok := strings.CutSuffix(host, suffix)
+		if !ok || label == "" || strings.Contains(label, ".") {
+			continue
+		}
+		return func(path, sha string) string { return sb(label, path, sha) }, true
+	}
+	return nil, false
+}
+
 // URL returns the commit link for o, or "" when none can be built: o must be
 // a committed git location on a registered host, with a safe repository path
 // and a full lowercase hex commit.
@@ -39,7 +75,7 @@ func URL(o types.Occurrence) string {
 	if o.Kind != "git" || o.WorkingTree || o.Commit == "" || o.Host == "" {
 		return ""
 	}
-	b, ok := hosts[o.Host]
+	b, ok := lookup(o.Host)
 	if !ok {
 		return ""
 	}
