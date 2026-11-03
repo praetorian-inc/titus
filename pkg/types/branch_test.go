@@ -46,7 +46,7 @@ func TestFormatLine_Branch(t *testing.T) {
 			branchOcc("a\x1b[31mb\nc"),
 			`github.com/acme/api  config.yml:3  0123456  2026-06-15  branch a\x1b[31mb\x0ac`},
 		{"bidi override in a branch name is sanitized",
-			branchOcc("x‮y"),
+			branchOcc("x\U0000202ey"),
 			`github.com/acme/api  config.yml:3  0123456  2026-06-15  branch x\u{202e}y`},
 		{"a branch name with legal punctuation and unicode is verbatim",
 			branchOcc("feat/ünï-日本"),
