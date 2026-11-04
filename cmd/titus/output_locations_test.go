@@ -246,7 +246,7 @@ var linkCases = []struct {
 	want string
 }{
 	{"github.com", linkOcc("github.com", "acme/api", "config.yml", linkSHA1), "https://github.com/acme/api/commit/" + linkSHA1},
-	{"gitlab.com host", linkOcc("gitlab.com", "acme/api", "config.yml", linkSHA1), ""},
+	{"unsupported host", linkOcc("gitea.example.com", "acme/api", "config.yml", linkSHA1), ""},
 	{"github.com.evil host", linkOcc("github.com.evil", "acme/api", "config.yml", linkSHA1), ""},
 	{"github.example.com host", linkOcc("github.example.com", "acme/api", "config.yml", linkSHA1), ""},
 	{"legacy row, host not recorded", linkLegacyOcc(), ""},

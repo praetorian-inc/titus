@@ -9,7 +9,7 @@ import (
 
 func TestRenderLocations_BitbucketCommitLinkFollowsItsLocationLine(t *testing.T) {
 	bb := linkOccs(t, "bitbucket.org", "bitbucket.org/acme/api", "a.env", linkSHA1, false)
-	gl := linkOccs(t, "gitlab.com", "gitlab.com/acme/api", "b.env", linkSHA2, false)
+	gl := linkOccs(t, "gitea.example.com", "gitea.example.com/acme/api", "b.env", linkSHA2, false)
 	m := matchWith(12, bb, gl)
 	_, body := locationBlock(t, plainLines(m, nil, 500))
 	exp := expectedLines(m.Occurrences, 12)

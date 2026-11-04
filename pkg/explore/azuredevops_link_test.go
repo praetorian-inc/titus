@@ -17,7 +17,7 @@ const (
 
 func TestRenderLocations_AzureDevOpsCommitLinkFollowsItsLocationLine(t *testing.T) {
 	ado := linkOccs(t, "dev.azure.com", adoRepo, "a.env", linkSHA1, false)
-	gl := linkOccs(t, "gitlab.com", "gitlab.com/acme/api", "b.env", linkSHA2, false)
+	gl := linkOccs(t, "gitea.example.com", "gitea.example.com/acme/api", "b.env", linkSHA2, false)
 	vs := linkOccs(t, "acme.visualstudio.com", "acme.visualstudio.com/proj/_git/repo", "c.env", linkSHA2, false)
 	m := matchWith(12, ado, gl, vs)
 	_, body := locationBlock(t, plainLines(m, nil, 500))

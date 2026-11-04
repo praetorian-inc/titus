@@ -385,7 +385,7 @@ func TestAddResultForOccurrence_NoCommitURL(t *testing.T) {
 	wt.WorkingTree = true
 	noCommit := gitOccsForLink("github.com", "github.com/acme/api", "")[0]
 	tests := map[string]types.Occurrence{
-		"gitlab host":         gitOccsForLink("gitlab.com", "gitlab.com/acme/api", sha)[0],
+		"unsupported host":    gitOccsForLink("gitea.example.com", "gitea.example.com/acme/api", sha)[0],
 		"github.com.evil":     gitOccsForLink("github.com.evil", "github.com.evil/acme/api", sha)[0],
 		"github.example.com":  gitOccsForLink("github.example.com", "github.example.com/acme/api", sha)[0],
 		"empty host":          gitOccsForLink("", "github.com/acme/api", sha)[0],

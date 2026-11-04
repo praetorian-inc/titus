@@ -80,7 +80,7 @@ func TestURL_AzureDevOps_NoLink(t *testing.T) {
 	}{
 		// Not an Azure DevOps host.
 		{"github host with ado-shaped path", gitOcc("github.com", "github.com/org/proj/_git/repo", sha40)},
-		{"gitlab host", gitOcc("gitlab.com", "gitlab.com/org/proj/_git/repo", sha40)},
+		{"gitea host", gitOcc("gitea.example.com", "gitea.example.com/org/proj/_git/repo", sha40)},
 		{"bitbucket host", gitOcc("bitbucket.org", "bitbucket.org/org/proj/_git/repo", sha40)},
 		{"ado server on-prem", gitOcc("tfs.corp.example", "tfs.corp.example/DefaultCollection/proj/_git/repo", sha40)},
 		{"unregistered host naming dev.azure.com in the path", gitOcc("evil.com", "evil.com/dev.azure.com/org/proj/_git/repo", sha40)},

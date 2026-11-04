@@ -39,7 +39,7 @@ func TestAddResultForOccurrence_NoCommitURL_AzureDevOps(t *testing.T) {
 	wt := gitOccsForLink("dev.azure.com", repo, adoSHA)[0]
 	wt.WorkingTree = true
 	tests := map[string]types.Occurrence{
-		"non-ADO host":        gitOccsForLink("gitlab.com", "gitlab.com/acme/proj/_git/repo", adoSHA)[0],
+		"non-ADO host":        gitOccsForLink("gitea.example.com", "gitea.example.com/acme/proj/_git/repo", adoSHA)[0],
 		"lookalike host":      gitOccsForLink("dev.azure.com.evil", "dev.azure.com.evil/acme/proj/_git/repo", adoSHA)[0],
 		"two vs labels":       gitOccsForLink("a.b.visualstudio.com", "a.b.visualstudio.com/proj/_git/repo", adoSHA)[0],
 		"no commit":           gitOccsForLink("dev.azure.com", repo, "")[0],

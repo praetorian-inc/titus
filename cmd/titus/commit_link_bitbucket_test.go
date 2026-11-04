@@ -43,7 +43,7 @@ func TestScanE2E_BitbucketCommitURL(t *testing.T) {
 		{"https origin with userinfo", "https://user@bitbucket.org/acme/api.git", true},
 		{"no origin", "", false},
 		{"bitbucket server", "https://bitbucket.corp.example/scm/acme/api.git", false},
-		{"gitlab origin", "https://gitlab.com/acme/api.git", false},
+		{"gitea origin", "https://gitea.example.com/acme/api.git", false},
 		{"lookalike host", "https://bitbucket.org.evil.example/acme/api.git", false},
 	}
 	for _, tc := range tests {

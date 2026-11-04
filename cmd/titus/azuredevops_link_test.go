@@ -34,7 +34,7 @@ var adoNoLinkCases = []struct {
 	name string
 	occ  types.Occurrence
 }{
-	{"non-ADO host", linkOcc("gitlab.com", "acme/proj/_git/repo", "src/a.go", linkSHA1)},
+	{"non-ADO host", linkOcc("gitea.example.com", "acme/proj/_git/repo", "src/a.go", linkSHA1)},
 	{"lookalike host", linkOcc("dev.azure.com.evil", "acme/proj/_git/repo", "src/a.go", linkSHA1)},
 	{"commitless ADO location", linkNoCommitOcc("dev.azure.com", "acme/proj/_git/repo", "src/a.go")},
 	{"working tree ADO location", linkWorkingTreeOcc("dev.azure.com", "acme/proj/_git/repo", "src/a.go")},
@@ -67,7 +67,7 @@ func TestWriteLocationLines_AzureDevOpsCommitLink(t *testing.T) {
 		require.Len(t, lines, 5, "%q", buf.String())
 		assert.Contains(t, lines[0], "dev.azure.com/acme/proj/_git/repo")
 		assert.Equal(t, "      "+ado.want, lines[1])
-		assert.Contains(t, lines[2], "gitlab.com/")
+		assert.Contains(t, lines[2], "gitea.example.com/")
 		assert.Contains(t, lines[3], "acme.visualstudio.com/proj/_git/repo")
 		assert.Equal(t, "      "+vs.want, lines[4])
 	})

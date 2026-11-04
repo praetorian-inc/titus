@@ -34,7 +34,7 @@ func linkOccs(t *testing.T, host, repo, path string, commit string, wt bool) typ
 
 func TestRenderLocations_CommitLinkFollowsItsLocationLine(t *testing.T) {
 	gh := linkOccs(t, "github.com", "github.com/acme/api", "a.env", linkSHA1, false)
-	gl := linkOccs(t, "gitlab.com", "gitlab.com/acme/api", "b.env", linkSHA2, false)
+	gl := linkOccs(t, "gitea.example.com", "gitea.example.com/acme/api", "b.env", linkSHA2, false)
 	m := matchWith(12, gh, gl)
 	_, body := locationBlock(t, plainLines(m, nil, 500))
 	exp := expectedLines(m.Occurrences, 12)
@@ -44,7 +44,7 @@ func TestRenderLocations_CommitLinkFollowsItsLocationLine(t *testing.T) {
 func TestRenderLocations_NoCommitLink(t *testing.T) {
 	legacy := types.Occurrence{Kind: "git", Repository: "acme/api", Path: "y.env", Commit: linkSHA1}
 	tests := map[string]types.Occurrence{
-		"gitlab":       linkOccs(t, "gitlab.com", "gitlab.com/acme/api", "a.env", linkSHA1, false),
+		"gitea":        linkOccs(t, "gitea.example.com", "gitea.example.com/acme/api", "a.env", linkSHA1, false),
 		"no commit":    linkOccs(t, "github.com", "github.com/acme/api", "a.env", "", false),
 		"working tree": linkOccs(t, "github.com", "github.com/acme/api", "a.env", "", true),
 		"legacy":       legacy,
