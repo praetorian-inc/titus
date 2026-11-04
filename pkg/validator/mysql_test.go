@@ -35,53 +35,82 @@ func TestMySQLValidator_CanValidate(t *testing.T) {
 	}
 }
 
-func TestMySQLValidator_ExtractDSN(t *testing.T) {
+func TestMySQLValidator_ExtractConfig(t *testing.T) {
 	v := NewMySQLValidator()
 
 	tests := []struct {
-		name    string
-		uri     string
-		wantDSN string
-		wantErr bool
+		name     string
+		uri      string
+		wantUser string
+		wantPass string
+		wantAddr string
+		wantDB   string
+		wantTLS  string
+		wantErr  bool
 	}{
 		{
-			name:    "full URI with port and database",
-			uri:     "mysql://admin:s3cret@db.example.com:3306/mydb",
-			wantDSN: "admin:s3cret@tcp(db.example.com:3306)/mydb?timeout=5s",
+			name:     "full URI with port and database",
+			uri:      "mysql://admin:s3cret@db.example.com:3306/mydb",
+			wantUser: "admin", wantPass: "s3cret", wantAddr: "db.example.com:3306", wantDB: "mydb",
 		},
 		{
-			name:    "URI without port defaults to 3306",
-			uri:     "mysql://user:pass@db.example.com/app",
-			wantDSN: "user:pass@tcp(db.example.com:3306)/app?timeout=5s",
+			name:     "URI without port defaults to 3306",
+			uri:      "mysql://user:pass@db.example.com/app",
+			wantUser: "user", wantPass: "pass", wantAddr: "db.example.com:3306", wantDB: "app",
 		},
 		{
-			name:    "URI with custom port",
-			uri:     "mysql://user:pass@db.example.com:4406/app",
-			wantDSN: "user:pass@tcp(db.example.com:4406)/app?timeout=5s",
+			name:     "URI with custom port",
+			uri:      "mysql://user:pass@db.example.com:4406/app",
+			wantUser: "user", wantPass: "pass", wantAddr: "db.example.com:4406", wantDB: "app",
 		},
 		{
-			name:    "URI with ssl-mode translates to tls param",
-			uri:     "mysql://user:pass@db.example.com:3306/app?ssl-mode=REQUIRED",
-			wantDSN: "user:pass@tcp(db.example.com:3306)/app?timeout=5s&tls=skip-verify",
+			name:     "URI with ssl-mode translates to tls config",
+			uri:      "mysql://user:pass@db.example.com:3306/app?ssl-mode=REQUIRED",
+			wantUser: "user", wantPass: "pass", wantAddr: "db.example.com:3306", wantDB: "app", wantTLS: "skip-verify",
 		},
 		{
-			name:    "URI without database",
-			uri:     "mysql://user:pass@db.example.com:3306",
-			wantDSN: "user:pass@tcp(db.example.com:3306)/?timeout=5s",
+			name:     "URI with ssl-mode DISABLED leaves tls off",
+			uri:      "mysql://user:pass@db.example.com:3306/app?ssl-mode=DISABLED",
+			wantUser: "user", wantPass: "pass", wantAddr: "db.example.com:3306", wantDB: "app",
 		},
 		{
-			name:    "IPv6 host without port defaults to 3306",
-			uri:     "mysql://user:pass@[2001:db8::1]/db",
-			wantDSN: "user:pass@tcp(2001:db8::1:3306)/db?timeout=5s",
+			name:     "URI without database",
+			uri:      "mysql://user:pass@db.example.com:3306",
+			wantUser: "user", wantPass: "pass", wantAddr: "db.example.com:3306",
 		},
 		{
-			name:    "IPv6 host with port",
-			uri:     "mysql://user:pass@[2001:db8::1]:3307/db",
-			wantDSN: "user:pass@tcp(2001:db8::1:3307)/db?timeout=5s",
+			name:     "IPv6 host without port defaults to 3306",
+			uri:      "mysql://user:pass@[2001:db8::1]/db",
+			wantUser: "user", wantPass: "pass", wantAddr: "[2001:db8::1]:3306", wantDB: "db",
+		},
+		{
+			name:     "IPv6 host with port",
+			uri:      "mysql://user:pass@[2001:db8::1]:3307/db",
+			wantUser: "user", wantPass: "pass", wantAddr: "[2001:db8::1]:3307", wantDB: "db",
+		},
+		{
+			name:     "driver parameters in the query are ignored",
+			uri:      "mysql://user:pass@db.example.com/app?allowCleartextPasswords=true&allowAllFiles=true&allowOldPasswords=true&timeout=1h&tls=false",
+			wantUser: "user", wantPass: "pass", wantAddr: "db.example.com:3306", wantDB: "app",
+		},
+		{
+			name:     "encoded query in database name stays literal",
+			uri:      "mysql://user:pass@db.example.com/app%3FallowCleartextPasswords%3Dtrue",
+			wantUser: "user", wantPass: "pass", wantAddr: "db.example.com:3306", wantDB: "app?allowCleartextPasswords=true",
+		},
+		{
+			name:     "encoded address in password stays literal",
+			uri:      "mysql://user:p%40tcp(evil.example.com:3306)%2F@db.example.com/app",
+			wantUser: "user", wantPass: "p@tcp(evil.example.com:3306)/", wantAddr: "db.example.com:3306", wantDB: "app",
 		},
 		{
 			name:    "missing password",
 			uri:     "mysql://user@db.example.com:3306/app",
+			wantErr: true,
+		},
+		{
+			name:    "missing host",
+			uri:     "mysql://user:pass@:3306/app",
 			wantErr: true,
 		},
 		{
@@ -98,13 +127,23 @@ func TestMySQLValidator_ExtractDSN(t *testing.T) {
 				Groups: [][]byte{[]byte(tt.uri)},
 			}
 
-			dsn, err := v.extractDSN(match)
+			cfg, err := v.extractConfig(match)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantDSN, dsn)
+			assert.Equal(t, tt.wantUser, cfg.User)
+			assert.Equal(t, tt.wantPass, cfg.Passwd)
+			assert.Equal(t, "tcp", cfg.Net)
+			assert.Equal(t, tt.wantAddr, cfg.Addr)
+			assert.Equal(t, tt.wantDB, cfg.DBName)
+			assert.Equal(t, tt.wantTLS, cfg.TLSConfig)
+			assert.Equal(t, v.timeout, cfg.Timeout)
+			assert.False(t, cfg.AllowCleartextPasswords)
+			assert.False(t, cfg.AllowAllFiles)
+			assert.False(t, cfg.AllowOldPasswords)
+			assert.Empty(t, cfg.Params)
 		})
 	}
 }

@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/praetorian-inc/titus/pkg/types"
 )
 
@@ -32,7 +33,7 @@ func (v *MySQLValidator) CanValidate(ruleID string) bool {
 
 // Validate checks MySQL credentials by attempting a connection.
 func (v *MySQLValidator) Validate(ctx context.Context, match *types.Match) (*types.ValidationResult, error) {
-	dsn, err := v.extractDSN(match)
+	cfg, err := v.extractConfig(match)
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("cannot validate: %v", err)), nil
 	}
@@ -45,10 +46,11 @@ func (v *MySQLValidator) Validate(ctx context.Context, match *types.Match) (*typ
 	ctx, cancel := context.WithTimeout(ctx, v.timeout)
 	defer cancel()
 
-	db, err := sql.Open("mysql", dsn)
+	connector, err := mysql.NewConnector(cfg)
 	if err != nil {
 		return types.NewValidationResult(types.StatusUndetermined, 0, fmt.Sprintf("failed to open: %v", err)), nil
 	}
+	db := sql.OpenDB(connector)
 	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
@@ -58,52 +60,54 @@ func (v *MySQLValidator) Validate(ctx context.Context, match *types.Match) (*typ
 	return types.NewValidationResult(types.StatusValid, 1.0, "MySQL credentials are valid"), nil
 }
 
-// extractDSN parses the MySQL URI from the match and converts it to a
-// go-sql-driver/mysql DSN: user:pass@tcp(host:port)/dbname?timeout=5s
-func (v *MySQLValidator) extractDSN(match *types.Match) (string, error) {
+// extractConfig parses the MySQL URI from the match into a driver Config.
+// Only user, password, host, port, database and ssl-mode are taken from the
+// URI; every other query parameter is ignored so a scanned URI cannot change
+// driver behavior (allowCleartextPasswords, allowAllFiles, timeouts, ...).
+func (v *MySQLValidator) extractConfig(match *types.Match) (*mysql.Config, error) {
 	raw := v.rawURI(match)
 	if raw == "" {
-		return "", fmt.Errorf("no MySQL URI found in match")
+		return nil, fmt.Errorf("no MySQL URI found in match")
 	}
 
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid URI: %w", err)
+		return nil, fmt.Errorf("invalid URI: %w", err)
 	}
 
 	if u.Scheme != "mysql" {
-		return "", fmt.Errorf("unexpected scheme %q", u.Scheme)
+		return nil, fmt.Errorf("unexpected scheme %q", u.Scheme)
 	}
 
 	user := u.User.Username()
 	pass, _ := u.User.Password()
 	if user == "" || pass == "" {
-		return "", fmt.Errorf("missing user or password")
+		return nil, fmt.Errorf("missing user or password")
 	}
 
 	host := u.Hostname()
+	if host == "" {
+		return nil, fmt.Errorf("missing host")
+	}
 	port := u.Port()
 	if port == "" {
 		port = "3306"
 	}
 
-	dbName := strings.TrimPrefix(u.Path, "/")
+	cfg := mysql.NewConfig()
+	cfg.User = user
+	cfg.Passwd = pass
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(host, port)
+	cfg.DBName = strings.TrimPrefix(u.Path, "/")
+	cfg.Timeout = v.timeout
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?timeout=%s",
-		user, pass, host, port, dbName, v.timeout)
-
-	q := u.Query()
-	if mode := q.Get("ssl-mode"); mode != "" {
-		q.Del("ssl-mode")
-		if strings.EqualFold(mode, "REQUIRED") || strings.EqualFold(mode, "VERIFY_CA") || strings.EqualFold(mode, "VERIFY_IDENTITY") {
-			q.Set("tls", "skip-verify")
-		}
-	}
-	if encoded := q.Encode(); encoded != "" {
-		dsn += "&" + encoded
+	switch strings.ToUpper(u.Query().Get("ssl-mode")) {
+	case "REQUIRED", "VERIFY_CA", "VERIFY_IDENTITY":
+		cfg.TLSConfig = "skip-verify"
 	}
 
-	return dsn, nil
+	return cfg, nil
 }
 
 func (v *MySQLValidator) extractHost(match *types.Match) (string, error) {
