@@ -126,6 +126,7 @@ rulesets:
   - np.html.1         # HTML Password Input Pre-populated Credential
   - np.http.1         # HTTP Basic Authentication
   - np.http.2         # HTTP Bearer Token
+  - titus.http-json.1 # HTTP Basic Authentication in JSON Header Record
   - np.huggingface.1  # HuggingFace User Access Token
   - np.instagram.1    # Instagram Graph API Access Token
   - np.iterable.1     # Iterable API Key

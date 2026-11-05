@@ -1,0 +1,22 @@
+rules:
+  - name: HTTP Basic Authentication in JSON Header Record
+    id: titus.http-json.1
+    base_score: 55
+    pattern: |
+      (?x)(?i)
+      "name" \s*:\s* "(?:proxy-)?authorization" \s*,\s* "value" \s*:\s* "Basic \s+
+      (?! REDACTED " )   # AWS WAF writes redacted fields as REDACTED
+      ( [A-Za-z0-9+/]{6,} ={0,2} )
+      "
+    examples:
+      - '{"name":"Authorization","value":"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="}'
+      - '{"name":"authorization","value":"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="}'
+      - '{"httpRequest":{"headers":[{"name":"host","value":"api.example.com"},{"name":"authorization","value":"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="}]}}'
+    negative_examples:
+      - '{"name":"Authorization","value":"REDACTED"}'
+      - '{"httpRequest":{"headers":[{"name":"host","value":"api.example.com"},{"name":"authorization","value":"REDACTED"}]}}'
+      - '{"name":"authorization","value":"Basic REDACTED"}'
+    references:
+      - https://datatracker.ietf.org/doc/html/rfc7617
+      - https://docs.aws.amazon.com/waf/latest/developerguide/logging-fields.html
+    categories: [secret, fuzzy, generic]

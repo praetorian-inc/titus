@@ -4234,6 +4234,14 @@
               "helpUri": "https://developer.zendesk.com/api-reference/"
             },
             {
+              "id": "titus.http-json.1",
+              "name": "HTTP Basic Authentication in JSON Header Record",
+              "shortDescription": {
+                "text": ""
+              },
+              "helpUri": "https://datatracker.ietf.org/doc/html/rfc7617"
+            },
+            {
               "id": "titus.wandb.1",
               "name": "Weights and Biases API Key (v1)",
               "shortDescription": {
