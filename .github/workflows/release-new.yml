@@ -190,7 +190,7 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-14
+            runner: macos-15
             hs_repo: https://github.com/VectorCamp/vectorscan.git
             hs_branch: vectorscan/5.4.11
           - arch: amd64
