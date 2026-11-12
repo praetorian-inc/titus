@@ -1,0 +1,36 @@
+# pkg/validator/validators/uberllm.yaml
+# UberLLM API Key Validator
+#
+# UberLLM is an OpenAI- and Anthropic-compatible API: one bearer key
+# (`ull_…`) authenticates against https://api.uberllm.dev and calls chat,
+# image, video, music and speech models against the account's prepaid credit.
+#
+# GET /v1/balance returns the account's credit (balance_usd, held_usd,
+# available_usd). A 200 means the leaked key is still active; 401 means it is
+# revoked or invalid. The endpoint does not run a model, so validating a found
+# key costs nothing.
+#
+# API documentation:
+#   https://uberllm.dev/docs/quickstart
+#   https://uberllm.dev/docs/authentication
+
+validators:
+
+- name: uberllm-api-key
+  rule_ids:
+    - kingfisher.uberllm.1
+
+  http:
+    method: GET
+    url: "https://api.uberllm.dev/v1/balance"
+    auth:
+      type: bearer
+      secret_group: "key"
+    headers:
+      - name: "Accept"
+        value: "application/json"
+
+    # 200 with the account balance means the credential is live.
+    success_codes: [200]
+    # Revoked or invalid key.
+    failure_codes: [401, 403]

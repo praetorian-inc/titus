@@ -1,0 +1,58 @@
+# UberLLM API key scorer — spendable credit.
+#
+# Rule ID covered:
+#   kingfisher.uberllm.1 — UberLLM API Key (ull_...): base_score 65
+#
+# UberLLM accounts are prepaid. GET /v1/balance returns the credit the key can
+# spend right now as available_usd. A key on a funded account can run chat,
+# image, video and music models until the credit is gone; a key on an empty
+# account can call nothing until someone adds credit.
+#
+# All modifiers issue the SAME request. One network call per finding.
+#
+# Score outcomes (base 65):
+#   credit available: 65 + 10 = 75
+#   no credit:        65 - 15 = 50
+#   revoked:                     5
+#
+# API documentation:
+#   https://uberllm.dev/docs/quickstart
+scorers:
+  - name: uberllm-key-credit
+    rule_ids:
+      - kingfisher.uberllm.1
+    modifiers:
+      # --- Funded account: the key can spend credit now ---
+      # available_usd is a JSON number; matches any positive value, including
+      # small ones printed in exponent form (e.g. 5e-05).
+      - name: credit-available
+        priority: 90
+        http: &uberllm_balance
+          method: GET
+          url: https://api.uberllm.dev/v1/balance
+          auth:
+            type: bearer
+            secret_group: "key"
+        fires_when:
+          json_path_matches:
+            path: ".available_usd"
+            regex: '^([1-9]|0\.0*[1-9])'
+        delta: 10
+
+      # --- Empty account: live key, nothing to spend yet ---
+      - name: no-credit
+        priority: 70
+        http: *uberllm_balance
+        fires_when:
+          json_path_matches:
+            path: ".available_usd"
+            regex: '^(0|-.*)$'
+        delta: -15
+
+      # --- Dead key: evaluated last, wins outright ---
+      - name: revoked-key
+        priority: 10
+        http: *uberllm_balance
+        fires_when:
+          status_code_in: [401, 403]
+        set_score: 5

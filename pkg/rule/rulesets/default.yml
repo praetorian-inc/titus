@@ -484,6 +484,7 @@ rulesets:
   - kingfisher.travisci.1               # Travis CI Token
   - kingfisher.travisci.2               # Travis CI Encrypted Variable
   - kingfisher.typeform.1               # Typeform API Token
+  - kingfisher.uberllm.1                # UberLLM API Key
   - kingfisher.uri.1                    # URI with Username and Secret
   - kingfisher.vastai.1                 # Vast.ai API Key
   - kingfisher.vercel.1                 # Vercel API Token
