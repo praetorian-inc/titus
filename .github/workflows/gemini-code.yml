@@ -6,16 +6,12 @@ on:
   pull_request_review_comment:
     types: [created]
 
-concurrency:
-  group: gemini-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # stray review comments must not cancel an in-progress review
-
 jobs:
   gemini-review:
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
       (github.event_name != 'pull_request_review_comment' || contains(github.event.comment.body, '@gemini'))
-    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@92435b1db7d91370abb6c1533af76c958e57bd22  # v2.20.6
+    uses: praetorian-inc/public-workflows/.github/workflows/gemini-code.yml@39a08636a6b828c31e386b339721eeb7c2e3dbc9  # v2.21.20
     permissions:
       contents: read
       pull-requests: write
