@@ -183,6 +183,7 @@ kingfisher.replicate.1,65,high,Replicate API token; runs diverse ML models on-de
 kingfisher.runway.1,65,high,Runway API key; video generation AI is computationally expensive with high per-second billing.
 kingfisher.stabilityai.1,60,medium,Stability AI API key; image generation with per-image billing; moderate-high cost exposure.
 kingfisher.together.1,55,medium,Together.ai API key; open-source model inference with per-token billing; moderate cost exposure.
+kingfisher.uberllm.1,65,high,UberLLM API key; OpenAI- and Anthropic-compatible API where one key calls chat, image, video, music and speech models from many providers against prepaid credit; a leaked key can spend that credit on expensive frontier and video models.
 kingfisher.vastai.1,70,high,Vast.ai API key; GPU compute rental marketplace; direct money loss on compromise as attacker can spin up expensive GPU instances.
 kingfisher.xai.1,65,high,xAI (Grok) API key; Grok model inference with per-token billing; high-profile provider.
 kingfisher.zhipu.1,50,medium,Zhipu (BigModel) API key; Chinese LLM provider with pay-per-token API.

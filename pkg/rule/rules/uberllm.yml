@@ -1,0 +1,38 @@
+rules:
+
+- name: UberLLM API Key
+  id: kingfisher.uberllm.1
+  base_score: 65
+
+  # UberLLM is an OpenAI- and Anthropic-compatible API: one bearer key calls
+  # chat, image, video, music and speech models from many providers, billed
+  # against the account's prepaid credit. A leaked ull_ key can spend that
+  # credit on any of those models.
+  #
+  # Key shape: the literal "ull_" prefix followed by exactly 43 base62
+  # characters (32 random bytes).
+  pattern: |
+    (?x)
+    \b
+    (?P<key>
+      ull_[0-9A-Za-z]{43}
+    )
+    \b
+
+  categories: [api, secret]
+  min_entropy: 3.5
+
+  examples:
+  - |
+      curl https://api.uberllm.dev/v1/balance \
+        -H "Authorization: Bearer ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7"
+  - 'UBERLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7'
+
+  negative_examples:
+  - "UBERLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ"
+  - "UBERLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7a"
+  - "UBERLLM_API_KEY=ull_"
+
+  references:
+  - https://uberllm.dev/docs/quickstart
+  - https://uberllm.dev/docs/authentication
