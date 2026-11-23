@@ -54,7 +54,9 @@ rules:
   id: np.stripe.1
   base_score: 90
 
-  pattern: '(?i)\b(?P<key>(?:sk|rk)_live_[a-z0-9]{24})\b'
+  # Keys created before 2019 have 24 characters after the prefix; newer keys
+  # are longer, and Stripe documents keys as up to 255 characters in total.
+  pattern: '(?i)\b(?P<key>(?:sk|rk)_live_[a-z0-9]{24,247})\b'
 
   categories:
   - api
@@ -71,7 +73,7 @@ rules:
   id: np.stripe.2
   base_score: 5
 
-  pattern: '(?i)\b(?P<key>(?:sk|rk)_test_[a-z0-9]{24})\b'
+  pattern: '(?i)\b(?P<key>(?:sk|rk)_test_[a-z0-9]{24,247})\b'
 
   categories:
   - api
