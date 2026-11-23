@@ -7,7 +7,7 @@ rules:
       (?xi)
       (?P<webhook_base>
         https://discord\.com/api/webhooks/
-        \d{18}
+        \d{17,20}
       )/
       (?P<webhook_token>
         [0-9a-z_\-]{68}
@@ -19,6 +19,7 @@ rules:
     confidence: medium
     examples:
       - https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdef
+      - https://discord.com/api/webhooks/1234567890123456789/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdef
     categories:
       - api
       - webhook
