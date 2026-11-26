@@ -1,10 +1,10 @@
 rules:
 
-- name: UberLLM API Key
-  id: kingfisher.uberllm.1
+- name: MartLLM API Key
+  id: kingfisher.martllm.1
   base_score: 65
 
-  # UberLLM is an OpenAI- and Anthropic-compatible API: one bearer key calls
+  # MartLLM is an OpenAI- and Anthropic-compatible API: one bearer key calls
   # chat, image, video, music and speech models from many providers, billed
   # against the account's prepaid credit. A leaked ull_ key can spend that
   # credit on any of those models.
@@ -24,15 +24,15 @@ rules:
 
   examples:
   - |
-      curl https://api.uberllm.dev/v1/balance \
+      curl https://api.martllm.com/v1/balance \
         -H "Authorization: Bearer ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7"
-  - 'UBERLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7'
+  - 'MARTLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7'
 
   negative_examples:
-  - "UBERLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ"
-  - "UBERLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7a"
-  - "UBERLLM_API_KEY=ull_"
+  - "MARTLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ"
+  - "MARTLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7a"
+  - "MARTLLM_API_KEY=ull_"
 
   references:
-  - https://uberllm.dev/docs/quickstart
-  - https://uberllm.dev/docs/authentication
+  - https://martllm.com/docs/quickstart
+  - https://martllm.com/docs/authentication

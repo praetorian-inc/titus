@@ -9,39 +9,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// uberllmFakeKey is a clearly synthetic UberLLM key: the real "ull_" prefix
+// martllmFakeKey is a clearly synthetic MartLLM key: the real "ull_" prefix
 // followed by 43 base62 characters that are obviously not a credential.
-const uberllmFakeKey = "ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7"
+const martllmFakeKey = "ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7"
 
-func loadUberLLMRule(t *testing.T) *types.Rule {
+func loadMartLLMRule(t *testing.T) *types.Rule {
 	t.Helper()
 	rules, err := NewLoader().LoadBuiltinRules()
 	require.NoError(t, err)
 
 	for _, r := range rules {
-		if r.ID == "kingfisher.uberllm.1" {
+		if r.ID == "kingfisher.martllm.1" {
 			return r
 		}
 	}
-	t.Fatal("kingfisher.uberllm.1 is missing from the built-in rule set")
+	t.Fatal("kingfisher.martllm.1 is missing from the built-in rule set")
 	return nil
 }
 
-func TestUberLLMRule_Metadata(t *testing.T) {
-	r := loadUberLLMRule(t)
+func TestMartLLMRule_Metadata(t *testing.T) {
+	r := loadMartLLMRule(t)
 
-	assert.Equal(t, "UberLLM API Key", r.Name)
+	assert.Equal(t, "MartLLM API Key", r.Name)
 	assert.Equal(t, 65, r.BaseScore)
 	assert.Contains(t, r.Categories, "api")
 	assert.Contains(t, r.Categories, "secret")
 	assert.InDelta(t, 3.5, r.MinEntropy, 0.0001)
-	assert.Contains(t, r.References, "https://uberllm.dev/docs/quickstart")
+	assert.Contains(t, r.References, "https://martllm.com/docs/quickstart")
 }
 
-func TestUberLLMRule_DetectsKeyShapes(t *testing.T) {
-	require.Len(t, uberllmFakeKey, 47, "ull_ + 43 base62 characters")
+func TestMartLLMRule_DetectsKeyShapes(t *testing.T) {
+	require.Len(t, martllmFakeKey, 47, "ull_ + 43 base62 characters")
 
-	m, err := matcher.NewPortableRegexp([]*types.Rule{loadUberLLMRule(t)}, 0, nil)
+	m, err := matcher.NewPortableRegexp([]*types.Rule{loadMartLLMRule(t)}, 0, nil)
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -49,13 +49,13 @@ func TestUberLLMRule_DetectsKeyShapes(t *testing.T) {
 		input  string
 		expect bool
 	}{
-		{"bare key", uberllmFakeKey, true},
-		{"bearer header", "Authorization: Bearer " + uberllmFakeKey, true},
-		{"env assignment", "UBERLLM_API_KEY=" + uberllmFakeKey, true},
-		{"quoted config", `api_key = "` + uberllmFakeKey + `"`, true},
-		{"prefix only", "UBERLLM_API_KEY=ull_", false},
-		{"body one short", "UBERLLM_API_KEY=" + uberllmFakeKey[:len(uberllmFakeKey)-1], false},
-		{"body one long", "UBERLLM_API_KEY=" + uberllmFakeKey + "a", false},
+		{"bare key", martllmFakeKey, true},
+		{"bearer header", "Authorization: Bearer " + martllmFakeKey, true},
+		{"env assignment", "MARTLLM_API_KEY=" + martllmFakeKey, true},
+		{"quoted config", `api_key = "` + martllmFakeKey + `"`, true},
+		{"prefix only", "MARTLLM_API_KEY=ull_", false},
+		{"body one short", "MARTLLM_API_KEY=" + martllmFakeKey[:len(martllmFakeKey)-1], false},
+		{"body one long", "MARTLLM_API_KEY=" + martllmFakeKey + "a", false},
 		{"unrelated token", "ghp_0000111122223333444455556666777788889999", false},
 	}
 
@@ -70,13 +70,13 @@ func TestUberLLMRule_DetectsKeyShapes(t *testing.T) {
 			}
 			require.NotEmpty(t, matches, "expected a match for %q", tc.input)
 			require.NotEmpty(t, matches[0].NamedGroups)
-			assert.Equal(t, uberllmFakeKey, string(matches[0].NamedGroups["key"]),
+			assert.Equal(t, martllmFakeKey, string(matches[0].NamedGroups["key"]),
 				"the named group must capture exactly the key, with no surrounding text")
 		})
 	}
 }
 
-func TestUberLLMRule_IncludedInDefaultRuleset(t *testing.T) {
+func TestMartLLMRule_IncludedInDefaultRuleset(t *testing.T) {
 	rulesets, err := NewLoader().LoadBuiltinRulesets()
 	require.NoError(t, err)
 
@@ -88,5 +88,5 @@ func TestUberLLMRule_IncludedInDefaultRuleset(t *testing.T) {
 		}
 	}
 	require.NotNil(t, def, "default ruleset must exist")
-	assert.Contains(t, def.RuleIDs, "kingfisher.uberllm.1")
+	assert.Contains(t, def.RuleIDs, "kingfisher.martllm.1")
 }

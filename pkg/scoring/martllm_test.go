@@ -10,15 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuiltinUberLLMScorer_SharesOneBalanceRequest(t *testing.T) {
-	s := builtinScorerFor(t, "kingfisher.uberllm.1")
-	assert.Equal(t, "uberllm-key-credit", s.Name)
+func TestBuiltinMartLLMScorer_SharesOneBalanceRequest(t *testing.T) {
+	s := builtinScorerFor(t, "kingfisher.martllm.1")
+	assert.Equal(t, "martllm-key-credit", s.Name)
 	require.Len(t, s.Modifiers, 3)
 
 	for _, m := range s.Modifiers {
 		cond, ok := m.Condition.(*httpCondition)
 		require.Truef(t, ok, "modifier %q should be http-backed", m.Name)
-		assert.Equal(t, "https://api.uberllm.dev/v1/balance", cond.url, "modifier %q", m.Name)
+		assert.Equal(t, "https://api.martllm.com/v1/balance", cond.url, "modifier %q", m.Name)
 		assert.Equal(t, "GET", cond.method, "modifier %q", m.Name)
 		assert.Equal(t, "bearer", cond.auth.Type, "modifier %q", m.Name)
 		assert.Equal(t, "key", cond.auth.SecretGroup, "modifier %q", m.Name)
@@ -26,8 +26,8 @@ func TestBuiltinUberLLMScorer_SharesOneBalanceRequest(t *testing.T) {
 }
 
 // Each balance response must fire exactly the modifiers listed for it.
-func TestBuiltinUberLLMScorer_FiresOnBalance(t *testing.T) {
-	s := builtinScorerFor(t, "kingfisher.uberllm.1")
+func TestBuiltinMartLLMScorer_FiresOnBalance(t *testing.T) {
+	s := builtinScorerFor(t, "kingfisher.martllm.1")
 
 	cases := []struct {
 		name   string

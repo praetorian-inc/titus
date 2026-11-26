@@ -1,8 +1,8 @@
-# pkg/validator/validators/uberllm.yaml
-# UberLLM API Key Validator
+# pkg/validator/validators/martllm.yaml
+# MartLLM API Key Validator
 #
-# UberLLM is an OpenAI- and Anthropic-compatible API: one bearer key
-# (`ull_…`) authenticates against https://api.uberllm.dev and calls chat,
+# MartLLM is an OpenAI- and Anthropic-compatible API: one bearer key
+# (`ull_…`) authenticates against https://api.martllm.com and calls chat,
 # image, video, music and speech models against the account's prepaid credit.
 #
 # GET /v1/balance returns the account's credit (balance_usd, held_usd,
@@ -11,18 +11,18 @@
 # key costs nothing.
 #
 # API documentation:
-#   https://uberllm.dev/docs/quickstart
-#   https://uberllm.dev/docs/authentication
+#   https://martllm.com/docs/quickstart
+#   https://martllm.com/docs/authentication
 
 validators:
 
-- name: uberllm-api-key
+- name: martllm-api-key
   rule_ids:
-    - kingfisher.uberllm.1
+    - kingfisher.martllm.1
 
   http:
     method: GET
-    url: "https://api.uberllm.dev/v1/balance"
+    url: "https://api.martllm.com/v1/balance"
     auth:
       type: bearer
       secret_group: "key"
