@@ -1,0 +1,38 @@
+rules:
+
+- name: MartLLM API Key
+  id: kingfisher.martllm.1
+  base_score: 65
+
+  # MartLLM is an OpenAI- and Anthropic-compatible API: one bearer key calls
+  # chat, image, video, music and speech models from many providers, billed
+  # against the account's prepaid credit. A leaked ull_ key can spend that
+  # credit on any of those models.
+  #
+  # Key shape: the literal "ull_" prefix followed by exactly 43 base62
+  # characters (32 random bytes).
+  pattern: |
+    (?x)
+    \b
+    (?P<key>
+      ull_[0-9A-Za-z]{43}
+    )
+    \b
+
+  categories: [api, secret]
+  min_entropy: 3.5
+
+  examples:
+  - |
+      curl https://api.martllm.com/v1/balance \
+        -H "Authorization: Bearer ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7"
+  - 'MARTLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7'
+
+  negative_examples:
+  - "MARTLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ"
+  - "MARTLLM_API_KEY=ull_EXAMPLEkeyDoNotUse4mZ9vT2kL8nR3pW6xY1bC5dQ7a"
+  - "MARTLLM_API_KEY=ull_"
+
+  references:
+  - https://martllm.com/docs/quickstart
+  - https://martllm.com/docs/authentication
