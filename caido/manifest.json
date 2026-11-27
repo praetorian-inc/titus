@@ -1,0 +1,30 @@
+{
+  "id": "titus-secret-scanner",
+  "name": "Titus Secret Scanner",
+  "version": "1.0.0",
+  "description": "Scans HTTP traffic for secrets and credentials using the Titus detection engine (444+ rules).",
+  "author": {
+    "name": "Praetorian",
+    "email": "opensource@praetorian.com",
+    "url": "https://github.com/praetorian-inc/titus"
+  },
+  "plugins": [
+    {
+      "kind": "backend",
+      "id": "titus-backend",
+      "name": "Titus Backend",
+      "entrypoint": "packages/backend/dist/index.js",
+      "runtime": "javascript"
+    },
+    {
+      "kind": "frontend",
+      "id": "titus-frontend",
+      "name": "Titus Frontend",
+      "entrypoint": "packages/frontend/dist/index.js",
+      "style": "packages/frontend/dist/style.css",
+      "backend": {
+        "id": "titus-backend"
+      }
+    }
+  ]
+}
